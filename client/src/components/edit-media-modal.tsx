@@ -22,6 +22,13 @@ interface EditMediaModalProps {
   mediaItem: MediaItem;
 }
 
+// Type for form data
+interface FormData {
+  caption: string;
+  photographer: string;
+  tags: string;
+}
+
 export default function EditMediaModal({
   open,
   onOpenChange,
@@ -30,7 +37,7 @@ export default function EditMediaModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const form = useForm({
+  const form = useForm<FormData>({
     resolver: zodResolver(insertMediaItemSchema.partial()),
     defaultValues: {
       caption: mediaItem.caption || "",
@@ -61,14 +68,17 @@ export default function EditMediaModal({
     },
   });
 
-  const onSubmit = async (data: Partial<MediaItem>) => {
+  const onSubmit = async (formData: FormData) => {
     try {
-      // Process tags
-      const tags = typeof data.tags === 'string'
-        ? data.tags.split(',').map(tag => tag.trim()).filter(Boolean)
-        : data.tags;
+      // Convert comma-separated string to array of tags
+      const tags = formData.tags
+        ? formData.tags.split(',').map((tag: string) => tag.trim()).filter(Boolean)
+        : null;
 
-      await updateMutation.mutateAsync({ ...data, tags });
+      await updateMutation.mutateAsync({
+        ...formData,
+        tags,
+      });
     } catch (error) {
       console.error('Form submission error:', error);
     }

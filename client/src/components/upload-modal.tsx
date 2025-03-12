@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { InsertEvent, insertEventSchema, Series } from "@shared/schema";
+import { InsertEvent, insertEventSchema, Series, Event } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Upload, Image as ImageIcon } from "lucide-react";
 import { generateEventThumbnail } from "@/lib/ai-thumbnail";
@@ -43,6 +43,12 @@ export default function UploadModal({
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
+  // Fetch event data when editing
+  const { data: eventData } = useQuery<Event>({
+    queryKey: [`/api/events/${eventId}`],
+    enabled: isEditing,
+  });
+
   // Fetch available series
   const { data: seriesList } = useQuery<Series[]>({
     queryKey: ["/api/series"],
@@ -53,12 +59,30 @@ export default function UploadModal({
     defaultValues: {
       title: "",
       description: "",
-      date: new Date(),
+      date: new Date().toISOString().split('T')[0],
       coverImage: "/attached_assets/%2389_3.png",
       customThumbnail: "",
       seriesId: undefined,
     },
   });
+
+  // Pre-fill form with event data when editing
+  useEffect(() => {
+    if (eventData && isEditing) {
+      form.reset({
+        title: eventData.title,
+        description: eventData.description || "",
+        date: new Date(eventData.date).toISOString().split('T')[0],
+        coverImage: eventData.coverImage,
+        customThumbnail: eventData.customThumbnail || "",
+        seriesId: eventData.seriesId,
+      });
+
+      if (eventData.customThumbnail) {
+        setThumbnailPreview(eventData.customThumbnail);
+      }
+    }
+  }, [eventData, isEditing, form]);
 
   const handleThumbnailChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

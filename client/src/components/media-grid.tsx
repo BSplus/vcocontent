@@ -205,13 +205,13 @@ export default function MediaGrid({ items }: MediaGridProps) {
                     <DropdownMenuContent>
                       <DropdownMenuItem onClick={(e) => {
                         e.stopPropagation();
-                        handleDownload(item.url, 'high', item.type);
+                        handleDownload(item.url, 'high', item.type as 'video' | 'image');
                       }}>
                         Download High-Res
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={(e) => {
                         e.stopPropagation();
-                        handleDownload(item.thumbnail, 'low', item.type);
+                        handleDownload(item.thumbnail, 'low', item.type as 'video' | 'image');
                       }}>
                         Download Low-Res
                       </DropdownMenuItem>
@@ -308,12 +308,12 @@ export default function MediaGrid({ items }: MediaGridProps) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
                   <DropdownMenuItem onClick={() =>
-                    selectedItem && handleDownload(selectedItem.url, 'high', selectedItem.type)
+                    selectedItem && handleDownload(selectedItem.url, 'high', selectedItem.type as 'video' | 'image')
                   }>
                     Download High-Res
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() =>
-                    selectedItem && handleDownload(selectedItem.thumbnail, 'low', selectedItem.type)
+                    selectedItem && handleDownload(selectedItem.thumbnail, 'low', selectedItem.type as 'video' | 'image')
                   }>
                     Download Low-Res
                   </DropdownMenuItem>
