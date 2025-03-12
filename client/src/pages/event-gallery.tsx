@@ -15,6 +15,7 @@ export default function EventGallery() {
 
   const { data: mediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: [`/api/events/${eventId}/media`],
+    enabled: !!eventId, // Only fetch media when we have an eventId
   });
 
   const isLoading = eventLoading || mediaLoading;
