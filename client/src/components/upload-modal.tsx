@@ -70,9 +70,9 @@ export default function UploadModal({
         title: eventData.title,
         description: eventData.description || "",
         date: new Date(eventData.date).toISOString().split('T')[0],
-        coverImage: eventData.coverImage,
-        customThumbnail: eventData.customThumbnail,
-        seriesId: eventData.seriesId,
+        coverImage: eventData.coverImage || "",
+        customThumbnail: eventData.customThumbnail || undefined,
+        seriesId: eventData.seriesId || undefined,
       });
 
       if (eventData.customThumbnail) {
