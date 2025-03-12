@@ -56,12 +56,19 @@ export default function MediaUploadModal({
   const handleFileChange = (type: 'media' | 'thumbnail') => (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      console.log(`Selected ${type} file:`, file.name);
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
+        console.log(`Converted ${type} file to data URL`);
         if (type === 'media') {
           setMediaPreview(dataUrl);
           form.setValue('url', dataUrl);
+          // Reset thumbnail if not set
+          if (!thumbnailPreview) {
+            setThumbnailPreview(dataUrl);
+            form.setValue('thumbnail', dataUrl);
+          }
         } else {
           setThumbnailPreview(dataUrl);
           form.setValue('thumbnail', dataUrl);
@@ -73,6 +80,7 @@ export default function MediaUploadModal({
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertMediaItem) => {
+      console.log('Submitting media data:', data);
       const res = await apiRequest("POST", "/api/media", data);
       return res.json();
     },
@@ -99,6 +107,15 @@ export default function MediaUploadModal({
 
   const onSubmit = async (data: InsertMediaItem) => {
     try {
+      if (!data.url || !data.thumbnail) {
+        toast({
+          title: "Error",
+          description: "Please select both media file and thumbnail",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const formattedData = {
         ...data,
         tags: typeof data.tags === 'string' ? data.tags.split(',').map(tag => tag.trim()) : data.tags || [],
