@@ -23,7 +23,7 @@ export default function MediaGrid({ items }: MediaGridProps) {
         {items.map((item) => (
           <motion.div
             key={item.id}
-            className="relative aspect-square cursor-pointer overflow-hidden rounded-lg"
+            className="relative aspect-square cursor-pointer overflow-hidden rounded-lg bg-black/20"
             onHoverStart={() => setHoveredItem(item)}
             onHoverEnd={() => setHoveredItem(null)}
             onClick={() => setSelectedItem(item)}
@@ -33,7 +33,7 @@ export default function MediaGrid({ items }: MediaGridProps) {
             <img
               src={item.thumbnail}
               alt={item.caption || "Media item"}
-              className="object-cover w-full h-full"
+              className="absolute inset-0 w-full h-full object-contain"
             />
 
             {/* Hover Preview Overlay */}
@@ -91,18 +91,18 @@ export default function MediaGrid({ items }: MediaGridProps) {
               {selectedItem?.caption || "Media Preview"}
             </DialogTitle>
           </DialogHeader>
-          <div className="relative aspect-video">
+          <div className="relative aspect-video bg-black/20">
             {selectedItem?.type === "video" ? (
               <video
                 src={selectedItem.url}
                 controls
-                className="w-full h-full object-contain"
+                className="absolute inset-0 w-full h-full object-contain"
               />
             ) : (
               <img
                 src={selectedItem?.url}
                 alt={selectedItem?.caption || "Media preview"}
-                className="w-full h-full object-contain"
+                className="absolute inset-0 w-full h-full object-contain"
               />
             )}
           </div>

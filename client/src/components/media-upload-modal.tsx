@@ -60,11 +60,16 @@ export default function MediaUploadModal({
   const handleFileChange = (type: 'media' | 'thumbnail') => (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB in bytes
+      const MAX_FILE_SIZE = file.type.startsWith('video/')
+        ? 200 * 1024 * 1024  // 200MB for videos
+        : 10 * 1024 * 1024;  // 10MB for images
+
       if (file.size > MAX_FILE_SIZE) {
+        const sizeInMB = (file.size / (1024 * 1024)).toFixed(1);
+        const limit = file.type.startsWith('video/') ? '200MB' : '10MB';
         toast({
           title: "Error",
-          description: `File size too large. Maximum size is 10MB. Your file is ${(file.size / (1024 * 1024)).toFixed(1)}MB`,
+          description: `File size too large. Maximum size is ${limit}. Your file is ${sizeInMB}MB`,
           variant: "destructive",
         });
         event.target.value = ''; // Reset input
@@ -73,7 +78,11 @@ export default function MediaUploadModal({
 
       // Calculate approximate base64 size
       const base64Size = Math.round((file.size * 4) / 3);
-      if (base64Size > 45 * 1024 * 1024) { // 45MB base64 limit
+      const base64Limit = file.type.startsWith('video/')
+        ? 190 * 1024 * 1024  // 190MB base64 limit for videos
+        : 45 * 1024 * 1024;  // 45MB base64 limit for images
+
+      if (base64Size > base64Limit) {
         toast({
           title: "Error",
           description: "File will be too large after encoding. Please choose a smaller file.",
@@ -197,7 +206,7 @@ export default function MediaUploadModal({
       }
 
       // Process tags
-      const tags = typeof data.tags === 'string' 
+      const tags = typeof data.tags === 'string'
         ? data.tags.split(',').map(tag => tag.trim()).filter(Boolean)
         : (data.tags || []);
 
@@ -207,7 +216,7 @@ export default function MediaUploadModal({
         tags,
       };
 
-      console.log('Starting media upload...', { 
+      console.log('Starting media upload...', {
         eventId,
         type: formattedData.type,
         caption: formattedData.caption,
@@ -258,7 +267,7 @@ export default function MediaUploadModal({
               <Label htmlFor="type">Type</Label>
               <span className="text-xs text-muted-foreground">{tooltipText}</span>
             </div>
-            <Select 
+            <Select
               onValueChange={(value) => form.setValue("type", value as "image" | "video")}
               defaultValue={form.getValues("type")}
             >
@@ -295,9 +304,9 @@ export default function MediaUploadModal({
                   {form.getValues("type") === "image" ? (
                     <div className="relative h-40 border rounded-lg overflow-hidden bg-black/20 group">
                       {mediaPreview ? (
-                        <img 
-                          src={mediaPreview} 
-                          alt="Media preview" 
+                        <img
+                          src={mediaPreview}
+                          alt="Media preview"
                           className="w-full h-full object-contain"
                         />
                       ) : (
@@ -306,9 +315,9 @@ export default function MediaUploadModal({
                         </div>
                       )}
                       <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button 
-                          type="button" 
-                          variant="outline" 
+                        <Button
+                          type="button"
+                          variant="outline"
                           className="bg-transparent border-primary/20"
                           onClick={() => triggerFileInput('media')}
                         >
@@ -323,9 +332,9 @@ export default function MediaUploadModal({
                         <Film className="h-8 w-8" />
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button 
-                          type="button" 
-                          variant="outline" 
+                        <Button
+                          type="button"
+                          variant="outline"
                           className="bg-transparent border-primary/20"
                           onClick={() => triggerFileInput('media')}
                         >
@@ -343,9 +352,9 @@ export default function MediaUploadModal({
               <Label>Thumbnail</Label>
               <div className="relative h-40 border rounded-lg overflow-hidden bg-black/20 group">
                 {thumbnailPreview ? (
-                  <img 
-                    src={thumbnailPreview} 
-                    alt="Thumbnail preview" 
+                  <img
+                    src={thumbnailPreview}
+                    alt="Thumbnail preview"
                     className="w-full h-full object-contain"
                   />
                 ) : (
@@ -354,9 +363,9 @@ export default function MediaUploadModal({
                   </div>
                 )}
                 <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     className="bg-transparent border-primary/20"
                     onClick={() => triggerFileInput('thumbnail')}
                   >
