@@ -6,6 +6,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -13,23 +23,57 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MediaItem } from "@shared/schema";
 import { motion } from "framer-motion";
-import { Eye, PlayCircle, Download, Pencil } from "lucide-react";
+import { Eye, PlayCircle, Download, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EditMediaModal from "./edit-media-modal";
 import { useAuth } from "@/hooks/use-auth";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface MediaGridProps {
   items: MediaItem[];
 }
 
 export default function MediaGrid({ items }: MediaGridProps) {
-  const { user } = useAuth(); // Get user status
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<MediaItem | null>(null);
   const [editItem, setEditItem] = useState<MediaItem | null>(null);
   const [hoveredItem, setHoveredItem] = useState<MediaItem | null>(null);
   const [videoStills, setVideoStills] = useState<{ [key: number]: string[] }>({});
   const [currentStillIndex, setCurrentStillIndex] = useState<{ [key: number]: number }>({});
   const stillIntervalRef = useRef<{ [key: number]: NodeJS.Timeout }>({});
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (mediaId: number) => {
+      const res = await apiRequest("DELETE", `/api/media/${mediaId}`);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to delete media');
+      }
+      return res.json();
+    },
+    onSuccess: (_, mediaId) => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: [`/api/events/${itemToDelete?.eventId}/media`] });
+      setItemToDelete(null);
+      toast({
+        title: "Success",
+        description: "Media item deleted successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   // Function to generate video stills
   const generateVideoStills = async (video: HTMLVideoElement, itemId: number) => {
@@ -184,17 +228,30 @@ export default function MediaGrid({ items }: MediaGridProps) {
                 <div className="flex gap-2">
                   <Eye className="h-6 w-6" />
                   {user?.isAdmin && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-white"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditItem(item);
-                      }}
-                    >
-                      <Pencil className="h-6 w-6" />
-                    </Button>
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-white"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditItem(item);
+                        }}
+                      >
+                        <Pencil className="h-6 w-6" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-white hover:text-red-500"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setItemToDelete(item);
+                        }}
+                      >
+                        <Trash2 className="h-6 w-6" />
+                      </Button>
+                    </>
                   )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -336,6 +393,27 @@ export default function MediaGrid({ items }: MediaGridProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Add Delete Confirmation Dialog */}
+      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Media Item</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this media item? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-500 hover:bg-red-600"
+              onClick={() => itemToDelete && deleteMutation.mutateAsync(itemToDelete.id)}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Edit Modal */}
       {user?.isAdmin && editItem && (
