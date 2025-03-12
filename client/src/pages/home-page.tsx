@@ -54,7 +54,7 @@ export default function HomePage() {
     const photographerMatch = item.photographer?.toLowerCase().includes(query) || false;
 
     // Search in tags
-    const tagsMatch = item.tags?.some(tag => 
+    const tagsMatch = item.tags?.some(tag =>
       tag.toLowerCase().includes(query)
     ) || false;
 
@@ -92,6 +92,11 @@ export default function HomePage() {
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });
     }
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault(); // Prevent page reload
+    // The search logic is already implemented in filteredMediaItems
   };
 
   return (
@@ -154,17 +159,20 @@ export default function HomePage() {
 
       <main id="home" className="container mx-auto px-4 py-8 space-y-16">
         <section className="container mx-auto px-4 py-8">
-          <div className="flex flex-col md:flex-row gap-4 mb-8">
+          <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-8">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
                 placeholder="Search media by caption, photographer, or tags..."
-                className="pl-10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
               />
             </div>
-            <Select value={mediaFilter} onValueChange={(value: "all" | "image" | "video") => setMediaFilter(value)}>
+            <Select
+              value={mediaFilter}
+              onValueChange={(value: "all" | "image" | "video") => setMediaFilter(value)}
+            >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by type" />
               </SelectTrigger>
@@ -174,7 +182,7 @@ export default function HomePage() {
                 <SelectItem value="video">Videos Only</SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </form>
 
           {mediaLoading ? (
             <div className="flex justify-center p-12">
