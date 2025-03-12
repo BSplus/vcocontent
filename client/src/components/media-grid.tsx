@@ -70,14 +70,28 @@ export default function MediaGrid({ items }: MediaGridProps) {
         throw error;
       }
     },
-    onSuccess: (_, mediaId) => {
-      // Invalidate both the global media query and the event-specific media query
+    onSuccess: (mediaId) => {
+      // Update the global media list cache
+      queryClient.setQueryData<MediaItem[]>(["/api/media"], (oldData) =>
+        oldData?.filter(item => item.id !== mediaId) || []
+      );
+
+      // Update the event-specific media list cache
+      if (itemToDelete?.eventId) {
+        queryClient.setQueryData<MediaItem[]>(
+          [`/api/events/${itemToDelete.eventId}/media`],
+          (oldData) => oldData?.filter(item => item.id !== mediaId) || []
+        );
+      }
+
+      // Also invalidate the queries to ensure consistency
       queryClient.invalidateQueries({ queryKey: ["/api/media"] });
       if (itemToDelete?.eventId) {
-        queryClient.invalidateQueries({ 
-          queryKey: [`/api/events/${itemToDelete.eventId}/media`] 
+        queryClient.invalidateQueries({
+          queryKey: [`/api/events/${itemToDelete.eventId}/media`]
         });
       }
+
       setItemToDelete(null);
       toast({
         title: "Success",
