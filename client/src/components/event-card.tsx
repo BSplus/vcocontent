@@ -53,11 +53,13 @@ export default function EventCard({ event }: EventCardProps) {
           {event.description}
         </p>
       </CardContent>
-      <CardFooter>
-        <Button asChild className="w-full bg-primary text-black hover:bg-primary/90">
-          <Link href={`/events/${event.id}`}>View Gallery</Link>
-        </Button>
-      </CardFooter>
+      {!isUpcoming && (
+        <CardFooter>
+          <Button asChild className="w-full bg-primary text-black hover:bg-primary/90">
+            <Link href={`/events/${event.id}`}>View Gallery</Link>
+          </Button>
+        </CardFooter>
+      )}
     </Card>
   );
 }
