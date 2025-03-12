@@ -186,7 +186,7 @@ export default function HomePage() {
         ) : filteredMediaItems.length > 0 ? (
           <div>
             <h2 className="text-2xl font-bold mb-6">Search Results</h2>
-            <MediaGrid items={filteredMediaItems} />
+            <MediaGrid items={filteredMediaItems} showEditControls={false} />
           </div>
         ) : searchQuery || mediaFilter !== "all" ? (
           <p className="text-center text-foreground/60 py-12">

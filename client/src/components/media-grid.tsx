@@ -19,9 +19,10 @@ import EditMediaModal from "./edit-media-modal";
 
 interface MediaGridProps {
   items: MediaItem[];
+  showEditControls?: boolean; // Add this prop
 }
 
-export default function MediaGrid({ items }: MediaGridProps) {
+export default function MediaGrid({ items, showEditControls = false }: MediaGridProps) { // Default to false
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [editItem, setEditItem] = useState<MediaItem | null>(null);
   const [hoveredItem, setHoveredItem] = useState<MediaItem | null>(null);
@@ -181,17 +182,19 @@ export default function MediaGrid({ items }: MediaGridProps) {
                 )}
                 <div className="flex gap-2">
                   <Eye className="h-6 w-6" />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-white"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditItem(item);
-                    }}
-                  >
-                    <Pencil className="h-6 w-6" />
-                  </Button>
+                  {showEditControls && ( // Only show edit button if showEditControls is true
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-white"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditItem(item);
+                      }}
+                    >
+                      <Pencil className="h-6 w-6" />
+                    </Button>
+                  )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-6 w-6 text-white">
@@ -283,16 +286,18 @@ export default function MediaGrid({ items }: MediaGridProps) {
               )}
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSelectedItem(null);
-                  selectedItem && setEditItem(selectedItem);
-                }}
-              >
-                <Pencil className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
+              {showEditControls && ( // Only show edit button if showEditControls is true
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedItem(null);
+                    selectedItem && setEditItem(selectedItem);
+                  }}
+                >
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit
+                </Button>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline">
@@ -332,7 +337,7 @@ export default function MediaGrid({ items }: MediaGridProps) {
       </Dialog>
 
       {/* Edit Modal */}
-      {editItem && (
+      {showEditControls && editItem && ( // Only render edit modal if showEditControls is true
         <EditMediaModal
           open={!!editItem}
           onOpenChange={(open) => !open && setEditItem(null)}
