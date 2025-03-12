@@ -6,11 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Event } from "@shared/schema";
 import { Loader2, Plus } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
+import MediaUploadModal from "@/components/media-upload-modal";
 import { createDemoContent } from "@/lib/demo-data";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [mediaUploadModalOpen, setMediaUploadModalOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const { toast } = useToast();
 
@@ -99,7 +101,7 @@ export default function AdminDashboard() {
                         variant="secondary"
                         onClick={() => {
                           setSelectedEventId(event.id);
-                          setUploadModalOpen(true);
+                          setMediaUploadModalOpen(true);
                         }}
                       >
                         Upload Media
@@ -118,6 +120,14 @@ export default function AdminDashboard() {
         onOpenChange={setUploadModalOpen}
         eventId={selectedEventId}
       />
+
+      {selectedEventId && (
+        <MediaUploadModal
+          open={mediaUploadModalOpen}
+          onOpenChange={setMediaUploadModalOpen}
+          eventId={selectedEventId}
+        />
+      )}
     </div>
   );
 }
