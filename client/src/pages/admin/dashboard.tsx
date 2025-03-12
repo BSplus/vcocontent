@@ -6,23 +6,48 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Event } from "@shared/schema";
 import { Loader2, Plus } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
+import { createDemoContent } from "@/lib/demo-data";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
-  
-  const { data: events, isLoading } = useQuery<Event[]>({ 
+  const { toast } = useToast();
+
+  const { data: events, isLoading, refetch } = useQuery<Event[]>({ 
     queryKey: ["/api/events"]
   });
+
+  const handleCreateDemoContent = async () => {
+    try {
+      await createDemoContent();
+      await refetch();
+      toast({
+        title: "Success",
+        description: "Demo content created successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create demo content",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-          <Button asChild variant="outline">
-            <Link href="/">Back to Home</Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={handleCreateDemoContent} variant="outline">
+              Create Demo Content
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/">Back to Home</Link>
+            </Button>
+          </div>
         </div>
       </header>
 

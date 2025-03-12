@@ -10,15 +10,13 @@ interface EventCardProps {
 export default function EventCard({ event }: EventCardProps) {
   return (
     <Card className="overflow-hidden">
-      {event.coverImage && (
-        <div className="relative aspect-video">
-          <img
-            src={event.coverImage}
-            alt={event.title}
-            className="object-cover w-full h-full"
-          />
-        </div>
-      )}
+      <div className="relative aspect-video">
+        <img
+          src={event.coverImage || `https://picsum.photos/seed/${event.id}/800/400`}
+          alt={event.title}
+          className="object-cover w-full h-full"
+        />
+      </div>
       <CardContent className="pt-6">
         <h3 className="text-xl font-semibold mb-2">{event.title}</h3>
         <p className="text-sm text-muted-foreground mb-4">
