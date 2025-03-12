@@ -26,11 +26,57 @@ export default function MediaGrid({ items }: MediaGridProps) {
   const [editItem, setEditItem] = useState<MediaItem | null>(null);
   const [hoveredItem, setHoveredItem] = useState<MediaItem | null>(null);
 
+  const compressImage = async (url: string, quality: number = 0.3): Promise<string> => {
+    // Create a temporary image to load the original
+    const img = new Image();
+    img.crossOrigin = "anonymous"; // Handle CORS
+
+    return new Promise((resolve, reject) => {
+      img.onload = () => {
+        // Create a canvas element
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas dimensions to match the image
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        // Draw the image onto the canvas
+        ctx?.drawImage(img, 0, 0);
+
+        // Convert to compressed data URL
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedDataUrl);
+      };
+
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = url;
+    });
+  };
+
   const handleDownload = async (url: string, quality: 'high' | 'low', type: 'image' | 'video') => {
     try {
-      const response = await fetch(url);
+      let downloadUrl = url;
+      let filename = url.split('/').pop() || 'download';
+
+      if (type === 'image' && quality === 'low') {
+        // Compress image for low quality download
+        downloadUrl = await compressImage(url, 0.3);
+      }
+
+      const response = await fetch(downloadUrl);
       const blob = await response.blob();
-      const filename = url.split('/').pop() || 'download';
+
+      // Check file size for low quality
+      if (quality === 'low' && blob.size > 1024 * 1024) {
+        // If still over 1MB, compress more
+        if (type === 'image') {
+          downloadUrl = await compressImage(url, 0.1);
+          const recompressedResponse = await fetch(downloadUrl);
+          blob = await recompressedResponse.blob();
+        }
+      }
+
       const extension = type === 'video' ? '.mp4' : '.jpg';
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
