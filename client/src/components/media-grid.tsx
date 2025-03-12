@@ -47,11 +47,10 @@ export default function MediaGrid({ items }: MediaGridProps) {
   const [currentStillIndex, setCurrentStillIndex] = useState<{ [key: number]: number }>({});
   const stillIntervalRef = useRef<{ [key: number]: NodeJS.Timeout }>({});
 
-  // Update the delete mutation implementation
+  // Update the deleteMutation implementation
   const deleteMutation = useMutation({
     mutationFn: async (mediaId: number) => {
       try {
-        // Use simple DELETE request without body
         const res = await fetch(`/api/media/${mediaId}`, {
           method: 'DELETE',
           headers: {
@@ -65,15 +64,20 @@ export default function MediaGrid({ items }: MediaGridProps) {
           throw new Error(error.message || "Failed to delete media");
         }
 
-        return mediaId; // Just return the ID on success
+        return mediaId;
       } catch (error) {
         console.error('Delete media error:', error);
         throw error;
       }
     },
     onSuccess: (_, mediaId) => {
-      // Invalidate relevant queries
-      queryClient.invalidateQueries({ queryKey: [`/api/events/${itemToDelete?.eventId}/media`] });
+      // Invalidate both the global media query and the event-specific media query
+      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
+      if (itemToDelete?.eventId) {
+        queryClient.invalidateQueries({ 
+          queryKey: [`/api/events/${itemToDelete.eventId}/media`] 
+        });
+      }
       setItemToDelete(null);
       toast({
         title: "Success",
