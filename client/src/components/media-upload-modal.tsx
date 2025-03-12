@@ -22,7 +22,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { InsertMediaItem, insertMediaItemSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Image as ImageIcon, Film } from "lucide-react";
+import { Loader2, Image as ImageIcon, Film, Upload } from "lucide-react";
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -45,13 +45,31 @@ export default function MediaUploadModal({
     defaultValues: {
       eventId,
       type: "image",
-      url: "/attached_assets/%2389_3.png", // Default for testing
-      thumbnail: "/attached_assets/%2389_3.png", // Default for testing
+      url: "",
+      thumbnail: "",
       caption: "",
       photographer: "",
       tags: [],
     },
   });
+
+  const handleFileChange = (type: 'media' | 'thumbnail') => (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        if (type === 'media') {
+          setMediaPreview(dataUrl);
+          form.setValue('url', dataUrl);
+        } else {
+          setThumbnailPreview(dataUrl);
+          form.setValue('thumbnail', dataUrl);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertMediaItem) => {
@@ -81,7 +99,6 @@ export default function MediaUploadModal({
 
   const onSubmit = async (data: InsertMediaItem) => {
     try {
-      // Convert comma-separated tags string to array if it's a string
       const formattedData = {
         ...data,
         tags: typeof data.tags === 'string' ? data.tags.split(',').map(tag => tag.trim()) : data.tags || [],
@@ -129,7 +146,7 @@ export default function MediaUploadModal({
               <div className="flex items-center gap-2">
                 <div className="flex-1">
                   {form.getValues("type") === "image" ? (
-                    <div className="h-40 border rounded-lg overflow-hidden bg-black/20">
+                    <div className="relative h-40 border rounded-lg overflow-hidden bg-black/20 group">
                       {mediaPreview ? (
                         <img 
                           src={mediaPreview} 
@@ -141,10 +158,40 @@ export default function MediaUploadModal({
                           <ImageIcon className="h-8 w-8" />
                         </div>
                       )}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <label className="cursor-pointer">
+                          <Input
+                            type="file"
+                            accept={form.getValues("type") === "image" ? "image/*" : "video/*"}
+                            className="hidden"
+                            onChange={handleFileChange('media')}
+                          />
+                          <Button type="button" variant="outline" className="bg-transparent border-primary/20">
+                            <Upload className="h-4 w-4 mr-2" />
+                            Choose File
+                          </Button>
+                        </label>
+                      </div>
                     </div>
                   ) : (
-                    <div className="h-40 border rounded-lg flex items-center justify-center bg-black/20">
-                      <Film className="h-8 w-8 text-muted-foreground" />
+                    <div className="relative h-40 border rounded-lg bg-black/20 group">
+                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                        <Film className="h-8 w-8" />
+                      </div>
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <label className="cursor-pointer">
+                          <Input
+                            type="file"
+                            accept="video/*"
+                            className="hidden"
+                            onChange={handleFileChange('media')}
+                          />
+                          <Button type="button" variant="outline" className="bg-transparent border-primary/20">
+                            <Upload className="h-4 w-4 mr-2" />
+                            Choose Video
+                          </Button>
+                        </label>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -153,7 +200,7 @@ export default function MediaUploadModal({
 
             <div className="space-y-2">
               <Label>Thumbnail</Label>
-              <div className="h-40 border rounded-lg overflow-hidden bg-black/20">
+              <div className="relative h-40 border rounded-lg overflow-hidden bg-black/20 group">
                 {thumbnailPreview ? (
                   <img 
                     src={thumbnailPreview} 
@@ -165,6 +212,20 @@ export default function MediaUploadModal({
                     <ImageIcon className="h-8 w-8" />
                   </div>
                 )}
+                <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <label className="cursor-pointer">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleFileChange('thumbnail')}
+                    />
+                    <Button type="button" variant="outline" className="bg-transparent border-primary/20">
+                      <Upload className="h-4 w-4 mr-2" />
+                      Choose Thumbnail
+                    </Button>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
