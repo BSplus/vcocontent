@@ -66,8 +66,15 @@ export default function MediaUploadModal({
 
   //Updated function
   function isValidVideoType(file: File): boolean {
-    const validTypes = ['video/mp4', 'video/webm', 'video/ogg'];
-    return validTypes.includes(file.type);
+    const validTypes = [
+      'video/mp4',
+      'video/quicktime', // For .mov files
+      'video/webm',
+      'video/ogg'
+    ];
+    return validTypes.includes(file.type) ||
+      file.name.toLowerCase().endsWith('.mov') ||
+      file.name.toLowerCase().endsWith('.mp4');
   }
 
   function isValidImageType(file: File): boolean {
@@ -262,7 +269,7 @@ export default function MediaUploadModal({
             type="file"
             ref={mediaInputRef}
             className="hidden"
-            accept={form.getValues("type") === "image" ? "image/*" : "video/*"}
+            accept={form.getValues("type") === "image" ? "image/*" : ".mp4,.mov,video/*"}
             onChange={handleFilesChange}
             multiple
           />
@@ -314,7 +321,7 @@ export default function MediaUploadModal({
                   <Upload className="h-8 w-8" />
                   <p>Click or drag files here to upload</p>
                   <p className="text-sm text-muted-foreground">
-                    {form.getValues("type") === "video" ? "MP4, WebM, or Ogg" : "JPG, PNG, or GIF"}
+                    {form.getValues("type") === "video" ? "MP4, MOV, WebM, or Ogg" : "JPG, PNG, or GIF"}
                   </p>
                 </div>
               </div>
