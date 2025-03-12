@@ -12,6 +12,8 @@ import {
   Clock,
   ChevronRight
 } from "lucide-react";
+import Footer from "@/components/footer"; // Assuming Footer component is imported from here
+
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
@@ -204,6 +206,7 @@ export default function HomePage() {
           </>
         )}
       </main>
+      <Footer />
     </div>
   );
 }

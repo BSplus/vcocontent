@@ -3,6 +3,8 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Event } from "@shared/schema";
 import { Loader2, Calendar, ArrowLeft, Clock } from "lucide-react";
+import Footer from "@/components/Footer"; // Assuming Footer component is imported from here
+
 
 export default function UpcomingEventsPage() {
   const { data: events, isLoading } = useQuery<Event[]>({
@@ -18,7 +20,7 @@ export default function UpcomingEventsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8"> {/* Added main tag */}
         <Button variant="ghost" asChild className="mb-8">
           <Link href="/">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -69,7 +71,8 @@ export default function UpcomingEventsPage() {
             ))}
           </div>
         )}
-      </div>
+      </main>
+      <Footer /> {/* Added Footer component */}
     </div>
   );
 }

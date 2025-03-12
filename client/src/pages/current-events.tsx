@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Event } from "@shared/schema";
 import { Loader2, Trophy, ArrowLeft } from "lucide-react";
 import EventCard from "@/components/event-card";
+import Footer from "@/components/footer"; // Import Footer component
 
 export default function CurrentEventsPage() {
   const { data: events, isLoading } = useQuery<Event[]>({
@@ -21,7 +22,7 @@ export default function CurrentEventsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8"> {/* Added main tag */}
         <Button variant="ghost" asChild className="mb-8">
           <Link href="/">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -49,7 +50,8 @@ export default function CurrentEventsPage() {
             ))}
           </div>
         )}
-      </div>
+      </main>
+      <Footer /> {/* Added Footer component */}
     </div>
   );
 }
