@@ -135,11 +135,20 @@ export default function UploadModal({
 
   const updateMutation = useMutation({
     mutationFn: async (data: InsertEvent) => {
-      const res = await apiRequest("PUT", `/api/events/${eventId}`, data);
+      console.log('Updating event with data:', data);
+      const res = await apiRequest("PUT", `/api/events/${eventId}`, {
+        ...data,
+        customThumbnail: form.getValues("customThumbnail"), // Explicitly include thumbnail
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to update event");
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}`] });
       onOpenChange(false);
       form.reset();
       setThumbnailPreview(null);
@@ -152,7 +161,7 @@ export default function UploadModal({
       console.error('Event update error:', error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to update event",
         variant: "destructive",
       });
     },
@@ -164,8 +173,14 @@ export default function UploadModal({
       const eventDate = new Date(data.date);
       const isFutureEvent = eventDate > now;
 
+      // Include the customThumbnail in the data
+      const submissionData = {
+        ...data,
+        customThumbnail: form.getValues("customThumbnail"),
+      };
+
       // If no custom thumbnail is uploaded and it's a future event, generate AI thumbnail
-      if (!data.customThumbnail && isFutureEvent) {
+      if (!submissionData.customThumbnail && isFutureEvent) {
         try {
           setIsGeneratingAI(true);
           toast({
@@ -174,7 +189,7 @@ export default function UploadModal({
           });
 
           const thumbnail = await generateEventThumbnail(data.title, data.description);
-          data.customThumbnail = thumbnail;
+          submissionData.customThumbnail = thumbnail;
           setThumbnailPreview(thumbnail);
 
           toast({
@@ -196,9 +211,9 @@ export default function UploadModal({
       }
 
       if (isEditing) {
-        await updateMutation.mutateAsync(data);
+        await updateMutation.mutateAsync(submissionData);
       } else {
-        await createMutation.mutateAsync(data);
+        await createMutation.mutateAsync(submissionData);
       }
     } catch (error) {
       console.error('Form submission error:', error);
