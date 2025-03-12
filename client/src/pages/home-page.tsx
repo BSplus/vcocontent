@@ -27,16 +27,43 @@ export default function HomePage() {
   // Simple full text search on media items
   const searchResults = searchQuery.trim() ? allMediaItems?.filter(item => {
     const query = searchQuery.toLowerCase().trim();
-    const fields = [
-      item.caption,
-      item.photographer,
-      ...(item.tags || [])
-    ].filter(Boolean);
 
-    return fields.some(field => 
-      field?.toLowerCase().includes(query)
-    );
+    console.log('Searching item:', {
+      caption: item.caption,
+      photographer: item.photographer,
+      tags: item.tags,
+      query: query
+    });
+
+    // Search in caption
+    if (item.caption?.toLowerCase().includes(query)) {
+      console.log('Found match in caption:', item.caption);
+      return true;
+    }
+
+    // Search in photographer name
+    if (item.photographer?.toLowerCase().includes(query)) {
+      console.log('Found match in photographer:', item.photographer);
+      return true;
+    }
+
+    // Search in tags
+    if (item.tags && item.tags.length > 0 && item.tags.some(tag => 
+      tag.toLowerCase().includes(query)
+    )) {
+      console.log('Found match in tags:', item.tags);
+      return true;
+    }
+
+    return false;
   }) : [];
+
+  // Add debug logging for search state
+  console.log('Search state:', {
+    query: searchQuery,
+    totalItems: allMediaItems?.length,
+    resultsFound: searchResults?.length,
+  });
 
   // Event categorization
   const today = new Date();
