@@ -226,9 +226,9 @@ export default function MediaUploadModal({
 
           <div className="space-y-2">
             <Label>Media Files</Label>
-            <div className="flex flex-col gap-4">
-              {uploads.length > 0 ? (
-                <div className="grid grid-cols-2 gap-4">
+            {uploads.length > 0 ? (
+              <div className="max-h-[400px] overflow-y-auto pr-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {uploads.map((upload, index) => (
                     <div key={index} className="relative">
                       <div className="relative aspect-square rounded-lg overflow-hidden bg-black/20">
@@ -261,21 +261,21 @@ export default function MediaUploadModal({
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div
-                  onClick={() => mediaInputRef.current?.click()}
-                  className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
-                >
-                  <div className="flex flex-col items-center gap-2">
-                    <Upload className="h-8 w-8" />
-                    <p>Click or drag files here to upload</p>
-                    <p className="text-sm text-muted-foreground">
-                      {form.getValues("type") === "video" ? "MP4, WebM, or Ogg" : "JPG, PNG, or GIF"}
-                    </p>
-                  </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => mediaInputRef.current?.click()}
+                className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+              >
+                <div className="flex flex-col items-center gap-2">
+                  <Upload className="h-8 w-8" />
+                  <p>Click or drag files here to upload</p>
+                  <p className="text-sm text-muted-foreground">
+                    {form.getValues("type") === "video" ? "MP4, WebM, or Ogg" : "JPG, PNG, or GIF"}
+                  </p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

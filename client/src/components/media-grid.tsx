@@ -13,8 +13,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MediaItem } from "@shared/schema";
 import { motion } from "framer-motion";
-import { Eye, PlayCircle, Download } from "lucide-react";
+import { Eye, PlayCircle, Download, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import EditMediaModal from "./edit-media-modal";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -22,6 +23,7 @@ interface MediaGridProps {
 
 export default function MediaGrid({ items }: MediaGridProps) {
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
+  const [editItem, setEditItem] = useState<MediaItem | null>(null);
   const [hoveredItem, setHoveredItem] = useState<MediaItem | null>(null);
 
   const handleDownload = async (url: string, quality: 'high' | 'low', type: 'image' | 'video') => {
@@ -72,6 +74,17 @@ export default function MediaGrid({ items }: MediaGridProps) {
                 )}
                 <div className="flex gap-2">
                   <Eye className="h-6 w-6" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-white"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditItem(item);
+                    }}
+                  >
+                    <Pencil className="h-6 w-6" />
+                  </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-6 w-6 text-white">
@@ -162,26 +175,38 @@ export default function MediaGrid({ items }: MediaGridProps) {
                 </p>
               )}
             </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => 
-                  selectedItem && handleDownload(selectedItem.url, 'high', selectedItem.type)
-                }>
-                  Download High-Res
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => 
-                  selectedItem && handleDownload(selectedItem.thumbnail, 'low', selectedItem.type)
-                }>
-                  Download Low-Res
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSelectedItem(null);
+                  selectedItem && setEditItem(selectedItem);
+                }}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => 
+                    selectedItem && handleDownload(selectedItem.url, 'high', selectedItem.type)
+                  }>
+                    Download High-Res
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => 
+                    selectedItem && handleDownload(selectedItem.thumbnail, 'low', selectedItem.type)
+                  }>
+                    Download Low-Res
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
 
           {selectedItem?.tags && selectedItem.tags.length > 0 && (
@@ -198,6 +223,15 @@ export default function MediaGrid({ items }: MediaGridProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Edit Modal */}
+      {editItem && (
+        <EditMediaModal
+          open={!!editItem}
+          onOpenChange={(open) => !open && setEditItem(null)}
+          mediaItem={editItem}
+        />
+      )}
     </>
   );
 }
