@@ -16,7 +16,6 @@ export default function EventCard({ event }: EventCardProps) {
   // Fetch media items for this event to use as fallback thumbnail
   const { data: mediaItems } = useQuery<MediaItem[]>({
     queryKey: [`/api/events/${event.id}/media`],
-    enabled: !event.customThumbnail, // Only fetch if no custom thumbnail
   });
 
   // Fetch series data if the event belongs to a series
