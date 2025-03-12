@@ -14,9 +14,13 @@ export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Fetch all media items
+  // Fetch all media items - add success callback for debugging
   const { data: allMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
+    onSuccess: (data) => {
+      console.log('Received media items:', data?.length);
+      console.log('Sample items:', data?.slice(0, 2));
+    }
   });
 
   // Fetch events separately
@@ -28,33 +32,17 @@ export default function HomePage() {
   const searchResults = searchQuery.trim() ? allMediaItems?.filter(item => {
     const query = searchQuery.toLowerCase().trim();
 
-    console.log('Searching item:', {
-      caption: item.caption,
-      photographer: item.photographer,
-      tags: item.tags,
-      query: query
-    });
-
-    // Search in caption
-    if (item.caption?.toLowerCase().includes(query)) {
-      console.log('Found match in caption:', item.caption);
-      return true;
+    // First just check the caption to verify basic search
+    if (item.caption) {
+      const match = item.caption.toLowerCase().includes(query);
+      if (match) {
+        console.log('Found match:', {
+          query,
+          caption: item.caption,
+        });
+      }
+      return match;
     }
-
-    // Search in photographer name
-    if (item.photographer?.toLowerCase().includes(query)) {
-      console.log('Found match in photographer:', item.photographer);
-      return true;
-    }
-
-    // Search in tags
-    if (item.tags && item.tags.length > 0 && item.tags.some(tag => 
-      tag.toLowerCase().includes(query)
-    )) {
-      console.log('Found match in tags:', item.tags);
-      return true;
-    }
-
     return false;
   }) : [];
 
@@ -62,7 +50,7 @@ export default function HomePage() {
   console.log('Search state:', {
     query: searchQuery,
     totalItems: allMediaItems?.length,
-    resultsFound: searchResults?.length,
+    resultsCount: searchResults?.length,
   });
 
   // Event categorization
@@ -163,7 +151,7 @@ export default function HomePage() {
             {searchQuery && (
               <div className="mt-4">
                 <h3 className="text-lg font-semibold mb-4">
-                  {searchResults?.length 
+                  {searchResults?.length
                     ? `Found ${searchResults.length} results`
                     : 'No results found'}
                 </h3>
