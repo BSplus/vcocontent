@@ -36,9 +36,14 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: events, isLoading, refetch } = useQuery<Event[]>({ 
-    queryKey: ["/api/events"]
+  const { data: events, isLoading, refetch } = useQuery<Event[]>({
+    queryKey: ["/api/events"],
   });
+
+  // Sort events by date (newest first)
+  const sortedEvents = events?.sort((a, b) =>
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -46,7 +51,7 @@ export default function AdminDashboard() {
       const res = await apiRequest("DELETE", `/api/events/${eventId}`);
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.message || 'Failed to delete event');
+        throw new Error(error.message || "Failed to delete event");
       }
       return res.json();
     },
@@ -111,7 +116,10 @@ export default function AdminDashboard() {
           <TabsContent value="events" className="mt-6">
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-bold">Events Management</h2>
-              <Button onClick={() => setUploadModalOpen(true)} className="bg-primary text-black hover:bg-primary/90">
+              <Button
+                onClick={() => setUploadModalOpen(true)}
+                className="bg-primary text-black hover:bg-primary/90"
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Event
               </Button>
@@ -121,10 +129,12 @@ export default function AdminDashboard() {
               <div className="flex justify-center p-12">
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
-            ) : !events?.length ? (
+            ) : !sortedEvents?.length ? (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
-                  <p className="text-muted-foreground mb-4">No events created yet.</p>
+                  <p className="text-muted-foreground mb-4">
+                    No events created yet.
+                  </p>
                   <Button onClick={() => setUploadModalOpen(true)}>
                     Create Your First Event
                   </Button>
@@ -132,7 +142,7 @@ export default function AdminDashboard() {
               </Card>
             ) : (
               <div className="grid gap-6">
-                {events.map((event) => (
+                {sortedEvents.map((event) => (
                   <Card key={event.id} className="bg-black/40 border-primary/20">
                     <CardHeader>
                       <CardTitle className="text-xl font-[Orbitron] tracking-wider">
@@ -145,7 +155,7 @@ export default function AdminDashboard() {
                           {new Date(event.date).toLocaleDateString()}
                         </p>
                         <div className="flex gap-2">
-                          <Button 
+                          <Button
                             variant="outline"
                             onClick={() => {
                               setSelectedEventId(event.id);
@@ -154,7 +164,7 @@ export default function AdminDashboard() {
                           >
                             Edit Event
                           </Button>
-                          <Button 
+                          <Button
                             variant="secondary"
                             onClick={() => {
                               setSelectedEventId(event.id);
@@ -200,12 +210,16 @@ export default function AdminDashboard() {
       )}
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!eventToDelete} onOpenChange={(open) => !open && setEventToDelete(null)}>
+      <AlertDialog
+        open={!!eventToDelete}
+        onOpenChange={(open) => !open && setEventToDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Event</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this event? This will also delete all associated media items. This action cannot be undone.
+              Are you sure you want to delete this event? This will also delete
+              all associated media items. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
