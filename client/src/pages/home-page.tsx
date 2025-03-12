@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Event, MediaItem } from "@shared/schema";
 import { Loader2, Calendar, Trophy, History, Clock, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import MediaGrid from "@/components/media-grid";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
@@ -14,43 +14,71 @@ export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Fetch all media items - add success callback for debugging
-  const { data: allMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
+  // Fetch all media items with detailed logging
+  const { data: allMediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
     onSuccess: (data) => {
-      console.log('Received media items:', data?.length);
-      console.log('Sample items:', data?.slice(0, 2));
+      console.log('API Response - Media Items:', {
+        totalItems: data?.length,
+        sampleItems: data?.slice(0, 3).map(item => ({
+          id: item.id,
+          caption: item.caption,
+          photographer: item.photographer,
+          tags: item.tags
+        }))
+      });
     }
   });
+
+  // Process search results with detailed logging
+  const searchResults = searchQuery.trim() ? allMediaItems.filter(item => {
+    const query = searchQuery.toLowerCase().trim();
+
+    // Log each item being checked
+    console.log('Processing item:', {
+      id: item.id,
+      caption: item.caption,
+      photographer: item.photographer,
+      tags: item.tags,
+      queryBeingChecked: query
+    });
+
+    // Check caption
+    if (item.caption?.toLowerCase().includes(query)) {
+      console.log('Match found in caption:', item.caption);
+      return true;
+    }
+
+    // Check photographer
+    if (item.photographer?.toLowerCase().includes(query)) {
+      console.log('Match found in photographer:', item.photographer);
+      return true;
+    }
+
+    // Check tags
+    if (item.tags?.some(tag => tag.toLowerCase().includes(query))) {
+      console.log('Match found in tags:', item.tags);
+      return true;
+    }
+
+    return false;
+  }) : [];
+
+  // Log overall search results
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      console.log('Search Results:', {
+        query: searchQuery,
+        totalMediaItems: allMediaItems.length,
+        matchingResults: searchResults.length,
+        sample: searchResults.slice(0, 2)
+      });
+    }
+  }, [searchQuery, allMediaItems, searchResults]);
 
   // Fetch events separately
   const { data: events, isLoading: eventsLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"]
-  });
-
-  // Simple full text search on media items
-  const searchResults = searchQuery.trim() ? allMediaItems?.filter(item => {
-    const query = searchQuery.toLowerCase().trim();
-
-    // First just check the caption to verify basic search
-    if (item.caption) {
-      const match = item.caption.toLowerCase().includes(query);
-      if (match) {
-        console.log('Found match:', {
-          query,
-          caption: item.caption,
-        });
-      }
-      return match;
-    }
-    return false;
-  }) : [];
-
-  // Add debug logging for search state
-  console.log('Search state:', {
-    query: searchQuery,
-    totalItems: allMediaItems?.length,
-    resultsCount: searchResults?.length,
   });
 
   // Event categorization
