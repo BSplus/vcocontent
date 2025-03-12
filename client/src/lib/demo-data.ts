@@ -13,6 +13,18 @@ const demoEvents: InsertEvent[] = [
     description: "Global sim racing stars compete for the championship title.",
     date: new Date("2025-03-20"),
     coverImage: "/attached_assets/%2389_3.png"
+  },
+  {
+    title: "VCO Pro Series - Round 1",
+    description: "Opening round of the prestigious VCO Pro Series featuring top sim racing talent.",
+    date: new Date("2025-02-01"),
+    coverImage: "/attached_assets/%2389_3.png"
+  },
+  {
+    title: "Digital Nürburgring Endurance Series",
+    description: "Experience the thrill of endurance racing in the digital realm.",
+    date: new Date("2025-01-15"),
+    coverImage: "/attached_assets/%2389_3.png"
   }
 ];
 
@@ -50,8 +62,8 @@ export async function createDemoContent() {
   for (const event of demoEvents) {
     const createdEvent = await createDemoEvent(event);
     if (createdEvent) {
-      // Create 6 media items for each event
-      for (let i = 0; i < 6; i++) {
+      // Create 8 media items for each event to fill the grid
+      for (let i = 0; i < 8; i++) {
         await createDemoMediaItem(createdEvent.id, i);
       }
     }
