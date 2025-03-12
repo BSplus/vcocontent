@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,60 @@ export default function MediaGrid({ items }: MediaGridProps) {
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [editItem, setEditItem] = useState<MediaItem | null>(null);
   const [hoveredItem, setHoveredItem] = useState<MediaItem | null>(null);
+  const [videoStills, setVideoStills] = useState<{ [key: number]: string[] }>({});
+  const [currentStillIndex, setCurrentStillIndex] = useState<{ [key: number]: number }>({});
+  const stillIntervalRef = useRef<{ [key: number]: NodeJS.Timeout }>({});
+
+  // Function to generate video stills
+  const generateVideoStills = async (video: HTMLVideoElement, itemId: number) => {
+    const stills: string[] = [];
+    const duration = video.duration;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    if (!context) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    // Generate 5 stills at different timestamps
+    for (let i = 0; i < 5; i++) {
+      video.currentTime = (duration * (i + 1)) / 6;
+      await new Promise(resolve => {
+        video.onseeked = resolve;
+      });
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      stills.push(canvas.toDataURL('image/jpeg'));
+    }
+
+    setVideoStills(prev => ({ ...prev, [itemId]: stills }));
+  };
+
+  // Handle video hover
+  useEffect(() => {
+    if (hoveredItem?.type === 'video' && !videoStills[hoveredItem.id]) {
+      const video = document.createElement('video');
+      video.src = hoveredItem.url;
+      video.onloadedmetadata = () => generateVideoStills(video, hoveredItem.id);
+    }
+
+    if (hoveredItem?.type === 'video' && videoStills[hoveredItem.id]) {
+      // Start cycling through stills
+      setCurrentStillIndex(prev => ({ ...prev, [hoveredItem.id]: 0 }));
+      stillIntervalRef.current[hoveredItem.id] = setInterval(() => {
+        setCurrentStillIndex(prev => ({
+          ...prev,
+          [hoveredItem.id]: (prev[hoveredItem.id] + 1) % videoStills[hoveredItem.id].length
+        }));
+      }, 1000);
+    }
+
+    return () => {
+      if (hoveredItem?.id && stillIntervalRef.current[hoveredItem.id]) {
+        clearInterval(stillIntervalRef.current[hoveredItem.id]);
+      }
+    };
+  }, [hoveredItem]);
 
   const compressImage = async (url: string, quality: number = 0.3): Promise<string> => {
     // Create a temporary image to load the original
@@ -103,7 +157,13 @@ export default function MediaGrid({ items }: MediaGridProps) {
             transition={{ duration: 0.2 }}
           >
             <img
-              src={item.thumbnail}
+              src={
+                item.type === 'video' && 
+                hoveredItem?.id === item.id && 
+                videoStills[item.id]?.[currentStillIndex[item.id]]
+                  ? videoStills[item.id][currentStillIndex[item.id]]
+                  : item.thumbnail
+              }
               alt={item.caption || "Media item"}
               className="absolute inset-0 w-full h-full object-contain"
             />

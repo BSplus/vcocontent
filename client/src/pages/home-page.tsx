@@ -19,6 +19,14 @@ export default function HomePage() {
     queryKey: ["/api/events"]
   });
 
+  // Scroll to section helper
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   const today = new Date();
   const fourWeeksAgo = new Date(today.getTime() - (28 * 24 * 60 * 60 * 1000));
 
@@ -51,7 +59,7 @@ export default function HomePage() {
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-3">
               <img
-                src="/attached_assets/VCO_2021_reg_White_Trans.png"
+                src="/VCO_2021_reg_White_Trans.png"
                 alt="VCO Logo"
                 className="h-8 w-auto"
               />
@@ -60,24 +68,24 @@ export default function HomePage() {
               </h1>
             </div>
             <nav className="hidden md:flex gap-6">
-              <Link href="/" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              <button onClick={() => scrollToSection('home')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Home
-              </Link>
-              <Link href="#current" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              </button>
+              <button onClick={() => scrollToSection('current')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Current Events
-              </Link>
-              <Link href="#upcoming" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              </button>
+              <button onClick={() => scrollToSection('upcoming')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Upcoming Events
-              </Link>
-              <Link href="#archive" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              </button>
+              <button onClick={() => scrollToSection('archive')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Archive
-              </Link>
+              </button>
             </nav>
           </div>
           <div className="flex gap-4 items-center">
             {user?.isAdmin && (
               <Button variant="outline" asChild className="border-primary/20 hover:bg-primary hover:text-black">
-                <Link href="/admin">Admin Dashboard</Link>
+                <Link href="/admin">Creator Dashboard</Link>
               </Button>
             )}
             {user ? (
@@ -102,7 +110,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 space-y-16">
+      <main id="home" className="container mx-auto px-4 py-8 space-y-16">
         {isLoading ? (
           <div className="flex justify-center p-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
