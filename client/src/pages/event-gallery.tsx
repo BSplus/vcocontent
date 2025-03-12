@@ -21,6 +21,13 @@ export default function EventGallery() {
   const [mediaTypeFilter, setMediaTypeFilter] = useState<"all" | "image" | "video">("all");
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
 
+  // Fetch event data
+  const { data: event, isLoading: eventLoading } = useQuery<Event>({
+    queryKey: [`/api/events/${eventId}`],
+    enabled: !!eventId,
+  });
+
+  // Fetch media items
   const { data: fetchedMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: [`/api/events/${eventId}/media`],
     enabled: !!eventId,
@@ -31,7 +38,7 @@ export default function EventGallery() {
     setMediaItems(current => current.filter(item => item.id !== deletedItemId));
   };
 
-  const isLoading = mediaLoading;
+  const isLoading = eventLoading || mediaLoading;
 
   // Filter media items based on search query and type
   const filteredMediaItems = mediaItems?.filter(item => {
@@ -64,6 +71,8 @@ export default function EventGallery() {
     );
   }
 
+  const eventDate = event.date ? new Date(event.date) : null;
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-primary/20">
@@ -79,12 +88,12 @@ export default function EventGallery() {
               {event.title}
             </h1>
             <p className="text-muted-foreground font-[Rajdhani] text-lg">
-              {new Date(event.date).toLocaleDateString('en-US', {
+              {eventDate ? eventDate.toLocaleDateString('en-US', {
                 weekday: 'long',
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric'
-              })}
+              }) : 'Date not available'}
             </p>
             <p className="max-w-2xl text-lg">{event.description}</p>
           </div>
@@ -124,7 +133,7 @@ export default function EventGallery() {
             </p>
           </div>
         ) : (
-          <MediaGrid items={mediaItems} onDelete={handleMediaDelete} />
+          <MediaGrid items={filteredMediaItems} onDelete={handleMediaDelete} />
         )}
       </main>
     </div>
