@@ -27,34 +27,42 @@ export default function HomePage() {
     queryKey: ["/api/media"],
   });
 
-  // Fetch events separately - no longer part of search
+  // Fetch events separately
   const { data: events, isLoading: eventsLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"]
   });
 
   // Enhanced search function for media items
   const filteredMediaItems = allMediaItems?.filter(item => {
-    // If no search query and no type filter, return all items
-    if (!searchQuery && mediaFilter === "all") return true;
-
-    // Type filtering
-    const matchesType = mediaFilter === "all" || item.type === mediaFilter;
-    if (!matchesType) return false;
-
-    // If we have a search query, check all searchable fields
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase().trim();
-      const matchesCaption = item.caption?.toLowerCase().includes(query);
-      const matchesPhotographer = item.photographer?.toLowerCase().includes(query);
-      const matchesTags = item.tags?.some(tag => tag.toLowerCase().includes(query));
-
-      return matchesCaption || matchesPhotographer || matchesTags;
+    // Type filtering first
+    if (mediaFilter !== "all" && item.type !== mediaFilter) {
+      return false;
     }
 
-    return true;
+    // If no search query, return all items that match the type filter
+    if (!searchQuery.trim()) {
+      return true;
+    }
+
+    // Case-insensitive search across all relevant fields
+    const query = searchQuery.toLowerCase().trim();
+
+    // Search in caption
+    const captionMatch = item.caption?.toLowerCase().includes(query) || false;
+
+    // Search in photographer name
+    const photographerMatch = item.photographer?.toLowerCase().includes(query) || false;
+
+    // Search in tags
+    const tagsMatch = item.tags?.some(tag => 
+      tag.toLowerCase().includes(query)
+    ) || false;
+
+    // Return true if any field matches
+    return captionMatch || photographerMatch || tagsMatch;
   }) || [];
 
-  // Event filtering logic moved to separate section
+  // Event categorization
   const today = new Date();
   const fourWeeksAgo = new Date(today.getTime() - (28 * 24 * 60 * 60 * 1000));
 
@@ -62,10 +70,12 @@ export default function HomePage() {
     new Date(b.date).getTime() - new Date(a.date).getTime()
   ) || [];
 
-  const currentEvents = sortedEvents.filter(event => {
-    const eventDate = new Date(event.date);
-    return eventDate >= fourWeeksAgo && eventDate <= today;
-  }).slice(0, 4);
+  const currentEvents = sortedEvents
+    .filter(event => {
+      const eventDate = new Date(event.date);
+      return eventDate >= fourWeeksAgo && eventDate <= today;
+    })
+    .slice(0, 4);
 
   const upcomingEvents = sortedEvents.filter(event =>
     new Date(event.date) > today
@@ -83,7 +93,6 @@ export default function HomePage() {
       element.scrollIntoView({ behavior: 'smooth' });
     }
   };
-
 
   return (
     <div className="min-h-screen bg-background">
@@ -104,15 +113,15 @@ export default function HomePage() {
               <button onClick={() => scrollToSection('home')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Home
               </button>
-              <Link href="/current-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              <button onClick={() => scrollToSection('current')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Current Events
-              </Link>
-              <Link href="/upcoming-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              </button>
+              <button onClick={() => scrollToSection('upcoming')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Upcoming Events
-              </Link>
-              <Link href="/archive-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              </button>
+              <button onClick={() => scrollToSection('archive')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Archive
-              </Link>
+              </button>
             </nav>
           </div>
           <div className="flex gap-4 items-center">
@@ -167,24 +176,30 @@ export default function HomePage() {
             </Select>
           </div>
 
-          {(mediaLoading || eventsLoading) ? (
+          {mediaLoading ? (
             <div className="flex justify-center p-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : searchQuery || mediaFilter !== "all" ? (
-            filteredMediaItems.length > 0 ? (
-              <div>
-                <h2 className="text-2xl font-bold mb-6">
-                  Search Results ({filteredMediaItems.length} items)
-                </h2>
-                <MediaGrid items={filteredMediaItems} />
-              </div>
-            ) : (
-              <p className="text-center text-foreground/60 py-12">
-                No media items found matching your search criteria.
-              </p>
-            )
-          ) : null}
+          ) : (
+            <div>
+              {filteredMediaItems.length > 0 ? (
+                <>
+                  <h2 className="text-2xl font-bold mb-6">
+                    {searchQuery.trim() ? (
+                      `Search Results (${filteredMediaItems.length} items)`
+                    ) : (
+                      `All Media (${filteredMediaItems.length} items)`
+                    )}
+                  </h2>
+                  <MediaGrid items={filteredMediaItems} />
+                </>
+              ) : (
+                <p className="text-center text-foreground/60 py-12">
+                  No media items found matching your search criteria.
+                </p>
+              )}
+            </div>
+          )}
         </section>
 
         <section id="current">
