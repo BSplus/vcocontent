@@ -12,7 +12,7 @@ import {
 import { Event, MediaItem } from "@shared/schema";
 import { Loader2, Search, Calendar, Trophy, History, Clock, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import MediaGrid from "@/components/media-grid";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
@@ -21,8 +21,6 @@ export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [mediaFilter, setMediaFilter] = useState<"all" | "image" | "video">("all");
-  const [isSearchActive, setIsSearchActive] = useState(false);
-  const [searchInput, setSearchInput] = useState("");
 
   // Fetch all media items
   const { data: allMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
@@ -34,46 +32,47 @@ export default function HomePage() {
     queryKey: ["/api/events"]
   });
 
-  // Filter media items
+  // Filter media items based on search query and type
   const filteredMediaItems = allMediaItems?.filter(item => {
-    // Apply type filter first
+    // Apply type filter
     if (mediaFilter !== "all" && item.type !== mediaFilter) {
       return false;
     }
 
-    // Only apply search if it's active and we have a query
-    if (!isSearchActive || !searchQuery) {
+    // If no search query, return all items that passed the type filter
+    if (!searchQuery.trim()) {
       return true;
     }
 
     const query = searchQuery.toLowerCase().trim();
-    console.log('Checking item:', item.caption, 'for query:', query);
 
-    // Check each field individually and log the results
-    const captionMatch = item.caption?.toLowerCase().includes(query);
-    const photographerMatch = item.photographer?.toLowerCase().includes(query);
-    const tagsMatch = item.tags?.some(tag => tag.toLowerCase().includes(query));
+    // Search in caption
+    if (item.caption?.toLowerCase().includes(query)) {
+      return true;
+    }
 
-    console.log('Matches:', {
-      caption: captionMatch,
-      photographer: photographerMatch,
-      tags: tagsMatch
-    });
+    // Search in photographer name
+    if (item.photographer?.toLowerCase().includes(query)) {
+      return true;
+    }
 
-    return captionMatch || photographerMatch || tagsMatch;
+    // Search in tags
+    if (item.tags?.some(tag => tag.toLowerCase().includes(query))) {
+      return true;
+    }
+
+    return false;
   }) || [];
 
-  // Move debug logging before the return statement
-  useEffect(() => {
-    console.log('Current Search State:', {
-      searchQuery,
-      mediaFilter,
-      isSearchActive,
-      totalItems: allMediaItems?.length,
-      filteredItems: filteredMediaItems.length,
-      sampleItems: allMediaItems?.slice(0, 2)
-    });
-  }, [searchQuery, mediaFilter, isSearchActive, allMediaItems, filteredMediaItems]);
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    // The search is already happening in real-time through the filteredMediaItems
+  };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+    setMediaFilter("all");
+  };
 
   // Event categorization
   const today = new Date();
@@ -106,18 +105,6 @@ export default function HomePage() {
     }
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSearchQuery(searchInput); // Update the actual search query
-    setIsSearchActive(true); // Activate the search
-  };
-
-  const clearSearch = () => {
-    setSearchInput("");
-    setSearchQuery("");
-    setIsSearchActive(false);
-    setMediaFilter("all");
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -179,17 +166,14 @@ export default function HomePage() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
                 placeholder="Search media by caption, photographer, or tags..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
               />
             </div>
             <Select
               value={mediaFilter}
-              onValueChange={(value: "all" | "image" | "video") => {
-                setMediaFilter(value);
-                setIsSearchActive(true);
-              }}
+              onValueChange={(value: "all" | "image" | "video") => setMediaFilter(value)}
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by type" />
@@ -200,10 +184,7 @@ export default function HomePage() {
                 <SelectItem value="video">Videos Only</SelectItem>
               </SelectContent>
             </Select>
-            <Button type="submit" variant="outline">
-              Search
-            </Button>
-            {(isSearchActive || mediaFilter !== "all") && (
+            {(searchQuery || mediaFilter !== "all") && (
               <Button type="button" variant="ghost" onClick={clearSearch}>
                 Clear
               </Button>
@@ -219,7 +200,7 @@ export default function HomePage() {
               {filteredMediaItems.length > 0 ? (
                 <>
                   <h2 className="text-2xl font-bold mb-6">
-                    {isSearchActive && searchQuery ? (
+                    {searchQuery ? (
                       `Search Results (${filteredMediaItems.length} items)`
                     ) : (
                       `All Media (${filteredMediaItems.length} items)`
@@ -364,7 +345,7 @@ export default function HomePage() {
           )}
         </section>
       </main>
-      <Footer /> {/* Assuming Footer component handles logo addition */}
+      <Footer />
     </div>
   );
 }
