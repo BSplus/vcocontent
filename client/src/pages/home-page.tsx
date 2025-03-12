@@ -115,7 +115,7 @@ export default function HomePage() {
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-3">
               <img
-                src="/attached_assets/VCO_2021_reg_White_Trans.png"
+                src="/attached_assets/VCO_2021_reg_SUB_White.png"
                 alt="VCO Logo"
                 className="h-8 w-auto object-contain hover:opacity-90 transition-opacity"
               />
