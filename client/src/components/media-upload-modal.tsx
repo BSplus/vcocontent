@@ -58,7 +58,18 @@ export default function MediaUploadModal({
   const handleFileChange = (type: 'media' | 'thumbnail') => (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      console.log(`Selected ${type} file:`, file.name);
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB in bytes
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          title: "Error",
+          description: `File size too large. Maximum size is 10MB. Your file is ${(file.size / (1024 * 1024)).toFixed(1)}MB`,
+          variant: "destructive",
+        });
+        event.target.value = ''; // Reset input
+        return;
+      }
+
+      console.log(`Selected ${type} file:`, file.name, `(${(file.size / (1024 * 1024)).toFixed(1)}MB)`);
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
@@ -66,7 +77,6 @@ export default function MediaUploadModal({
         if (type === 'media') {
           setMediaPreview(dataUrl);
           form.setValue('url', dataUrl);
-          // Reset thumbnail if not set
           if (!thumbnailPreview) {
             setThumbnailPreview(dataUrl);
             form.setValue('thumbnail', dataUrl);
@@ -145,6 +155,8 @@ export default function MediaUploadModal({
     }
   }, [open, form]);
 
+  const tooltipText = "Maximum file size: 10MB";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -153,7 +165,10 @@ export default function MediaUploadModal({
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="type">Type</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="type">Type</Label>
+              <span className="text-xs text-muted-foreground">{tooltipText}</span>
+            </div>
             <Select 
               onValueChange={(value) => form.setValue("type", value)}
               defaultValue={form.getValues("type")}
@@ -167,7 +182,6 @@ export default function MediaUploadModal({
               </SelectContent>
             </Select>
           </div>
-
           <Input
             type="file"
             ref={mediaInputRef}
