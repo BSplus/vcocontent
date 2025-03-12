@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import JSZip from 'jszip';
 import {
   Dialog,
   DialogContent,
@@ -24,7 +25,6 @@ import { useToast } from "@/hooks/use-toast";
 import { InsertMediaItem, insertMediaItemSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Image as ImageIcon, Film, Upload, X } from "lucide-react";
-import { extractIPTCMetadata } from "@/lib/iptc"; // Added import statement
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -64,17 +64,14 @@ export default function MediaUploadModal({
     },
   });
 
-  //Updated function for better video type validation
   function isValidVideoType(file: File): boolean {
-    // Check file extension first
     const fileName = file.name.toLowerCase();
     if (fileName.endsWith('.mp4') || fileName.endsWith('.mov')) {
       return true;
     }
-    // Fallback to MIME type check
     const validTypes = [
       'video/mp4',
-      'video/quicktime', // For .mov files
+      'video/quicktime',
       'video/webm',
       'video/ogg'
     ];
@@ -82,10 +79,65 @@ export default function MediaUploadModal({
   }
 
   function isValidImageType(file: File): boolean {
-    // Add zip to valid types
     const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/zip'];
     return validTypes.includes(file.type) || file.name.toLowerCase().endsWith('.zip');
   }
+
+  const processImageFile = async (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleZipFile = async (zipFile: File) => {
+    try {
+      const zip = new JSZip();
+      const contents = await zip.loadAsync(zipFile);
+      const imageFiles: FileUpload[] = [];
+
+      for (const [filename, file] of Object.entries(contents.files)) {
+        // Skip directories and non-image files
+        if (file.dir || !/\.(jpg|jpeg|png|gif)$/i.test(filename)) continue;
+
+        const blob = await file.async('blob');
+        const imageFile = new File([blob], filename, { type: `image/${filename.split('.').pop()}` });
+
+        if (isValidImageType(imageFile)) {
+          const preview = await processImageFile(imageFile);
+          imageFiles.push({
+            file: imageFile,
+            preview,
+            progress: 0,
+            status: 'pending'
+          });
+        }
+      }
+
+      if (imageFiles.length === 0) {
+        toast({
+          title: "No valid images",
+          description: "The ZIP file doesn't contain any valid images (JPG, PNG, or GIF).",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setUploads(prev => [...prev, ...imageFiles]);
+      toast({
+        title: "Success",
+        description: `Extracted ${imageFiles.length} images from ZIP file.`,
+      });
+    } catch (error) {
+      console.error('Failed to process ZIP file:', error);
+      toast({
+        title: "Error",
+        description: "Failed to process ZIP file. Please ensure it contains valid images.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleFilesChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -95,15 +147,11 @@ export default function MediaUploadModal({
     for (const file of files) {
       // Handle ZIP files
       if (file.type === 'application/zip' || file.name.toLowerCase().endsWith('.zip')) {
-        toast({
-          title: "ZIP files",
-          description: "ZIP file upload is not yet supported. Please upload individual image files.",
-          variant: "destructive",
-        });
+        await handleZipFile(file);
         continue;
       }
 
-      // Rest of the validation logic remains unchanged
+      // Regular file validation
       const isValid = form.getValues("type") === "video"
         ? isValidVideoType(file)
         : isValidImageType(file);
@@ -128,12 +176,7 @@ export default function MediaUploadModal({
         continue;
       }
 
-      const preview = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(file);
-      });
-
+      const preview = await processImageFile(file);
       newUploads.push({
         file,
         preview,
@@ -315,7 +358,7 @@ export default function MediaUploadModal({
                   <Upload className="h-8 w-8" />
                   <p>Click or drag files here to upload</p>
                   <p className="text-sm text-muted-foreground">
-                    {form.getValues("type") === "video" ? "MP4 or MOV" : "JPG, PNG, or GIF"}
+                    {form.getValues("type") === "video" ? "MP4 or MOV" : "JPG, PNG, GIF, or ZIP"}
                   </p>
                 </div>
               </div>
