@@ -134,9 +134,13 @@ export default function UploadModal({
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: InsertEvent) => {
+    mutationFn: async (eventId: number) => {
       try {
-        // Use simple PUT request with proper date formatting
+        // Get current form values
+        const formData = form.getValues();
+        const customThumbnail = form.getValues("customThumbnail");
+
+        // Use simple PUT request without body
         const res = await fetch(`/api/events/${eventId}`, {
           method: 'PUT',
           headers: {
@@ -144,9 +148,12 @@ export default function UploadModal({
           },
           credentials: 'include',
           body: JSON.stringify({
-            ...data,
-            date: new Date(data.date),
-            customThumbnail: form.getValues("customThumbnail"),
+            title: formData.title,
+            description: formData.description,
+            date: new Date(formData.date),
+            coverImage: formData.coverImage,
+            customThumbnail: customThumbnail || undefined,
+            seriesId: formData.seriesId || undefined
           }),
         });
 
@@ -155,25 +162,23 @@ export default function UploadModal({
           throw new Error(error.message || "Failed to update event");
         }
 
-        return eventId; // Just return the ID on success
+        return eventId;
       } catch (error) {
-        console.error('Event update error:', error);
+        console.error('Update event error:', error);
         throw error;
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}`] });
-      onOpenChange(false);
-      form.reset();
-      setThumbnailPreview(null);
       toast({
         title: "Success",
         description: "Event updated successfully",
       });
+      onOpenChange(false);
     },
     onError: (error: Error) => {
-      console.error('Event update error:', error);
+      console.error('Update mutation error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to update event",
@@ -189,13 +194,10 @@ export default function UploadModal({
       const isFutureEvent = eventDate > now;
 
       // Include the customThumbnail in the data
-      const submissionData = {
-        ...data,
-        customThumbnail: form.getValues("customThumbnail"),
-      };
+      const customThumbnail = form.getValues("customThumbnail");
 
       // If no custom thumbnail is uploaded and it's a future event, generate AI thumbnail
-      if (!submissionData.customThumbnail && isFutureEvent) {
+      if (!customThumbnail && isFutureEvent) {
         try {
           setIsGeneratingAI(true);
           toast({
@@ -204,7 +206,7 @@ export default function UploadModal({
           });
 
           const thumbnail = await generateEventThumbnail(data.title, data.description);
-          submissionData.customThumbnail = thumbnail;
+          form.setValue("customThumbnail", thumbnail);
           setThumbnailPreview(thumbnail);
 
           toast({
@@ -226,9 +228,9 @@ export default function UploadModal({
       }
 
       if (isEditing) {
-        await updateMutation.mutateAsync(submissionData);
+        await updateMutation.mutateAsync(eventId as number);
       } else {
-        await createMutation.mutateAsync(submissionData);
+        await createMutation.mutateAsync(data);
       }
     } catch (error) {
       console.error('Form submission error:', error);
