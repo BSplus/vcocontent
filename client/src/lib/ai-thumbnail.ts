@@ -6,9 +6,13 @@ const replicate = new Replicate({
 
 export async function generateEventThumbnail(title: string, description: string): Promise<string> {
   try {
+    if (!import.meta.env.VITE_REPLICATE_API_TOKEN) {
+      throw new Error('Replicate API token not found');
+    }
+
     // Create a prompt that captures the essence of the event
     const prompt = `A photorealistic racing event scene for "${title}": ${description}. High quality, dramatic lighting, professional sports photography style.`;
-    
+
     console.log('Generating AI thumbnail with prompt:', prompt);
 
     const output = await replicate.run(
@@ -23,6 +27,10 @@ export async function generateEventThumbnail(title: string, description: string)
         }
       }
     );
+
+    if (!Array.isArray(output) || !output[0]) {
+      throw new Error('Invalid response from Replicate API');
+    }
 
     // Convert image URL to base64
     const response = await fetch(output[0]);

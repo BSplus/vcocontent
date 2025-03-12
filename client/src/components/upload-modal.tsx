@@ -129,13 +129,24 @@ export default function UploadModal({
       // If no custom thumbnail is uploaded and it's a future event, generate AI thumbnail
       if (!data.customThumbnail && isFutureEvent) {
         try {
+          toast({
+            title: "Generating thumbnail",
+            description: "Using AI to generate a custom thumbnail for your event...",
+          });
+
           const thumbnail = await generateEventThumbnail(data.title, data.description);
           data.customThumbnail = thumbnail;
+
+          toast({
+            title: "Success",
+            description: "AI thumbnail generated successfully",
+          });
         } catch (error) {
           console.error('Failed to generate AI thumbnail:', error);
           toast({
             title: "Warning",
             description: "Could not generate AI thumbnail. Using default image instead.",
+            variant: "destructive",
           });
         }
       }
