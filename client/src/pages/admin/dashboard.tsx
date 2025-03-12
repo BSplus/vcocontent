@@ -39,10 +39,12 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-          <div className="flex gap-2">
+      <header className="border-b border-primary/20">
+        <div className="container mx-auto px-4 py-6">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            Admin Dashboard
+          </h1>
+          <div className="flex gap-2 mt-4">
             <Button onClick={handleCreateDemoContent} variant="outline">
               Create Demo Content
             </Button>
@@ -55,8 +57,8 @@ export default function AdminDashboard() {
 
       <main className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
-          <h2 className="text-3xl font-bold">Events Management</h2>
-          <Button onClick={() => setUploadModalOpen(true)}>
+          <h2 className="text-2xl font-bold">Events Management</h2>
+          <Button onClick={() => setUploadModalOpen(true)} className="bg-primary text-black hover:bg-primary/90">
             <Plus className="h-4 w-4 mr-2" />
             Create Event
           </Button>
@@ -78,13 +80,15 @@ export default function AdminDashboard() {
         ) : (
           <div className="grid gap-6">
             {events.map((event) => (
-              <Card key={event.id}>
+              <Card key={event.id} className="bg-black/40 border-primary/20">
                 <CardHeader>
-                  <CardTitle>{event.title}</CardTitle>
+                  <CardTitle className="text-xl font-[Orbitron] tracking-wider">
+                    {event.title}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex justify-between items-center">
-                    <p className="text-muted-foreground">
+                    <p className="text-muted-foreground font-[Rajdhani]">
                       {new Date(event.date).toLocaleDateString()}
                     </p>
                     <div className="flex gap-2">

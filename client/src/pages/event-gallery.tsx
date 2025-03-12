@@ -41,20 +41,27 @@ export default function EventGallery() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4">
+      <header className="border-b border-primary/20">
+        <div className="container mx-auto px-4 py-6">
           <Button variant="ghost" asChild className="mb-4">
             <Link href="/">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Events
             </Link>
           </Button>
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold">{event.title}</h1>
-            <p className="text-muted-foreground">
-              {new Date(event.date).toLocaleDateString()}
+          <div className="space-y-4">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              {event.title}
+            </h1>
+            <p className="text-muted-foreground font-[Rajdhani] text-lg">
+              {new Date(event.date).toLocaleDateString(undefined, {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })}
             </p>
-            <p className="max-w-2xl">{event.description}</p>
+            <p className="max-w-2xl text-lg">{event.description}</p>
           </div>
         </div>
       </header>
@@ -62,7 +69,7 @@ export default function EventGallery() {
       <main className="container mx-auto px-4 py-8">
         {!mediaItems?.length ? (
           <div className="text-center py-12">
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground text-lg">
               No media items available for this event yet.
             </p>
           </div>

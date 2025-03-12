@@ -1,3 +1,7 @@
+@import "@fontsource/orbitron/700.css";
+@import "@fontsource/rajdhani/600.css";
+@import "@fontsource/space-grotesk/400.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,5 +13,19 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Orbitron", sans-serif;
+    @apply tracking-widest uppercase;
+  }
+
+  p, span, div {
+    font-family: "Space Grotesk", sans-serif;
+  }
+
+  button, input, select {
+    font-family: "Rajdhani", sans-serif;
+    @apply tracking-wide;
   }
 }

@@ -32,8 +32,14 @@ export async function generateEventThumbnail(title: string, description: string)
       throw new Error('Invalid response from Replicate API');
     }
 
+    console.log('Successfully generated image URL:', output[0]);
+
     // Convert image URL to base64
     const response = await fetch(output[0]);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch generated image: ${response.statusText}`);
+    }
+
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -43,6 +49,6 @@ export async function generateEventThumbnail(title: string, description: string)
     });
   } catch (error) {
     console.error('Failed to generate AI thumbnail:', error);
-    throw new Error('Failed to generate AI thumbnail');
+    throw error;
   }
 }

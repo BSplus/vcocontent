@@ -1,9 +1,9 @@
 {
   "variant": "vibrant",
-  "primary": "hsl(52, 100%, 50%)",
-  "background": "hsl(0, 0%, 9%)",
-  "foreground": "hsl(0, 0%, 88%)",
+  "primary": "hsl(225, 100%, 60%)",
+  "background": "hsl(0, 0%, 5%)",
+  "foreground": "hsl(0, 0%, 95%)",
   "accent": "hsl(12, 100%, 50%)",
   "appearance": "dark",
-  "radius": 0.5
+  "radius": 0.75
 }
