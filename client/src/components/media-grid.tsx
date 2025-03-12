@@ -6,6 +6,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MediaItem } from "@shared/schema";
+import { motion } from "framer-motion";
+import { Eye, PlayCircle } from "lucide-react";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -13,36 +15,75 @@ interface MediaGridProps {
 
 export default function MediaGrid({ items }: MediaGridProps) {
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
+  const [hoveredItem, setHoveredItem] = useState<MediaItem | null>(null);
 
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {items.map((item) => (
-          <div
+          <motion.div
             key={item.id}
-            className="relative aspect-square cursor-pointer group"
+            className="relative aspect-square cursor-pointer overflow-hidden rounded-lg"
+            onHoverStart={() => setHoveredItem(item)}
+            onHoverEnd={() => setHoveredItem(null)}
             onClick={() => setSelectedItem(item)}
+            whileHover={{ scale: 1.02 }}
+            transition={{ duration: 0.2 }}
           >
             <img
               src={item.thumbnail}
               alt={item.caption || "Media item"}
-              className="object-cover w-full h-full rounded-md"
+              className="object-cover w-full h-full"
             />
-            {item.type === "video" && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
-                <svg
-                  className="w-12 h-12 text-white"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M8 5v14l11-7z" />
-                </svg>
+
+            {/* Hover Preview Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: hoveredItem?.id === item.id ? 1 : 0 }}
+              className="absolute inset-0 bg-black/60 flex flex-col justify-between p-4 text-white"
+            >
+              <div className="flex justify-between items-start">
+                {item.type === "video" && (
+                  <PlayCircle className="h-8 w-8" />
+                )}
+                <Eye className="h-6 w-6" />
               </div>
-            )}
-          </div>
+
+              <div className="space-y-2">
+                {item.caption && (
+                  <p className="text-sm font-medium line-clamp-2">
+                    {item.caption}
+                  </p>
+                )}
+                {item.photographer && (
+                  <p className="text-xs text-gray-300">
+                    📸 {item.photographer}
+                  </p>
+                )}
+                {item.tags && item.tags.length > 0 && (
+                  <div className="flex gap-1 flex-wrap">
+                    {item.tags.slice(0, 3).map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-2 py-0.5 bg-white/20 rounded-full text-xs"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                    {item.tags.length > 3 && (
+                      <span className="text-xs text-gray-300">
+                        +{item.tags.length - 3} more
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
         ))}
       </div>
 
+      {/* Full Preview Dialog */}
       <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
