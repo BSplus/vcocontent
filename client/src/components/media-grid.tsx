@@ -27,18 +27,17 @@ import { Eye, PlayCircle, Download, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EditMediaModal from "./edit-media-modal";
 import { useAuth } from "@/hooks/use-auth";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 interface MediaGridProps {
   items: MediaItem[];
+  onDelete?: (deletedItemId: number) => void;
 }
 
-export default function MediaGrid({ items }: MediaGridProps) {
+export default function MediaGrid({ items, onDelete }: MediaGridProps) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [itemToDelete, setItemToDelete] = useState<MediaItem | null>(null);
   const [editItem, setEditItem] = useState<MediaItem | null>(null);
@@ -50,47 +49,24 @@ export default function MediaGrid({ items }: MediaGridProps) {
   // Update the deleteMutation implementation
   const deleteMutation = useMutation({
     mutationFn: async (mediaId: number) => {
-      try {
-        const res = await fetch(`/api/media/${mediaId}`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-        });
+      const res = await fetch(`/api/media/${mediaId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
 
-        if (!res.ok) {
-          const error = await res.json();
-          throw new Error(error.message || "Failed to delete media");
-        }
-
-        return mediaId;
-      } catch (error) {
-        console.error('Delete media error:', error);
-        throw error;
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to delete media");
       }
+
+      return mediaId;
     },
     onSuccess: (mediaId) => {
-      // Update the global media list cache
-      queryClient.setQueryData<MediaItem[]>(["/api/media"], (oldData) =>
-        oldData?.filter(item => item.id !== mediaId) || []
-      );
-
-      // Update the event-specific media list cache
-      if (itemToDelete?.eventId) {
-        queryClient.setQueryData<MediaItem[]>(
-          [`/api/events/${itemToDelete.eventId}/media`],
-          (oldData) => oldData?.filter(item => item.id !== mediaId) || []
-        );
-      }
-
-      // Also invalidate the queries to ensure consistency
-      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
-      if (itemToDelete?.eventId) {
-        queryClient.invalidateQueries({
-          queryKey: [`/api/events/${itemToDelete.eventId}/media`]
-        });
-      }
+      // Notify parent component
+      onDelete?.(mediaId);
 
       setItemToDelete(null);
       toast({

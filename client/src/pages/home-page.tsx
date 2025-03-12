@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Event, MediaItem } from "@shared/schema";
 import { Loader2, Calendar, Trophy, History, Clock, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import MediaGrid from "@/components/media-grid";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
@@ -13,37 +13,40 @@ import Footer from "@/components/footer";
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
 
-  // Fetch all media items
-  const { data: allMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
+  const { data: fetchedMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
+    onSuccess: (data) => setMediaItems(data || []),
   });
+
+  const handleMediaDelete = (deletedItemId: number) => {
+    setMediaItems(current => current.filter(item => item.id !== deletedItemId));
+  };
 
   // Fetch events
   const { data: events, isLoading: eventsLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"]
   });
 
-  // Search logic
-  const searchResults = allMediaItems?.filter(item => {
-    if (!searchQuery.trim()) return false;
+  // Search logic with memoization
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
 
     const query = searchQuery.toLowerCase().trim();
+    return mediaItems.filter(item => {
+      // Check caption
+      if (item.caption?.toLowerCase().includes(query)) return true;
 
-    // Check caption
-    const captionMatch = item.caption?.toLowerCase().includes(query);
-    if (captionMatch) return true;
+      // Check photographer
+      if (item.photographer?.toLowerCase().includes(query)) return true;
 
-    // Check photographer
-    const photographerMatch = item.photographer?.toLowerCase().includes(query);
-    if (photographerMatch) return true;
+      // Check tags
+      if (item.tags?.some(tag => tag.toLowerCase().includes(query))) return true;
 
-    // Check tags
-    const tagMatch = item.tags?.some(tag => tag.toLowerCase().includes(query));
-    if (tagMatch) return true;
-
-    return false;
-  });
+      return false;
+    });
+  }, [searchQuery, mediaItems]);
 
   // Event categorization
   const today = new Date();
@@ -142,12 +145,15 @@ export default function HomePage() {
                 ) : (
                   <>
                     <h3 className="text-lg font-semibold mb-4">
-                      {searchResults && searchResults.length > 0
+                      {searchResults.length > 0
                         ? `Found ${searchResults.length} results`
                         : 'No results found'}
                     </h3>
-                    {searchResults && searchResults.length > 0 && (
-                      <MediaGrid items={searchResults} />
+                    {searchResults.length > 0 && (
+                      <MediaGrid 
+                        items={searchResults} 
+                        onDelete={handleMediaDelete}
+                      />
                     )}
                   </>
                 )}
@@ -237,14 +243,11 @@ export default function HomePage() {
                 </p>
               ) : (
                 <div className="space-y-6">
-                  {/* Featured archive events (latest 4) */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     {archiveEvents.slice(0, 4).map((event) => (
                       <EventCard key={event.id} event={event} />
                     ))}
                   </div>
-
-                  {/* Remaining archive events in compact view */}
                   {archiveEvents.length > 4 && (
                     <div className="bg-black/40 rounded-lg p-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

@@ -19,17 +19,19 @@ export default function EventGallery() {
   const eventId = parseInt(params?.id || "0");
   const [searchQuery, setSearchQuery] = useState("");
   const [mediaTypeFilter, setMediaTypeFilter] = useState<"all" | "image" | "video">("all");
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
 
-  const { data: event, isLoading: eventLoading } = useQuery<Event>({
-    queryKey: [`/api/events/${eventId}`],
-  });
-
-  const { data: mediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
+  const { data: fetchedMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: [`/api/events/${eventId}/media`],
     enabled: !!eventId,
+    onSuccess: (data) => setMediaItems(data || []),
   });
 
-  const isLoading = eventLoading || mediaLoading;
+  const handleMediaDelete = (deletedItemId: number) => {
+    setMediaItems(current => current.filter(item => item.id !== deletedItemId));
+  };
+
+  const isLoading = mediaLoading;
 
   // Filter media items based on search query and type
   const filteredMediaItems = mediaItems?.filter(item => {
@@ -122,7 +124,7 @@ export default function EventGallery() {
             </p>
           </div>
         ) : (
-          <MediaGrid items={filteredMediaItems} />
+          <MediaGrid items={mediaItems} onDelete={handleMediaDelete} />
         )}
       </main>
     </div>
