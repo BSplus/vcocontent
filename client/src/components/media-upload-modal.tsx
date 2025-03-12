@@ -98,24 +98,33 @@ export default function MediaUploadModal({
       const imageFiles: FileUpload[] = [];
 
       for (const [filename, file] of Object.entries(contents.files)) {
-        // Skip directories and non-image files
-        if (file.dir || !/\.(jpg|jpeg|png|gif)$/i.test(filename)) continue;
+        // Skip directories
+        if (file.dir) continue;
+
+        // Check file extension
+        const ext = filename.toLowerCase().split('.').pop();
+        if (!['jpg', 'jpeg', 'png', 'gif'].includes(ext || '')) continue;
+
+        console.log('Processing file from ZIP:', filename); // Debug log
 
         const blob = await file.async('blob');
-        const imageFile = new File([blob], filename, { type: `image/${filename.split('.').pop()}` });
+        const imageFile = new File([blob], filename, { 
+          type: ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 
+                ext === 'png' ? 'image/png' : 
+                'image/gif'
+        });
 
-        if (isValidImageType(imageFile)) {
-          const preview = await processImageFile(imageFile);
-          imageFiles.push({
-            file: imageFile,
-            preview,
-            progress: 0,
-            status: 'pending'
-          });
-        }
+        const preview = await processImageFile(imageFile);
+        imageFiles.push({
+          file: imageFile,
+          preview,
+          progress: 0,
+          status: 'pending'
+        });
       }
 
       if (imageFiles.length === 0) {
+        console.log('No images found in ZIP file'); // Debug log
         toast({
           title: "No valid images",
           description: "The ZIP file doesn't contain any valid images (JPG, PNG, or GIF).",
