@@ -42,14 +42,16 @@ export const insertEventSchema = createInsertSchema(events).extend({
   date: z.coerce.date()
 });
 
-export const insertMediaItemSchema = createInsertSchema(mediaItems).pick({
-  eventId: true,
-  type: true,
-  url: true,
-  thumbnail: true,
-  caption: true,
-  photographer: true,
-  tags: true,
+export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
+  eventId: z.number(),
+  type: z.enum(["image", "video"]),
+  url: z.string().min(1, "Media URL is required"),
+  thumbnail: z.string().min(1, "Thumbnail is required"),
+  caption: z.string().optional(),
+  photographer: z.string().optional(),
+  tags: z.union([z.string(), z.array(z.string())]).transform(val =>
+    typeof val === 'string' ? val.split(',').map(tag => tag.trim()) : val
+  ),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;

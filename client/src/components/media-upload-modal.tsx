@@ -163,10 +163,15 @@ export default function MediaUploadModal({
         return;
       }
 
+      // Process tags
+      const tags = typeof data.tags === 'string' 
+        ? data.tags.split(',').map(tag => tag.trim()).filter(Boolean)
+        : (data.tags || []);
+
       const formattedData = {
         ...data,
-        eventId, // Ensure eventId is included
-        tags: typeof data.tags === 'string' ? data.tags.split(',').map(tag => tag.trim()) : data.tags || [],
+        eventId,
+        tags,
       };
 
       console.log('Starting media upload...', { 
