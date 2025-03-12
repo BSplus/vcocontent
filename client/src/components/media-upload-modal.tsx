@@ -153,20 +153,38 @@ export default function MediaUploadModal({
         return;
       }
 
+      // Check if we have eventId
+      if (!eventId) {
+        toast({
+          title: "Error",
+          description: "No event selected for upload",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const formattedData = {
         ...data,
         eventId, // Ensure eventId is included
         tags: typeof data.tags === 'string' ? data.tags.split(',').map(tag => tag.trim()) : data.tags || [],
       };
 
-      console.log('Submitting formatted data:', {
-        ...formattedData,
-        url: formattedData.url.substring(0, 100) + '...',
-        thumbnail: formattedData.thumbnail.substring(0, 100) + '...'
+      console.log('Starting media upload...', { 
+        eventId,
+        type: formattedData.type,
+        caption: formattedData.caption,
+        photographer: formattedData.photographer,
+        tags: formattedData.tags,
       });
+
       await createMutation.mutateAsync(formattedData);
     } catch (error) {
       console.error('Form submission error:', error);
+      toast({
+        title: "Upload Failed",
+        description: error instanceof Error ? error.message : "Failed to upload media",
+        variant: "destructive",
+      });
     }
   };
 

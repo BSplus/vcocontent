@@ -71,13 +71,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(403).send("Unauthorized");
     }
 
+    console.log('Received media upload request:', {
+      eventId: req.body.eventId,
+      type: req.body.type,
+      caption: req.body.caption,
+      photographer: req.body.photographer,
+      tags: req.body.tags,
+    });
+
     const parseResult = insertMediaItemSchema.safeParse(req.body);
     if (!parseResult.success) {
+      console.error('Media upload validation failed:', parseResult.error);
       return res.status(400).json(parseResult.error);
     }
 
-    const mediaItem = await storage.createMediaItem(parseResult.data);
-    res.status(201).json(mediaItem);
+    try {
+      const mediaItem = await storage.createMediaItem(parseResult.data);
+      console.log('Media item created successfully:', mediaItem.id);
+      res.status(201).json(mediaItem);
+    } catch (error) {
+      console.error('Failed to create media item:', error);
+      res.status(500).send((error as Error).message);
+    }
   });
 
   app.put("/api/media/:id", async (req, res) => {
