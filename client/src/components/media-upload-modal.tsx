@@ -72,6 +72,7 @@ export default function MediaUploadModal({
       'video/webm',
       'video/ogg'
     ];
+    // Check both MIME type and file extension
     return validTypes.includes(file.type) ||
       file.name.toLowerCase().endsWith('.mov') ||
       file.name.toLowerCase().endsWith('.mp4');
@@ -132,13 +133,11 @@ export default function MediaUploadModal({
 
   const uploadMutation = useMutation({
     mutationFn: async (data: InsertMediaItem) => {
-      console.log('Submitting media data:', {
-        ...data,
-        url: data.url.substring(0, 100) + '...',
-        thumbnail: data.thumbnail.substring(0, 100) + '...'
-      });
-
       const res = await apiRequest("POST", "/api/media", data);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Upload failed');
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -250,7 +249,7 @@ export default function MediaUploadModal({
             type="file"
             ref={mediaInputRef}
             className="hidden"
-            accept={form.getValues("type") === "image" ? "image/*" : ".mp4,.mov,.webm,.ogg,video/*"}
+            accept={form.getValues("type") === "image" ? "image/*" : "video/*,.mp4,.mov,.webm,.ogg"} // Updated accept attribute
             onChange={handleFilesChange}
             multiple
           />
