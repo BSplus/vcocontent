@@ -153,6 +153,8 @@ export default function MediaUploadModal({
         ...data,
         tags: typeof data.tags === 'string' ? data.tags.split(',').map(tag => tag.trim()) : data.tags || [],
       };
+
+      console.log('Submitting formatted data:', formattedData);
       await createMutation.mutateAsync(formattedData);
     } catch (error) {
       console.error('Form submission error:', error);
