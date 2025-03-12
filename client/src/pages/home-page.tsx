@@ -4,19 +4,18 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import EventCard from "@/components/event-card";
 import { Event } from "@shared/schema";
-import { 
-  Loader2, 
-  Calendar, 
+import {
+  Loader2,
+  Calendar,
   Trophy,
   History,
   Clock,
   ChevronRight
 } from "lucide-react";
-import { SiVirtualbox } from "react-icons/si";
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
-  const { data: events, isLoading } = useQuery<Event[]>({ 
+  const { data: events, isLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"]
   });
 
@@ -24,7 +23,7 @@ export default function HomePage() {
   const fourWeeksAgo = new Date(today.getTime() - (28 * 24 * 60 * 60 * 1000));
 
   // Sort events by date
-  const sortedEvents = events?.sort((a, b) => 
+  const sortedEvents = events?.sort((a, b) =>
     new Date(b.date).getTime() - new Date(a.date).getTime()
   ) || [];
 
@@ -35,7 +34,7 @@ export default function HomePage() {
   }).slice(0, 4);
 
   // Upcoming events
-  const upcomingEvents = sortedEvents.filter(event => 
+  const upcomingEvents = sortedEvents.filter(event =>
     new Date(event.date) > today
   );
 
@@ -51,9 +50,13 @@ export default function HomePage() {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-3">
-              <SiVirtualbox className="h-8 w-8 text-primary" />
+              <img
+                src="/attached_assets/VCO_2021_reg_White_Trans.png"
+                alt="VCO Logo"
+                className="h-8 w-auto"
+              />
               <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/80 text-transparent bg-clip-text">
-                VCO Media Database
+                Media Database
               </h1>
             </div>
             <nav className="hidden md:flex gap-6">
@@ -78,8 +81,8 @@ export default function HomePage() {
               </Button>
             )}
             {user ? (
-              <Button 
-                variant="secondary" 
+              <Button
+                variant="secondary"
                 onClick={() => logoutMutation.mutate()}
                 disabled={logoutMutation.isPending}
                 className="bg-primary text-black hover:bg-primary/90"
@@ -134,28 +137,38 @@ export default function HomePage() {
                   No upcoming events scheduled.
                 </p>
               ) : (
-                <div className="space-y-4">
-                  {upcomingEvents.slice(0, 10).map((event) => (
-                    <div key={event.id} className="flex items-center justify-between p-4 bg-black/20 rounded-lg hover:bg-black/30 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <Clock className="h-5 w-5 text-primary" />
-                        <div>
-                          <h3 className="font-bold">{event.title}</h3>
-                          <p className="text-sm text-foreground/60">
-                            {new Date(event.date).toLocaleDateString(undefined, {
-                              weekday: 'long',
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric'
-                            })}
-                          </p>
+                <div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {upcomingEvents.slice(0, 10).map((event) => (
+                      <div
+                        key={event.id}
+                        className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02] cursor-default"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Clock className="h-5 w-5 text-primary shrink-0" />
+                          <div className="min-w-0">
+                            <h3 className="font-bold truncate group-hover:text-primary transition-colors">
+                              {event.title}
+                            </h3>
+                            <p className="text-sm text-foreground/60 truncate">
+                              {new Date(event.date).toLocaleDateString('en-US', {
+                                weekday: 'short',
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                   {upcomingEvents.length > 10 && (
-                    <Button variant="outline" className="w-full mt-4">
-                      View All Upcoming Events
+                    <Button
+                      variant="outline"
+                      className="w-full mt-4 hover:bg-black/20 transition-colors"
+                    >
+                      View All {upcomingEvents.length} Upcoming Events
                       <ChevronRight className="h-4 w-4 ml-2" />
                     </Button>
                   )}
