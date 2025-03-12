@@ -1,0 +1,102 @@
+Project Overview
+
+VCO, one of the leading promoters in Sim Racing, is developing a new photo and video database to manage and distribute media content from various Sim Racing events. The platform will replace the existing system (photos.vco-esports.com) with a more efficient and user-friendly solution.
+
+Core Requirements
+
+Navigation based on Events: Users browse media content by selecting an event.
+
+Public Access: No login required to view and download content.
+
+Admin Backend: Restricted area for authorized admins to:
+
+Upload images and videos.
+
+Add, edit, and manage event categories.
+
+Provide captions and metadata, including bulk editing capabilities.
+
+Key Features
+
+Frontend (User Interface)
+
+Event-Based Structure: Homepage displays a list of events, each leading to a gallery.
+
+Media Gallery:
+
+Filter and search functionality (by event, photographer, tags, or keywords).
+
+Thumbnail previews for quick browsing.
+
+Full-resolution download options.
+
+Video playback integration.
+
+Direct Sharing & Embedding:
+
+Share links via social media.
+
+Embed options for third-party websites.
+
+Backend (Admin Dashboard)
+
+Event Management:
+
+Create, edit, and delete events.
+
+Assign a cover image and description for each event.
+
+Media Upload & Management:
+
+Batch upload of photos and videos.
+
+Automatic optimization for web display.
+
+Bulk captioning feature (apply captions to multiple images at once).
+
+Custom tagging system.
+
+User Roles & Permissions:
+
+Restricted access to approved admins only.
+
+Activity logs for uploads and edits.
+
+Technical Specifications
+
+Technology Stack:
+
+Frontend: React (Next.js) for fast, dynamic rendering.
+
+Backend: Node.js + Express with MongoDB or PostgreSQL for data storage.
+
+Storage: AWS S3 or Cloudinary for media hosting and CDN delivery.
+
+Authentication: Basic admin authentication via Auth0 or Firebase Auth.
+
+Performance Considerations:
+
+Optimized image loading (lazy loading, WebP conversion).
+
+Responsive design for mobile and desktop usage.
+
+Workflow Overview
+
+Admin logs into the backend.
+
+Creates a new event (if not already existing).
+
+Uploads images/videos in bulk, assigns captions and tags.
+
+Users visit the public site, select an event, and browse/download media.
+
+Future Enhancements
+
+API access for partners and media outlets.
+
+AI-powered auto-tagging for faster content management.
+
+Watermarking options for branding.
+
+This specification ensures that the new VCO media database is efficient, easy to navigate, and scalable, supporting the growing needs of Sim Racing media coverage.
+
