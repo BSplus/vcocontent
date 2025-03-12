@@ -1,130 +1,114 @@
 import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem } from "@shared/schema";
+import { users, events, mediaItems } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPg from "connect-pg-simple";
 
-const MemoryStore = createMemoryStore(session);
+const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
   // User methods
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  
+
   // Event methods
   getEvents(): Promise<Event[]>;
   getEvent(id: number): Promise<Event | undefined>;
   createEvent(event: InsertEvent): Promise<Event>;
   updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event>;
   deleteEvent(id: number): Promise<void>;
-  
+
   // Media methods
   getMediaItems(eventId: number): Promise<MediaItem[]>;
   createMediaItem(item: InsertMediaItem): Promise<MediaItem>;
   updateMediaItem(id: number, item: Partial<InsertMediaItem>): Promise<MediaItem>;
   deleteMediaItem(id: number): Promise<void>;
-  
+
   sessionStore: session.Store;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private events: Map<number, Event>;
-  private mediaItems: Map<number, MediaItem>;
-  private currentUserId: number;
-  private currentEventId: number;
-  private currentMediaId: number;
+export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    this.users = new Map();
-    this.events = new Map();
-    this.mediaItems = new Map();
-    this.currentUserId = 1;
-    this.currentEventId = 1;
-    this.currentMediaId = 1;
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000,
+    this.sessionStore = new PostgresSessionStore({
+      pool: db.$client,
+      createTableIfMissing: true,
     });
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const user: User = { ...insertUser, id, isAdmin: false };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
   async getEvents(): Promise<Event[]> {
-    return Array.from(this.events.values());
+    return await db.select().from(events);
   }
 
   async getEvent(id: number): Promise<Event | undefined> {
-    return this.events.get(id);
+    const [event] = await db.select().from(events).where(eq(events.id, id));
+    return event;
   }
 
   async createEvent(event: InsertEvent): Promise<Event> {
-    const id = this.currentEventId++;
-    const newEvent: Event = { 
-      ...event, 
-      id, 
-      createdAt: new Date() 
-    };
-    this.events.set(id, newEvent);
+    const [newEvent] = await db.insert(events).values(event).returning();
     return newEvent;
   }
 
   async updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event> {
-    const existingEvent = await this.getEvent(id);
-    if (!existingEvent) throw new Error("Event not found");
-    
-    const updatedEvent = { ...existingEvent, ...event };
-    this.events.set(id, updatedEvent);
+    const [updatedEvent] = await db
+      .update(events)
+      .set(event)
+      .where(eq(events.id, id))
+      .returning();
+
+    if (!updatedEvent) throw new Error("Event not found");
     return updatedEvent;
   }
 
   async deleteEvent(id: number): Promise<void> {
-    this.events.delete(id);
+    await db.delete(events).where(eq(events.id, id));
   }
 
   async getMediaItems(eventId: number): Promise<MediaItem[]> {
-    return Array.from(this.mediaItems.values()).filter(
-      (item) => item.eventId === eventId
-    );
+    return await db
+      .select()
+      .from(mediaItems)
+      .where(eq(mediaItems.eventId, eventId));
   }
 
   async createMediaItem(item: InsertMediaItem): Promise<MediaItem> {
-    const id = this.currentMediaId++;
-    const newItem: MediaItem = {
-      ...item,
-      id,
-      createdAt: new Date()
-    };
-    this.mediaItems.set(id, newItem);
+    const [newItem] = await db.insert(mediaItems).values(item).returning();
     return newItem;
   }
 
   async updateMediaItem(id: number, item: Partial<InsertMediaItem>): Promise<MediaItem> {
-    const existingItem = this.mediaItems.get(id);
-    if (!existingItem) throw new Error("Media item not found");
-    
-    const updatedItem = { ...existingItem, ...item };
-    this.mediaItems.set(id, updatedItem);
+    const [updatedItem] = await db
+      .update(mediaItems)
+      .set(item)
+      .where(eq(mediaItems.id, id))
+      .returning();
+
+    if (!updatedItem) throw new Error("Media item not found");
     return updatedItem;
   }
 
   async deleteMediaItem(id: number): Promise<void> {
-    this.mediaItems.delete(id);
+    await db.delete(mediaItems).where(eq(mediaItems.id, id));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
