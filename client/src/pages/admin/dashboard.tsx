@@ -1,30 +1,69 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Event } from "@shared/schema";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
 import { createDemoContent } from "@/lib/demo-data";
 import { useToast } from "@/hooks/use-toast";
 import SeriesManager from "@/components/series-manager";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [mediaUploadModalOpen, setMediaUploadModalOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: events, isLoading, refetch } = useQuery<Event[]>({ 
     queryKey: ["/api/events"]
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (eventId: number) => {
+      const res = await apiRequest("DELETE", `/api/events/${eventId}`);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to delete event');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      toast({
+        title: "Success",
+        description: "Event deleted successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const handleCreateDemoContent = async () => {
@@ -124,6 +163,13 @@ export default function AdminDashboard() {
                           >
                             Upload Media
                           </Button>
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            onClick={() => setEventToDelete(event)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
                     </CardContent>
@@ -152,6 +198,30 @@ export default function AdminDashboard() {
           eventId={selectedEventId}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!eventToDelete} onOpenChange={(open) => !open && setEventToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Event</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this event? This will also delete all associated media items. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-500 hover:bg-red-600"
+              onClick={() => {
+                eventToDelete && deleteMutation.mutateAsync(eventToDelete.id);
+                setEventToDelete(null);
+              }}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
