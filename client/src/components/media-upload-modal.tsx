@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -39,6 +39,8 @@ export default function MediaUploadModal({
   const queryClient = useQueryClient();
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const thumbnailInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<InsertMediaItem>({
     resolver: zodResolver(insertMediaItemSchema),
@@ -75,6 +77,15 @@ export default function MediaUploadModal({
         }
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const triggerFileInput = (type: 'media' | 'thumbnail') => {
+    console.log(`Triggering ${type} file input`);
+    if (type === 'media') {
+      mediaInputRef.current?.click();
+    } else {
+      thumbnailInputRef.current?.click();
     }
   };
 
@@ -157,6 +168,21 @@ export default function MediaUploadModal({
             </Select>
           </div>
 
+          <Input
+            type="file"
+            ref={mediaInputRef}
+            className="hidden"
+            accept={form.getValues("type") === "image" ? "image/*" : "video/*"}
+            onChange={handleFileChange('media')}
+          />
+          <Input
+            type="file"
+            ref={thumbnailInputRef}
+            className="hidden"
+            accept="image/*"
+            onChange={handleFileChange('thumbnail')}
+          />
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Media File</Label>
@@ -176,18 +202,15 @@ export default function MediaUploadModal({
                         </div>
                       )}
                       <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <label className="cursor-pointer">
-                          <Input
-                            type="file"
-                            accept={form.getValues("type") === "image" ? "image/*" : "video/*"}
-                            className="hidden"
-                            onChange={handleFileChange('media')}
-                          />
-                          <Button type="button" variant="outline" className="bg-transparent border-primary/20">
-                            <Upload className="h-4 w-4 mr-2" />
-                            Choose File
-                          </Button>
-                        </label>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          className="bg-transparent border-primary/20"
+                          onClick={() => triggerFileInput('media')}
+                        >
+                          <Upload className="h-4 w-4 mr-2" />
+                          Choose File
+                        </Button>
                       </div>
                     </div>
                   ) : (
@@ -196,18 +219,15 @@ export default function MediaUploadModal({
                         <Film className="h-8 w-8" />
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <label className="cursor-pointer">
-                          <Input
-                            type="file"
-                            accept="video/*"
-                            className="hidden"
-                            onChange={handleFileChange('media')}
-                          />
-                          <Button type="button" variant="outline" className="bg-transparent border-primary/20">
-                            <Upload className="h-4 w-4 mr-2" />
-                            Choose Video
-                          </Button>
-                        </label>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          className="bg-transparent border-primary/20"
+                          onClick={() => triggerFileInput('media')}
+                        >
+                          <Upload className="h-4 w-4 mr-2" />
+                          Choose Video
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -230,18 +250,15 @@ export default function MediaUploadModal({
                   </div>
                 )}
                 <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <label className="cursor-pointer">
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleFileChange('thumbnail')}
-                    />
-                    <Button type="button" variant="outline" className="bg-transparent border-primary/20">
-                      <Upload className="h-4 w-4 mr-2" />
-                      Choose Thumbnail
-                    </Button>
-                  </label>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="bg-transparent border-primary/20"
+                    onClick={() => triggerFileInput('thumbnail')}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Choose Thumbnail
+                  </Button>
                 </div>
               </div>
             </div>
