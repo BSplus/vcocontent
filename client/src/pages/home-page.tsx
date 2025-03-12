@@ -16,6 +16,8 @@ import { useState } from "react";
 import MediaGrid from "@/components/media-grid";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
+import { SearchInput } from "@/components/search-input"; // Fix: Use named import
+
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
@@ -162,15 +164,12 @@ export default function HomePage() {
       <main id="home" className="container mx-auto px-4 py-8 space-y-16">
         <section className="container mx-auto px-4 py-8">
           <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-8">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                placeholder="Search media by caption, photographer, or tags..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+            <SearchInput
+              items={allMediaItems || []}
+              value={searchQuery}
+              onChange={setSearchQuery}
+              className="flex-1"
+            />
             <Select
               value={mediaFilter}
               onValueChange={(value: "all" | "image" | "video") => setMediaFilter(value)}
