@@ -20,8 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { InsertEvent, insertEventSchema, Series, Event } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
+import { Event, InsertEvent, insertEventSchema, Series } from "@shared/schema";
 import { Loader2, Upload, Image as ImageIcon } from "lucide-react";
 import { generateEventThumbnail } from "@/lib/ai-thumbnail";
 
@@ -61,7 +60,7 @@ export default function UploadModal({
       description: "",
       date: new Date().toISOString().split('T')[0],
       coverImage: "/attached_assets/%2389_3.png",
-      customThumbnail: "",
+      customThumbnail: undefined,
       seriesId: undefined,
     },
   });
@@ -74,7 +73,7 @@ export default function UploadModal({
         description: eventData.description || "",
         date: new Date(eventData.date).toISOString().split('T')[0],
         coverImage: eventData.coverImage,
-        customThumbnail: eventData.customThumbnail || "",
+        customThumbnail: eventData.customThumbnail || undefined,
         seriesId: eventData.seriesId,
       });
 
@@ -109,8 +108,23 @@ export default function UploadModal({
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEvent) => {
-      console.log('Submitting event data:', data);
-      const res = await apiRequest("POST", "/api/events", data);
+      const res = await fetch("/api/events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          ...data,
+          date: new Date(data.date),
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to create event");
+      }
+
       return res.json();
     },
     onSuccess: () => {
@@ -124,61 +138,52 @@ export default function UploadModal({
       });
     },
     onError: (error: Error) => {
-      console.error('Event creation error:', error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to create event",
         variant: "destructive",
       });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (eventId: number) => {
-      try {
-        // Get current form values
-        const formData = form.getValues();
-        const customThumbnail = form.getValues("customThumbnail");
+    mutationFn: async (id: number) => {
+      const formData = form.getValues();
+      const res = await fetch(`/api/events/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          date: new Date(formData.date),
+          coverImage: formData.coverImage,
+          customThumbnail: formData.customThumbnail,
+          seriesId: formData.seriesId,
+        }),
+      });
 
-        // Use simple PUT request without body
-        const res = await fetch(`/api/events/${eventId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            title: formData.title,
-            description: formData.description,
-            date: new Date(formData.date),
-            coverImage: formData.coverImage,
-            customThumbnail: customThumbnail || undefined,
-            seriesId: formData.seriesId || undefined
-          }),
-        });
-
-        if (!res.ok) {
-          const error = await res.json();
-          throw new Error(error.message || "Failed to update event");
-        }
-
-        return eventId;
-      } catch (error) {
-        console.error('Update event error:', error);
-        throw error;
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to update event");
       }
+
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}`] });
+      if (eventId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}`] });
+      }
+      onOpenChange(false);
       toast({
         title: "Success",
         description: "Event updated successfully",
       });
-      onOpenChange(false);
     },
     onError: (error: Error) => {
-      console.error('Update mutation error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to update event",
@@ -189,51 +194,13 @@ export default function UploadModal({
 
   const onSubmit = async (data: InsertEvent) => {
     try {
-      const now = new Date();
-      const eventDate = new Date(data.date);
-      const isFutureEvent = eventDate > now;
-
-      // Include the customThumbnail in the data
-      const customThumbnail = form.getValues("customThumbnail");
-
-      // If no custom thumbnail is uploaded and it's a future event, generate AI thumbnail
-      if (!customThumbnail && isFutureEvent) {
-        try {
-          setIsGeneratingAI(true);
-          toast({
-            title: "Generating thumbnail",
-            description: "Using AI to generate a custom thumbnail for your event...",
-          });
-
-          const thumbnail = await generateEventThumbnail(data.title, data.description);
-          form.setValue("customThumbnail", thumbnail);
-          setThumbnailPreview(thumbnail);
-
-          toast({
-            title: "Success",
-            description: "AI thumbnail generated successfully",
-          });
-        } catch (error) {
-          console.error('Failed to generate AI thumbnail:', error);
-          toast({
-            title: "Warning",
-            description: error instanceof Error 
-              ? `Failed to generate AI thumbnail: ${error.message}` 
-              : "Could not generate AI thumbnail. Using default image instead.",
-            variant: "destructive",
-          });
-        } finally {
-          setIsGeneratingAI(false);
-        }
-      }
-
-      if (isEditing) {
-        await updateMutation.mutateAsync(eventId as number);
+      if (isEditing && eventId) {
+        await updateMutation.mutateAsync(eventId);
       } else {
         await createMutation.mutateAsync(data);
       }
     } catch (error) {
-      console.error('Form submission error:', error);
+      console.error("Form submission error:", error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save event",
