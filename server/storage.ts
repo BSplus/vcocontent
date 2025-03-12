@@ -12,6 +12,7 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  getAllUsers(): Promise<User[]>;  // Add this new method
 
   // Event methods
   getEvents(): Promise<Event[]>;
@@ -108,6 +109,10 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMediaItem(id: number): Promise<void> {
     await db.delete(mediaItems).where(eq(mediaItems.id, id));
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users);
   }
 }
 
