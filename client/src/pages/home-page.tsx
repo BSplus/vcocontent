@@ -152,7 +152,7 @@ export default function HomePage() {
                     {upcomingEvents.slice(0, 10).map((event) => (
                       <div
                         key={event.id}
-                        className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02] cursor-default"
+                        className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02] cursor-default h-[88px]"
                       >
                         <div className="flex items-center gap-3">
                           <Clock className="h-5 w-5 text-primary shrink-0" />

@@ -118,16 +118,17 @@ export default function MediaGrid({ items }: MediaGridProps) {
         downloadUrl = await compressImage(url, 0.3);
       }
 
-      const response = await fetch(downloadUrl);
-      const blob = await response.blob();
+      let response = await fetch(downloadUrl);
+      let blob = await response.blob();
 
       // Check file size for low quality
       if (quality === 'low' && blob.size > 1024 * 1024) {
         // If still over 1MB, compress more
         if (type === 'image') {
           downloadUrl = await compressImage(url, 0.1);
-          const recompressedResponse = await fetch(downloadUrl);
-          blob = await recompressedResponse.blob();
+          response = await fetch(downloadUrl);
+          const recompressedBlob = await response.blob();
+          blob = recompressedBlob;
         }
       }
 
@@ -158,8 +159,8 @@ export default function MediaGrid({ items }: MediaGridProps) {
           >
             <img
               src={
-                item.type === 'video' && 
-                hoveredItem?.id === item.id && 
+                item.type === 'video' &&
+                hoveredItem?.id === item.id &&
                 videoStills[item.id]?.[currentStillIndex[item.id]]
                   ? videoStills[item.id][currentStillIndex[item.id]]
                   : item.thumbnail
@@ -300,12 +301,12 @@ export default function MediaGrid({ items }: MediaGridProps) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => 
+                  <DropdownMenuItem onClick={() =>
                     selectedItem && handleDownload(selectedItem.url, 'high', selectedItem.type)
                   }>
                     Download High-Res
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => 
+                  <DropdownMenuItem onClick={() =>
                     selectedItem && handleDownload(selectedItem.thumbnail, 'low', selectedItem.type)
                   }>
                     Download Low-Res

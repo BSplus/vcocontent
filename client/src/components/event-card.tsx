@@ -24,7 +24,7 @@ export default function EventCard({ event }: EventCardProps) {
     (mediaItems && mediaItems.length > 0 ? mediaItems[0].thumbnail : "/attached_assets/%2389_3.png");
 
   return (
-    <Card className="overflow-hidden group hover:shadow-lg transition-shadow bg-black/40 border-primary/20">
+    <Card className="overflow-hidden group hover:shadow-lg transition-shadow bg-black/40 border-primary/20 h-full flex flex-col">
       <div className="relative aspect-video overflow-hidden">
         <img
           src={thumbnailToShow}
@@ -37,8 +37,8 @@ export default function EventCard({ event }: EventCardProps) {
           </Badge>
         </div>
       </div>
-      <CardContent className="pt-6">
-        <h3 className="text-xl font-semibold mb-2 line-clamp-2 group-hover:text-primary transition-colors">
+      <CardContent className="pt-6 flex-grow">
+        <h3 className="text-xl font-semibold mb-2 line-clamp-1 group-hover:text-primary transition-colors">
           {event.title}
         </h3>
         <p className="text-sm text-foreground/60 mb-4">

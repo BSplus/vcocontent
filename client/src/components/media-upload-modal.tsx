@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { InsertMediaItem, insertMediaItemSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Image as ImageIcon, Film, Upload, X } from "lucide-react";
+import { extractIPTCMetadata } from "@/lib/iptc"; // Added import statement
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -86,6 +87,27 @@ export default function MediaUploadModal({
         reader.onloadend = () => resolve(reader.result as string);
         reader.readAsDataURL(file);
       });
+
+      // Try to extract IPTC metadata for images
+      if (form.getValues("type") === "image") {
+        try {
+          const metadata = await extractIPTCMetadata(file);
+          if (metadata) {
+            // Update form with the first image's metadata if not already set
+            if (!form.getValues("caption") && metadata.caption) {
+              form.setValue("caption", metadata.caption);
+            }
+            if (!form.getValues("photographer") && metadata.photographer) {
+              form.setValue("photographer", metadata.photographer);
+            }
+            if (!form.getValues("tags") && metadata.tags) {
+              form.setValue("tags", metadata.tags);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to extract IPTC metadata:', error);
+        }
+      }
 
       newUploads.push({
         file,
