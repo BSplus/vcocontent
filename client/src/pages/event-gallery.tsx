@@ -77,7 +77,7 @@ export default function EventGallery() {
               {event.title}
             </h1>
             <p className="text-muted-foreground font-[Rajdhani] text-lg">
-              {new Date(event.date).toLocaleDateString(undefined, {
+              {new Date(event.date).toLocaleDateString('en-US', {
                 weekday: 'long',
                 year: 'numeric',
                 month: 'long',
