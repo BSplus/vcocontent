@@ -13,7 +13,7 @@ export const users = pgTable("users", {
 export const series = pgTable("series", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  logo: text("logo").notNull(),
+  logo: text("logo"),  // Removed .notNull()
   description: text("description"),
 });
 
@@ -48,7 +48,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
 // New Series schema
 export const insertSeriesSchema = createInsertSchema(series).extend({
   name: z.string().min(1, "Series name is required"),
-  logo: z.string().min(1, "Logo URL is required"),
+  logo: z.string().optional(),  // Changed to optional
   description: z.string().optional(),
 });
 
