@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,7 +22,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { InsertMediaItem, insertMediaItemSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2 } from "lucide-react";
+import { Loader2, Image as ImageIcon, Film } from "lucide-react";
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -37,14 +37,16 @@ export default function MediaUploadModal({
 }: MediaUploadModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
 
   const form = useForm<InsertMediaItem>({
     resolver: zodResolver(insertMediaItemSchema),
     defaultValues: {
       eventId,
       type: "image",
-      url: "/attached_assets/%2389_3.png",
-      thumbnail: "/attached_assets/%2389_3.png",
+      url: "/attached_assets/%2389_3.png", // Default for testing
+      thumbnail: "/attached_assets/%2389_3.png", // Default for testing
       caption: "",
       photographer: "",
       tags: [],
@@ -60,6 +62,8 @@ export default function MediaUploadModal({
       queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/media`] });
       onOpenChange(false);
       form.reset();
+      setMediaPreview(null);
+      setThumbnailPreview(null);
       toast({
         title: "Success",
         description: "Media item uploaded successfully",
@@ -91,12 +95,14 @@ export default function MediaUploadModal({
   useEffect(() => {
     if (!open) {
       form.reset();
+      setMediaPreview(null);
+      setThumbnailPreview(null);
     }
   }, [open, form]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Upload Media</DialogTitle>
         </DialogHeader>
@@ -117,15 +123,58 @@ export default function MediaUploadModal({
             </Select>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Media File</Label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  {form.getValues("type") === "image" ? (
+                    <div className="h-40 border rounded-lg overflow-hidden bg-black/20">
+                      {mediaPreview ? (
+                        <img 
+                          src={mediaPreview} 
+                          alt="Media preview" 
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-muted-foreground">
+                          <ImageIcon className="h-8 w-8" />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="h-40 border rounded-lg flex items-center justify-center bg-black/20">
+                      <Film className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Thumbnail</Label>
+              <div className="h-40 border rounded-lg overflow-hidden bg-black/20">
+                {thumbnailPreview ? (
+                  <img 
+                    src={thumbnailPreview} 
+                    alt="Thumbnail preview" 
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <ImageIcon className="h-8 w-8" />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="caption">Caption</Label>
             <Textarea
               id="caption"
               {...form.register("caption")}
             />
-            {form.formState.errors.caption && (
-              <p className="text-sm text-red-500">{form.formState.errors.caption.message}</p>
-            )}
           </div>
 
           <div className="space-y-2">
