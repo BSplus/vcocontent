@@ -119,8 +119,8 @@ export default function HomePage() {
                 alt="VCO Logo"
                 className="h-8 w-auto object-contain hover:opacity-90 transition-opacity"
               />
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/80 text-transparent bg-clip-text">
-                Media Database
+              <h1 className="text-2xl font-[Orbitron] text-[#4B71FF]">
+                MEDIA DATABASE
               </h1>
             </div>
             <nav className="hidden md:flex gap-6">
