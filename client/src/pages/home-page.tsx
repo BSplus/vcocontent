@@ -12,7 +12,7 @@ import {
 import { Event, MediaItem } from "@shared/schema";
 import { Loader2, Search, Calendar, Trophy, History, Clock, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import MediaGrid from "@/components/media-grid";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
@@ -34,9 +34,9 @@ export default function HomePage() {
     queryKey: ["/api/events"]
   });
 
-  // Enhanced search function for media items
+  // Filter media items
   const filteredMediaItems = allMediaItems?.filter(item => {
-    // Type filtering first
+    // Apply type filter first
     if (mediaFilter !== "all" && item.type !== mediaFilter) {
       return false;
     }
@@ -46,33 +46,34 @@ export default function HomePage() {
       return true;
     }
 
-    // Case-insensitive search across all relevant fields
     const query = searchQuery.toLowerCase().trim();
+    console.log('Checking item:', item.caption, 'for query:', query);
 
-    // Search in caption (main search field)
-    if (item.caption?.toLowerCase().includes(query)) {
-      return true;
-    }
+    // Check each field individually and log the results
+    const captionMatch = item.caption?.toLowerCase().includes(query);
+    const photographerMatch = item.photographer?.toLowerCase().includes(query);
+    const tagsMatch = item.tags?.some(tag => tag.toLowerCase().includes(query));
 
-    // Search in photographer name
-    if (item.photographer?.toLowerCase().includes(query)) {
-      return true;
-    }
+    console.log('Matches:', {
+      caption: captionMatch,
+      photographer: photographerMatch,
+      tags: tagsMatch
+    });
 
-    // Search in tags
-    if (item.tags?.some(tag => tag.toLowerCase().includes(query))) {
-      return true;
-    }
-
-    return false;
+    return captionMatch || photographerMatch || tagsMatch;
   }) || [];
 
-  // Debug logging
-  console.log('Search Query:', searchQuery);
-  console.log('Media Filter:', mediaFilter);
-  console.log('Is Search Active:', isSearchActive);
-  console.log('Total Media Items:', allMediaItems?.length);
-  console.log('Filtered Items:', filteredMediaItems.length);
+  // Move debug logging before the return statement
+  useEffect(() => {
+    console.log('Current Search State:', {
+      searchQuery,
+      mediaFilter,
+      isSearchActive,
+      totalItems: allMediaItems?.length,
+      filteredItems: filteredMediaItems.length,
+      sampleItems: allMediaItems?.slice(0, 2)
+    });
+  }, [searchQuery, mediaFilter, isSearchActive, allMediaItems, filteredMediaItems]);
 
   // Event categorization
   const today = new Date();
