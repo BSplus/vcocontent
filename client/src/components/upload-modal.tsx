@@ -22,7 +22,6 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Event, InsertEvent, insertEventSchema, Series } from "@shared/schema";
 import { Loader2, Upload, Image as ImageIcon } from "lucide-react";
-import { generateEventThumbnail } from "@/lib/ai-thumbnail";
 
 interface UploadModalProps {
   open: boolean;
@@ -40,7 +39,6 @@ export default function UploadModal({
   const isEditing = eventId !== null;
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
-  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
   // Fetch event data when editing
   const { data: eventData } = useQuery<Event>({
@@ -149,7 +147,6 @@ export default function UploadModal({
   const updateMutation = useMutation({
     mutationFn: async (id: number) => {
       const formData = form.getValues();
-      const customThumbnail = thumbnailPreview;
 
       const res = await fetch(`/api/events/${id}`, {
         method: "PUT",
@@ -162,7 +159,7 @@ export default function UploadModal({
           description: formData.description,
           date: new Date(formData.date),
           coverImage: formData.coverImage,
-          customThumbnail: customThumbnail,
+          customThumbnail: thumbnailPreview,
           seriesId: formData.seriesId,
         }),
       });
@@ -297,14 +294,7 @@ export default function UploadModal({
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
-                  {isGeneratingAI ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <Loader2 className="h-8 w-8 animate-spin" />
-                      <p className="text-sm">Generating AI thumbnail...</p>
-                    </div>
-                  ) : (
-                    <ImageIcon className="h-8 w-8" />
-                  )}
+                  <ImageIcon className="h-8 w-8" />
                 </div>
               )}
               <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -319,9 +309,6 @@ export default function UploadModal({
                 </Button>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Optional: Upload a custom thumbnail. For future events, an AI-generated thumbnail will be created automatically.
-            </p>
           </div>
 
           <div className="flex justify-end gap-2">
@@ -329,19 +316,19 @@ export default function UploadModal({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={createMutation.isPending || updateMutation.isPending || isGeneratingAI}
+              disabled={createMutation.isPending || updateMutation.isPending}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={createMutation.isPending || updateMutation.isPending || isGeneratingAI}
+              disabled={createMutation.isPending || updateMutation.isPending}
               className="bg-primary text-black hover:bg-primary/90"
             >
-              {createMutation.isPending || updateMutation.isPending || isGeneratingAI ? (
+              {createMutation.isPending || updateMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  {isGeneratingAI ? "Generating..." : isEditing ? "Updating..." : "Creating..."}
+                  {isEditing ? "Updating..." : "Creating..."}
                 </>
               ) : isEditing ? (
                 "Update Event"
