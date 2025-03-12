@@ -43,17 +43,22 @@ export default function AdminDashboard() {
   // Sort events by date (newest first)
   const sortedEvents = events?.sort((a, b) =>
     new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  ) || [];
 
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (eventId: number) => {
-      const res = await apiRequest("DELETE", `/api/events/${eventId}`);
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to delete event");
+      try {
+        const res = await apiRequest("DELETE", `/api/events/${eventId}`);
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.message || "Failed to delete event");
+        }
+        return res.json();
+      } catch (error) {
+        console.error('Delete event error:', error);
+        throw error;
       }
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
@@ -61,13 +66,16 @@ export default function AdminDashboard() {
         title: "Success",
         description: "Event deleted successfully",
       });
+      setEventToDelete(null); // Reset the state after successful deletion
     },
     onError: (error: Error) => {
+      console.error('Delete mutation error:', error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to delete event",
         variant: "destructive",
       });
+      setEventToDelete(null); // Reset the state even on error
     },
   });
 
@@ -85,6 +93,15 @@ export default function AdminDashboard() {
         description: "Failed to create demo content",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleDeleteEvent = async (event: Event) => {
+    try {
+      await deleteMutation.mutateAsync(event.id);
+    } catch (error) {
+      console.error('Handle delete event error:', error);
+      // Error is handled in mutation's onError callback
     }
   };
 
@@ -129,7 +146,7 @@ export default function AdminDashboard() {
               <div className="flex justify-center p-12">
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
-            ) : !sortedEvents?.length ? (
+            ) : !sortedEvents.length ? (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <p className="text-muted-foreground mb-4">
@@ -226,10 +243,7 @@ export default function AdminDashboard() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-500 hover:bg-red-600"
-              onClick={() => {
-                eventToDelete && deleteMutation.mutateAsync(eventToDelete.id);
-                setEventToDelete(null);
-              }}
+              onClick={() => eventToDelete && handleDeleteEvent(eventToDelete)}
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
