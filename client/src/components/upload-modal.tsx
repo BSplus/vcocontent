@@ -135,16 +135,31 @@ export default function UploadModal({
 
   const updateMutation = useMutation({
     mutationFn: async (data: InsertEvent) => {
-      console.log('Updating event with data:', data);
-      const res = await apiRequest("PUT", `/api/events/${eventId}`, {
-        ...data,
-        customThumbnail: form.getValues("customThumbnail"), // Explicitly include thumbnail
-      });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to update event");
+      try {
+        // Use simple PUT request with proper date formatting
+        const res = await fetch(`/api/events/${eventId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            ...data,
+            date: new Date(data.date),
+            customThumbnail: form.getValues("customThumbnail"),
+          }),
+        });
+
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.message || "Failed to update event");
+        }
+
+        return eventId; // Just return the ID on success
+      } catch (error) {
+        console.error('Event update error:', error);
+        throw error;
       }
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
