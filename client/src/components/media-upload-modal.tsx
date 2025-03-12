@@ -66,16 +66,19 @@ export default function MediaUploadModal({
 
   //Updated function for better video type validation
   function isValidVideoType(file: File): boolean {
+    // Check file extension first
+    const fileName = file.name.toLowerCase();
+    if (fileName.endsWith('.mp4') || fileName.endsWith('.mov')) {
+      return true;
+    }
+    // Fallback to MIME type check
     const validTypes = [
       'video/mp4',
       'video/quicktime', // For .mov files
       'video/webm',
       'video/ogg'
     ];
-    // Check both MIME type and file extension
-    return validTypes.includes(file.type) ||
-      file.name.toLowerCase().endsWith('.mov') ||
-      file.name.toLowerCase().endsWith('.mp4');
+    return validTypes.includes(file.type);
   }
 
   function isValidImageType(file: File): boolean {
@@ -97,7 +100,7 @@ export default function MediaUploadModal({
       if (!isValid) {
         toast({
           title: "Error",
-          description: `Invalid file type: ${file.name}. Please upload ${form.getValues("type") === "video" ? "MP4, MOV, WebM, or OGG" : "JPG, PNG, or GIF"} files only.`,
+          description: `Invalid file type: ${file.name}. Please upload ${form.getValues("type") === "video" ? "MP4 or MOV" : "JPG, PNG, or GIF"} files only.`,
           variant: "destructive",
         });
         continue;
@@ -249,7 +252,7 @@ export default function MediaUploadModal({
             type="file"
             ref={mediaInputRef}
             className="hidden"
-            accept={form.getValues("type") === "image" ? "image/*" : "video/*,.mp4,.mov,.webm,.ogg"} // Updated accept attribute
+            accept={form.getValues("type") === "image" ? "image/*" : ".mp4,.mov"}
             onChange={handleFilesChange}
             multiple
           />
@@ -301,7 +304,7 @@ export default function MediaUploadModal({
                   <Upload className="h-8 w-8" />
                   <p>Click or drag files here to upload</p>
                   <p className="text-sm text-muted-foreground">
-                    {form.getValues("type") === "video" ? "MP4, MOV, WebM, or Ogg" : "JPG, PNG, or GIF"}
+                    {form.getValues("type") === "video" ? "MP4 or MOV" : "JPG, PNG, or GIF"}
                   </p>
                 </div>
               </div>
