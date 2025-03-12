@@ -1,13 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Event, MediaItem } from "@shared/schema";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, Search } from "lucide-react";
 import MediaGrid from "@/components/media-grid";
+import { useState } from "react";
 
 export default function EventGallery() {
   const [, params] = useRoute<{ id: string }>("/events/:id");
   const eventId = parseInt(params?.id || "0");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [mediaTypeFilter, setMediaTypeFilter] = useState<"all" | "image" | "video">("all");
 
   const { data: event, isLoading: eventLoading } = useQuery<Event>({
     queryKey: [`/api/events/${eventId}`],
@@ -15,10 +26,22 @@ export default function EventGallery() {
 
   const { data: mediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: [`/api/events/${eventId}/media`],
-    enabled: !!eventId, // Only fetch media when we have an eventId
+    enabled: !!eventId,
   });
 
   const isLoading = eventLoading || mediaLoading;
+
+  // Filter media items based on search query and type
+  const filteredMediaItems = mediaItems?.filter(item => {
+    const matchesSearch = !searchQuery || 
+      (item.caption?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       item.photographer?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       item.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())));
+
+    const matchesType = mediaTypeFilter === "all" || item.type === mediaTypeFilter;
+
+    return matchesSearch && matchesType;
+  });
 
   if (isLoading) {
     return (
@@ -67,14 +90,39 @@ export default function EventGallery() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        {!mediaItems?.length ? (
+        <div className="flex flex-col md:flex-row gap-4 mb-8">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by caption, photographer, or tags..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Select
+            value={mediaTypeFilter}
+            onValueChange={(value) => setMediaTypeFilter(value as "all" | "image" | "video")}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Filter by type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Media</SelectItem>
+              <SelectItem value="image">Photos Only</SelectItem>
+              <SelectItem value="video">Videos Only</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {!filteredMediaItems?.length ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg">
-              No media items available for this event yet.
+              {mediaItems?.length ? "No matching media items found." : "No media items available for this event yet."}
             </p>
           </div>
         ) : (
-          <MediaGrid items={mediaItems} />
+          <MediaGrid items={filteredMediaItems} />
         )}
       </main>
     </div>
