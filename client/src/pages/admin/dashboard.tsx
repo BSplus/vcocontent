@@ -49,12 +49,12 @@ export default function AdminDashboard() {
   const deleteMutation = useMutation({
     mutationFn: async (eventId: number) => {
       try {
-        const res = await apiRequest("DELETE", `/api/events/${eventId}`);
+        const res = await apiRequest("DELETE", `/api/events/${eventId}`, null);
         if (!res.ok) {
           const error = await res.json();
           throw new Error(error.message || "Failed to delete event");
         }
-        return res.json();
+        return await res.json();
       } catch (error) {
         console.error('Delete event error:', error);
         throw error;
@@ -66,7 +66,7 @@ export default function AdminDashboard() {
         title: "Success",
         description: "Event deleted successfully",
       });
-      setEventToDelete(null); // Reset the state after successful deletion
+      setEventToDelete(null);
     },
     onError: (error: Error) => {
       console.error('Delete mutation error:', error);
@@ -75,7 +75,7 @@ export default function AdminDashboard() {
         description: error.message || "Failed to delete event",
         variant: "destructive",
       });
-      setEventToDelete(null); // Reset the state even on error
+      setEventToDelete(null);
     },
   });
 
@@ -101,7 +101,6 @@ export default function AdminDashboard() {
       await deleteMutation.mutateAsync(event.id);
     } catch (error) {
       console.error('Handle delete event error:', error);
-      // Error is handled in mutation's onError callback
     }
   };
 
