@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, Pencil, Trash } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash, Trophy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -114,10 +114,12 @@ export default function SeriesManager() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingSeries?.name || !editingSeries.logo) {
+
+    // Only validate the name field
+    if (!editingSeries?.name) {
       toast({
         title: "Missing fields",
-        description: "Please fill in all required fields",
+        description: "Please enter a series name",
         variant: "destructive",
       });
       return;
@@ -181,7 +183,7 @@ export default function SeriesManager() {
                   onChange={handleLogoChange}
                 />
                 <p className="text-sm text-muted-foreground mt-1">
-                  Upload a PNG logo with transparent background
+                  Upload a PNG logo with transparent background (optional)
                 </p>
               </div>
               {editingSeries.logo && (
@@ -221,11 +223,17 @@ export default function SeriesManager() {
           <Card key={s.id} className="bg-black/40 border-primary/20">
             <CardContent className="flex items-center justify-between py-6">
               <div className="flex items-center gap-4">
-                <img
-                  src={s.logo}
-                  alt={s.name}
-                  className="h-8 object-contain"
-                />
+                {s.logo ? (
+                  <img
+                    src={s.logo}
+                    alt={s.name}
+                    className="h-8 object-contain"
+                  />
+                ) : (
+                  <div className="h-8 w-8 bg-primary/20 rounded flex items-center justify-center">
+                    <Trophy className="h-4 w-4 text-primary" />
+                  </div>
+                )}
                 <div>
                   <h3 className="font-semibold">{s.name}</h3>
                   {s.description && (
