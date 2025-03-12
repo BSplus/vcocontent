@@ -35,11 +35,11 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
 });
 
-export const insertEventSchema = createInsertSchema(events).pick({
-  title: true,
-  description: true,
-  coverImage: true,
-  date: true,
+export const insertEventSchema = createInsertSchema(events).extend({
+  title: z.string().min(1, "Title is required"),
+  description: z.string().min(1, "Description is required"),
+  coverImage: z.string().optional(),
+  date: z.coerce.date()
 });
 
 export const insertMediaItemSchema = createInsertSchema(mediaItems).pick({

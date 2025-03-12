@@ -37,20 +37,15 @@ export default function UploadModal({
     defaultValues: {
       title: "",
       description: "",
-      date: new Date().toISOString().split('T')[0],
+      date: new Date(),
       coverImage: "/attached_assets/%2389_3.png",
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEvent) => {
-      // Convert the date string to ISO format
-      const formattedData = {
-        ...data,
-        date: new Date(data.date).toISOString(),
-      };
-      console.log('Submitting event data:', formattedData);
-      const res = await apiRequest("POST", "/api/events", formattedData);
+      console.log('Submitting event data:', data);
+      const res = await apiRequest("POST", "/api/events", data);
       return res.json();
     },
     onSuccess: () => {
@@ -74,11 +69,7 @@ export default function UploadModal({
 
   const updateMutation = useMutation({
     mutationFn: async (data: InsertEvent) => {
-      const formattedData = {
-        ...data,
-        date: new Date(data.date).toISOString(),
-      };
-      const res = await apiRequest("PUT", `/api/events/${eventId}`, formattedData);
+      const res = await apiRequest("PUT", `/api/events/${eventId}`, data);
       return res.json();
     },
     onSuccess: () => {
@@ -132,16 +123,20 @@ export default function UploadModal({
             <Input
               id="title"
               {...form.register("title")}
-              error={form.formState.errors.title?.message}
             />
+            {form.formState.errors.title && (
+              <p className="text-sm text-red-500">{form.formState.errors.title.message}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
               {...form.register("description")}
-              error={form.formState.errors.description?.message}
             />
+            {form.formState.errors.description && (
+              <p className="text-sm text-red-500">{form.formState.errors.description.message}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="date">Date</Label>
@@ -149,8 +144,10 @@ export default function UploadModal({
               id="date"
               type="date"
               {...form.register("date")}
-              error={form.formState.errors.date?.message}
             />
+            {form.formState.errors.date && (
+              <p className="text-sm text-red-500">{form.formState.errors.date.message}</p>
+            )}
           </div>
           <div className="flex justify-end gap-2">
             <Button
