@@ -42,7 +42,7 @@ export default function EventCard({ event }: EventCardProps) {
           {event.title}
         </h3>
         <p className="text-sm text-foreground/60 mb-4">
-          {eventDate.toLocaleDateString(undefined, { 
+          {eventDate.toLocaleDateString('en-US', { 
             weekday: 'long',
             year: 'numeric',
             month: 'long',

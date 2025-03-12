@@ -59,7 +59,7 @@ export default function HomePage() {
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-3">
               <img
-                src="/VCO_2021_reg_White_Trans.png"
+                src="/VCO_2021_reg_SUB_White.png"
                 alt="VCO Logo"
                 className="h-8 w-auto"
               />
@@ -71,15 +71,15 @@ export default function HomePage() {
               <button onClick={() => scrollToSection('home')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Home
               </button>
-              <button onClick={() => scrollToSection('current')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              <Link href="/current" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Current Events
-              </button>
-              <button onClick={() => scrollToSection('upcoming')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              </Link>
+              <Link href="/upcoming" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Upcoming Events
-              </button>
-              <button onClick={() => scrollToSection('archive')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              </Link>
+              <Link href="/archive" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Archive
-              </button>
+              </Link>
             </nav>
           </div>
           <div className="flex gap-4 items-center">
