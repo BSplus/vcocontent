@@ -19,13 +19,22 @@ export function SearchInput({ items, value, onChange, className }: SearchInputPr
   const [fuse, setFuse] = useState<Fuse<MediaItem>>();
   const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
 
-  // Initialize Fuse instance
+  // Initialize Fuse instance with more lenient settings
   useEffect(() => {
     const fuseInstance = new Fuse(items, {
-      keys: ['caption', 'photographer', 'tags'],
-      threshold: 0.3,
+      keys: [
+        { name: 'caption', weight: 2 },
+        { name: 'photographer', weight: 1 },
+        { name: 'tags', weight: 1 }
+      ],
+      threshold: 0.4, // More lenient matching
+      distance: 100, // Allow for more distance between characters
       ignoreLocation: true,
-      findAllMatches: true,
+      includeScore: true,
+      useExtendedSearch: true,
+      minMatchCharLength: 2,
+      shouldSort: true,
+      findAllMatches: true
     });
     setFuse(fuseInstance);
   }, [items]);
@@ -33,26 +42,30 @@ export function SearchInput({ items, value, onChange, className }: SearchInputPr
   // Handle search and generate suggestions
   const handleSearch = useCallback((searchValue: string) => {
     onChange(searchValue);
-    
+
     if (!searchValue.trim() || !fuse) {
       setSuggestions([]);
       return;
     }
 
     const results = fuse.search(searchValue);
+    console.log('Search results:', results); // Debug log
+
+    // Get top 5 unique results
     const uniqueResults = Array.from(
-      new Set(results.map(result => result.item))
+      new Map(results.map(result => [result.item.id, result.item]))
     ).slice(0, 5);
-    
-    setSuggestions(uniqueResults);
+
+    setSuggestions(uniqueResults.map(([_, item]) => item));
   }, [fuse, onChange]);
 
   // Generate a preview text for each suggestion
   const getSuggestionPreview = (item: MediaItem) => {
-    if (item.caption) return item.caption;
-    if (item.photographer) return `📸 ${item.photographer}`;
-    if (item.tags?.length) return `🏷️ ${item.tags.join(', ')}`;
-    return 'Media item';
+    const parts = [];
+    if (item.caption) parts.push(item.caption);
+    if (item.photographer) parts.push(`📸 ${item.photographer}`);
+    if (item.tags?.length) parts.push(`🏷️ ${item.tags.join(', ')}`);
+    return parts.length ? parts.join(' - ') : 'Media item';
   };
 
   return (
@@ -80,20 +93,25 @@ export function SearchInput({ items, value, onChange, className }: SearchInputPr
           <CommandEmpty>No results found.</CommandEmpty>
           {suggestions.length > 0 && (
             <CommandGroup heading="Suggestions">
-              {suggestions.map((item, index) => (
+              {suggestions.map((item) => (
                 <CommandItem
-                  key={`${item.id}-${index}`}
+                  key={item.id}
                   onSelect={() => {
                     onChange(getSuggestionPreview(item));
                     setOpen(false);
                   }}
-                  className="flex flex-col items-start"
+                  className="flex flex-col items-start gap-1"
                 >
-                  <span className="font-medium">{getSuggestionPreview(item)}</span>
-                  {item.tags && item.tags.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{item.caption || 'Untitled'}</span>
+                    {item.type === 'video' && <span className="text-xs bg-primary/20 px-1.5 py-0.5 rounded">Video</span>}
+                  </div>
+                  {(item.photographer || item.tags?.length > 0) && (
                     <span className="text-xs text-muted-foreground">
-                      Tags: {item.tags.slice(0, 3).join(', ')}
-                      {item.tags.length > 3 && '...'}
+                      {[
+                        item.photographer && `📸 ${item.photographer}`,
+                        item.tags?.length && `🏷️ ${item.tags.join(', ')}`
+                      ].filter(Boolean).join(' · ')}
                     </span>
                   )}
                 </CommandItem>
