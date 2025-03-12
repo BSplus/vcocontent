@@ -82,8 +82,9 @@ export default function MediaUploadModal({
   }
 
   function isValidImageType(file: File): boolean {
-    const validTypes = ['image/jpeg', 'image/png', 'image/gif'];
-    return validTypes.includes(file.type);
+    // Add zip to valid types
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/zip'];
+    return validTypes.includes(file.type) || file.name.toLowerCase().endsWith('.zip');
   }
 
   const handleFilesChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,7 +93,17 @@ export default function MediaUploadModal({
     const newUploads: FileUpload[] = [];
 
     for (const file of files) {
-      // Validate file type
+      // Handle ZIP files
+      if (file.type === 'application/zip' || file.name.toLowerCase().endsWith('.zip')) {
+        toast({
+          title: "ZIP files",
+          description: "ZIP file upload is not yet supported. Please upload individual image files.",
+          variant: "destructive",
+        });
+        continue;
+      }
+
+      // Rest of the validation logic remains unchanged
       const isValid = form.getValues("type") === "video"
         ? isValidVideoType(file)
         : isValidImageType(file);
@@ -252,7 +263,7 @@ export default function MediaUploadModal({
             type="file"
             ref={mediaInputRef}
             className="hidden"
-            accept={form.getValues("type") === "image" ? "image/*" : ".mp4,.mov"}
+            accept={form.getValues("type") === "image" ? "image/*,.zip" : ".mp4,.mov"}
             onChange={handleFilesChange}
             multiple
           />
