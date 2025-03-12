@@ -55,7 +55,7 @@ export default function HomePage() {
     // Search in photographer name
     const photographerMatch = item.photographer?.toLowerCase().includes(query) || false;
 
-    // Search in tags
+    // Search in tags (if tags exist)
     const tagsMatch = item.tags?.some(tag =>
       tag.toLowerCase().includes(query)
     ) || false;
