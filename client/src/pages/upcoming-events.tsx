@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Event } from "@shared/schema";
 import { Loader2, Calendar, ArrowLeft, Clock } from "lucide-react";
-import Footer from "@/components/Footer"; // Assuming Footer component is imported from here
+import Footer from "@/components/footer"; // Fixed case in import
 
 
 export default function UpcomingEventsPage() {
@@ -12,7 +12,7 @@ export default function UpcomingEventsPage() {
   });
 
   const today = new Date();
-  
+
   // Filter and sort upcoming events
   const upcomingEvents = events?.filter(event => 
     new Date(event.date) > today

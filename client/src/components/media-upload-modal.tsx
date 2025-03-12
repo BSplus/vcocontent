@@ -64,13 +64,37 @@ export default function MediaUploadModal({
     },
   });
 
+  //Updated function
+  function isValidVideoType(file: File): boolean {
+    const validTypes = ['video/mp4', 'video/webm', 'video/ogg'];
+    return validTypes.includes(file.type);
+  }
+
+  function isValidImageType(file: File): boolean {
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif'];
+    return validTypes.includes(file.type);
+  }
+
   const handleFilesChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     const maxSize = form.getValues("type") === "video" ? 200 * 1024 * 1024 : 10 * 1024 * 1024;
-
     const newUploads: FileUpload[] = [];
 
     for (const file of files) {
+      // Validate file type
+      const isValid = form.getValues("type") === "video"
+        ? isValidVideoType(file)
+        : isValidImageType(file);
+
+      if (!isValid) {
+        toast({
+          title: "Error",
+          description: `Invalid file type: ${file.name}. Please upload ${form.getValues("type") === "video" ? "MP4, WebM, or OGG" : "JPG, PNG, or GIF"} files only.`,
+          variant: "destructive",
+        });
+        continue;
+      }
+
       if (file.size > maxSize) {
         const sizeInMB = (file.size / (1024 * 1024)).toFixed(1);
         const limit = form.getValues("type") === "video" ? "200MB" : "10MB";
@@ -88,12 +112,10 @@ export default function MediaUploadModal({
         reader.readAsDataURL(file);
       });
 
-      // Try to extract IPTC metadata for images
       if (form.getValues("type") === "image") {
         try {
           const metadata = await extractIPTCMetadata(file);
           if (metadata) {
-            // Update form with the first image's metadata if not already set
             if (!form.getValues("caption") && metadata.caption) {
               form.setValue("caption", metadata.caption);
             }
@@ -146,7 +168,6 @@ export default function MediaUploadModal({
           upload.status = 'uploading';
           setUploads([...uploads]);
 
-          // Process tags
           const tags = typeof form.getValues("tags") === 'string'
             ? form.getValues("tags").split(',').map(tag => tag.trim()).filter(Boolean)
             : (form.getValues("tags") || []);

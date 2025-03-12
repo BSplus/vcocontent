@@ -10,9 +10,19 @@ import {
   Trophy,
   History,
   Clock,
-  ChevronRight
+  ChevronRight,
+  Search
 } from "lucide-react";
 import Footer from "@/components/footer"; // Assuming Footer component is imported from here
+import { useState } from 'react';
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 
 export default function HomePage() {
@@ -32,10 +42,24 @@ export default function HomePage() {
   const today = new Date();
   const fourWeeksAgo = new Date(today.getTime() - (28 * 24 * 60 * 60 * 1000));
 
+  // Add state for search and filter
+  const [searchQuery, setSearchQuery] = useState("");
+  const [mediaFilter, setMediaFilter] = useState<"all" | "image" | "video">("all");
+
+  // Filter events based on search query and media type
+  const filteredEvents = events?.filter(event => {
+    const matchesSearch = searchQuery === "" ||
+      event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      event.description.toLowerCase().includes(searchQuery.toLowerCase());
+
+    return matchesSearch;
+  }) || [];
+
   // Sort events by date
-  const sortedEvents = events?.sort((a, b) =>
+  const sortedEvents = filteredEvents.sort((a, b) =>
     new Date(b.date).getTime() - new Date(a.date).getTime()
-  ) || [];
+  );
+
 
   // Current events (last 4 weeks)
   const currentEvents = sortedEvents.filter(event => {
@@ -61,7 +85,7 @@ export default function HomePage() {
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-3">
               <img
-                src="/VCO_2021_reg_SUB_White.png"
+                src="/attached_assets/VCO_2021_reg_White_Trans.png"
                 alt="VCO Logo"
                 className="h-8 w-auto"
               />
@@ -73,13 +97,13 @@ export default function HomePage() {
               <button onClick={() => scrollToSection('home')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Home
               </button>
-              <Link href="/current" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              <Link href="/current-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Current Events
               </Link>
-              <Link href="/upcoming" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              <Link href="/upcoming-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Upcoming Events
               </Link>
-              <Link href="/archive" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              <Link href="/archive-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Archive
               </Link>
             </nav>
@@ -113,6 +137,29 @@ export default function HomePage() {
       </header>
 
       <main id="home" className="container mx-auto px-4 py-8 space-y-16">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex gap-4 mb-8">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Input
+                placeholder="Search events..."
+                className="pl-10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <Select value={mediaFilter} onValueChange={(value: "all" | "image" | "video") => setMediaFilter(value)}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Media</SelectItem>
+                <SelectItem value="image">Images Only</SelectItem>
+                <SelectItem value="video">Videos Only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
         {isLoading ? (
           <div className="flex justify-center p-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
