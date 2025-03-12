@@ -12,7 +12,7 @@ export default function EventCard({ event }: EventCardProps) {
     <Card className="overflow-hidden">
       <div className="relative aspect-video">
         <img
-          src={event.coverImage || `https://picsum.photos/seed/${event.id}/800/400`}
+          src={event.coverImage || "/attached_assets/%2389_3.png"}
           alt={event.title}
           className="object-cover w-full h-full"
         />

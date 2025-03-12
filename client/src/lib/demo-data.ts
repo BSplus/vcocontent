@@ -5,14 +5,14 @@ const demoEvents: InsertEvent[] = [
   {
     title: "VCO Cup Finals 2025",
     description: "The ultimate showdown of sim racing talent at the VCO Cup Finals.",
-    date: new Date("2025-03-15").toISOString(),
-    coverImage: "https://picsum.photos/seed/vco1/800/400"
+    date: new Date("2025-03-15"),
+    coverImage: "/attached_assets/%2389_3.png"
   },
   {
     title: "SimRacing World Championship",
     description: "Global sim racing stars compete for the championship title.",
-    date: new Date("2025-03-20").toISOString(),
-    coverImage: "https://picsum.photos/seed/vco2/800/400"
+    date: new Date("2025-03-20"),
+    coverImage: "/attached_assets/%2389_3.png"
   }
 ];
 
@@ -30,8 +30,8 @@ async function createDemoMediaItem(eventId: number, index: number) {
   const mediaItem: InsertMediaItem = {
     eventId,
     type: index % 3 === 0 ? "video" : "image",
-    url: `https://picsum.photos/seed/media${eventId}${index}/1200/800`,
-    thumbnail: `https://picsum.photos/seed/media${eventId}${index}/400/400`,
+    url: "/attached_assets/%2389_3.png",
+    thumbnail: "/attached_assets/%2389_3.png",
     caption: `Racing moment ${index + 1}`,
     photographer: `Photographer ${index % 3 + 1}`,
     tags: ["racing", "competition", `tag${index + 1}`]
