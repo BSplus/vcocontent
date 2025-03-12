@@ -113,7 +113,11 @@ export default function MediaUploadModal({
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertMediaItem) => {
-      console.log('Submitting media data:', data);
+      console.log('Submitting media data:', {
+        ...data,
+        url: data.url.substring(0, 100) + '...',
+        thumbnail: data.thumbnail.substring(0, 100) + '...'
+      });
       const res = await apiRequest("POST", "/api/media", data);
       return res.json();
     },
@@ -132,7 +136,7 @@ export default function MediaUploadModal({
       console.error('Media upload error:', error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to upload media",
         variant: "destructive",
       });
     },
@@ -151,10 +155,15 @@ export default function MediaUploadModal({
 
       const formattedData = {
         ...data,
+        eventId, // Ensure eventId is included
         tags: typeof data.tags === 'string' ? data.tags.split(',').map(tag => tag.trim()) : data.tags || [],
       };
 
-      console.log('Submitting formatted data:', formattedData);
+      console.log('Submitting formatted data:', {
+        ...formattedData,
+        url: formattedData.url.substring(0, 100) + '...',
+        thumbnail: formattedData.thumbnail.substring(0, 100) + '...'
+      });
       await createMutation.mutateAsync(formattedData);
     } catch (error) {
       console.error('Form submission error:', error);
@@ -196,6 +205,7 @@ export default function MediaUploadModal({
               </SelectContent>
             </Select>
           </div>
+
           <Input
             type="file"
             ref={mediaInputRef}
