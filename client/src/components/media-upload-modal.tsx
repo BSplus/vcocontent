@@ -23,12 +23,20 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { InsertMediaItem, insertMediaItemSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Image as ImageIcon, Film, Upload } from "lucide-react";
+import { Loader2, Image as ImageIcon, Film, Upload, X } from "lucide-react";
 
 interface MediaUploadModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   eventId: number;
+}
+
+interface FileUpload {
+  file: File;
+  preview: string;
+  progress: number;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  error?: string;
 }
 
 export default function MediaUploadModal({
@@ -38,11 +46,9 @@ export default function MediaUploadModal({
 }: MediaUploadModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
-  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const [uploads, setUploads] = useState<FileUpload[]>([]);
   const mediaInputRef = useRef<HTMLInputElement>(null);
-  const thumbnailInputRef = useRef<HTMLInputElement>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
 
   const form = useForm<InsertMediaItem>({
     resolver: zodResolver(insertMediaItemSchema),
@@ -57,194 +63,126 @@ export default function MediaUploadModal({
     },
   });
 
-  const handleFileChange = (type: 'media' | 'thumbnail') => (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const MAX_FILE_SIZE = file.type.startsWith('video/')
-        ? 200 * 1024 * 1024  // 200MB for videos
-        : 10 * 1024 * 1024;  // 10MB for images
+  const handleFilesChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    const maxSize = form.getValues("type") === "video" ? 200 * 1024 * 1024 : 10 * 1024 * 1024;
 
-      if (file.size > MAX_FILE_SIZE) {
+    const newUploads: FileUpload[] = [];
+
+    for (const file of files) {
+      if (file.size > maxSize) {
         const sizeInMB = (file.size / (1024 * 1024)).toFixed(1);
-        const limit = file.type.startsWith('video/') ? '200MB' : '10MB';
+        const limit = form.getValues("type") === "video" ? "200MB" : "10MB";
         toast({
           title: "Error",
-          description: `File size too large. Maximum size is ${limit}. Your file is ${sizeInMB}MB`,
+          description: `File ${file.name} is too large. Maximum size is ${limit}. File size: ${sizeInMB}MB`,
           variant: "destructive",
         });
-        event.target.value = ''; // Reset input
-        return;
+        continue;
       }
 
-      // Calculate approximate base64 size
-      const base64Size = Math.round((file.size * 4) / 3);
-      const base64Limit = file.type.startsWith('video/')
-        ? 190 * 1024 * 1024  // 190MB base64 limit for videos
-        : 45 * 1024 * 1024;  // 45MB base64 limit for images
+      const preview = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
 
-      if (base64Size > base64Limit) {
-        toast({
-          title: "Error",
-          description: "File will be too large after encoding. Please choose a smaller file.",
-          variant: "destructive",
-        });
-        event.target.value = ''; // Reset input
-        return;
-      }
-
-      console.log(`Selected ${type} file:`, file.name, `(${(file.size / (1024 * 1024)).toFixed(1)}MB)`);
-      const reader = new FileReader();
-
-      // Add progress event
-      reader.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const progress = (e.loaded / e.total) * 50; // First 50% for file reading
-          setUploadProgress(progress);
-        }
-      };
-
-      reader.onloadend = () => {
-        const dataUrl = reader.result as string;
-        console.log(`Converted ${type} file to data URL`);
-        if (type === 'media') {
-          setMediaPreview(dataUrl);
-          form.setValue('url', dataUrl);
-          if (!thumbnailPreview) {
-            setThumbnailPreview(dataUrl);
-            form.setValue('thumbnail', dataUrl);
-          }
-        } else {
-          setThumbnailPreview(dataUrl);
-          form.setValue('thumbnail', dataUrl);
-        }
-      };
-      reader.readAsDataURL(file);
+      newUploads.push({
+        file,
+        preview,
+        progress: 0,
+        status: 'pending'
+      });
     }
+
+    setUploads(prev => [...prev, ...newUploads]);
   };
 
-  const triggerFileInput = (type: 'media' | 'thumbnail') => {
-    console.log(`Triggering ${type} file input`);
-    if (type === 'media') {
-      mediaInputRef.current?.click();
-    } else {
-      thumbnailInputRef.current?.click();
-    }
-  };
-
-  const createMutation = useMutation({
+  const uploadMutation = useMutation({
     mutationFn: async (data: InsertMediaItem) => {
-      setUploadProgress(50); // Start at 50% after file reading
       console.log('Submitting media data:', {
         ...data,
         url: data.url.substring(0, 100) + '...',
         thumbnail: data.thumbnail.substring(0, 100) + '...'
       });
 
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
-          }
-          return prev + 5;
-        });
-      }, 300);
-
-      try {
-        const res = await apiRequest("POST", "/api/media", data);
-        clearInterval(progressInterval);
-        setUploadProgress(100);
-        return res.json();
-      } catch (error) {
-        clearInterval(progressInterval);
-        throw error;
-      }
+      const res = await apiRequest("POST", "/api/media", data);
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/media`] });
-      onOpenChange(false);
-      form.reset();
-      setMediaPreview(null);
-      setThumbnailPreview(null);
-      setUploadProgress(0);
-      toast({
-        title: "Success",
-        description: "Media item uploaded successfully",
-      });
-    },
-    onError: (error: Error) => {
-      console.error('Media upload error:', error);
-      setUploadProgress(0);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to upload media",
-        variant: "destructive",
-      });
     },
   });
 
-  const onSubmit = async (data: InsertMediaItem) => {
+  const handleBulkUpload = async () => {
     try {
-      if (!data.url || !data.thumbnail) {
-        toast({
-          title: "Error",
-          description: "Please select both media file and thumbnail",
-          variant: "destructive",
-        });
-        return;
+      setUploading(true);
+      const pendingUploads = uploads.filter(u => u.status === 'pending');
+
+      for (const upload of pendingUploads) {
+        try {
+          upload.status = 'uploading';
+          setUploads([...uploads]);
+
+          // Process tags
+          const tags = typeof form.getValues("tags") === 'string'
+            ? form.getValues("tags").split(',').map(tag => tag.trim()).filter(Boolean)
+            : (form.getValues("tags") || []);
+
+          const mediaItem: InsertMediaItem = {
+            eventId,
+            type: form.getValues("type"),
+            url: upload.preview,
+            thumbnail: upload.preview,
+            caption: form.getValues("caption"),
+            photographer: form.getValues("photographer"),
+            tags,
+          };
+
+          await uploadMutation.mutateAsync(mediaItem);
+
+          upload.status = 'success';
+          upload.progress = 100;
+          setUploads([...uploads]);
+
+        } catch (error) {
+          upload.status = 'error';
+          upload.error = error instanceof Error ? error.message : 'Upload failed';
+          setUploads([...uploads]);
+          console.error('Failed to upload file:', upload.file.name, error);
+        }
       }
 
-      // Check if we have eventId
-      if (!eventId) {
-        toast({
-          title: "Error",
-          description: "No event selected for upload",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Process tags
-      const tags = typeof data.tags === 'string'
-        ? data.tags.split(',').map(tag => tag.trim()).filter(Boolean)
-        : (data.tags || []);
-
-      const formattedData = {
-        ...data,
-        eventId,
-        tags,
-      };
-
-      console.log('Starting media upload...', {
-        eventId,
-        type: formattedData.type,
-        caption: formattedData.caption,
-        photographer: formattedData.photographer,
-        tags: formattedData.tags,
+      toast({
+        title: "Success",
+        description: `Successfully uploaded ${pendingUploads.length} files`,
       });
 
-      await createMutation.mutateAsync(formattedData);
+      onOpenChange(false);
+      form.reset();
+      setUploads([]);
     } catch (error) {
-      console.error('Form submission error:', error);
+      console.error('Bulk upload error:', error);
       toast({
-        title: "Upload Failed",
-        description: error instanceof Error ? error.message : "Failed to upload media",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to upload files",
         variant: "destructive",
       });
+    } finally {
+      setUploading(false);
     }
+  };
+
+  const removeUpload = (index: number) => {
+    setUploads(uploads.filter((_, i) => i !== index));
   };
 
   useEffect(() => {
     if (!open) {
       form.reset();
-      setMediaPreview(null);
-      setThumbnailPreview(null);
-      setUploadProgress(0);
+      setUploads([]);
     }
   }, [open, form]);
-
-  const tooltipText = "Maximum file size: 10MB";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -252,23 +190,19 @@ export default function MediaUploadModal({
         <DialogHeader>
           <DialogTitle>Upload Media</DialogTitle>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          {(uploadProgress > 0 || createMutation.isPending) && (
-            <div className="space-y-2">
-              <Progress value={uploadProgress} className="h-2" />
-              <p className="text-sm text-muted-foreground text-center">
-                {uploadProgress < 100 ? "Uploading..." : "Processing..."}
-              </p>
-            </div>
-          )}
-
+        <form onSubmit={(e) => { e.preventDefault(); handleBulkUpload(); }} className="space-y-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="type">Type</Label>
-              <span className="text-xs text-muted-foreground">{tooltipText}</span>
+              <span className="text-xs text-muted-foreground">
+                Maximum file size: {form.getValues("type") === "video" ? "200MB" : "10MB"}
+              </span>
             </div>
             <Select
-              onValueChange={(value) => form.setValue("type", value as "image" | "video")}
+              onValueChange={(value) => {
+                form.setValue("type", value as "image" | "video");
+                setUploads([]); // Clear uploads when changing type
+              }}
               defaultValue={form.getValues("type")}
             >
               <SelectTrigger>
@@ -286,99 +220,66 @@ export default function MediaUploadModal({
             ref={mediaInputRef}
             className="hidden"
             accept={form.getValues("type") === "image" ? "image/*" : "video/*"}
-            onChange={handleFileChange('media')}
-          />
-          <Input
-            type="file"
-            ref={thumbnailInputRef}
-            className="hidden"
-            accept="image/*"
-            onChange={handleFileChange('thumbnail')}
+            onChange={handleFilesChange}
+            multiple
           />
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Media File</Label>
-              <div className="flex items-center gap-2">
-                <div className="flex-1">
-                  {form.getValues("type") === "image" ? (
-                    <div className="relative h-40 border rounded-lg overflow-hidden bg-black/20 group">
-                      {mediaPreview ? (
+          <div className="space-y-2">
+            <Label>Media Files</Label>
+            <div className="flex flex-col gap-4">
+              {uploads.length > 0 ? (
+                <div className="grid grid-cols-2 gap-4">
+                  {uploads.map((upload, index) => (
+                    <div key={index} className="relative">
+                      <div className="relative aspect-square rounded-lg overflow-hidden bg-black/20">
                         <img
-                          src={mediaPreview}
-                          alt="Media preview"
+                          src={upload.preview}
+                          alt={`Upload preview ${index + 1}`}
                           className="w-full h-full object-contain"
                         />
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                          <ImageIcon className="h-8 w-8" />
-                        </div>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-2 right-2"
+                          onClick={() => removeUpload(index)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                        {upload.status === 'uploading' && (
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                            <div className="text-center">
+                              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+                              <p className="text-sm">Uploading...</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {upload.status === 'error' && (
+                        <p className="text-sm text-destructive mt-1">{upload.error}</p>
                       )}
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="bg-transparent border-primary/20"
-                          onClick={() => triggerFileInput('media')}
-                        >
-                          <Upload className="h-4 w-4 mr-2" />
-                          Choose File
-                        </Button>
-                      </div>
                     </div>
-                  ) : (
-                    <div className="relative h-40 border rounded-lg bg-black/20 group">
-                      <div className="flex items-center justify-center h-full text-muted-foreground">
-                        <Film className="h-8 w-8" />
-                      </div>
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="bg-transparent border-primary/20"
-                          onClick={() => triggerFileInput('media')}
-                        >
-                          <Upload className="h-4 w-4 mr-2" />
-                          Choose Video
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  ))}
                 </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Thumbnail</Label>
-              <div className="relative h-40 border rounded-lg overflow-hidden bg-black/20 group">
-                {thumbnailPreview ? (
-                  <img
-                    src={thumbnailPreview}
-                    alt="Thumbnail preview"
-                    className="w-full h-full object-contain"
-                  />
-                ) : (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    <ImageIcon className="h-8 w-8" />
+              ) : (
+                <div
+                  onClick={() => mediaInputRef.current?.click()}
+                  className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <Upload className="h-8 w-8" />
+                    <p>Click or drag files here to upload</p>
+                    <p className="text-sm text-muted-foreground">
+                      {form.getValues("type") === "video" ? "MP4, WebM, or Ogg" : "JPG, PNG, or GIF"}
+                    </p>
                   </div>
-                )}
-                <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="bg-transparent border-primary/20"
-                    onClick={() => triggerFileInput('thumbnail')}
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Choose Thumbnail
-                  </Button>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="caption">Caption</Label>
+            <Label htmlFor="caption">Caption (applies to all uploads)</Label>
             <Textarea
               id="caption"
               {...form.register("caption")}
@@ -407,22 +308,22 @@ export default function MediaUploadModal({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={createMutation.isPending}
+              disabled={uploading}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={createMutation.isPending}
+              disabled={uploading || uploads.length === 0}
               className="bg-primary text-black hover:bg-primary/90"
             >
-              {createMutation.isPending ? (
+              {uploading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   Uploading...
                 </>
               ) : (
-                "Upload Media"
+                `Upload ${uploads.length} ${uploads.length === 1 ? 'File' : 'Files'}`
               )}
             </Button>
           </div>
