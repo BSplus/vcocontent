@@ -95,7 +95,7 @@ export default function HomePage() {
               </Button>
             ) : (
               <Button asChild className="bg-primary text-black hover:bg-primary/90">
-                <Link href="/auth">Login</Link>
+                <Link href="/auth">CREATOR LOGIN</Link>
               </Button>
             )}
           </div>
