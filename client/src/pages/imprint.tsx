@@ -26,7 +26,6 @@ export default function ImprintPage() {
           <h3>MANAGING DIRECTORS</h3>
           <p>
             Florian Haasper<br />
-            Simone Becher<br />
             Andreas Pavelic
           </p>
 
