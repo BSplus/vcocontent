@@ -10,8 +10,8 @@ interface EventCardProps {
 }
 
 export default function EventCard({ event }: EventCardProps) {
-  const eventDate = new Date(event.date);
-  const isUpcoming = eventDate >= new Date();
+  const eventDate = event.date ? new Date(event.date) : null;
+  const isUpcoming = eventDate ? eventDate >= new Date() : false;
 
   // Fetch media items for this event to use as fallback thumbnail
   const { data: mediaItems } = useQuery<MediaItem[]>({
@@ -44,7 +44,7 @@ export default function EventCard({ event }: EventCardProps) {
         {series && (
           <div className="absolute top-3 left-3 h-8">
             <img
-              src={series.logo}
+              src={series.logo || undefined}
               alt={series.name}
               className="h-full w-auto object-contain"
               title={series.name}
@@ -57,12 +57,12 @@ export default function EventCard({ event }: EventCardProps) {
           {event.title}
         </h3>
         <p className="text-sm text-foreground/60 mb-4">
-          {eventDate.toLocaleDateString('en-US', { 
+          {eventDate ? eventDate.toLocaleDateString('en-US', { 
             weekday: 'long',
             year: 'numeric',
             month: 'long',
             day: 'numeric'
-          })}
+          }) : 'Date not available'}
         </p>
         <p className="line-clamp-2 text-sm text-foreground/80">
           {event.description}

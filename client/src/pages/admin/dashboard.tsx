@@ -177,7 +177,11 @@ export default function AdminDashboard() {
                     <CardContent>
                       <div className="flex justify-between items-center">
                         <p className="text-muted-foreground font-[Rajdhani]">
-                          {new Date(event.date).toLocaleDateString()}
+                          {event.date ? new Date(event.date).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          }) : 'Date not available'}
                         </p>
                         <div className="flex gap-2">
                           <Button
