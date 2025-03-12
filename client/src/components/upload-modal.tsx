@@ -237,14 +237,14 @@ export default function UploadModal({
           <div className="space-y-2">
             <Label htmlFor="series">Race Series (Optional)</Label>
             <Select
-              value={form.watch("seriesId")?.toString()}
-              onValueChange={(value) => form.setValue("seriesId", value ? parseInt(value) : undefined)}
+              value={form.watch("seriesId")?.toString() || "none"}
+              onValueChange={(value) => form.setValue("seriesId", value === "none" ? undefined : parseInt(value))}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select a race series" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">None</SelectItem>
+                <SelectItem value="none">No Series</SelectItem>
                 {seriesList?.map((series) => (
                   <SelectItem key={series.id} value={series.id.toString()}>
                     {series.name}
