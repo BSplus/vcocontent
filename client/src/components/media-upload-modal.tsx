@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -41,6 +42,7 @@ export default function MediaUploadModal({
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const form = useForm<InsertMediaItem>({
     resolver: zodResolver(insertMediaItemSchema),
@@ -83,6 +85,15 @@ export default function MediaUploadModal({
 
       console.log(`Selected ${type} file:`, file.name, `(${(file.size / (1024 * 1024)).toFixed(1)}MB)`);
       const reader = new FileReader();
+
+      // Add progress event
+      reader.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const progress = (e.loaded / e.total) * 50; // First 50% for file reading
+          setUploadProgress(progress);
+        }
+      };
+
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
         console.log(`Converted ${type} file to data URL`);
@@ -113,13 +124,33 @@ export default function MediaUploadModal({
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertMediaItem) => {
+      setUploadProgress(50); // Start at 50% after file reading
       console.log('Submitting media data:', {
         ...data,
         url: data.url.substring(0, 100) + '...',
         thumbnail: data.thumbnail.substring(0, 100) + '...'
       });
-      const res = await apiRequest("POST", "/api/media", data);
-      return res.json();
+
+      // Simulate upload progress
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 5;
+        });
+      }, 300);
+
+      try {
+        const res = await apiRequest("POST", "/api/media", data);
+        clearInterval(progressInterval);
+        setUploadProgress(100);
+        return res.json();
+      } catch (error) {
+        clearInterval(progressInterval);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/media`] });
@@ -127,6 +158,7 @@ export default function MediaUploadModal({
       form.reset();
       setMediaPreview(null);
       setThumbnailPreview(null);
+      setUploadProgress(0);
       toast({
         title: "Success",
         description: "Media item uploaded successfully",
@@ -134,6 +166,7 @@ export default function MediaUploadModal({
     },
     onError: (error: Error) => {
       console.error('Media upload error:', error);
+      setUploadProgress(0);
       toast({
         title: "Error",
         description: error.message || "Failed to upload media",
@@ -198,6 +231,7 @@ export default function MediaUploadModal({
       form.reset();
       setMediaPreview(null);
       setThumbnailPreview(null);
+      setUploadProgress(0);
     }
   }, [open, form]);
 
@@ -210,13 +244,22 @@ export default function MediaUploadModal({
           <DialogTitle>Upload Media</DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          {(uploadProgress > 0 || createMutation.isPending) && (
+            <div className="space-y-2">
+              <Progress value={uploadProgress} className="h-2" />
+              <p className="text-sm text-muted-foreground text-center">
+                {uploadProgress < 100 ? "Uploading..." : "Processing..."}
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="type">Type</Label>
               <span className="text-xs text-muted-foreground">{tooltipText}</span>
             </div>
             <Select 
-              onValueChange={(value) => form.setValue("type", value)}
+              onValueChange={(value) => form.setValue("type", value as "image" | "video")}
               defaultValue={form.getValues("type")}
             >
               <SelectTrigger>
@@ -355,6 +398,7 @@ export default function MediaUploadModal({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
+              disabled={createMutation.isPending}
             >
               Cancel
             </Button>
@@ -364,7 +408,10 @@ export default function MediaUploadModal({
               className="bg-primary text-black hover:bg-primary/90"
             >
               {createMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Uploading...
+                </>
               ) : (
                 "Upload Media"
               )}
