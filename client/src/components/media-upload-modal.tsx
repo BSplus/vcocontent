@@ -64,7 +64,7 @@ export default function MediaUploadModal({
     },
   });
 
-  //Updated function
+  //Updated function for better video type validation
   function isValidVideoType(file: File): boolean {
     const validTypes = [
       'video/mp4',
@@ -96,7 +96,7 @@ export default function MediaUploadModal({
       if (!isValid) {
         toast({
           title: "Error",
-          description: `Invalid file type: ${file.name}. Please upload ${form.getValues("type") === "video" ? "MP4, WebM, or OGG" : "JPG, PNG, or GIF"} files only.`,
+          description: `Invalid file type: ${file.name}. Please upload ${form.getValues("type") === "video" ? "MP4, MOV, WebM, or OGG" : "JPG, PNG, or GIF"} files only.`,
           variant: "destructive",
         });
         continue;
@@ -118,25 +118,6 @@ export default function MediaUploadModal({
         reader.onloadend = () => resolve(reader.result as string);
         reader.readAsDataURL(file);
       });
-
-      if (form.getValues("type") === "image") {
-        try {
-          const metadata = await extractIPTCMetadata(file);
-          if (metadata) {
-            if (!form.getValues("caption") && metadata.caption) {
-              form.setValue("caption", metadata.caption);
-            }
-            if (!form.getValues("photographer") && metadata.photographer) {
-              form.setValue("photographer", metadata.photographer);
-            }
-            if (!form.getValues("tags") && metadata.tags) {
-              form.setValue("tags", metadata.tags);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to extract IPTC metadata:', error);
-        }
-      }
 
       newUploads.push({
         file,
@@ -269,7 +250,7 @@ export default function MediaUploadModal({
             type="file"
             ref={mediaInputRef}
             className="hidden"
-            accept={form.getValues("type") === "image" ? "image/*" : ".mp4,.mov,video/*"}
+            accept={form.getValues("type") === "image" ? "image/*" : ".mp4,.mov,.webm,.ogg,video/*"}
             onChange={handleFilesChange}
             multiple
           />
