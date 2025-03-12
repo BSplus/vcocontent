@@ -21,6 +21,8 @@ export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [mediaFilter, setMediaFilter] = useState<"all" | "image" | "video">("all");
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
 
   // Fetch all media items
   const { data: allMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
@@ -39,8 +41,8 @@ export default function HomePage() {
       return false;
     }
 
-    // If no search query, return all items that match the type filter
-    if (!searchQuery.trim()) {
+    // Only apply search if it's active and we have a query
+    if (!isSearchActive || !searchQuery) {
       return true;
     }
 
@@ -86,7 +88,6 @@ export default function HomePage() {
     return eventDate < fourWeeksAgo && eventDate < today;
   });
 
-  // Scroll to section helper
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
     if (element) {
@@ -95,8 +96,16 @@ export default function HomePage() {
   };
 
   const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault(); // Prevent page reload
-    // The search logic is already implemented in filteredMediaItems
+    e.preventDefault();
+    setSearchQuery(searchInput); // Update the actual search query
+    setIsSearchActive(true); // Activate the search
+  };
+
+  const clearSearch = () => {
+    setSearchInput("");
+    setSearchQuery("");
+    setIsSearchActive(false);
+    setMediaFilter("all");
   };
 
   return (
@@ -164,14 +173,17 @@ export default function HomePage() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
                 placeholder="Search media by caption, photographer, or tags..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-10"
               />
             </div>
             <Select
               value={mediaFilter}
-              onValueChange={(value: "all" | "image" | "video") => setMediaFilter(value)}
+              onValueChange={(value: "all" | "image" | "video") => {
+                setMediaFilter(value);
+                setIsSearchActive(true);
+              }}
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by type" />
@@ -182,6 +194,14 @@ export default function HomePage() {
                 <SelectItem value="video">Videos Only</SelectItem>
               </SelectContent>
             </Select>
+            <Button type="submit" variant="outline">
+              Search
+            </Button>
+            {(isSearchActive || mediaFilter !== "all") && (
+              <Button type="button" variant="ghost" onClick={clearSearch}>
+                Clear
+              </Button>
+            )}
           </form>
 
           {mediaLoading ? (
@@ -193,7 +213,7 @@ export default function HomePage() {
               {filteredMediaItems.length > 0 ? (
                 <>
                   <h2 className="text-2xl font-bold mb-6">
-                    {searchQuery.trim() ? (
+                    {isSearchActive && searchQuery ? (
                       `Search Results (${filteredMediaItems.length} items)`
                     ) : (
                       `All Media (${filteredMediaItems.length} items)`
