@@ -18,27 +18,27 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-white/50 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b border-primary/20 bg-black/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-8">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-transparent bg-clip-text">
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/80 text-transparent bg-clip-text">
               VCO Media Database
             </h1>
             <nav className="hidden md:flex gap-6">
-              <Link href="/" className="text-sm font-medium hover:text-blue-600 transition-colors">
+              <Link href="/" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Home
               </Link>
-              <Link href="#upcoming" className="text-sm font-medium hover:text-blue-600 transition-colors">
+              <Link href="#upcoming" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Upcoming Events
               </Link>
-              <Link href="#past" className="text-sm font-medium hover:text-blue-600 transition-colors">
+              <Link href="#past" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Past Events
               </Link>
             </nav>
           </div>
           <div className="flex gap-4 items-center">
             {user?.isAdmin && (
-              <Button variant="outline" asChild>
+              <Button variant="outline" asChild className="border-primary/20 hover:bg-primary hover:text-black">
                 <Link href="/admin">Admin Dashboard</Link>
               </Button>
             )}
@@ -47,6 +47,7 @@ export default function HomePage() {
                 variant="secondary" 
                 onClick={() => logoutMutation.mutate()}
                 disabled={logoutMutation.isPending}
+                className="bg-primary text-black hover:bg-primary/90"
               >
                 {logoutMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -55,7 +56,7 @@ export default function HomePage() {
                 )}
               </Button>
             ) : (
-              <Button asChild>
+              <Button asChild className="bg-primary text-black hover:bg-primary/90">
                 <Link href="/auth">Login</Link>
               </Button>
             )}
@@ -66,17 +67,17 @@ export default function HomePage() {
       <main className="container mx-auto px-4 py-8 space-y-12">
         {isLoading ? (
           <div className="flex justify-center p-12">
-            <Loader2 className="h-8 w-8 animate-spin" />
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
           <>
             <section id="upcoming">
               <div className="flex items-center gap-3 mb-6">
-                <Calendar className="h-6 w-6 text-blue-600" />
-                <h2 className="text-2xl font-bold">Upcoming Events</h2>
+                <Calendar className="h-6 w-6 text-primary" />
+                <h2 className="text-2xl font-bold text-primary">Upcoming Events</h2>
               </div>
               {!upcomingEvents.length ? (
-                <p className="text-center text-muted-foreground py-12">
+                <p className="text-center text-foreground/60 py-12">
                   No upcoming events scheduled.
                 </p>
               ) : (
@@ -90,11 +91,11 @@ export default function HomePage() {
 
             <section id="past">
               <div className="flex items-center gap-3 mb-6">
-                <Calendar className="h-6 w-6 text-gray-600" />
-                <h2 className="text-2xl font-bold">Past Events</h2>
+                <Calendar className="h-6 w-6 text-foreground/60" />
+                <h2 className="text-2xl font-bold text-foreground/80">Past Events</h2>
               </div>
               {!pastEvents.length ? (
-                <p className="text-center text-muted-foreground py-12">
+                <p className="text-center text-foreground/60 py-12">
                   No past events available.
                 </p>
               ) : (
