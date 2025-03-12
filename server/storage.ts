@@ -1,5 +1,5 @@
 import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries } from "@shared/schema";
-import { users, events, mediaItems, series } from "@shared/schema";
+import { users, events, mediaItems, series as seriesTable } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import session from "express-session";
@@ -63,22 +63,22 @@ export class DatabaseStorage implements IStorage {
 
   async getSeries(id?: number): Promise<Series | Series[] | undefined> {
     if (id) {
-      const [series] = await db.select().from(series).where(eq(series.id, id));
-      return series;
+      const [seriesItem] = await db.select().from(seriesTable).where(eq(seriesTable.id, id));
+      return seriesItem;
     }
-    return await db.select().from(series);
+    return await db.select().from(seriesTable);
   }
 
   async createSeries(insertSeries: InsertSeries): Promise<Series> {
-    const [newSeries] = await db.insert(series).values(insertSeries).returning();
+    const [newSeries] = await db.insert(seriesTable).values(insertSeries).returning();
     return newSeries;
   }
 
   async updateSeries(id: number, updateData: Partial<InsertSeries>): Promise<Series> {
     const [updatedSeries] = await db
-      .update(series)
+      .update(seriesTable)
       .set(updateData)
-      .where(eq(series.id, id))
+      .where(eq(seriesTable.id, id))
       .returning();
 
     if (!updatedSeries) throw new Error("Series not found");
@@ -86,7 +86,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteSeries(id: number): Promise<void> {
-    await db.delete(series).where(eq(series.id, id));
+    await db.delete(seriesTable).where(eq(seriesTable.id, id));
   }
 
   async getEvents(): Promise<Event[]> {
