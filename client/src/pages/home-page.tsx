@@ -49,20 +49,30 @@ export default function HomePage() {
     // Case-insensitive search across all relevant fields
     const query = searchQuery.toLowerCase().trim();
 
-    // Search in caption
-    const captionMatch = item.caption?.toLowerCase().includes(query) || false;
+    // Search in caption (main search field)
+    if (item.caption?.toLowerCase().includes(query)) {
+      return true;
+    }
 
     // Search in photographer name
-    const photographerMatch = item.photographer?.toLowerCase().includes(query) || false;
+    if (item.photographer?.toLowerCase().includes(query)) {
+      return true;
+    }
 
-    // Search in tags (if tags exist)
-    const tagsMatch = item.tags?.some(tag =>
-      tag.toLowerCase().includes(query)
-    ) || false;
+    // Search in tags
+    if (item.tags?.some(tag => tag.toLowerCase().includes(query))) {
+      return true;
+    }
 
-    // Return true if any field matches
-    return captionMatch || photographerMatch || tagsMatch;
+    return false;
   }) || [];
+
+  // Debug logging
+  console.log('Search Query:', searchQuery);
+  console.log('Media Filter:', mediaFilter);
+  console.log('Is Search Active:', isSearchActive);
+  console.log('Total Media Items:', allMediaItems?.length);
+  console.log('Filtered Items:', filteredMediaItems.length);
 
   // Event categorization
   const today = new Date();
