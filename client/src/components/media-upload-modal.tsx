@@ -69,6 +69,18 @@ export default function MediaUploadModal({
         return;
       }
 
+      // Calculate approximate base64 size
+      const base64Size = Math.round((file.size * 4) / 3);
+      if (base64Size > 45 * 1024 * 1024) { // 45MB base64 limit
+        toast({
+          title: "Error",
+          description: "File will be too large after encoding. Please choose a smaller file.",
+          variant: "destructive",
+        });
+        event.target.value = ''; // Reset input
+        return;
+      }
+
       console.log(`Selected ${type} file:`, file.name, `(${(file.size / (1024 * 1024)).toFixed(1)}MB)`);
       const reader = new FileReader();
       reader.onloadend = () => {

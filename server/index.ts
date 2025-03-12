@@ -4,9 +4,9 @@ import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
 
-// Increase body parser limits to 10MB
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: false, limit: '10mb' }));
+// Increase body parser limits to 50MB to accommodate base64 encoded files
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -41,10 +41,16 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
+  // Better error handling for large files
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    if (err.type === 'entity.too.large') {
+      return res.status(413).json({ 
+        message: "File size too large. Maximum size is 50MB." 
+      });
+    }
+
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
     res.status(status).json({ message });
     throw err;
   });
