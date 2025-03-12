@@ -16,13 +16,14 @@ import { motion } from "framer-motion";
 import { Eye, PlayCircle, Download, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EditMediaModal from "./edit-media-modal";
+import { useAuth } from "@/hooks/use-auth";
 
 interface MediaGridProps {
   items: MediaItem[];
-  showEditControls?: boolean; // Add this prop
 }
 
-export default function MediaGrid({ items, showEditControls = false }: MediaGridProps) { // Default to false
+export default function MediaGrid({ items }: MediaGridProps) {
+  const { user } = useAuth(); // Get user status
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [editItem, setEditItem] = useState<MediaItem | null>(null);
   const [hoveredItem, setHoveredItem] = useState<MediaItem | null>(null);
@@ -182,7 +183,7 @@ export default function MediaGrid({ items, showEditControls = false }: MediaGrid
                 )}
                 <div className="flex gap-2">
                   <Eye className="h-6 w-6" />
-                  {showEditControls && ( // Only show edit button if showEditControls is true
+                  {user?.isAdmin && (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -286,7 +287,7 @@ export default function MediaGrid({ items, showEditControls = false }: MediaGrid
               )}
             </div>
             <div className="flex gap-2">
-              {showEditControls && ( // Only show edit button if showEditControls is true
+              {user?.isAdmin && (
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -337,7 +338,7 @@ export default function MediaGrid({ items, showEditControls = false }: MediaGrid
       </Dialog>
 
       {/* Edit Modal */}
-      {showEditControls && editItem && ( // Only render edit modal if showEditControls is true
+      {user?.isAdmin && editItem && (
         <EditMediaModal
           open={!!editItem}
           onOpenChange={(open) => !open && setEditItem(null)}

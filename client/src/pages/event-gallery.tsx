@@ -122,7 +122,7 @@ export default function EventGallery() {
             </p>
           </div>
         ) : (
-          <MediaGrid items={filteredMediaItems} showEditControls={false} />
+          <MediaGrid items={filteredMediaItems} />
         )}
       </main>
     </div>
