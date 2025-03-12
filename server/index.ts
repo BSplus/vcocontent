@@ -8,6 +8,9 @@ const app = express();
 app.use(express.json({ limit: '250mb' }));
 app.use(express.urlencoded({ extended: false, limit: '250mb' }));
 
+// Make Replicate API token available to the frontend
+process.env.VITE_REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -44,8 +47,8 @@ app.use((req, res, next) => {
   // Better error handling for large files
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     if (err.type === 'entity.too.large') {
-      return res.status(413).json({ 
-        message: "File size too large. Maximum size is 200MB for videos and 10MB for images." 
+      return res.status(413).json({
+        message: "File size too large. Maximum size is 200MB for videos and 10MB for images."
       });
     }
 

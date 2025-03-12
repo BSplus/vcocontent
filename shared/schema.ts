@@ -14,6 +14,7 @@ export const events = pgTable("events", {
   title: text("title").notNull(),
   description: text("description").notNull(),
   coverImage: text("cover_image"),
+  customThumbnail: text("custom_thumbnail"),
   date: timestamp("date").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -39,6 +40,7 @@ export const insertEventSchema = createInsertSchema(events).extend({
   title: z.string().min(1, "Title is required"),
   description: z.string().min(1, "Description is required"),
   coverImage: z.string().optional(),
+  customThumbnail: z.string().optional(),
   date: z.coerce.date()
 });
 

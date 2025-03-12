@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -15,7 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { InsertEvent, insertEventSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload, Image as ImageIcon } from "lucide-react";
+import { generateEventThumbnail } from "@/lib/ai-thumbnail";
 
 interface UploadModalProps {
   open: boolean;
@@ -31,6 +32,8 @@ export default function UploadModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isEditing = eventId !== null;
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const thumbnailInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<InsertEvent>({
     resolver: zodResolver(insertEventSchema),
@@ -39,8 +42,32 @@ export default function UploadModal({
       description: "",
       date: new Date(),
       coverImage: "/attached_assets/%2389_3.png",
+      customThumbnail: "",
     },
   });
+
+  const handleThumbnailChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          title: "Error",
+          description: `File size too large. Maximum size is 10MB.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        setThumbnailPreview(dataUrl);
+        form.setValue("customThumbnail", dataUrl);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEvent) => {
@@ -52,6 +79,7 @@ export default function UploadModal({
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       onOpenChange(false);
       form.reset();
+      setThumbnailPreview(null);
       toast({
         title: "Success",
         description: "Event created successfully",
@@ -76,6 +104,7 @@ export default function UploadModal({
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       onOpenChange(false);
       form.reset();
+      setThumbnailPreview(null);
       toast({
         title: "Success",
         description: "Event updated successfully",
@@ -93,6 +122,24 @@ export default function UploadModal({
 
   const onSubmit = async (data: InsertEvent) => {
     try {
+      const now = new Date();
+      const eventDate = new Date(data.date);
+      const isFutureEvent = eventDate > now;
+
+      // If no custom thumbnail is uploaded and it's a future event, generate AI thumbnail
+      if (!data.customThumbnail && isFutureEvent) {
+        try {
+          const thumbnail = await generateEventThumbnail(data.title, data.description);
+          data.customThumbnail = thumbnail;
+        } catch (error) {
+          console.error('Failed to generate AI thumbnail:', error);
+          toast({
+            title: "Warning",
+            description: "Could not generate AI thumbnail. Using default image instead.",
+          });
+        }
+      }
+
       if (isEditing) {
         await updateMutation.mutateAsync(data);
       } else {
@@ -106,6 +153,7 @@ export default function UploadModal({
   useEffect(() => {
     if (!open) {
       form.reset();
+      setThumbnailPreview(null);
     }
   }, [open, form]);
 
@@ -149,6 +197,45 @@ export default function UploadModal({
               <p className="text-sm text-red-500">{form.formState.errors.date.message}</p>
             )}
           </div>
+
+          <div className="space-y-2">
+            <Label>Event Thumbnail</Label>
+            <Input
+              type="file"
+              ref={thumbnailInputRef}
+              className="hidden"
+              accept="image/*"
+              onChange={handleThumbnailChange}
+            />
+            <div className="relative h-40 border rounded-lg overflow-hidden bg-black/20 group">
+              {thumbnailPreview ? (
+                <img
+                  src={thumbnailPreview}
+                  alt="Thumbnail preview"
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <ImageIcon className="h-8 w-8" />
+                </div>
+              )}
+              <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="bg-transparent border-primary/20"
+                  onClick={() => thumbnailInputRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Choose Thumbnail
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Optional: Upload a custom thumbnail. If not provided, a gallery image will be used.
+            </p>
+          </div>
+
           <div className="flex justify-end gap-2">
             <Button
               type="button"
