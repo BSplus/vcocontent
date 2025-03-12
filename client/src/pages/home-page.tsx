@@ -1,11 +1,11 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Event, MediaItem } from "@shared/schema";
 import { Loader2, Calendar, Trophy, History, Clock, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState, useEffect, useMemo } from "react";
+import { useState } from "react";
 import MediaGrid from "@/components/media-grid";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
@@ -13,69 +13,36 @@ import Footer from "@/components/footer";
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const queryClient = useQueryClient();
 
-  // Fetch all media items with detailed logging
-  const { data: allMediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
+  // Fetch all media items
+  const { data: allMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
-    onSuccess: (data) => {
-      console.log('API Response - Media Items:', {
-        totalItems: data?.length,
-        sampleItems: data?.slice(0, 3).map(item => ({
-          id: item.id,
-          caption: item.caption,
-          photographer: item.photographer,
-          tags: item.tags
-        }))
-      });
-    }
   });
 
-  // Simplified search logic
-  const searchResults = useMemo(() => {
-    if (!searchQuery.trim() || !allMediaItems) return [];
-
-    const query = searchQuery.toLowerCase().trim();
-    console.log('Search query:', query);
-    console.log('Total media items:', allMediaItems.length);
-
-    return allMediaItems.filter(item => {
-      const caption = item.caption?.toLowerCase() || '';
-      const photographer = item.photographer?.toLowerCase() || '';
-      const tags = item.tags?.map(tag => tag.toLowerCase()) || [];
-
-      const isMatch =
-        caption.includes(query) ||
-        photographer.includes(query) ||
-        tags.some(tag => tag.includes(query));
-
-      if (isMatch) {
-        console.log('Found match:', {
-          id: item.id,
-          caption: item.caption,
-          photographer: item.photographer,
-          tags: item.tags
-        });
-      }
-
-      return isMatch;
-    });
-  }, [searchQuery, allMediaItems]);
-
-  // Add effect to log search results
-  useEffect(() => {
-    if (searchQuery.trim()) {
-      console.log('Search results:', {
-        query: searchQuery,
-        resultsCount: searchResults.length,
-        results: searchResults.slice(0, 3)
-      });
-    }
-  }, [searchQuery, searchResults]);
-
-  // Fetch events separately
+  // Fetch events
   const { data: events, isLoading: eventsLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"]
+  });
+
+  // Search logic
+  const searchResults = allMediaItems?.filter(item => {
+    if (!searchQuery.trim()) return false;
+
+    const query = searchQuery.toLowerCase().trim();
+
+    // Check caption
+    const captionMatch = item.caption?.toLowerCase().includes(query);
+    if (captionMatch) return true;
+
+    // Check photographer
+    const photographerMatch = item.photographer?.toLowerCase().includes(query);
+    if (photographerMatch) return true;
+
+    // Check tags
+    const tagMatch = item.tags?.some(tag => tag.toLowerCase().includes(query));
+    if (tagMatch) return true;
+
+    return false;
   });
 
   // Event categorization
@@ -101,7 +68,6 @@ export default function HomePage() {
     const eventDate = new Date(event.date);
     return eventDate < fourWeeksAgo && eventDate < today;
   });
-
 
   return (
     <div className="min-h-screen bg-background">
@@ -156,7 +122,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main id="home" className="container mx-auto px-4 py-8 space-y-16">
+      <main className="container mx-auto px-4 py-8 space-y-16">
         {/* Search Section */}
         <section className="max-w-2xl mx-auto">
           <div className="flex flex-col gap-4">
@@ -176,11 +142,11 @@ export default function HomePage() {
                 ) : (
                   <>
                     <h3 className="text-lg font-semibold mb-4">
-                      {searchResults.length > 0
+                      {searchResults && searchResults.length > 0
                         ? `Found ${searchResults.length} results`
                         : 'No results found'}
                     </h3>
-                    {searchResults.length > 0 && (
+                    {searchResults && searchResults.length > 0 && (
                       <MediaGrid items={searchResults} />
                     )}
                   </>
