@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -73,7 +73,7 @@ export default function UploadModal({
         description: eventData.description || "",
         date: new Date(eventData.date).toISOString().split('T')[0],
         coverImage: eventData.coverImage,
-        customThumbnail: eventData.customThumbnail || undefined,
+        customThumbnail: eventData.customThumbnail,
         seriesId: eventData.seriesId,
       });
 
@@ -149,6 +149,8 @@ export default function UploadModal({
   const updateMutation = useMutation({
     mutationFn: async (id: number) => {
       const formData = form.getValues();
+      const customThumbnail = thumbnailPreview;
+
       const res = await fetch(`/api/events/${id}`, {
         method: "PUT",
         headers: {
@@ -160,7 +162,7 @@ export default function UploadModal({
           description: formData.description,
           date: new Date(formData.date),
           coverImage: formData.coverImage,
-          customThumbnail: formData.customThumbnail,
+          customThumbnail: customThumbnail,
           seriesId: formData.seriesId,
         }),
       });
