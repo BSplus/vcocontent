@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { InsertEvent, insertEventSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
+import { Loader2 } from "lucide-react";
 
 interface UploadModalProps {
   open: boolean;
@@ -36,14 +37,20 @@ export default function UploadModal({
     defaultValues: {
       title: "",
       description: "",
-      date: new Date().toISOString(),
-      coverImage: "",
+      date: new Date().toISOString().split('T')[0],
+      coverImage: "/attached_assets/%2389_3.png",
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEvent) => {
-      const res = await apiRequest("POST", "/api/events", data);
+      // Convert the date string to ISO format
+      const formattedData = {
+        ...data,
+        date: new Date(data.date).toISOString(),
+      };
+      console.log('Submitting event data:', formattedData);
+      const res = await apiRequest("POST", "/api/events", formattedData);
       return res.json();
     },
     onSuccess: () => {
@@ -56,6 +63,7 @@ export default function UploadModal({
       });
     },
     onError: (error: Error) => {
+      console.error('Event creation error:', error);
       toast({
         title: "Error",
         description: error.message,
@@ -66,7 +74,11 @@ export default function UploadModal({
 
   const updateMutation = useMutation({
     mutationFn: async (data: InsertEvent) => {
-      const res = await apiRequest("PUT", `/api/events/${eventId}`, data);
+      const formattedData = {
+        ...data,
+        date: new Date(data.date).toISOString(),
+      };
+      const res = await apiRequest("PUT", `/api/events/${eventId}`, formattedData);
       return res.json();
     },
     onSuccess: () => {
@@ -79,6 +91,7 @@ export default function UploadModal({
       });
     },
     onError: (error: Error) => {
+      console.error('Event update error:', error);
       toast({
         title: "Error",
         description: error.message,
@@ -88,10 +101,14 @@ export default function UploadModal({
   });
 
   const onSubmit = async (data: InsertEvent) => {
-    if (isEditing) {
-      await updateMutation.mutateAsync(data);
-    } else {
-      await createMutation.mutateAsync(data);
+    try {
+      if (isEditing) {
+        await updateMutation.mutateAsync(data);
+      } else {
+        await createMutation.mutateAsync(data);
+      }
+    } catch (error) {
+      console.error('Form submission error:', error);
     }
   };
 
@@ -130,17 +147,9 @@ export default function UploadModal({
             <Label htmlFor="date">Date</Label>
             <Input
               id="date"
-              type="datetime-local"
+              type="date"
               {...form.register("date")}
               error={form.formState.errors.date?.message}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="coverImage">Cover Image URL</Label>
-            <Input
-              id="coverImage"
-              {...form.register("coverImage")}
-              error={form.formState.errors.coverImage?.message}
             />
           </div>
           <div className="flex justify-end gap-2">
@@ -154,12 +163,15 @@ export default function UploadModal({
             <Button
               type="submit"
               disabled={createMutation.isPending || updateMutation.isPending}
+              className="bg-primary text-black hover:bg-primary/90"
             >
-              {createMutation.isPending || updateMutation.isPending
-                ? "Saving..."
-                : isEditing
-                ? "Update Event"
-                : "Create Event"}
+              {createMutation.isPending || updateMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : isEditing ? (
+                "Update Event"
+              ) : (
+                "Create Event"
+              )}
             </Button>
           </div>
         </form>
