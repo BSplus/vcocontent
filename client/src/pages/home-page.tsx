@@ -1,11 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Event, MediaItem } from "@shared/schema";
 import { Loader2, Calendar, Trophy, History, Clock, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import MediaGrid from "@/components/media-grid";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
@@ -13,6 +13,7 @@ import Footer from "@/components/footer";
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const queryClient = useQueryClient();
 
   // Fetch all media items with detailed logging
   const { data: allMediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
@@ -30,51 +31,47 @@ export default function HomePage() {
     }
   });
 
-  // Process search results with detailed logging
-  const searchResults = searchQuery.trim() ? allMediaItems.filter(item => {
+  // Simplified search logic
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim() || !allMediaItems) return [];
+
     const query = searchQuery.toLowerCase().trim();
+    console.log('Search query:', query);
+    console.log('Total media items:', allMediaItems.length);
 
-    // Log each item being checked
-    console.log('Processing item:', {
-      id: item.id,
-      caption: item.caption,
-      photographer: item.photographer,
-      tags: item.tags,
-      queryBeingChecked: query
+    return allMediaItems.filter(item => {
+      const caption = item.caption?.toLowerCase() || '';
+      const photographer = item.photographer?.toLowerCase() || '';
+      const tags = item.tags?.map(tag => tag.toLowerCase()) || [];
+
+      const isMatch =
+        caption.includes(query) ||
+        photographer.includes(query) ||
+        tags.some(tag => tag.includes(query));
+
+      if (isMatch) {
+        console.log('Found match:', {
+          id: item.id,
+          caption: item.caption,
+          photographer: item.photographer,
+          tags: item.tags
+        });
+      }
+
+      return isMatch;
     });
+  }, [searchQuery, allMediaItems]);
 
-    // Check caption
-    if (item.caption?.toLowerCase().includes(query)) {
-      console.log('Match found in caption:', item.caption);
-      return true;
-    }
-
-    // Check photographer
-    if (item.photographer?.toLowerCase().includes(query)) {
-      console.log('Match found in photographer:', item.photographer);
-      return true;
-    }
-
-    // Check tags
-    if (item.tags?.some(tag => tag.toLowerCase().includes(query))) {
-      console.log('Match found in tags:', item.tags);
-      return true;
-    }
-
-    return false;
-  }) : [];
-
-  // Log overall search results
+  // Add effect to log search results
   useEffect(() => {
     if (searchQuery.trim()) {
-      console.log('Search Results:', {
+      console.log('Search results:', {
         query: searchQuery,
-        totalMediaItems: allMediaItems.length,
-        matchingResults: searchResults.length,
-        sample: searchResults.slice(0, 2)
+        resultsCount: searchResults.length,
+        results: searchResults.slice(0, 3)
       });
     }
-  }, [searchQuery, allMediaItems, searchResults]);
+  }, [searchQuery, searchResults]);
 
   // Fetch events separately
   const { data: events, isLoading: eventsLoading } = useQuery<Event[]>({
@@ -105,12 +102,6 @@ export default function HomePage() {
     return eventDate < fourWeeksAgo && eventDate < today;
   });
 
-  const scrollToSection = (sectionId: string) => {
-    const element = document.getElementById(sectionId);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -123,18 +114,18 @@ export default function HomePage() {
               </h1>
             </div>
             <nav className="hidden md:flex gap-6">
-              <button onClick={() => scrollToSection('home')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              <Link href="/" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Home
-              </button>
-              <button onClick={() => scrollToSection('current')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              </Link>
+              <Link href="/current-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Current Events
-              </button>
-              <button onClick={() => scrollToSection('upcoming')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              </Link>
+              <Link href="/upcoming-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Upcoming Events
-              </button>
-              <button onClick={() => scrollToSection('archive')} className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+              </Link>
+              <Link href="/archive-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Archive
-              </button>
+              </Link>
             </nav>
           </div>
           <div className="flex gap-4 items-center">
@@ -178,13 +169,21 @@ export default function HomePage() {
             />
             {searchQuery && (
               <div className="mt-4">
-                <h3 className="text-lg font-semibold mb-4">
-                  {searchResults?.length
-                    ? `Found ${searchResults.length} results`
-                    : 'No results found'}
-                </h3>
-                {searchResults && searchResults.length > 0 && (
-                  <MediaGrid items={searchResults} />
+                {mediaLoading ? (
+                  <div className="flex justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                  </div>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-semibold mb-4">
+                      {searchResults.length > 0
+                        ? `Found ${searchResults.length} results`
+                        : 'No results found'}
+                    </h3>
+                    {searchResults.length > 0 && (
+                      <MediaGrid items={searchResults} />
+                    )}
+                  </>
                 )}
               </div>
             )}
