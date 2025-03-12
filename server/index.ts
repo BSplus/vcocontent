@@ -9,7 +9,13 @@ app.use(express.json({ limit: '250mb' }));
 app.use(express.urlencoded({ extended: false, limit: '250mb' }));
 
 // Make Replicate API token available to the frontend
-process.env.VITE_REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
+// Ensure it's properly prefixed for Vite to expose it
+if (process.env.REPLICATE_API_TOKEN) {
+  process.env.VITE_REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
+  console.log('Replicate API token found and exposed to frontend');
+} else {
+  console.warn('Warning: REPLICATE_API_TOKEN not found in environment variables. AI thumbnail generation will not work.');
+}
 
 app.use((req, res, next) => {
   const start = Date.now();

@@ -148,7 +148,9 @@ export default function UploadModal({
           console.error('Failed to generate AI thumbnail:', error);
           toast({
             title: "Warning",
-            description: error instanceof Error ? error.message : "Could not generate AI thumbnail. Using default image instead.",
+            description: error instanceof Error 
+              ? `Failed to generate AI thumbnail: ${error.message}` 
+              : "Could not generate AI thumbnail. Using default image instead.",
             variant: "destructive",
           });
         } finally {
@@ -163,6 +165,11 @@ export default function UploadModal({
       }
     } catch (error) {
       console.error('Form submission error:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save event",
+        variant: "destructive",
+      });
     }
   };
 

@@ -1,21 +1,33 @@
+"use strict";
 import Replicate from 'replicate';
 
-const replicate = new Replicate({
-  auth: import.meta.env.VITE_REPLICATE_API_TOKEN,
-});
+let replicate: Replicate | null = null;
+
+function initializeReplicate() {
+  if (!replicate) {
+    const token = import.meta.env.VITE_REPLICATE_API_TOKEN;
+    if (!token) {
+      throw new Error('Replicate API token not found in environment variables');
+    }
+    replicate = new Replicate({
+      auth: token,
+    });
+    console.log('Replicate client initialized successfully');
+  }
+  return replicate;
+}
 
 export async function generateEventThumbnail(title: string, description: string): Promise<string> {
   try {
-    if (!import.meta.env.VITE_REPLICATE_API_TOKEN) {
-      throw new Error('Replicate API token not found');
-    }
+    const client = initializeReplicate();
+    console.log('Starting AI thumbnail generation for:', title);
 
     // Create a prompt that captures the essence of the event
     const prompt = `A photorealistic racing event scene for "${title}": ${description}. High quality, dramatic lighting, professional sports photography style.`;
 
-    console.log('Generating AI thumbnail with prompt:', prompt);
+    console.log('Generating with prompt:', prompt);
 
-    const output = await replicate.run(
+    const output = await client.run(
       "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
       {
         input: {
@@ -29,6 +41,7 @@ export async function generateEventThumbnail(title: string, description: string)
     );
 
     if (!Array.isArray(output) || !output[0]) {
+      console.error('Invalid response from Replicate:', output);
       throw new Error('Invalid response from Replicate API');
     }
 
