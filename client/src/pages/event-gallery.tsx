@@ -71,8 +71,6 @@ export default function EventGallery() {
     );
   }
 
-  const eventDate = event.date ? new Date(event.date) : null;
-
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-primary/20">
@@ -88,7 +86,7 @@ export default function EventGallery() {
               {event.title}
             </h1>
             <p className="text-muted-foreground font-[Rajdhani] text-lg">
-              {eventDate ? eventDate.toLocaleDateString('en-US', {
+              {event.date ? new Date(event.date).toLocaleDateString('en-US', {
                 weekday: 'long',
                 year: 'numeric',
                 month: 'long',
