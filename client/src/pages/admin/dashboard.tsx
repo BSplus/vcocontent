@@ -9,6 +9,13 @@ import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
 import { createDemoContent } from "@/lib/demo-data";
 import { useToast } from "@/hooks/use-toast";
+import SeriesManager from "@/components/series-manager";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -56,67 +63,80 @@ export default function AdminDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <h2 className="text-2xl font-bold">Events Management</h2>
-          <Button onClick={() => setUploadModalOpen(true)} className="bg-primary text-black hover:bg-primary/90">
-            <Plus className="h-4 w-4 mr-2" />
-            Create Event
-          </Button>
-        </div>
+        <Tabs defaultValue="events">
+          <TabsList>
+            <TabsTrigger value="events">Events</TabsTrigger>
+            <TabsTrigger value="series">Race Series</TabsTrigger>
+          </TabsList>
 
-        {isLoading ? (
-          <div className="flex justify-center p-12">
-            <Loader2 className="h-8 w-8 animate-spin" />
-          </div>
-        ) : !events?.length ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <p className="text-muted-foreground mb-4">No events created yet.</p>
-              <Button onClick={() => setUploadModalOpen(true)}>
-                Create Your First Event
+          <TabsContent value="events" className="mt-6">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-2xl font-bold">Events Management</h2>
+              <Button onClick={() => setUploadModalOpen(true)} className="bg-primary text-black hover:bg-primary/90">
+                <Plus className="h-4 w-4 mr-2" />
+                Create Event
               </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-6">
-            {events.map((event) => (
-              <Card key={event.id} className="bg-black/40 border-primary/20">
-                <CardHeader>
-                  <CardTitle className="text-xl font-[Orbitron] tracking-wider">
-                    {event.title}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex justify-between items-center">
-                    <p className="text-muted-foreground font-[Rajdhani]">
-                      {new Date(event.date).toLocaleDateString()}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedEventId(event.id);
-                          setUploadModalOpen(true);
-                        }}
-                      >
-                        Edit Event
-                      </Button>
-                      <Button 
-                        variant="secondary"
-                        onClick={() => {
-                          setSelectedEventId(event.id);
-                          setMediaUploadModalOpen(true);
-                        }}
-                      >
-                        Upload Media
-                      </Button>
-                    </div>
-                  </div>
+            </div>
+
+            {isLoading ? (
+              <div className="flex justify-center p-12">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : !events?.length ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <p className="text-muted-foreground mb-4">No events created yet.</p>
+                  <Button onClick={() => setUploadModalOpen(true)}>
+                    Create Your First Event
+                  </Button>
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        )}
+            ) : (
+              <div className="grid gap-6">
+                {events.map((event) => (
+                  <Card key={event.id} className="bg-black/40 border-primary/20">
+                    <CardHeader>
+                      <CardTitle className="text-xl font-[Orbitron] tracking-wider">
+                        {event.title}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex justify-between items-center">
+                        <p className="text-muted-foreground font-[Rajdhani]">
+                          {new Date(event.date).toLocaleDateString()}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedEventId(event.id);
+                              setUploadModalOpen(true);
+                            }}
+                          >
+                            Edit Event
+                          </Button>
+                          <Button 
+                            variant="secondary"
+                            onClick={() => {
+                              setSelectedEventId(event.id);
+                              setMediaUploadModalOpen(true);
+                            }}
+                          >
+                            Upload Media
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="series" className="mt-6">
+            <SeriesManager />
+          </TabsContent>
+        </Tabs>
       </main>
 
       <UploadModal

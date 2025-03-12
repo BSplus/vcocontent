@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Event, MediaItem } from "@shared/schema";
+import { Event, MediaItem, Series } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 
 interface EventCardProps {
@@ -17,6 +17,12 @@ export default function EventCard({ event }: EventCardProps) {
   const { data: mediaItems } = useQuery<MediaItem[]>({
     queryKey: [`/api/events/${event.id}/media`],
     enabled: !event.customThumbnail, // Only fetch if no custom thumbnail
+  });
+
+  // Fetch series data if the event belongs to a series
+  const { data: series } = useQuery<Series>({
+    queryKey: [`/api/series/${event.seriesId}`],
+    enabled: !!event.seriesId,
   });
 
   // Get the thumbnail to display
@@ -36,6 +42,16 @@ export default function EventCard({ event }: EventCardProps) {
             {isUpcoming ? "Upcoming" : "Past"}
           </Badge>
         </div>
+        {series && (
+          <div className="absolute top-3 left-3 h-8">
+            <img
+              src={series.logo}
+              alt={series.name}
+              className="h-full w-auto object-contain"
+              title={series.name}
+            />
+          </div>
+        )}
       </div>
       <CardContent className="pt-6 flex-grow">
         <h3 className="text-xl font-semibold mb-2 line-clamp-1 group-hover:text-primary transition-colors">

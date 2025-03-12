@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -12,8 +12,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { InsertEvent, insertEventSchema } from "@shared/schema";
+import { InsertEvent, insertEventSchema, Series } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Upload, Image as ImageIcon } from "lucide-react";
 import { generateEventThumbnail } from "@/lib/ai-thumbnail";
@@ -36,6 +43,11 @@ export default function UploadModal({
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
+  // Fetch available series
+  const { data: seriesList } = useQuery<Series[]>({
+    queryKey: ["/api/series"],
+  });
+
   const form = useForm<InsertEvent>({
     resolver: zodResolver(insertEventSchema),
     defaultValues: {
@@ -44,6 +56,7 @@ export default function UploadModal({
       date: new Date(),
       coverImage: "/attached_assets/%2389_3.png",
       customThumbnail: "",
+      seriesId: undefined,
     },
   });
 
@@ -219,6 +232,26 @@ export default function UploadModal({
             {form.formState.errors.date && (
               <p className="text-sm text-red-500">{form.formState.errors.date.message}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="series">Race Series (Optional)</Label>
+            <Select
+              value={form.watch("seriesId")?.toString()}
+              onValueChange={(value) => form.setValue("seriesId", value ? parseInt(value) : undefined)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a race series" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">None</SelectItem>
+                {seriesList?.map((series) => (
+                  <SelectItem key={series.id} value={series.id.toString()}>
+                    {series.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">

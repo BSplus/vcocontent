@@ -1,5 +1,5 @@
-import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem } from "@shared/schema";
-import { users, events, mediaItems } from "@shared/schema";
+import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries } from "@shared/schema";
+import { users, events, mediaItems, series } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import session from "express-session";
@@ -12,7 +12,13 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  getAllUsers(): Promise<User[]>;  // Add this new method
+  getAllUsers(): Promise<User[]>;
+
+  // Series methods
+  getSeries(id?: number): Promise<Series | Series[] | undefined>;
+  createSeries(series: InsertSeries): Promise<Series>;
+  updateSeries(id: number, series: Partial<InsertSeries>): Promise<Series>;
+  deleteSeries(id: number): Promise<void>;
 
   // Event methods
   getEvents(): Promise<Event[]>;
@@ -53,6 +59,34 @@ export class DatabaseStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  async getSeries(id?: number): Promise<Series | Series[] | undefined> {
+    if (id) {
+      const [series] = await db.select().from(series).where(eq(series.id, id));
+      return series;
+    }
+    return await db.select().from(series);
+  }
+
+  async createSeries(insertSeries: InsertSeries): Promise<Series> {
+    const [newSeries] = await db.insert(series).values(insertSeries).returning();
+    return newSeries;
+  }
+
+  async updateSeries(id: number, updateData: Partial<InsertSeries>): Promise<Series> {
+    const [updatedSeries] = await db
+      .update(series)
+      .set(updateData)
+      .where(eq(series.id, id))
+      .returning();
+
+    if (!updatedSeries) throw new Error("Series not found");
+    return updatedSeries;
+  }
+
+  async deleteSeries(id: number): Promise<void> {
+    await db.delete(series).where(eq(series.id, id));
   }
 
   async getEvents(): Promise<Event[]> {

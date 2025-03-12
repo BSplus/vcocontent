@@ -2,10 +2,67 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertEventSchema, insertMediaItemSchema } from "@shared/schema";
+import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
+
+  // Series routes
+  app.get("/api/series", async (_req, res) => {
+    const seriesList = await storage.getSeries();
+    res.json(seriesList);
+  });
+
+  app.get("/api/series/:id", async (req, res) => {
+    const series = await storage.getSeries(parseInt(req.params.id));
+    if (!series) return res.status(404).send("Series not found");
+    res.json(series);
+  });
+
+  app.post("/api/series", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user.isAdmin) {
+      return res.status(403).send("Unauthorized");
+    }
+
+    const parseResult = insertSeriesSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json(parseResult.error);
+    }
+
+    const series = await storage.createSeries(parseResult.data);
+    res.status(201).json(series);
+  });
+
+  app.put("/api/series/:id", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user.isAdmin) {
+      return res.status(403).send("Unauthorized");
+    }
+
+    const parseResult = insertSeriesSchema.partial().safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json(parseResult.error);
+    }
+
+    try {
+      const series = await storage.updateSeries(parseInt(req.params.id), parseResult.data);
+      res.json(series);
+    } catch (error) {
+      res.status(404).send((error as Error).message);
+    }
+  });
+
+  app.delete("/api/series/:id", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user.isAdmin) {
+      return res.status(403).send("Unauthorized");
+    }
+
+    try {
+      await storage.deleteSeries(parseInt(req.params.id));
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(404).send((error as Error).message);
+    }
+  });
 
   // Event routes
   app.get("/api/events", async (_req, res) => {
