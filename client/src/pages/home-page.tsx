@@ -308,18 +308,18 @@ export default function HomePage() {
             </p>
           ) : (
             <div className="space-y-6">
-              {/* Featured archive events (latest 2) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {archiveEvents.slice(0, 2).map((event) => (
+              {/* Featured archive events (latest 4) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {archiveEvents.slice(0, 4).map((event) => (
                   <EventCard key={event.id} event={event} />
                 ))}
               </div>
 
               {/* Remaining archive events in compact view */}
-              {archiveEvents.length > 2 && (
+              {archiveEvents.length > 4 && (
                 <div className="bg-black/40 rounded-lg p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {archiveEvents.slice(2).map((event) => (
+                    {archiveEvents.slice(4).map((event) => (
                       <div
                         key={event.id}
                         className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02] cursor-default h-[88px]"
