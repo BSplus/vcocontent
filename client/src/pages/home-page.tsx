@@ -307,10 +307,53 @@ export default function HomePage() {
               No archived events available.
             </p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {archiveEvents.map((event) => (
-                <EventCard key={event.id} event={event} />
-              ))}
+            <div className="space-y-6">
+              {/* Featured archive events (latest 2) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {archiveEvents.slice(0, 2).map((event) => (
+                  <EventCard key={event.id} event={event} />
+                ))}
+              </div>
+
+              {/* Remaining archive events in compact view */}
+              {archiveEvents.length > 2 && (
+                <div className="bg-black/40 rounded-lg p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {archiveEvents.slice(2).map((event) => (
+                      <div
+                        key={event.id}
+                        className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02] cursor-default h-[88px]"
+                      >
+                        <div className="flex items-center gap-3">
+                          <History className="h-5 w-5 text-primary shrink-0" />
+                          <div className="min-w-0">
+                            <h3 className="font-bold truncate group-hover:text-primary transition-colors">
+                              {event.title}
+                            </h3>
+                            <p className="text-sm text-foreground/60 truncate">
+                              {new Date(event.date).toLocaleDateString('en-US', {
+                                weekday: 'short',
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <Link href="/archive-events">
+                    <Button
+                      variant="outline"
+                      className="w-full mt-4 hover:bg-black/20 transition-colors"
+                    >
+                      View All {archiveEvents.length} Archive Events
+                      <ChevronRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </Link>
+                </div>
+              )}
             </div>
           )}
         </section>
