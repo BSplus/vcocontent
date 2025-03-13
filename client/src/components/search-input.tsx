@@ -22,7 +22,6 @@ export function SearchInput({ items, value, onChange, onSearch, className }: Sea
   const [fuse, setFuse] = useState<Fuse<MediaItem>>();
   const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
 
-  // Initialize Fuse instance with optimized settings
   useEffect(() => {
     const fuseInstance = new Fuse(items, {
       keys: [
@@ -85,7 +84,7 @@ export function SearchInput({ items, value, onChange, onSearch, className }: Sea
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
-              placeholder="Suche nach Beschreibung, Fotograf oder Tags..."
+              placeholder="Search by description, photographer, or tags..."
               value={value}
               onChange={(e) => handleSearch(e.target.value)}
               className="pl-10"
@@ -104,12 +103,12 @@ export function SearchInput({ items, value, onChange, onSearch, className }: Sea
             <CommandInput
               value={value}
               onValueChange={handleSearch}
-              placeholder="Tippen zum Suchen..."
+              placeholder="Type to search..."
               className="border-none focus:ring-0"
             />
-            <CommandEmpty>Keine Ergebnisse gefunden.</CommandEmpty>
+            <CommandEmpty>No results found.</CommandEmpty>
             {suggestions.length > 0 && (
-              <CommandGroup heading="Vorschläge">
+              <CommandGroup heading="Suggestions">
                 {suggestions.map((item) => (
                   <CommandItem
                     key={item.id}

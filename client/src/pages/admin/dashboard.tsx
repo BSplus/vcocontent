@@ -167,17 +167,30 @@ export default function AdminDashboard() {
       const reader = new FileReader();
       reader.onloadend = async () => {
         if (typeof reader.result === 'string') {
-          const response = await apiRequest("POST", "/api/header-image", {
-            url: reader.result
-          });
+          try {
+            const response = await apiRequest("POST", "/api/header-image", {
+              url: reader.result
+            });
 
-          if (response.ok) {
+            if (!response.ok) {
+              throw new Error("Failed to upload header image");
+            }
+
+            const result = await response.json();
+            queryClient.invalidateQueries({ queryKey: ["/api/header-image"] });
+
             toast({
               title: "Success",
               description: "Header image updated successfully",
             });
             setHeaderImageFile(null);
             setHeaderImagePreview("");
+          } catch (error) {
+            toast({
+              title: "Error",
+              description: "Failed to upload header image",
+              variant: "destructive",
+            });
           }
         }
       };
