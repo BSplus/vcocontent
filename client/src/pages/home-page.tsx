@@ -1,17 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { type Event, type MediaItem, type Series } from "@shared/schema";
+import { type Event, type Series } from "@shared/schema";
 import { Loader2, Calendar, Trophy, History, Clock, ChevronRight, Search } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
+import MainNavigation from "@/components/main-navigation";
 
 export default function HomePage() {
-  const { user, logoutMutation } = useAuth();
-  const [, setLocation] = useLocation();
+  const { user } = useAuth();
 
   // Events loading with improved error handling
   const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
@@ -89,60 +87,7 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-background" />
 
         {/* Navigation */}
-        <header className="absolute top-0 left-0 right-0 border-b border-primary/20 bg-black/50 backdrop-blur-sm">
-          <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-            <div className="flex items-center gap-8">
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-[Orbitron] text-[#4B71FF]">
-                  VCO MEDIA DATABASE
-                </h1>
-              </div>
-              <nav className="hidden md:flex gap-6">
-                <Link href="/" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
-                  Home
-                </Link>
-                <Link href="/current-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
-                  Current Events
-                </Link>
-                <Link href="/upcoming-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
-                  Upcoming Events
-                </Link>
-                <Link href="/archive-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
-                  Archive
-                </Link>
-                <Link href="/search" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-2">
-                  <Search className="h-4 w-4" />
-                  Search Media
-                </Link>
-              </nav>
-            </div>
-            <div className="flex gap-4 items-center">
-              {user?.isAdmin && (
-                <Button variant="outline" asChild className="border-primary/20 hover:bg-primary hover:text-black">
-                  <Link href="/admin">Creator Dashboard</Link>
-                </Button>
-              )}
-              {user ? (
-                <Button
-                  variant="secondary"
-                  onClick={() => logoutMutation.mutate()}
-                  disabled={logoutMutation.isPending}
-                  className="bg-primary text-black hover:bg-primary/90"
-                >
-                  {logoutMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    'Logout'
-                  )}
-                </Button>
-              ) : (
-                <Button asChild className="bg-primary text-black hover:bg-primary/90">
-                  <Link href="/auth">CREATOR LOGIN</Link>
-                </Button>
-              )}
-            </div>
-          </div>
-        </header>
+        <MainNavigation />
       </div>
 
       <main className="container mx-auto px-4 py-8 space-y-16">

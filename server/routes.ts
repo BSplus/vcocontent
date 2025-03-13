@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema } from "@shared/schema";
 import express from "express";
 import path from "path";
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -16,9 +16,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // API Routes
   app.get("/api/events", async (req, res) => {
     try {
-      console.log('Fetching events...');
       const events = await storage.getEvents();
-      console.log('Events fetched:', events);
       res.json(events);
     } catch (error) {
       console.error('Error fetching events:', error);
@@ -163,16 +161,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const httpServer = createServer(app);
 
-  // Set up WebSocket server for real-time updates
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  // Set up WebSocket server with proper security and error handling
+  const wss = new WebSocketServer({ 
+    server: httpServer, 
+    path: '/ws',
+    clientTracking: true 
+  });
 
-  wss.on('connection', (ws) => {
-    console.log('Client connected to WebSocket');
-
-    ws.on('message', (message) => {
-      console.log('Received:', message);
+  wss.on('connection', (ws: WebSocket) => {
+    // Handle connection setup
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error.message);
     });
 
+    // Send initial connection status
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'connection', status: 'connected' }));
+    }
+
+    // Handle client messages
+    ws.on('message', (data) => {
+      try {
+        // Parse and handle messages if needed
+        const message = JSON.parse(data.toString());
+        console.log('Received message type:', message.type);
+      } catch (error) {
+        console.error('Error processing message:', error.message);
+      }
+    });
+
+    // Handle client disconnection
     ws.on('close', () => {
       console.log('Client disconnected from WebSocket');
     });

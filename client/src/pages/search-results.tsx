@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft } from "lucide-react";
 import MediaGrid from "@/components/media-grid";
 import { AdvancedSearch } from "@/components/advanced-search";
+import MainNavigation from "@/components/main-navigation";
 
 export default function SearchResults() {
   const [location] = useLocation();
@@ -39,45 +40,45 @@ export default function SearchResults() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-primary/20">
-        <div className="container mx-auto px-4 py-6">
-          <Button variant="ghost" asChild className="mb-4">
-            <Link href="/">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Home
-            </Link>
-          </Button>
-          <h1 className="text-4xl font-bold">Media Search</h1>
-          {initialQuery && (
-            <p className="text-muted-foreground mt-2">
-              Search results for: "{initialQuery}"
-            </p>
+      <MainNavigation />
+
+      <div className="container mx-auto px-4 py-8">
+        <Button variant="ghost" asChild className="mb-4">
+          <Link href="/">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Home
+          </Link>
+        </Button>
+        <h1 className="text-4xl font-bold">Media Search</h1>
+        {initialQuery && (
+          <p className="text-muted-foreground mt-2">
+            Search results for: "{initialQuery}"
+          </p>
+        )}
+
+        <div className="mt-8">
+          <AdvancedSearch
+            items={mediaItems}
+            onSearchResults={setFilteredMediaItems}
+            className="mb-8"
+            initialQuery={initialQuery}
+            initialType={initialType}
+          />
+
+          {!filteredMediaItems.length ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground text-lg">
+                {initialQuery ? 
+                  "No matching media found." : 
+                  "Use the search above to find media items."
+                }
+              </p>
+            </div>
+          ) : (
+            <MediaGrid items={filteredMediaItems} />
           )}
         </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-8">
-        <AdvancedSearch
-          items={mediaItems}
-          onSearchResults={setFilteredMediaItems}
-          className="mb-8"
-          initialQuery={initialQuery}
-          initialType={initialType}
-        />
-
-        {!filteredMediaItems.length ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground text-lg">
-              {initialQuery ? 
-                "No matching media found." : 
-                "Use the search above to find media items."
-              }
-            </p>
-          </div>
-        ) : (
-          <MediaGrid items={filteredMediaItems} />
-        )}
-      </main>
+      </div>
     </div>
   );
 }
