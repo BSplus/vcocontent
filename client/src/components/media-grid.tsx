@@ -427,40 +427,12 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
         setSelectedItem(null);
         setSelectedItemIndex(-1);
       }}>
-        <DialogContent className="max-w-4xl relative">
+        <DialogContent className="max-w-4xl sm:max-h-[90vh] max-h-[100vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {selectedItem?.caption || "Media Preview"}
             </DialogTitle>
           </DialogHeader>
-
-          {selectedItemIndex > 0 && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute left-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/60 hover:bg-black/80"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigatePrevious();
-              }}
-            >
-              <ChevronLeft className="h-8 w-8" />
-            </Button>
-          )}
-
-          {selectedItemIndex < items.length - 1 && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute right-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/60 hover:bg-black/80"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigateNext();
-              }}
-            >
-              <ChevronRight className="h-8 w-8" />
-            </Button>
-          )}
 
           <div className="relative aspect-video bg-black/20">
             {selectedItem?.type === "video" ? (
@@ -476,64 +448,97 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                 className="absolute inset-0 w-full h-full object-contain"
               />
             )}
-          </div>
 
-          <div className="flex justify-between items-center">
-            <div>
-              {selectedItem?.photographer && (
-                <p className="text-sm text-muted-foreground">
-                  Photographer: {selectedItem.photographer}
-                </p>
-              )}
-            </div>
-            <div className="flex gap-2">
-              {user?.isAdmin && (
+            {/* Navigation buttons - now positioned inside the media container */}
+            <div className="absolute inset-0 flex items-center justify-between p-2">
+              {selectedItemIndex > 0 && (
                 <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedItem(null);
-                    selectedItem && setEditItem(selectedItem);
+                  variant="ghost"
+                  size="icon"
+                  className="bg-black/60 hover:bg-black/80 h-12 w-12"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigatePrevious();
                   }}
                 >
-                  <Pencil className="h-4 w-4 mr-2" />
-                  Edit
+                  <ChevronLeft className="h-8 w-8" />
                 </Button>
               )}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() =>
-                    selectedItem && handleDownload(selectedItem.url, 'high', selectedItem.type as 'video' | 'image')
-                  }>
-                    Download High-Res
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() =>
-                    selectedItem && handleDownload(selectedItem.thumbnail, 'low', selectedItem.type as 'video' | 'image')
-                  }>
-                    Download Low-Res
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+
+              {selectedItemIndex < items.length - 1 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="bg-black/60 hover:bg-black/80 h-12 w-12"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigateNext();
+                  }}
+                >
+                  <ChevronRight className="h-8 w-8" />
+                </Button>
+              )}
             </div>
           </div>
 
-          {selectedItem?.tags && selectedItem.tags.length > 0 && (
-            <div className="flex gap-2 flex-wrap">
-              {selectedItem.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-1 bg-secondary text-secondary-foreground text-sm rounded-full"
-                >
-                  {tag}
-                </span>
-              ))}
+          <div className="space-y-4 mt-4">
+            <div className="flex justify-between items-center">
+              <div>
+                {selectedItem?.photographer && (
+                  <p className="text-sm text-muted-foreground">
+                    Photographer: {selectedItem.photographer}
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {user?.isAdmin && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedItem(null);
+                      selectedItem && setEditItem(selectedItem);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Download
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() =>
+                      selectedItem && handleDownload(selectedItem.url, 'high', selectedItem.type as 'video' | 'image')
+                    }>
+                      Download High-Res
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() =>
+                      selectedItem && handleDownload(selectedItem.thumbnail, 'low', selectedItem.type as 'video' | 'image')
+                    }>
+                      Download Low-Res
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
-          )}
+
+            {selectedItem?.tags && selectedItem.tags.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                {selectedItem.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-2 py-1 bg-secondary text-secondary-foreground text-sm rounded-full"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
