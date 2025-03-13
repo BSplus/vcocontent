@@ -66,13 +66,15 @@ export function AdvancedSearch({
 
   // Initialize search query from URL if provided
   useEffect(() => {
+    console.log('Setting initial query:', initialQuery);
     if (initialQuery) {
       setSearchQuery(initialQuery);
     }
-  }, [initialQuery]);
+  }, [initialQuery, setSearchQuery]);
 
   // Update results whenever search parameters change
-  React.useEffect(() => {
+  useEffect(() => {
+    console.log('Filtering results:', results.length, 'by type:', filters.mediaType);
     let filteredResults = [...results];
 
     if (filters.mediaType !== 'all') {

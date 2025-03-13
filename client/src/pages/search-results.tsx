@@ -10,7 +10,7 @@ import { AdvancedSearch } from "@/components/advanced-search";
 export default function SearchResults() {
   const [location] = useLocation();
   const [filteredMediaItems, setFilteredMediaItems] = useState<MediaItem[]>([]);
-  
+
   // Get search parameters from URL
   const params = new URLSearchParams(location.split('?')[1]);
   const initialQuery = params.get('q') || '';
@@ -20,6 +20,12 @@ export default function SearchResults() {
   const { data: mediaItems = [], isLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
   });
+
+  useEffect(() => {
+    console.log('Loaded media items:', mediaItems.length);
+    console.log('Initial query:', initialQuery);
+    console.log('Initial type:', initialType);
+  }, [mediaItems, initialQuery, initialType]);
 
   if (isLoading) {
     return (
