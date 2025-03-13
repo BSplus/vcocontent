@@ -8,19 +8,19 @@ export default function MainNavigation() {
 
   return (
     <header className="border-b border-primary/20 bg-black/50 backdrop-blur-sm">
-      <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-8">
+      <div className="container mx-auto px-4 py-2 flex justify-between items-center">
+        <div className="flex items-center gap-4">
           <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
             <img 
               src="/attached_assets/VCO_2021_reg_White_Trans.png"
               alt="VCO Logo"
-              className="h-[150px] w-auto" 
+              className="h-[100px] w-auto" 
             />
             <span className="text-2xl font-[Orbitron] text-white tracking-wider">
               MEDIA DATABASE
             </span>
           </Link>
-          <nav className="hidden md:flex gap-6">
+          <nav className="hidden md:flex gap-4 items-center">
             <Link href="/" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
               Home
             </Link>
