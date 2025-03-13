@@ -8,45 +8,30 @@ import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [, setLocation] = useLocation();
 
-  // Events loading with improved error handling
-  const { 
-    data: events = [], 
-    isLoading: eventsLoading,
-    error: eventsError 
-  } = useQuery<Event[]>({
+  // Events loading
+  const { data: events = [], isLoading: eventsLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"]
   });
 
   // Series loading
-  const { 
-    data: series = [],
-    isLoading: seriesLoading 
-  } = useQuery<Series[]>({
+  const { data: series = [], isLoading: seriesLoading } = useQuery<Series[]>({
     queryKey: ["/api/series"]
   });
-
-  // Helper function to check if an event has images
-  const eventHasImages = (eventId: number) => {
-    return true; 
-  };
 
   // Event categorization
   const today = new Date();
   const fourWeeksAgo = new Date(today.getTime() - (28 * 24 * 60 * 60 * 1000));
 
-  // Current events - only show events with images
+  // Current events
   const currentEvents = events
     .filter(event => {
       const eventDate = new Date(event.date);
-      return eventDate >= fourWeeksAgo && 
-             eventDate <= today && 
-             eventHasImages(event.id);
+      return eventDate >= fourWeeksAgo && eventDate <= today;
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 4);
@@ -55,7 +40,7 @@ export default function HomePage() {
   const upcomingEvents = events
     .filter(event => {
       const eventDate = new Date(event.date);
-      return !eventHasImages(event.id) || eventDate > today;
+      return eventDate > today;
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -63,18 +48,24 @@ export default function HomePage() {
   const archiveEvents = events
     .filter(event => {
       const eventDate = new Date(event.date);
-      return eventDate < fourWeeksAgo && 
-             eventDate < today && 
-             eventHasImages(event.id);
+      return eventDate < fourWeeksAgo && eventDate < today;
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  if (eventsLoading || seriesLoading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section with Header Image */}
       <div className="relative h-[60vh] overflow-hidden">
         <img
-          src="/attached_assets/IMG_7464.png"
+          src="attached_assets/IMG_7464.png"
           alt="Racing track at sunset"
           className="absolute inset-0 w-full h-full object-cover"
         />
@@ -156,43 +147,39 @@ export default function HomePage() {
           )}
         </section>
 
-        <section id="upcoming" className="bg-black/40 rounded-lg p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <Calendar className="h-6 w-6 text-accent" />
-            <h2 className="text-2xl font-bold text-accent">Upcoming Events</h2>
-          </div>
-          {!upcomingEvents.length ? (
-            <p className="text-center text-foreground/60 py-6">
-              No upcoming events scheduled.
-            </p>
-          ) : (
-            <div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {upcomingEvents.slice(0, 10).map((event) => (
-                  <div
-                    key={event.id}
-                    className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02] cursor-default h-[88px]"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Clock className="h-5 w-5 text-primary shrink-0" />
-                      <div className="min-w-0">
-                        <h3 className="font-bold truncate group-hover:text-primary transition-colors">
-                          {event.title}
-                        </h3>
-                        <p className="text-sm text-foreground/60 truncate">
-                          {new Date(event.date).toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </p>
-                      </div>
+        {upcomingEvents.length > 0 && (
+          <section id="upcoming" className="bg-black/40 rounded-lg p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <Calendar className="h-6 w-6 text-accent" />
+              <h2 className="text-2xl font-bold text-accent">Upcoming Events</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {upcomingEvents.slice(0, 10).map((event) => (
+                <div
+                  key={event.id}
+                  className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02] cursor-default h-[88px]"
+                >
+                  <div className="flex items-center gap-3">
+                    <Clock className="h-5 w-5 text-primary shrink-0" />
+                    <div className="min-w-0">
+                      <h3 className="font-bold truncate group-hover:text-primary transition-colors">
+                        {event.title}
+                      </h3>
+                      <p className="text-sm text-foreground/60 truncate">
+                        {new Date(event.date).toLocaleDateString('en-US', {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </p>
                     </div>
                   </div>
-                ))}
-              </div>
-              {upcomingEvents.length > 10 && (
+                </div>
+              ))}
+            </div>
+            {upcomingEvents.length > 10 && (
+              <Link href="/upcoming-events">
                 <Button
                   variant="outline"
                   className="w-full mt-4 hover:bg-black/20 transition-colors"
@@ -200,10 +187,10 @@ export default function HomePage() {
                   View All {upcomingEvents.length} Upcoming Events
                   <ChevronRight className="h-4 w-4 ml-2" />
                 </Button>
-              )}
-            </div>
-          )}
-        </section>
+              </Link>
+            )}
+          </section>
+        )}
 
         <section id="archive">
           <div className="flex items-center gap-3 mb-6">
@@ -224,7 +211,7 @@ export default function HomePage() {
               {archiveEvents.length > 4 && (
                 <div className="bg-black/40 rounded-lg p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {archiveEvents.slice(4).map((event) => (
+                    {archiveEvents.slice(4, 10).map((event) => (
                       <div
                         key={event.id}
                         className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02] cursor-default h-[88px]"
