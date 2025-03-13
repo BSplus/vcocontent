@@ -8,7 +8,7 @@ export default function Footer() {
           <img
             src="/attached_assets/VCO_2021_reg_White_Trans.png"
             alt="VCO Logo"
-            className="h-12 w-auto object-contain hover:opacity-90 transition-opacity"
+            className="h-16 w-auto object-contain hover:opacity-90 transition-opacity"
           />
           <div className="text-sm text-foreground/60 space-y-4">
             <p className="max-w-4xl">

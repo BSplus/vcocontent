@@ -14,7 +14,7 @@ export default function MainNavigation() {
             <img 
               src="/attached_assets/VCO_2021_reg_White_Trans.png"
               alt="VCO Logo"
-              className="h-8 w-auto"
+              className="h-10 w-auto" 
             />
             <span className="text-2xl font-[Orbitron] text-white tracking-wider">
               MEDIA DATABASE
