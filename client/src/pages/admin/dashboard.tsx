@@ -37,10 +37,12 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Load events
   const { data: events = [], isLoading: eventsLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"]
   });
 
+  // Load media items for statistics
   const { data: mediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
     retry: false,
@@ -58,7 +60,18 @@ export default function AdminDashboard() {
       await apiRequest("DELETE", `/api/events/${eventId}`);
     },
     onSuccess: () => {
+      // Invalidate all related queries to trigger immediate updates
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/series"] });
+
+      // Also invalidate any specific event media queries that might exist
+      if (eventToDelete?.id) {
+        queryClient.invalidateQueries({ 
+          queryKey: [`/api/events/${eventToDelete.id}/media`]
+        });
+      }
+
       toast({
         title: "Success",
         description: "Event deleted successfully",
@@ -113,7 +126,7 @@ export default function AdminDashboard() {
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
-  if (eventsLoading) {
+  if (eventsLoading || mediaLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -172,7 +185,7 @@ export default function AdminDashboard() {
             ) : (
               <div className="grid gap-6">
                 {sortedEvents.map((event) => {
-                  const stats = !mediaLoading ? getEventStats(event.id) : { photos: 0, videos: 0 };
+                  const stats = getEventStats(event.id);
                   return (
                     <Card key={event.id} className="bg-black/40 border-primary/20">
                       <CardHeader>

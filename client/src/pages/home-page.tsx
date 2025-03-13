@@ -79,9 +79,9 @@ export default function HomePage() {
     })
     .slice(0, 4);
 
-  const upcomingEvents = filteredEvents.filter(event =>
-    new Date(event.date) > today
-  );
+  const upcomingEvents = filteredEvents
+    .filter(event => new Date(event.date) > today)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const archiveEvents = filteredEvents.filter(event => {
     const eventDate = new Date(event.date);
