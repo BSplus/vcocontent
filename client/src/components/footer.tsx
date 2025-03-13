@@ -17,40 +17,13 @@ export default function Footer() {
               the written permission of the copyright holder is prohibited.
             </p>
             <div className="flex items-center justify-between">
-              <p>© Copyright 2020-2025, Virtual Competition Organisation (VCO) GmbH.</p>
+              <p>© Copyright 2020-{new Date().getFullYear()}, Virtual Competition Organisation (VCO) GmbH.</p>
               <Link href="/imprint" className="hover:text-primary transition-colors">
                 Imprint
               </Link>
             </div>
           </div>
         </div>
-      </div>
-    </footer>
-  );
-}
-import { Link } from "wouter";
-
-export default function Footer() {
-  return (
-    <footer className="border-t py-6 md:py-8">
-      <div className="container flex flex-col items-center justify-between gap-4 md:flex-row">
-        <p className="text-center text-sm leading-loose text-muted-foreground md:text-left">
-          © {new Date().getFullYear()} Virtual Competition Organisation. All rights reserved.
-        </p>
-        <nav className="flex gap-4 text-sm">
-          <Link href="/about" className="text-muted-foreground hover:text-foreground">
-            About
-          </Link>
-          <Link href="/terms" className="text-muted-foreground hover:text-foreground">
-            Terms
-          </Link>
-          <Link href="/privacy" className="text-muted-foreground hover:text-foreground">
-            Privacy
-          </Link>
-          <Link href="/contact" className="text-muted-foreground hover:text-foreground">
-            Contact
-          </Link>
-        </nav>
       </div>
     </footer>
   );
