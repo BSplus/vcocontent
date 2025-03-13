@@ -14,7 +14,7 @@ export default function SearchResults() {
   // Get search parameters from URL
   const params = new URLSearchParams(location.split('?')[1]);
   const initialQuery = params.get('q') || '';
-  const initialType = params.get('type') || 'all';
+  const initialType = (params.get('type') || 'all') as 'all' | 'image' | 'video';
 
   // Fetch all media items
   const { data: mediaItems = [], isLoading } = useQuery<MediaItem[]>({
@@ -63,7 +63,7 @@ export default function SearchResults() {
           onSearchResults={setFilteredMediaItems}
           className="mb-8"
           initialQuery={initialQuery}
-          initialType={initialType as "all" | "image" | "video"}
+          initialType={initialType}
         />
 
         {!filteredMediaItems.length ? (
