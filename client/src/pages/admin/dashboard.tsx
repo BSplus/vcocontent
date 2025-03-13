@@ -126,17 +126,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Static Header Image */}
-      <div className="w-full h-[40vh] relative overflow-hidden">
-        <img
-          src="/attached_assets/IMG_7464.png"
-          alt="Racing track at sunset"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-background/80" />
-      </div>
-
-      <header className="border-b border-primary/20 relative">
+      <header className="border-b border-primary/20">
         <div className="container mx-auto px-4 py-6">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             Admin Dashboard

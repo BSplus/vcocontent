@@ -31,9 +31,8 @@ export default function HomePage() {
     queryKey: ["/api/series"]
   });
 
-  // Helper function to check if an event has images (Improved)
+  // Helper function to check if an event has images
   const eventHasImages = (eventId: number) => {
-    //This needs to be properly implemented to check for images.  Placeholder for now.
     return true; 
   };
 
@@ -72,72 +71,73 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-primary/20 bg-black/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-[Orbitron] text-[#4B71FF]">
-                VCO MEDIA DATABASE
-              </h1>
+      {/* Hero Section with Header Image */}
+      <div className="relative h-[60vh] overflow-hidden">
+        <img
+          src="/attached_assets/IMG_7464.png"
+          alt="Racing track at sunset"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-background" />
+
+        {/* Navigation */}
+        <header className="absolute top-0 left-0 right-0 border-b border-primary/20 bg-black/50 backdrop-blur-sm">
+          <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div className="flex items-center gap-8">
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-[Orbitron] text-[#4B71FF]">
+                  VCO MEDIA DATABASE
+                </h1>
+              </div>
+              <nav className="hidden md:flex gap-6">
+                <Link href="/" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+                  Home
+                </Link>
+                <Link href="/current-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+                  Current Events
+                </Link>
+                <Link href="/upcoming-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+                  Upcoming Events
+                </Link>
+                <Link href="/archive-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+                  Archive
+                </Link>
+                <Link href="/search" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-2">
+                  <Search className="h-4 w-4" />
+                  Search Media
+                </Link>
+              </nav>
             </div>
-            <nav className="hidden md:flex gap-6">
-              <Link href="/" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
-                Home
-              </Link>
-              <Link href="/current-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
-                Current Events
-              </Link>
-              <Link href="/upcoming-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
-                Upcoming Events
-              </Link>
-              <Link href="/archive-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
-                Archive
-              </Link>
-              <Link href="/search" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-2">
-                <Search className="h-4 w-4" />
-                Search Media
-              </Link>
-            </nav>
+            <div className="flex gap-4 items-center">
+              {user?.isAdmin && (
+                <Button variant="outline" asChild className="border-primary/20 hover:bg-primary hover:text-black">
+                  <Link href="/admin">Creator Dashboard</Link>
+                </Button>
+              )}
+              {user ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => logoutMutation.mutate()}
+                  disabled={logoutMutation.isPending}
+                  className="bg-primary text-black hover:bg-primary/90"
+                >
+                  {logoutMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'Logout'
+                  )}
+                </Button>
+              ) : (
+                <Button asChild className="bg-primary text-black hover:bg-primary/90">
+                  <Link href="/auth">CREATOR LOGIN</Link>
+                </Button>
+              )}
+            </div>
           </div>
-          <div className="flex gap-4 items-center">
-            {user?.isAdmin && (
-              <Button variant="outline" asChild className="border-primary/20 hover:bg-primary hover:text-black">
-                <Link href="/admin">Creator Dashboard</Link>
-              </Button>
-            )}
-            {user ? (
-              <Button
-                variant="secondary"
-                onClick={() => logoutMutation.mutate()}
-                disabled={logoutMutation.isPending}
-                className="bg-primary text-black hover:bg-primary/90"
-              >
-                {logoutMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  'Logout'
-                )}
-              </Button>
-            ) : (
-              <Button asChild className="bg-primary text-black hover:bg-primary/90">
-                <Link href="/auth">CREATOR LOGIN</Link>
-              </Button>
-            )}
-          </div>
-        </div>
-      </header>
+        </header>
+      </div>
 
       <main className="container mx-auto px-4 py-8 space-y-16">
-        {/* Hero Header Image Section - Editable in Dashboard */}
-        <section className="w-full aspect-[21/9] rounded-lg overflow-hidden bg-black/20 relative">
-          {/* Placeholder for header image that will be editable in dashboard */}
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-            {user?.isAdmin ? (
-              <p>Upload a header image in the Creator Dashboard</p>
-            ) : null}
-          </div>
-        </section>
-
         <section id="current">
           <div className="flex items-center gap-3 mb-6">
             <Trophy className="h-6 w-6 text-primary" />
