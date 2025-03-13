@@ -37,7 +37,7 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: events, isLoading, refetch } = useQuery<Event[]>({
+  const { data: events, isLoading: eventsLoading, refetch } = useQuery<Event[]>({
     queryKey: ["/api/events"],
   });
 
@@ -115,8 +115,11 @@ export default function AdminDashboard() {
   };
 
   // Fetch media items for all events
-  const { data: allMediaItems = [] } = useQuery<MediaItem[]>({
+  const { data: allMediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
+    onSuccess: (data) => {
+      console.log('Fetched media items:', data?.length || 0);
+    }
   });
 
   // Calculate stats for each event
@@ -131,6 +134,8 @@ export default function AdminDashboard() {
     console.log(`Stats for event ${eventId}:`, stats); // Debug log
     return stats;
   };
+
+  const isLoading = eventsLoading || mediaLoading;
 
   return (
     <div className="min-h-screen bg-background">

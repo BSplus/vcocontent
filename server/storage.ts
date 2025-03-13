@@ -1,4 +1,3 @@
-
 import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries } from "@shared/schema";
 import { users, events, mediaItems, series as seriesTable } from "@shared/schema";
 import { db } from "./db";
