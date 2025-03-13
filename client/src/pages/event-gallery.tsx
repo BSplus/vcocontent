@@ -16,8 +16,7 @@ export default function EventGallery() {
 
   // Fetch event data
   const { data: event, isLoading: eventLoading } = useQuery<Event>({
-    queryKey: [`/api/events/${eventId}`],
-    enabled: Boolean(eventId),
+    queryKey: [`/api/events/${eventId}`]
   });
 
   // Fetch media items
@@ -27,7 +26,10 @@ export default function EventGallery() {
     refetch: refetchMedia
   } = useQuery<MediaItem[]>({
     queryKey: [`/api/events/${eventId}/media`],
-    enabled: Boolean(eventId),
+    onSuccess: (data) => {
+      console.log('Fetched media items for event:', data.length);
+      setFilteredMediaItems(data); // Initialize filtered items with all media items
+    }
   });
 
   const handleMediaDelete = async (deletedItemIds: number[]) => {
