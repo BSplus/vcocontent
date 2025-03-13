@@ -165,5 +165,5 @@ class DatabaseStorage implements IStorage {
   }
 }
 
-// Singleton-Instanz erstellen und exportieren
+// Nur eine Instanz und ein Export
 export const storage = new DatabaseStorage();
