@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { type Event, type MediaItem } from "@shared/schema";
-import { Loader2, Calendar, Trophy, History, Clock, ChevronRight } from "lucide-react";
+import { type Event, type MediaItem, type Series } from "@shared/schema";
+import { Loader2, Calendar, Trophy, History, Clock, ChevronRight, Tag } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useMemo } from "react";
 import MediaGrid from "@/components/media-grid";
@@ -15,7 +15,7 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
 
-  // Medien laden mit korrekter Typisierung
+  // Media loading
   const { data: fetchedMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
     onSuccess: (newMediaItems: MediaItem[]) => setMediaItems(newMediaItems || [])
@@ -25,7 +25,7 @@ export default function HomePage() {
     setMediaItems(prev => prev.filter(item => item.id !== deletedItemId));
   };
 
-  // Events laden mit verbesserter Fehlerbehandlung
+  // Events loading with improved error handling
   const { 
     data: events = [], 
     isLoading: eventsLoading,
@@ -37,20 +37,39 @@ export default function HomePage() {
     }
   });
 
-  // Suchlogik mit Memoization
+  // Series loading
+  const { 
+    data: series = [],
+    isLoading: seriesLoading 
+  } = useQuery<Series[]>({
+    queryKey: ["/api/series"]
+  });
+
+  // Search logic with series support
   const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) return [];
+    if (!searchQuery.trim()) return { media: [], series: [] };
 
     const query = searchQuery.toLowerCase().trim();
-    return mediaItems.filter(item => {
+
+    // Search media items
+    const mediaResults = mediaItems.filter(item => {
       if (item.caption?.toLowerCase().includes(query)) return true;
       if (item.photographer?.toLowerCase().includes(query)) return true;
       if (item.tags?.some(tag => tag.toLowerCase().includes(query))) return true;
       return false;
     });
-  }, [searchQuery, mediaItems]);
 
-  // Event-Kategorisierung
+    // Search series
+    const seriesResults = series.filter(item => {
+      if (item.name.toLowerCase().includes(query)) return true;
+      if (item.description?.toLowerCase().includes(query)) return true;
+      return false;
+    });
+
+    return { media: mediaResults, series: seriesResults };
+  }, [searchQuery, mediaItems, series]);
+
+  // Event categorization
   const today = new Date();
   const fourWeeksAgo = new Date(today.getTime() - (28 * 24 * 60 * 60 * 1000));
 
@@ -76,6 +95,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Header section remains unchanged */}
       <header className="border-b border-primary/20 bg-black/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-8">
@@ -131,31 +151,63 @@ export default function HomePage() {
         {/* Search Section */}
         <section className="max-w-2xl mx-auto">
           <div className="flex flex-col gap-4">
-            <h2 className="text-2xl font-bold text-center">Search Media Assets</h2>
+            <h2 className="text-2xl font-bold text-center">Search Media Assets & Series</h2>
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by caption, photographer, or tags..."
+              placeholder="Search by caption, photographer, tags, or series name..."
               className="w-full"
             />
             {searchQuery && (
-              <div className="mt-4">
-                {mediaLoading ? (
+              <div className="mt-4 space-y-8">
+                {mediaLoading || seriesLoading ? (
                   <div className="flex justify-center">
                     <Loader2 className="h-8 w-8 animate-spin" />
                   </div>
                 ) : (
                   <>
-                    <h3 className="text-lg font-semibold mb-4">
-                      {searchResults.length > 0
-                        ? `Found ${searchResults.length} results`
-                        : 'No results found'}
-                    </h3>
-                    {searchResults.length > 0 && (
-                      <MediaGrid 
-                        items={searchResults} 
-                        onDelete={handleMediaDelete}
-                      />
+                    {/* Series Results */}
+                    {searchResults.series.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold mb-4">
+                          Series Matches ({searchResults.series.length})
+                        </h3>
+                        <div className="grid gap-4">
+                          {searchResults.series.map(item => (
+                            <div key={item.id} className="bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all">
+                              <div className="flex items-center gap-3">
+                                <Tag className="h-5 w-5 text-primary shrink-0" />
+                                <div>
+                                  <h4 className="font-bold">{item.name}</h4>
+                                  {item.description && (
+                                    <p className="text-sm text-muted-foreground">{item.description}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Media Results */}
+                    {searchResults.media.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold mb-4">
+                          Media Matches ({searchResults.media.length})
+                        </h3>
+                        <MediaGrid 
+                          items={searchResults.media} 
+                          onDelete={handleMediaDelete}
+                        />
+                      </div>
+                    )}
+
+                    {/* No Results Message */}
+                    {searchResults.media.length === 0 && searchResults.series.length === 0 && (
+                      <p className="text-center text-muted-foreground">
+                        No results found
+                      </p>
                     )}
                   </>
                 )}
