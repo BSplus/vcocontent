@@ -163,20 +163,30 @@ export default function AdminDashboard() {
     if (!headerImageFile) return;
 
     try {
-      // Convert to base64
+      // Convert to base64 with image size validation
       const reader = new FileReader();
       reader.onloadend = async () => {
         if (typeof reader.result === 'string') {
           try {
+            console.log('Attempting to upload header image...');
+
+            // Check file size (max 5MB)
+            if (headerImageFile.size > 5 * 1024 * 1024) {
+              throw new Error("Image file is too large. Maximum size is 5MB.");
+            }
+
             const response = await apiRequest("POST", "/api/header-image", {
               url: reader.result
             });
 
             if (!response.ok) {
-              throw new Error("Failed to upload header image");
+              const errorData = await response.json();
+              console.error('Upload failed:', errorData);
+              throw new Error(errorData.error || "Failed to upload header image");
             }
 
             const result = await response.json();
+            console.log('Upload successful:', result);
             queryClient.invalidateQueries({ queryKey: ["/api/header-image"] });
 
             toast({
@@ -186,19 +196,31 @@ export default function AdminDashboard() {
             setHeaderImageFile(null);
             setHeaderImagePreview("");
           } catch (error) {
+            console.error('Upload error:', error);
             toast({
               title: "Error",
-              description: "Failed to upload header image",
+              description: error instanceof Error ? error.message : "Failed to upload header image",
               variant: "destructive",
             });
           }
         }
       };
+
+      reader.onerror = () => {
+        console.error('File reading error:', reader.error);
+        toast({
+          title: "Error",
+          description: "Failed to process the image file",
+          variant: "destructive",
+        });
+      };
+
       reader.readAsDataURL(headerImageFile);
     } catch (error) {
+      console.error('File reading error:', error);
       toast({
         title: "Error",
-        description: "Failed to upload header image",
+        description: "Failed to process the image file",
         variant: "destructive",
       });
     }
