@@ -77,6 +77,7 @@ export default function HomePage() {
       const eventDate = new Date(event.date);
       return eventDate >= fourWeeksAgo && eventDate <= today;
     })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 4);
 
   const upcomingEvents = filteredEvents
