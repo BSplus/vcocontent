@@ -109,6 +109,7 @@ export default function EventGallery() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
+              onKeyDown={(e) => e.key === 'Enter' && console.log('Searching for:', searchQuery)}
             />
           </div>
           <Select

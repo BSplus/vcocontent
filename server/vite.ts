@@ -27,13 +27,14 @@ export async function setupVite(app: Express, server: Server) {
     middlewareMode: true,
     hmr: { 
       server,
-      timeout: 120000, // Erhöht den Timeout auf 2 Minuten
+      timeout: 180000, // Erhöht den Timeout auf 3 Minuten
       protocol: 'ws',
       host: '0.0.0.0',
       port: 5173,
       clientPort: 5173,
       path: '/hmr/',
-      reconnect: true
+      reconnect: true,
+      overlay: true
     },
     allowedHosts: true,
   };
