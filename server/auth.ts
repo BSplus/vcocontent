@@ -43,8 +43,11 @@ export function setupAuth(app: Express) {
     store: storage.sessionStore,
     cookie: {
       secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
+    },
+    name: 'vco.sid' // Custom name to avoid conflicts
   };
 
   // Basic Express settings
@@ -64,6 +67,7 @@ export function setupAuth(app: Express) {
       log(`- isAuthenticated: ${req.isAuthenticated()}`, 'auth');
       log(`- Session ID: ${req.sessionID}`, 'auth');
       log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}` : 'Not logged in'}`, 'auth');
+      log(`- Cookie present: ${!!req.headers.cookie}`, 'auth');
     }
     next();
   });
