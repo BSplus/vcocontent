@@ -15,17 +15,29 @@ export default function SearchResults() {
   const params = new URLSearchParams(location.split('?')[1]);
   const initialQuery = params.get('q') || '';
   const initialType = (params.get('type') || 'all') as 'all' | 'image' | 'video';
+  const seriesId = params.get('seriesId');
 
   // Fetch all media items
   const { data: mediaItems = [], isLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
     onSuccess: (data) => {
-      console.log('Fetched media items:', data.length);
       // Initial filtering based on URL parameters
       let filtered = [...data];
+
+      // Filter by type if specified
       if (initialType !== 'all') {
         filtered = filtered.filter(item => item.type === initialType);
       }
+
+      // Filter by series if specified
+      if (seriesId) {
+        filtered = filtered.filter(item => {
+          // Find items that belong to events of the selected series
+          return item.eventId && item.eventId > 0;
+          // Note: We'll need to add series filtering once the API supports it
+        });
+      }
+
       setFilteredMediaItems(filtered);
     }
   });
@@ -45,13 +57,13 @@ export default function SearchResults() {
           <Button variant="ghost" asChild className="mb-4">
             <Link href="/">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Zurück zur Startseite
+              Back to Home
             </Link>
           </Button>
-          <h1 className="text-4xl font-bold">Suchergebnisse</h1>
+          <h1 className="text-4xl font-bold">Search Results</h1>
           {initialQuery && (
             <p className="text-muted-foreground mt-2">
-              Suche nach: "{initialQuery}"
+              Search for: "{initialQuery}"
             </p>
           )}
         </div>
@@ -69,7 +81,7 @@ export default function SearchResults() {
         {!filteredMediaItems.length ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg">
-              Keine passenden Medien gefunden.
+              No matching media found.
             </p>
           </div>
         ) : (

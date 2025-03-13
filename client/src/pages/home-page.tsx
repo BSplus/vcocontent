@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type Event, type MediaItem, type Series } from "@shared/schema";
-import { Loader2, Calendar, Trophy, History, Clock, ChevronRight } from "lucide-react";
+import { Loader2, Calendar, Trophy, History, Clock, ChevronRight, Search } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useMemo } from "react";
 import MediaGrid from "@/components/media-grid";
@@ -15,7 +15,20 @@ export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSeriesId, setSelectedSeriesId] = useState<string>("all");
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [, setLocation] = useLocation();
+
+  // Handle search submission
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      const searchParams = new URLSearchParams();
+      searchParams.set('q', searchQuery);
+      if (selectedSeriesId !== "all") {
+        searchParams.set('seriesId', selectedSeriesId);
+      }
+      setLocation(`/search?${searchParams.toString()}`);
+    }
+  };
 
   // Media loading
   const { data: fetchedMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
@@ -162,7 +175,7 @@ export default function HomePage() {
         <section className="max-w-4xl mx-auto">
           <div className="flex flex-col gap-4">
             <h2 className="text-2xl font-bold text-center">Find Content</h2>
-            <div className="flex items-center gap-4">
+            <form onSubmit={handleSearch} className="flex items-center gap-4">
               <Select value={selectedSeriesId} onValueChange={setSelectedSeriesId}>
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="Select Series" />
@@ -179,13 +192,21 @@ export default function HomePage() {
 
               <span className="text-muted-foreground font-medium">OR</span>
 
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by event title, description..."
-                className="flex-1"
-              />
-            </div>
+              <div className="flex-1 flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by event title, description..."
+                    className="pl-10"
+                  />
+                </div>
+                <Button type="submit" disabled={!searchQuery.trim()}>
+                  Search
+                </Button>
+              </div>
+            </form>
           </div>
         </section>
 
