@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Event, MediaItem } from "@shared/schema";
-import { Loader2, Plus, Trash2, Image as ImageIcon, Film } from "lucide-react";
+import { Event } from "@shared/schema";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
 import { createDemoContent } from "@/lib/demo-data";
@@ -26,15 +26,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
-
-// Interface für die Event-Statistiken
-interface EventStats {
-  photos: number;
-  videos: number;
-  totalMedia: number;
-}
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -44,52 +36,43 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Events laden
   const { data: events = [], isLoading: eventsLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"]
   });
 
-  // Medien laden
-  const { data: mediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
-    queryKey: ["/api/media"]
-  });
-
-  // Event löschen
   const deleteMutation = useMutation({
     mutationFn: async (eventId: number) => {
       await apiRequest("DELETE", `/api/events/${eventId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
       toast({
-        title: "Erfolg",
-        description: "Event wurde erfolgreich gelöscht",
+        title: "Success",
+        description: "Event deleted successfully",
       });
       setEventToDelete(null);
     },
     onError: () => {
       toast({
-        title: "Fehler",
-        description: "Event konnte nicht gelöscht werden",
+        title: "Error",
+        description: "Failed to delete event",
         variant: "destructive",
       });
     },
   });
 
-  // Demo-Inhalte erstellen
   const handleCreateDemoContent = async () => {
     try {
       await createDemoContent();
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       toast({
-        title: "Erfolg",
-        description: "Demo-Inhalte wurden erstellt",
+        title: "Success",
+        description: "Demo content created successfully",
       });
     } catch (error) {
       toast({
-        title: "Fehler",
-        description: "Demo-Inhalte konnten nicht erstellt werden",
+        title: "Error",
+        description: "Failed to create demo content",
         variant: "destructive",
       });
     }
@@ -100,22 +83,11 @@ export default function AdminDashboard() {
     await deleteMutation.mutateAsync(event.id);
   };
 
-  // Statistiken berechnen
-  const getEventStats = (eventId: number): EventStats => {
-    const eventMedia = mediaItems.filter(item => item.eventId === eventId);
-    return {
-      photos: eventMedia.filter(item => item.type === "image").length,
-      videos: eventMedia.filter(item => item.type === "video").length,
-      totalMedia: eventMedia.length
-    };
-  };
-
-  // Events nach Datum sortieren
   const sortedEvents = [...events].sort((a, b) => 
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
-  if (eventsLoading || mediaLoading) {
+  if (eventsLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -132,10 +104,10 @@ export default function AdminDashboard() {
           </h1>
           <div className="flex gap-2 mt-4">
             <Button onClick={handleCreateDemoContent} variant="outline">
-              Demo-Inhalte erstellen
+              Create Demo Content
             </Button>
             <Button asChild variant="outline">
-              <Link href="/">Zurück zur Startseite</Link>
+              <Link href="/">Back to Home</Link>
             </Button>
           </div>
         </div>
@@ -145,98 +117,79 @@ export default function AdminDashboard() {
         <Tabs defaultValue="events">
           <TabsList>
             <TabsTrigger value="events">Events</TabsTrigger>
-            <TabsTrigger value="series">Rennserien</TabsTrigger>
+            <TabsTrigger value="series">Race Series</TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
             <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-bold">Event-Verwaltung</h2>
+              <h2 className="text-2xl font-bold">Events Management</h2>
               <Button
                 onClick={() => setUploadModalOpen(true)}
                 className="bg-primary text-black hover:bg-primary/90"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Event erstellen
+                Create Event
               </Button>
             </div>
 
-            {sortedEvents.length === 0 ? (
+            {!sortedEvents.length ? (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <p className="text-muted-foreground mb-4">
-                    Noch keine Events erstellt.
+                    No events created yet.
                   </p>
                   <Button onClick={() => setUploadModalOpen(true)}>
-                    Erstes Event erstellen
+                    Create Your First Event
                   </Button>
                 </CardContent>
               </Card>
             ) : (
               <div className="grid gap-6">
-                {sortedEvents.map((event) => {
-                  const stats = getEventStats(event.id);
-                  return (
-                    <Card key={event.id} className="bg-black/40 border-primary/20">
-                      <CardHeader>
-                        <CardTitle className="text-xl font-[Orbitron] tracking-wider">
-                          {event.title}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-col gap-4">
-                          {/* Statistik-Badges */}
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="secondary" className="flex gap-2 items-center">
-                              <ImageIcon className="h-3 w-3" />
-                              {stats.photos} Fotos
-                            </Badge>
-                            <Badge variant="secondary" className="flex gap-2 items-center">
-                              <Film className="h-3 w-3" />
-                              {stats.videos} Videos
-                            </Badge>
-                          </div>
-
-                          <div className="flex justify-between items-center">
-                            <p className="text-muted-foreground font-[Rajdhani]">
-                              {new Date(event.date).toLocaleDateString('de-DE', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                              })}
-                            </p>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedEventId(event.id);
-                                  setUploadModalOpen(true);
-                                }}
-                              >
-                                Event bearbeiten
-                              </Button>
-                              <Button
-                                variant="secondary"
-                                onClick={() => {
-                                  setSelectedEventId(event.id);
-                                  setMediaUploadModalOpen(true);
-                                }}
-                              >
-                                Medien hochladen
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="icon"
-                                onClick={() => setEventToDelete(event)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                {sortedEvents.map((event) => (
+                  <Card key={event.id} className="bg-black/40 border-primary/20">
+                    <CardHeader>
+                      <CardTitle className="text-xl font-[Orbitron] tracking-wider">
+                        {event.title}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col gap-4">
+                        <div className="flex justify-between items-center">
+                          <p className="text-muted-foreground font-[Rajdhani]">
+                            {new Date(event.date).toLocaleDateString()}
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedEventId(event.id);
+                                setUploadModalOpen(true);
+                              }}
+                            >
+                              Edit Event
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              onClick={() => {
+                                setSelectedEventId(event.id);
+                                setMediaUploadModalOpen(true);
+                              }}
+                            >
+                              Upload Media
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              onClick={() => setEventToDelete(event)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             )}
           </TabsContent>
@@ -267,20 +220,19 @@ export default function AdminDashboard() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Event löschen</AlertDialogTitle>
+            <AlertDialogTitle>Delete Event</AlertDialogTitle>
             <AlertDialogDescription>
-              Sind Sie sicher, dass Sie dieses Event löschen möchten? 
-              Dies wird auch alle zugehörigen Medien löschen. 
-              Diese Aktion kann nicht rückgängig gemacht werden.
+              Are you sure you want to delete this event? This will also delete
+              all associated media items. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-500 hover:bg-red-600"
               onClick={() => eventToDelete && handleDeleteEvent(eventToDelete)}
             >
-              {deleteMutation.isPending ? "Wird gelöscht..." : "Löschen"}
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
