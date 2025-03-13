@@ -186,12 +186,22 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
 
-        // Set canvas dimensions to match the image
-        canvas.width = img.width;
-        canvas.height = img.height;
+        // Calculate new dimensions (reduce size for low quality)
+        let width = img.width;
+        let height = img.height;
 
-        // Draw the image onto the canvas
-        ctx?.drawImage(img, 0, 0);
+        // For low quality, reduce dimensions by 50%
+        if (quality <= 0.3) {
+          width = Math.floor(width * 0.5);
+          height = Math.floor(height * 0.5);
+        }
+
+        // Set canvas dimensions to match the image
+        canvas.width = width;
+        canvas.height = height;
+
+        // Draw the image onto the canvas with reduced dimensions
+        ctx?.drawImage(img, 0, 0, width, height);
 
         // Convert to compressed data URL
         const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
@@ -218,12 +228,11 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
 
       // Check file size for low quality
       if (quality === 'low' && blob.size > 1024 * 1024) {
-        // If still over 1MB, compress more
+        // If still over 1MB, compress more aggressively
         if (type === 'image') {
           downloadUrl = await compressImage(url, 0.1);
           response = await fetch(downloadUrl);
-          const recompressedBlob = await response.blob();
-          blob = recompressedBlob;
+          blob = await response.blob();
         }
       }
 
@@ -234,6 +243,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(link.href); // Clean up
     } catch (error) {
       console.error('Download failed:', error);
     }

@@ -66,7 +66,6 @@ export function AdvancedSearch({
 
   // Initialize search query from URL if provided
   useEffect(() => {
-    console.log('Setting initial query:', initialQuery);
     if (initialQuery) {
       setSearchQuery(initialQuery);
     }
@@ -74,8 +73,7 @@ export function AdvancedSearch({
 
   // Update results whenever search parameters change
   useEffect(() => {
-    console.log('Filtering results:', results.length, 'by type:', filters.mediaType);
-    let filteredResults = [...results];
+    let filteredResults = searchQuery ? [...results] : []; // Only show results if there's a search query
 
     if (filters.mediaType !== 'all') {
       filteredResults = filteredResults.filter(item => 
@@ -84,7 +82,7 @@ export function AdvancedSearch({
     }
 
     onSearchResults(filteredResults);
-  }, [results, filters.mediaType, onSearchResults]);
+  }, [results, filters.mediaType, onSearchResults, searchQuery]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,7 +100,7 @@ export function AdvancedSearch({
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Suche in Medien..."
+            placeholder="Search in media..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
@@ -119,15 +117,15 @@ export function AdvancedSearch({
           </SheetTrigger>
           <SheetContent>
             <SheetHeader>
-              <SheetTitle>Sucheinstellungen</SheetTitle>
+              <SheetTitle>Search Settings</SheetTitle>
               <SheetDescription>
-                Passen Sie die Suchparameter an
+                Adjust search parameters
               </SheetDescription>
             </SheetHeader>
 
             <div className="grid gap-4 py-4">
               <div className="space-y-2">
-                <Label>Suchbereiche</Label>
+                <Label>Search Areas</Label>
                 <div className="flex items-center space-x-2">
                   <Checkbox 
                     id="caption" 
@@ -137,7 +135,7 @@ export function AdvancedSearch({
                     }
                   />
                   <label htmlFor="caption" className="text-sm font-medium">
-                    Beschreibungen
+                    Captions
                   </label>
                 </div>
 
@@ -150,7 +148,7 @@ export function AdvancedSearch({
                     }
                   />
                   <label htmlFor="photographer" className="text-sm font-medium">
-                    Fotografen
+                    Photographers
                   </label>
                 </div>
 
@@ -169,7 +167,7 @@ export function AdvancedSearch({
               </div>
 
               <div className="space-y-2">
-                <Label>Medientyp</Label>
+                <Label>Media Type</Label>
                 <div className="flex items-center space-x-2">
                   <Checkbox 
                     id="all" 
@@ -179,7 +177,7 @@ export function AdvancedSearch({
                     }}
                   />
                   <label htmlFor="all" className="text-sm font-medium">
-                    Alle Medien
+                    All Media
                   </label>
                 </div>
 
@@ -192,7 +190,7 @@ export function AdvancedSearch({
                     }}
                   />
                   <label htmlFor="image" className="text-sm font-medium">
-                    Nur Bilder
+                    Images Only
                   </label>
                 </div>
 
@@ -205,7 +203,7 @@ export function AdvancedSearch({
                     }}
                   />
                   <label htmlFor="video" className="text-sm font-medium">
-                    Nur Videos
+                    Videos Only
                   </label>
                 </div>
               </div>
@@ -214,7 +212,7 @@ export function AdvancedSearch({
             {searchQuery && (
               <div className="mt-4">
                 <p className="text-sm text-muted-foreground">
-                  {results.length} Ergebnisse gefunden für "{searchQuery}"
+                  {results.length} results found for "{searchQuery}"
                 </p>
               </div>
             )}
@@ -222,14 +220,14 @@ export function AdvancedSearch({
         </Sheet>
 
         <Button type="submit">
-          Suchen
+          Search
         </Button>
       </div>
 
       {searchQuery && (
         <div className="mt-2 flex flex-wrap gap-2">
           <Badge variant="outline" className="flex items-center gap-1">
-            Suchbegriff: {searchQuery}
+            Search term: {searchQuery}
             <button 
               onClick={() => setSearchQuery('')}
               className="ml-1 h-4 w-4 rounded-full hover:bg-muted flex items-center justify-center"
@@ -240,7 +238,7 @@ export function AdvancedSearch({
 
           {filters.mediaType !== 'all' && (
             <Badge variant="outline">
-              Typ: {filters.mediaType === 'image' ? 'Nur Bilder' : 'Nur Videos'}
+              Type: {filters.mediaType === 'image' ? 'Images Only' : 'Videos Only'}
             </Badge>
           )}
         </div>
