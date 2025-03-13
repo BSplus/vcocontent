@@ -56,33 +56,38 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
+  async createUser(data: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(data).returning();
     return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users);
   }
 
   async getSeries(id?: number): Promise<Series | Series[] | undefined> {
     if (id) {
-      const [seriesItem] = await db.select().from(seriesTable).where(eq(seriesTable.id, id));
-      return seriesItem;
+      const [series] = await db.select().from(seriesTable).where(eq(seriesTable.id, id));
+      return series;
     }
     return await db.select().from(seriesTable);
   }
 
-  async createSeries(insertSeries: InsertSeries): Promise<Series> {
-    const [newSeries] = await db.insert(seriesTable).values(insertSeries).returning();
-    return newSeries;
+  async createSeries(data: InsertSeries): Promise<Series> {
+    const [series] = await db.insert(seriesTable).values(data).returning();
+    return series;
   }
 
-  async updateSeries(id: number, updateData: Partial<InsertSeries>): Promise<Series> {
-    const [updatedSeries] = await db
-      .update(seriesTable)
-      .set(updateData)
+  async updateSeries(id: number, data: Partial<InsertSeries>): Promise<Series> {
+    const [updated] = await db.update(seriesTable)
+      .set(data)
       .where(eq(seriesTable.id, id))
       .returning();
 
-    if (!updatedSeries) throw new Error("Series not found");
-    return updatedSeries;
+    if (!updated) {
+      throw new Error("Series not found");
+    }
+    return updated;
   }
 
   async deleteSeries(id: number): Promise<void> {
@@ -98,20 +103,21 @@ export class DatabaseStorage implements IStorage {
     return event;
   }
 
-  async createEvent(event: InsertEvent): Promise<Event> {
-    const [newEvent] = await db.insert(events).values(event).returning();
-    return newEvent;
+  async createEvent(data: InsertEvent): Promise<Event> {
+    const [event] = await db.insert(events).values(data).returning();
+    return event;
   }
 
-  async updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event> {
-    const [updatedEvent] = await db
-      .update(events)
-      .set(event)
+  async updateEvent(id: number, data: Partial<InsertEvent>): Promise<Event> {
+    const [updated] = await db.update(events)
+      .set(data)
       .where(eq(events.id, id))
       .returning();
 
-    if (!updatedEvent) throw new Error("Event not found");
-    return updatedEvent;
+    if (!updated) {
+      throw new Error("Event not found");
+    }
+    return updated;
   }
 
   async deleteEvent(id: number): Promise<void> {
@@ -119,165 +125,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMediaItems(eventId: number): Promise<MediaItem[]> {
-    return await db
-      .select()
+    return await db.select()
       .from(mediaItems)
       .where(eq(mediaItems.eventId, eventId));
   }
 
-  async createMediaItem(item: InsertMediaItem): Promise<MediaItem> {
-    const [newItem] = await db.insert(mediaItems).values(item).returning();
-    return newItem;
+  async createMediaItem(data: InsertMediaItem): Promise<MediaItem> {
+    const [item] = await db.insert(mediaItems).values(data).returning();
+    return item;
   }
 
-  async updateMediaItem(id: number, item: Partial<InsertMediaItem>): Promise<MediaItem> {
-    const [updatedItem] = await db
-      .update(mediaItems)
-      .set(item)
+  async updateMediaItem(id: number, data: Partial<InsertMediaItem>): Promise<MediaItem> {
+    const [updated] = await db.update(mediaItems)
+      .set(data)
       .where(eq(mediaItems.id, id))
       .returning();
 
-    if (!updatedItem) throw new Error("Media item not found");
-    return updatedItem;
+    if (!updated) {
+      throw new Error("Media item not found");
+    }
+    return updated;
   }
 
   async deleteMediaItem(id: number): Promise<void> {
     await db.delete(mediaItems).where(eq(mediaItems.id, id));
   }
-
-  async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users);
-  }
 }
 
 export const storage = new DatabaseStorage();
-import { eq } from "drizzle-orm";
-import * as schema from "@shared/schema";
-import { db } from "./db";
-import session from "express-session";
-import PgSimpleStore from "connect-pg-simple";
-import { pool } from "./db";
-
-// Create PostgreSQL session store
-const PgStore = PgSimpleStore(session);
-export const sessionStore = new PgStore({
-  pool,
-  tableName: 'session', // Uses standard table name
-});
-
-// User operations
-export const storage = {
-  sessionStore,
-
-  // User methods
-  async getUser(id: number) {
-    const users = await db.select().from(schema.users).where(eq(schema.users.id, id));
-    return users[0];
-  },
-
-  async getUserByUsername(username: string) {
-    const users = await db.select().from(schema.users).where(eq(schema.users.username, username));
-    return users[0];
-  },
-
-  async getAllUsers() {
-    return await db.select().from(schema.users);
-  },
-
-  async createUser(data: { username: string; password: string; isAdmin: boolean }) {
-    const created = await db.insert(schema.users).values(data).returning();
-    return created[0];
-  },
-
-  // Series methods
-  async getSeries(id?: number) {
-    if (id) {
-      const series = await db.select().from(schema.series).where(eq(schema.series.id, id));
-      return series[0];
-    }
-    return await db.select().from(schema.series);
-  },
-
-  async createSeries(data: schema.InsertSeries) {
-    const created = await db.insert(schema.series).values(data).returning();
-    return created[0];
-  },
-
-  async updateSeries(id: number, data: Partial<schema.InsertSeries>) {
-    const updated = await db.update(schema.series)
-      .set(data)
-      .where(eq(schema.series.id, id))
-      .returning();
-    
-    if (!updated.length) {
-      throw new Error("Series not found");
-    }
-    
-    return updated[0];
-  },
-
-  async deleteSeries(id: number) {
-    return await db.delete(schema.series).where(eq(schema.series.id, id));
-  },
-
-  // Event methods
-  async getEvents() {
-    return await db.select().from(schema.events);
-  },
-
-  async getEvent(id: number) {
-    const events = await db.select().from(schema.events).where(eq(schema.events.id, id));
-    return events[0];
-  },
-
-  async createEvent(data: schema.InsertEvent) {
-    const created = await db.insert(schema.events).values(data).returning();
-    return created[0];
-  },
-
-  async updateEvent(id: number, data: Partial<schema.InsertEvent>) {
-    const updated = await db.update(schema.events)
-      .set(data)
-      .where(eq(schema.events.id, id))
-      .returning();
-    
-    if (!updated.length) {
-      throw new Error("Event not found");
-    }
-    
-    return updated[0];
-  },
-
-  async deleteEvent(id: number) {
-    return await db.delete(schema.events).where(eq(schema.events.id, id));
-  },
-
-  // Media methods
-  async getMediaItems(eventId: number) {
-    return await db.select()
-      .from(schema.mediaItems)
-      .where(eq(schema.mediaItems.eventId, eventId));
-  },
-
-  async createMediaItem(data: schema.InsertMediaItem) {
-    const created = await db.insert(schema.mediaItems).values(data).returning();
-    return created[0];
-  },
-
-  async updateMediaItem(id: number, data: Partial<schema.InsertMediaItem>) {
-    const updated = await db.update(schema.mediaItems)
-      .set(data)
-      .where(eq(schema.mediaItems.id, id))
-      .returning();
-    
-    if (!updated.length) {
-      throw new Error("Media item not found");
-    }
-    
-    return updated[0];
-  },
-
-  async deleteMediaItem(id: number) {
-    return await db.delete(schema.mediaItems).where(eq(schema.mediaItems.id, id));
-  }
-};

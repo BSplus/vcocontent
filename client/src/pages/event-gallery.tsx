@@ -24,13 +24,13 @@ export default function EventGallery() {
   // Fetch event data
   const { data: event, isLoading: eventLoading } = useQuery<Event>({
     queryKey: [`/api/events/${eventId}`],
-    enabled: !!eventId,
+    enabled: Boolean(eventId),
   });
 
   // Fetch media items
-  const { data: fetchedMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
+  const { isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: [`/api/events/${eventId}/media`],
-    enabled: !!eventId,
+    enabled: Boolean(eventId),
     onSuccess: (data) => setMediaItems(data || []),
   });
 
@@ -41,7 +41,7 @@ export default function EventGallery() {
   const isLoading = eventLoading || mediaLoading;
 
   // Filter media items based on search query and type
-  const filteredMediaItems = mediaItems?.filter(item => {
+  const filteredMediaItems = mediaItems.filter(item => {
     const matchesSearch = !searchQuery || 
       (item.caption?.toLowerCase().includes(searchQuery.toLowerCase()) ||
        item.photographer?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -78,22 +78,26 @@ export default function EventGallery() {
           <Button variant="ghost" asChild className="mb-4">
             <Link href="/">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Events
+              Back to Home
             </Link>
           </Button>
           <div className="space-y-4">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               {event.title}
             </h1>
-            <p className="text-muted-foreground font-[Rajdhani] text-lg">
-              {event.date ? new Date(event.date).toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              }) : 'Date not available'}
-            </p>
-            <p className="max-w-2xl text-lg">{event.description}</p>
+            {event.date && (
+              <p className="text-muted-foreground font-[Rajdhani] text-lg">
+                {new Date(event.date).toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </p>
+            )}
+            {event.description && (
+              <p className="max-w-2xl text-lg">{event.description}</p>
+            )}
           </div>
         </div>
       </header>
@@ -124,10 +128,10 @@ export default function EventGallery() {
           </Select>
         </div>
 
-        {!filteredMediaItems?.length ? (
+        {!filteredMediaItems.length ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg">
-              {mediaItems?.length ? "No matching media items found." : "No media items available for this event yet."}
+              {mediaItems.length ? "No matching media items found." : "No media items available for this event yet."}
             </p>
           </div>
         ) : (

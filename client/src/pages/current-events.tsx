@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Event } from "@shared/schema";
 import { Loader2, Trophy, ArrowLeft } from "lucide-react";
 import EventCard from "@/components/event-card";
-import Footer from "@/components/footer"; // Import Footer component
+import Footer from "@/components/footer";
 
 export default function CurrentEventsPage() {
   const { data: events, isLoading } = useQuery<Event[]>({
@@ -22,7 +22,7 @@ export default function CurrentEventsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-8"> {/* Added main tag */}
+      <main className="container mx-auto px-4 py-8">
         <Button variant="ghost" asChild className="mb-8">
           <Link href="/">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -55,25 +55,6 @@ export default function CurrentEventsPage() {
         )}
       </main>
       <Footer />
-    </div>
-
-        {isLoading ? (
-          <div className="flex justify-center p-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : !currentEvents.length ? (
-          <p className="text-center text-foreground/60 py-12">
-            No current events.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {currentEvents.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))}
-          </div>
-        )}
-      </main>
-      <Footer /> {/* Added Footer component */}
     </div>
   );
 }
