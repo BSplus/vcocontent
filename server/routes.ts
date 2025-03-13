@@ -123,6 +123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.time('getAllMedia');
       const allMedia = await storage.getAllMediaItems();
       console.timeEnd('getAllMedia');
+      console.log(`Retrieved ${allMedia.length} media items`);
       res.json(allMedia);
     } catch (error) {
       console.error('Failed to fetch all media items:', error);
@@ -135,7 +136,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.time(`getEventMedia-${eventId}`);
 
     try {
+      console.log(`Fetching media for event ${eventId}`);
       const media = await storage.getMediaItems(eventId);
+      console.log(`Retrieved ${media.length} media items for event ${eventId}`);
       console.timeEnd(`getEventMedia-${eventId}`);
       res.json(media);
     } catch (error) {

@@ -13,18 +13,6 @@ const demoEvents: InsertEvent[] = [
     description: "Third round of the prestigious international endurance championship with top sim racing teams.",
     date: new Date("2025-03-01"),
     coverImage: "/attached_assets/%2389_3.png"
-  },
-  {
-    title: "iRacing Special Event Sebring 12h",
-    description: "12 hours of non-stop racing action at the virtual Sebring International Raceway.",
-    date: new Date("2025-03-22"),
-    coverImage: "/attached_assets/%2389_3.png"
-  },
-  {
-    title: "iRacing Special Event Watkins Glen 6h",
-    description: "Experience the thrill of endurance racing at the iconic Watkins Glen circuit.",
-    date: new Date("2025-04-20"),
-    coverImage: "/attached_assets/%2389_3.png"
   }
 ];
 
@@ -54,8 +42,11 @@ const mediaCaptions = [
 
 async function createDemoEvent(event: InsertEvent) {
   try {
+    console.log('Creating demo event:', event.title);
     const res = await apiRequest("POST", "/api/events", event);
-    return await res.json();
+    const createdEvent = await res.json();
+    console.log('Created event:', createdEvent);
+    return createdEvent;
   } catch (error) {
     console.error("Failed to create demo event:", error);
     return null;
@@ -78,8 +69,11 @@ async function createDemoMediaItem(eventId: number, index: number) {
   };
 
   try {
+    console.log('Creating demo media item for event:', eventId);
     const res = await apiRequest("POST", "/api/media", mediaItem);
-    return await res.json();
+    const createdMedia = await res.json();
+    console.log('Created media item:', createdMedia);
+    return createdMedia;
   } catch (error) {
     console.error("Failed to create demo media item:", error);
     return null;
@@ -87,6 +81,7 @@ async function createDemoMediaItem(eventId: number, index: number) {
 }
 
 export async function createDemoContent() {
+  console.log('Starting demo content creation...');
   for (const event of demoEvents) {
     const createdEvent = await createDemoEvent(event);
     if (createdEvent) {
@@ -96,4 +91,5 @@ export async function createDemoContent() {
       }
     }
   }
+  console.log('Demo content creation completed');
 }
