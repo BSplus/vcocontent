@@ -12,7 +12,7 @@ export default function MainNavigation() {
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
             <img 
-              src="/attached_assets/VCO_2021_reg_SUB_White.png"
+              src="/attached_assets/VCO_2021_reg_White_Trans.png"
               alt="VCO Logo"
               className="h-8 w-auto"
             />

@@ -6,7 +6,7 @@ export default function Footer() {
       <div className="container mx-auto px-4 py-8">
         <div className="flex flex-col items-center gap-8">
           <img
-            src="/attached_assets/VCO_2021_reg_SUB_White.png"
+            src="/attached_assets/VCO_2021_reg_White_Trans.png"
             alt="VCO Logo"
             className="h-12 w-auto object-contain hover:opacity-90 transition-opacity"
           />
