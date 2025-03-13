@@ -17,9 +17,7 @@ export default function EventGallery() {
   // Fetch event data
   const { data: event, isLoading: eventLoading } = useQuery<Event>({
     queryKey: [`/api/events/${eventId}`],
-    onSuccess: (data) => {
-      console.log('Event loaded:', data);
-    }
+    enabled: Boolean(eventId && eventId > 0),
   });
 
   // Fetch media items
@@ -29,6 +27,7 @@ export default function EventGallery() {
     refetch: refetchMedia
   } = useQuery<MediaItem[]>({
     queryKey: [`/api/events/${eventId}/media`],
+    enabled: Boolean(eventId && eventId > 0),
     onSuccess: (data) => {
       console.log('Media items loaded:', data.length);
       setFilteredMediaItems(data);
