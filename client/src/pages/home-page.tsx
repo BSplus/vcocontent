@@ -65,7 +65,7 @@ export default function HomePage() {
       {/* Hero Section with Header Image */}
       <div className="relative h-[60vh] overflow-hidden">
         <img
-          src="attached_assets/IMG_7464.png"
+          src="./attached_assets/IMG_7464.png"
           alt="Racing track at sunset"
           className="absolute inset-0 w-full h-full object-cover"
         />
