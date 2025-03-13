@@ -19,16 +19,17 @@ export function SearchInput({ items, value, onChange, className }: SearchInputPr
   const [fuse, setFuse] = useState<Fuse<MediaItem>>();
   const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
 
-  // Initialize Fuse instance with more lenient settings
+  // Initialize Fuse instance with optimized settings
   useEffect(() => {
     const fuseInstance = new Fuse(items, {
       keys: [
         { name: 'caption', weight: 2 },
         { name: 'photographer', weight: 1 },
-        { name: 'tags', weight: 1 }
+        { name: 'tags', weight: 1.5, getFn: (item) => item.tags?.join(' ') || '' },
+        { name: 'title', weight: 2 }
       ],
-      threshold: 0.4, // More lenient matching
-      distance: 100, // Allow for more distance between characters
+      threshold: 0.4,
+      distance: 100,
       ignoreLocation: true,
       includeScore: true,
       useExtendedSearch: true,
@@ -49,7 +50,6 @@ export function SearchInput({ items, value, onChange, className }: SearchInputPr
     }
 
     const results = fuse.search(searchValue);
-    console.log('Search results:', results); // Debug log
 
     // Get top 5 unique results
     const uniqueResults = Array.from(
@@ -74,7 +74,7 @@ export function SearchInput({ items, value, onChange, className }: SearchInputPr
         <div className={cn("relative", className)}>
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input
-            placeholder="Search media by caption, photographer, or tags..."
+            placeholder="Suche nach Beschreibung, Fotograf oder Tags..."
             value={value}
             onChange={(e) => handleSearch(e.target.value)}
             className="pl-10"
@@ -87,12 +87,12 @@ export function SearchInput({ items, value, onChange, className }: SearchInputPr
           <CommandInput
             value={value}
             onValueChange={handleSearch}
-            placeholder="Type to search..."
+            placeholder="Tippen zum Suchen..."
             className="border-none focus:ring-0"
           />
-          <CommandEmpty>No results found.</CommandEmpty>
+          <CommandEmpty>Keine Ergebnisse gefunden.</CommandEmpty>
           {suggestions.length > 0 && (
-            <CommandGroup heading="Suggestions">
+            <CommandGroup heading="Vorschläge">
               {suggestions.map((item) => (
                 <CommandItem
                   key={item.id}

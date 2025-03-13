@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -31,18 +30,26 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
     mediaType: 'all',
   });
 
-  // Suchfelder basierend auf Filtern generieren
+  // Generate search keys based on filters with appropriate weights
   const getSearchKeys = () => {
     const keys = [];
-    if (filters.includeCaption) keys.push({ name: 'caption', weight: 2 });
-    if (filters.includePhotographer) keys.push({ name: 'photographer', weight: 1 });
-    if (filters.includeTags) keys.push({ name: 'tags', weight: 1 });
-    
-    // Fallback, falls keine Schlüssel ausgewählt sind
-    if (keys.length === 0) {
-      keys.push({ name: 'caption', weight: 1 });
+    if (filters.includeCaption) {
+      keys.push({ name: 'caption', weight: 2 });
     }
-    
+    if (filters.includePhotographer) {
+      keys.push({ name: 'photographer', weight: 1 });
+    }
+    if (filters.includeTags) {
+      keys.push({ 
+        name: 'tags',
+        weight: 1.5,
+        getFn: (item: MediaItem) => item.tags?.join(' ') || ''
+      });
+    }
+
+    // Always include title in search
+    keys.push({ name: 'title', weight: 2 });
+
     return keys;
   };
 
@@ -52,17 +59,16 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
     distance: 100,
   });
 
-  // Nach jeder Suche die Ergebnisse an die übergeordnete Komponente übergeben
+  // Update results whenever search parameters change
   React.useEffect(() => {
-    // Weitere Filterung basierend auf mediaType
     let filteredResults = [...results];
-    
+
     if (filters.mediaType !== 'all') {
       filteredResults = filteredResults.filter(item => 
         item.type === filters.mediaType
       );
     }
-    
+
     onSearchResults(filteredResults);
   }, [results, filters.mediaType, onSearchResults]);
 
@@ -76,14 +82,9 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                console.log('Suche ausgeführt:', searchQuery);
-              }
-            }}
           />
         </div>
-        
+
         <Sheet>
           <SheetTrigger asChild>
             <Button variant="outline" size="icon">
@@ -94,12 +95,12 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
           </SheetTrigger>
           <SheetContent>
             <SheetHeader>
-              <SheetTitle>Erweiterte Sucheinstellungen</SheetTitle>
+              <SheetTitle>Sucheinstellungen</SheetTitle>
               <SheetDescription>
-                Passen Sie die Suchoptionen an Ihre Bedürfnisse an.
+                Passen Sie die Suchparameter an
               </SheetDescription>
             </SheetHeader>
-            
+
             <div className="grid gap-4 py-4">
               <div className="space-y-2">
                 <Label>Suchbereiche</Label>
@@ -115,7 +116,7 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
                     Beschreibungen
                   </label>
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
                   <Checkbox 
                     id="photographer" 
@@ -128,7 +129,7 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
                     Fotografen
                   </label>
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
                   <Checkbox 
                     id="tags" 
@@ -142,7 +143,7 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
                   </label>
                 </div>
               </div>
-              
+
               <div className="space-y-2">
                 <Label>Medientyp</Label>
                 <div className="flex items-center space-x-2">
@@ -157,7 +158,7 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
                     Alle Medien
                   </label>
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
                   <Checkbox 
                     id="image" 
@@ -170,7 +171,7 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
                     Nur Bilder
                   </label>
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
                   <Checkbox 
                     id="video" 
@@ -185,7 +186,7 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
                 </div>
               </div>
             </div>
-            
+
             {searchQuery && (
               <div className="mt-4">
                 <p className="text-sm text-muted-foreground">
@@ -196,7 +197,7 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
           </SheetContent>
         </Sheet>
       </div>
-      
+
       {searchQuery && (
         <div className="mt-2 flex flex-wrap gap-2">
           <Badge variant="outline" className="flex items-center gap-1">
@@ -208,7 +209,7 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
               ×
             </button>
           </Badge>
-          
+
           {filters.mediaType !== 'all' && (
             <Badge variant="outline">
               Typ: {filters.mediaType === 'image' ? 'Nur Bilder' : 'Nur Videos'}
