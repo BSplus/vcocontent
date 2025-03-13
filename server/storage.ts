@@ -2,7 +2,7 @@ import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Serie
 import { users, events, mediaItems, series as seriesTable } from "@shared/schema";
 import { db } from "./db";
 import session from "express-session";
-import { createStore } from "memorystore";
+import memorystore from "memorystore";
 
 // Interface for storage functionality
 interface IStorage {
@@ -38,7 +38,7 @@ class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    const MemoryStore = createStore(session);
+    const MemoryStore = memorystore(session);
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000 // prune expired entries every 24h
     });
