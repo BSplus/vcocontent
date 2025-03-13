@@ -9,11 +9,19 @@ export const users = pgTable("users", {
   isAdmin: boolean("is_admin").notNull().default(false),
 });
 
+// Header image table
+export const headerImages = pgTable("header_images", {
+  id: serial("id").primaryKey(),
+  url: text("url").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  active: boolean("active").notNull().default(true),
+});
+
 // New Series table
 export const series = pgTable("series", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  logo: text("logo"),  // Removed .notNull()
+  logo: text("logo"),
   description: text("description"),
 });
 
@@ -25,13 +33,13 @@ export const events = pgTable("events", {
   customThumbnail: text("custom_thumbnail"),
   date: timestamp("date").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  seriesId: integer("series_id").references(() => series.id), // Added series reference
+  seriesId: integer("series_id").references(() => series.id),
 });
 
 export const mediaItems = pgTable("media_items", {
   id: serial("id").primaryKey(),
   eventId: integer("event_id").references(() => events.id),
-  type: text("type").notNull(), // 'image' or 'video'
+  type: text("type").notNull(),
   url: text("url").notNull(),
   thumbnail: text("thumbnail").notNull(),
   caption: text("caption"),
@@ -48,7 +56,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
 // New Series schema
 export const insertSeriesSchema = createInsertSchema(series).extend({
   name: z.string().min(1, "Series name is required"),
-  logo: z.string().optional(),  // Changed to optional
+  logo: z.string().optional(),
   description: z.string().optional(),
 });
 
@@ -58,7 +66,7 @@ export const insertEventSchema = createInsertSchema(events).extend({
   coverImage: z.string().optional(),
   customThumbnail: z.string().optional(),
   date: z.coerce.date(),
-  seriesId: z.number().optional(), // Added to schema
+  seriesId: z.number().optional(),
 });
 
 export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
@@ -73,6 +81,11 @@ export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   ),
 });
 
+// Add HeaderImage schema
+export const insertHeaderImageSchema = createInsertSchema(headerImages).extend({
+  url: z.string().min(1, "Header image URL is required"),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Series = typeof series.$inferSelect;
@@ -81,3 +94,5 @@ export type Event = typeof events.$inferSelect;
 export type MediaItem = typeof mediaItems.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type InsertMediaItem = z.infer<typeof insertMediaItemSchema>;
+export type HeaderImage = typeof headerImages.$inferSelect;
+export type InsertHeaderImage = z.infer<typeof insertHeaderImageSchema>;

@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
+import { Input } from "@/components/ui/input";
+
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -67,7 +69,7 @@ export default function AdminDashboard() {
 
       // Also invalidate any specific event media queries that might exist
       if (eventToDelete?.id) {
-        queryClient.invalidateQueries({ 
+        queryClient.invalidateQueries({
           queryKey: [`/api/events/${eventToDelete.id}/media`]
         });
       }
@@ -122,9 +124,73 @@ export default function AdminDashboard() {
     }
   };
 
-  const sortedEvents = [...events].sort((a, b) => 
+  const sortedEvents = [...events].sort((a, b) =>
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
+
+  // Add state for header image upload
+  const [headerImageFile, setHeaderImageFile] = useState<File | null>(null);
+  const [headerImagePreview, setHeaderImagePreview] = useState<string>("");
+
+  const handleHeaderImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Check image dimensions
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+      const aspectRatio = img.width / img.height;
+      if (Math.abs(aspectRatio - (21 / 9)) > 0.1) { // Allow small deviation
+        toast({
+          title: "Invalid image dimensions",
+          description: "Please upload an image with a 21:9 aspect ratio",
+          variant: "destructive",
+        });
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+
+      setHeaderImageFile(file);
+      setHeaderImagePreview(objectUrl);
+    };
+
+    img.src = objectUrl;
+  };
+
+  const handleHeaderImageUpload = async () => {
+    if (!headerImageFile) return;
+
+    try {
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        if (typeof reader.result === 'string') {
+          const response = await apiRequest("POST", "/api/header-image", {
+            url: reader.result
+          });
+
+          if (response.ok) {
+            toast({
+              title: "Success",
+              description: "Header image updated successfully",
+            });
+            setHeaderImageFile(null);
+            setHeaderImagePreview("");
+          }
+        }
+      };
+      reader.readAsDataURL(headerImageFile);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to upload header image",
+        variant: "destructive",
+      });
+    }
+  };
+
 
   if (eventsLoading || mediaLoading) {
     return (
@@ -157,6 +223,7 @@ export default function AdminDashboard() {
           <TabsList>
             <TabsTrigger value="events">Events</TabsTrigger>
             <TabsTrigger value="series">Race Series</TabsTrigger>
+            <TabsTrigger value="header">Header Image</TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
@@ -249,6 +316,53 @@ export default function AdminDashboard() {
 
           <TabsContent value="series" className="mt-6">
             <SeriesManager />
+          </TabsContent>
+
+          <TabsContent value="header" className="mt-6">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-2xl font-bold">Header Image Management</h2>
+            </div>
+
+            <Card className="bg-black/40 border-primary/20">
+              <CardHeader>
+                <CardTitle>Upload Header Image</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleHeaderImageChange}
+                    />
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Please upload an image with a 21:9 aspect ratio for optimal display
+                    </p>
+                  </div>
+
+                  {headerImagePreview && (
+                    <div className="mt-4">
+                      <p className="text-sm font-medium mb-2">Preview:</p>
+                      <div className="w-full aspect-[21/9] rounded-lg overflow-hidden bg-black/20">
+                        <img
+                          src={headerImagePreview}
+                          alt="Header preview"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={handleHeaderImageUpload}
+                    disabled={!headerImageFile}
+                    className="mt-4"
+                  >
+                    Upload Header Image
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </main>

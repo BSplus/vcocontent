@@ -1,7 +1,7 @@
-import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries } from "@shared/schema";
-import { users, events, mediaItems, series as seriesTable } from "@shared/schema";
+import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries, HeaderImage, InsertHeaderImage } from "@shared/schema";
+import { users, events, mediaItems, series as seriesTable, headerImages } from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm"; // Korrekter Import für Datenbankoperationen
+import { eq } from "drizzle-orm";
 import session from "express-session";
 import memorystore from "memorystore";
 
@@ -35,6 +35,11 @@ interface IStorage {
   createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem>;
   updateMediaItem(id: number, mediaItem: Partial<InsertMediaItem>): Promise<MediaItem>;
   deleteMediaItem(id: number): Promise<void>;
+
+  // Header image management
+  getActiveHeaderImage(): Promise<HeaderImage | undefined>;
+  createHeaderImage(headerImage: InsertHeaderImage): Promise<HeaderImage>;
+  setHeaderImageActive(id: number): Promise<HeaderImage>;
 }
 
 // Hauptklasse für Datenbankoperationen
@@ -188,6 +193,51 @@ class DatabaseStorage implements IStorage {
 
   async deleteMediaItem(id: number): Promise<void> {
     await db.delete(mediaItems).where(eq(mediaItems.id, id));
+  }
+
+  // Header image methods
+  async getActiveHeaderImage(): Promise<HeaderImage | undefined> {
+    const result = await db
+      .select()
+      .from(headerImages)
+      .where(eq(headerImages.active, true))
+      .limit(1);
+    return result[0];
+  }
+
+  async createHeaderImage(headerImage: InsertHeaderImage): Promise<HeaderImage> {
+    // Deactivate all existing header images
+    await db
+      .update(headerImages)
+      .set({ active: false })
+      .where(eq(headerImages.active, true));
+
+    // Create new header image (automatically active)
+    const result = await db
+      .insert(headerImages)
+      .values({ ...headerImage, active: true })
+      .returning();
+    return result[0];
+  }
+
+  async setHeaderImageActive(id: number): Promise<HeaderImage> {
+    // Deactivate all header images
+    await db
+      .update(headerImages)
+      .set({ active: false });
+
+    // Activate the selected header image
+    const result = await db
+      .update(headerImages)
+      .set({ active: true })
+      .where(eq(headerImages.id, id))
+      .returning();
+
+    if (result.length === 0) {
+      throw new Error("Header image not found");
+    }
+
+    return result[0];
   }
 }
 

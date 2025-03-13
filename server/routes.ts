@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema } from "@shared/schema";
+import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, insertHeaderImageSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -198,6 +198,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await storage.deleteMediaItem(parseInt(req.params.id));
     res.sendStatus(204);
   });
+
+  // Header image routes
+  app.get("/api/header-image", async (_req, res) => {
+    try {
+      const headerImage = await storage.getActiveHeaderImage();
+      res.json(headerImage || null);
+    } catch (error) {
+      console.error('Failed to fetch header image:', error);
+      res.status(500).json({ error: "Failed to fetch header image" });
+    }
+  });
+
+  app.post("/api/header-image", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user.isAdmin) {
+      return res.status(403).send("Unauthorized");
+    }
+
+    const parseResult = insertHeaderImageSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json(parseResult.error);
+    }
+
+    try {
+      const headerImage = await storage.createHeaderImage(parseResult.data);
+      res.status(201).json(headerImage);
+    } catch (error) {
+      console.error('Failed to create header image:', error);
+      res.status(500).json({ error: "Failed to create header image" });
+    }
+  });
+
 
   const httpServer = createServer(app);
   return httpServer;
