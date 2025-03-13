@@ -29,12 +29,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
 
-// Types for statistics
-interface EventStats {
-  photos: number;
-  videos: number;
-}
-
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [mediaUploadModalOpen, setMediaUploadModalOpen] = useState(false);
@@ -43,14 +37,20 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Load events
   const { data: events = [], isLoading: eventsLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"]
   });
 
-  // Load media items 
   const { data: mediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
-    queryKey: ["/api/media"]
+    queryKey: ["/api/media"],
+    retry: false,
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to load media data",
+        variant: "destructive",
+      });
+    }
   });
 
   const deleteMutation = useMutation({
@@ -96,20 +96,24 @@ export default function AdminDashboard() {
     await deleteMutation.mutateAsync(event.id);
   };
 
-  // Calculate statistics for an event
-  const getEventStats = (eventId: number): EventStats => {
-    const eventMedia = mediaItems.filter(item => item.eventId === eventId);
-    return {
-      photos: eventMedia.filter(item => item.type === "image").length,
-      videos: eventMedia.filter(item => item.type === "video").length
-    };
+  const getEventStats = (eventId: number) => {
+    try {
+      const eventMedia = mediaItems.filter(item => item.eventId === eventId) || [];
+      return {
+        photos: eventMedia.filter(item => item.type === "image").length,
+        videos: eventMedia.filter(item => item.type === "video").length
+      };
+    } catch (error) {
+      console.error('Error calculating stats:', error);
+      return { photos: 0, videos: 0 };
+    }
   };
 
   const sortedEvents = [...events].sort((a, b) => 
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
-  if (eventsLoading || mediaLoading) {
+  if (eventsLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -168,7 +172,7 @@ export default function AdminDashboard() {
             ) : (
               <div className="grid gap-6">
                 {sortedEvents.map((event) => {
-                  const stats = getEventStats(event.id);
+                  const stats = !mediaLoading ? getEventStats(event.id) : { photos: 0, videos: 0 };
                   return (
                     <Card key={event.id} className="bg-black/40 border-primary/20">
                       <CardHeader>
