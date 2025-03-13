@@ -4,7 +4,7 @@ export default function Footer() {
   return (
     <footer className="border-t border-primary/20 bg-black/50 mt-16">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex flex-col items-center gap-8">
+        <div className="flex flex-col items-center gap-4">
           <img
             src="/attached_assets/VCO_2021_reg_White_Trans.png"
             alt="VCO Logo"
