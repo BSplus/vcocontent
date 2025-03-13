@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Event, MediaItem } from "@shared/schema";
+import { type Event, type MediaItem } from "@shared/schema";
 import { Loader2, Plus, Trash2, Image as ImageIcon, Film, Download } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
@@ -29,7 +29,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
 
+// Hauptkomponente des Admin-Dashboards
 export default function AdminDashboard() {
+  // Status-Verwaltung für verschiedene Modals und Auswahlen
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [mediaUploadModalOpen, setMediaUploadModalOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
@@ -37,21 +39,20 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch events
-  const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
-    queryKey: ["/api/events"],
-    retry: 3,
-    onError: (error) => {
-      console.error('Failed to fetch events:', error);
-    }
+  // Laden aller Events aus der Datenbank
+  const { 
+    data: events = [], 
+    isLoading: eventsLoading 
+  } = useQuery<Event[]>({
+    queryKey: ["/api/events"]
   });
 
-  // Sort events by date (newest first)
-  const sortedEvents = [...events].sort((a, b) =>
+  // Sortieren der Events nach Datum (neueste zuerst)
+  const sortedEvents = [...(events || [])].sort((a, b) =>
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
-  // Delete mutation
+  // Funktion zum Löschen eines Events
   const deleteMutation = useMutation({
     mutationFn: async (eventId: number) => {
       const res = await apiRequest("DELETE", `/api/events/${eventId}`);
@@ -62,70 +63,71 @@ export default function AdminDashboard() {
       return eventId;
     },
     onSuccess: () => {
+      // Aktualisieren der Daten nach erfolgreichem Löschen
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/media"] });
       toast({
-        title: "Success",
-        description: "Event deleted successfully",
+        title: "Erfolg",
+        description: "Event wurde erfolgreich gelöscht",
       });
       setEventToDelete(null);
     },
     onError: (error: Error) => {
       toast({
-        title: "Error",
-        description: error.message || "Failed to delete event",
+        title: "Fehler",
+        description: error.message || "Fehler beim Löschen des Events",
         variant: "destructive",
       });
       setEventToDelete(null);
     },
   });
 
+  // Funktion zum Erstellen von Demo-Inhalten
   const handleCreateDemoContent = async () => {
     try {
       await createDemoContent();
       toast({
-        title: "Success",
-        description: "Demo content created successfully",
+        title: "Erfolg",
+        description: "Demo-Inhalte wurden erfolgreich erstellt",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/media"] });
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to create demo content",
+        title: "Fehler",
+        description: "Fehler beim Erstellen der Demo-Inhalte",
         variant: "destructive",
       });
     }
   };
 
+  // Funktion zum Löschen eines Events
   const handleDeleteEvent = async (event: Event) => {
     if (!event?.id) return;
     await deleteMutation.mutateAsync(event.id);
   };
 
-  // Fetch media items for all events
-  const { data: allMediaItems = [], isLoading: mediaLoading, error: mediaError } = useQuery<MediaItem[]>({
-    queryKey: ["/api/media"],
-    retry: 3,
-    onError: (error) => {
-      console.error('Failed to fetch media items:', error);
-    }
+  // Laden aller Medienelemente
+  const { 
+    data: allMediaItems = [], 
+    isLoading: mediaLoading 
+  } = useQuery<MediaItem[]>({
+    queryKey: ["/api/media"]
   });
 
-  // Calculate stats for each event
+  // Berechnung der Statistiken für jedes Event
   const getEventStats = (eventId: number) => {
-    const eventMedia = allMediaItems.filter(item => item.eventId === eventId);
-    const stats = {
+    const eventMedia = (allMediaItems || []).filter(item => item.eventId === eventId);
+    return {
       photos: eventMedia.filter(item => item.type === "image").length,
       videos: eventMedia.filter(item => item.type === "video").length,
       totalMedia: eventMedia.length,
-      downloads: 0 // Will be implemented later
+      downloads: 0 // Wird später implementiert
     };
-    return stats;
   };
 
+  // Ladezustand überprüfen
   const isLoading = eventsLoading || mediaLoading;
-  const hasError = eventsError || mediaError;
 
   if (isLoading) {
     return (
@@ -135,16 +137,7 @@ export default function AdminDashboard() {
     );
   }
 
-  if (hasError) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <h1 className="text-2xl font-bold text-destructive">Error Loading Dashboard</h1>
-        <p className="text-muted-foreground">Please try refreshing the page.</p>
-        <Button onClick={() => window.location.reload()}>Refresh Page</Button>
-      </div>
-    );
-  }
-
+  // Hauptansicht des Dashboards
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-primary/20">
@@ -154,10 +147,10 @@ export default function AdminDashboard() {
           </h1>
           <div className="flex gap-2 mt-4">
             <Button onClick={handleCreateDemoContent} variant="outline">
-              Create Demo Content
+              Demo-Inhalte erstellen
             </Button>
             <Button asChild variant="outline">
-              <Link href="/">Back to Home</Link>
+              <Link href="/">Zurück zur Startseite</Link>
             </Button>
           </div>
         </div>
@@ -167,18 +160,18 @@ export default function AdminDashboard() {
         <Tabs defaultValue="events">
           <TabsList>
             <TabsTrigger value="events">Events</TabsTrigger>
-            <TabsTrigger value="series">Race Series</TabsTrigger>
+            <TabsTrigger value="series">Rennserien</TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
             <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-bold">Events Management</h2>
+              <h2 className="text-2xl font-bold">Event-Verwaltung</h2>
               <Button
                 onClick={() => setUploadModalOpen(true)}
                 className="bg-primary text-black hover:bg-primary/90"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Create Event
+                Event erstellen
               </Button>
             </div>
 
@@ -186,10 +179,10 @@ export default function AdminDashboard() {
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <p className="text-muted-foreground mb-4">
-                    No events created yet.
+                    Noch keine Events erstellt.
                   </p>
                   <Button onClick={() => setUploadModalOpen(true)}>
-                    Create Your First Event
+                    Erstes Event erstellen
                   </Button>
                 </CardContent>
               </Card>
@@ -209,7 +202,7 @@ export default function AdminDashboard() {
                           <div className="flex flex-wrap gap-4">
                             <Badge variant="secondary" className="flex gap-2 items-center">
                               <ImageIcon className="h-3 w-3" />
-                              {stats.photos} Photos
+                              {stats.photos} Fotos
                             </Badge>
                             <Badge variant="secondary" className="flex gap-2 items-center">
                               <Film className="h-3 w-3" />
@@ -223,11 +216,11 @@ export default function AdminDashboard() {
 
                           <div className="flex justify-between items-center">
                             <p className="text-muted-foreground font-[Rajdhani]">
-                              {event.date ? new Date(event.date).toLocaleDateString('en-US', {
+                              {event.date ? new Date(event.date).toLocaleDateString('de-DE', {
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric'
-                              }) : 'Date not available'}
+                              }) : 'Datum nicht verfügbar'}
                             </p>
                             <div className="flex gap-2">
                               <Button
@@ -237,7 +230,7 @@ export default function AdminDashboard() {
                                   setUploadModalOpen(true);
                                 }}
                               >
-                                Edit Event
+                                Event bearbeiten
                               </Button>
                               <Button
                                 variant="secondary"
@@ -246,7 +239,7 @@ export default function AdminDashboard() {
                                   setMediaUploadModalOpen(true);
                                 }}
                               >
-                                Upload Media
+                                Medien hochladen
                               </Button>
                               <Button
                                 variant="destructive"
@@ -272,6 +265,7 @@ export default function AdminDashboard() {
         </Tabs>
       </main>
 
+      {/* Modals für Event-Verwaltung */}
       <UploadModal
         open={uploadModalOpen}
         onOpenChange={setUploadModalOpen}
@@ -286,26 +280,27 @@ export default function AdminDashboard() {
         />
       )}
 
-      {/* Delete Confirmation Dialog */}
+      {/* Bestätigungsdialog für das Löschen */}
       <AlertDialog
         open={!!eventToDelete}
         onOpenChange={(open) => !open && setEventToDelete(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Event</AlertDialogTitle>
+            <AlertDialogTitle>Event löschen</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this event? This will also delete
-              all associated media items. This action cannot be undone.
+              Sind Sie sicher, dass Sie dieses Event löschen möchten? 
+              Dies wird auch alle zugehörigen Medien löschen. 
+              Diese Aktion kann nicht rückgängig gemacht werden.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-500 hover:bg-red-600"
               onClick={() => eventToDelete && handleDeleteEvent(eventToDelete)}
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending ? "Wird gelöscht..." : "Löschen"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
