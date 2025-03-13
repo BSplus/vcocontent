@@ -7,7 +7,6 @@ import { Event, MediaItem } from "@shared/schema";
 import { Loader2, Plus, Trash2, Image as ImageIcon, Film } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
-import { createDemoContent } from "@/lib/demo-data";
 import { useToast } from "@/hooks/use-toast";
 import SeriesManager from "@/components/series-manager";
 import {
@@ -77,23 +76,6 @@ export default function AdminDashboard() {
     },
   });
 
-  const handleCreateDemoContent = async () => {
-    try {
-      await createDemoContent();
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      toast({
-        title: "Success",
-        description: "Demo content created successfully",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create demo content",
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleDeleteEvent = async (event: Event) => {
     if (!event?.id) return;
     await deleteMutation.mutateAsync(event.id);
@@ -129,12 +111,9 @@ export default function AdminDashboard() {
       <header className="border-b border-primary/20">
         <div className="container mx-auto px-4 py-6">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            Admin Dashboard
+            CREATOR DASHBOARD
           </h1>
           <div className="flex gap-2 mt-4">
-            <Button onClick={handleCreateDemoContent} variant="outline">
-              Create Demo Content
-            </Button>
             <Button asChild variant="outline">
               <Link href="/">Back to Home</Link>
             </Button>
