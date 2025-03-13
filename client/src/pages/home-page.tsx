@@ -9,10 +9,12 @@ import { useState, useMemo } from "react";
 import MediaGrid from "@/components/media-grid";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchType, setSearchType] = useState<"all" | "media" | "series">("all");
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
 
   // Media loading
@@ -45,29 +47,34 @@ export default function HomePage() {
     queryKey: ["/api/series"]
   });
 
-  // Search logic with series support
+  // Updated search logic with type filtering
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return { media: [], series: [] };
 
     const query = searchQuery.toLowerCase().trim();
 
-    // Search media items
-    const mediaResults = mediaItems.filter(item => {
-      if (item.caption?.toLowerCase().includes(query)) return true;
-      if (item.photographer?.toLowerCase().includes(query)) return true;
-      if (item.tags?.some(tag => tag.toLowerCase().includes(query))) return true;
-      return false;
-    });
+    let mediaResults: MediaItem[] = [];
+    let seriesResults: Series[] = [];
 
-    // Search series
-    const seriesResults = series.filter(item => {
-      if (item.name.toLowerCase().includes(query)) return true;
-      if (item.description?.toLowerCase().includes(query)) return true;
-      return false;
-    });
+    if (searchType === "all" || searchType === "media") {
+      mediaResults = mediaItems.filter(item => {
+        if (item.caption?.toLowerCase().includes(query)) return true;
+        if (item.photographer?.toLowerCase().includes(query)) return true;
+        if (item.tags?.some(tag => tag.toLowerCase().includes(query))) return true;
+        return false;
+      });
+    }
+
+    if (searchType === "all" || searchType === "series") {
+      seriesResults = series.filter(item => {
+        if (item.name.toLowerCase().includes(query)) return true;
+        if (item.description?.toLowerCase().includes(query)) return true;
+        return false;
+      });
+    }
 
     return { media: mediaResults, series: seriesResults };
-  }, [searchQuery, mediaItems, series]);
+  }, [searchQuery, mediaItems, series, searchType]);
 
   // Event categorization
   const today = new Date();
@@ -95,7 +102,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header section remains unchanged */}
       <header className="border-b border-primary/20 bg-black/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-8">
@@ -152,12 +158,24 @@ export default function HomePage() {
         <section className="max-w-2xl mx-auto">
           <div className="flex flex-col gap-4">
             <h2 className="text-2xl font-bold text-center">Search Media Assets & Series</h2>
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by caption, photographer, tags, or series name..."
-              className="w-full"
-            />
+            <div className="flex gap-2">
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by caption, photographer, tags, or series name..."
+                className="flex-1"
+              />
+              <Select value={searchType} onValueChange={(value: "all" | "media" | "series") => setSearchType(value)}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Filter by type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="media">Media Only</SelectItem>
+                  <SelectItem value="series">Series Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             {searchQuery && (
               <div className="mt-4 space-y-8">
                 {mediaLoading || seriesLoading ? (
@@ -166,8 +184,7 @@ export default function HomePage() {
                   </div>
                 ) : (
                   <>
-                    {/* Series Results */}
-                    {searchResults.series.length > 0 && (
+                    {(searchType === "all" || searchType === "series") && searchResults.series.length > 0 && (
                       <div>
                         <h3 className="text-lg font-semibold mb-4">
                           Series Matches ({searchResults.series.length})
@@ -190,8 +207,7 @@ export default function HomePage() {
                       </div>
                     )}
 
-                    {/* Media Results */}
-                    {searchResults.media.length > 0 && (
+                    {(searchType === "all" || searchType === "media") && searchResults.media.length > 0 && (
                       <div>
                         <h3 className="text-lg font-semibold mb-4">
                           Media Matches ({searchResults.media.length})
@@ -203,8 +219,9 @@ export default function HomePage() {
                       </div>
                     )}
 
-                    {/* No Results Message */}
-                    {searchResults.media.length === 0 && searchResults.series.length === 0 && (
+                    {((searchType === "all" && searchResults.media.length === 0 && searchResults.series.length === 0) ||
+                      (searchType === "media" && searchResults.media.length === 0) ||
+                      (searchType === "series" && searchResults.series.length === 0)) && (
                       <p className="text-center text-muted-foreground">
                         No results found
                       </p>
@@ -216,7 +233,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Only show events sections when not searching */}
         {!searchQuery && (
           <>
             <section id="current">
