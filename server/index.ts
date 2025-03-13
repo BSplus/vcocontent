@@ -46,15 +46,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// Globale Error-Handler für bessere Stabilität
+// Global Error Handlers
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
-  // Nicht beenden, um Server am Laufen zu halten
+  // Don't exit to keep server running
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Nicht beenden, um Server am Laufen zu halten
+  // Don't exit to keep server running
 });
 
 (async () => {
@@ -73,12 +73,12 @@ process.on('unhandledRejection', (reason, promise) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    // Versuche immer eine Antwort zu senden, selbst bei schwerwiegenden Fehlern
+    // Always try to send a response, even for severe errors
     try {
       res.status(status).json({ message });
     } catch (responseError) {
       console.error('Failed to send error response:', responseError);
-      // Versuche eine einfachere Antwort zu senden, falls die JSON-Antwort fehlschlägt
+      // Try to send a simpler response if JSON response fails
       try {
         res.status(500).send('Internal Server Error');
       } catch (finalError) {
