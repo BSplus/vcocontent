@@ -9,14 +9,6 @@ export const users = pgTable("users", {
   isAdmin: boolean("is_admin").notNull().default(false),
 });
 
-// Header image table
-export const headerImages = pgTable("header_images", {
-  id: serial("id").primaryKey(),
-  url: text("url").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  active: boolean("active").notNull().default(true),
-});
-
 // New Series table
 export const series = pgTable("series", {
   id: serial("id").primaryKey(),
@@ -81,11 +73,6 @@ export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   ),
 });
 
-// Add HeaderImage schema
-export const insertHeaderImageSchema = createInsertSchema(headerImages).extend({
-  url: z.string().min(1, "Header image URL is required"),
-});
-
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Series = typeof series.$inferSelect;
@@ -94,5 +81,3 @@ export type Event = typeof events.$inferSelect;
 export type MediaItem = typeof mediaItems.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type InsertMediaItem = z.infer<typeof insertMediaItemSchema>;
-export type HeaderImage = typeof headerImages.$inferSelect;
-export type InsertHeaderImage = z.infer<typeof insertHeaderImageSchema>;

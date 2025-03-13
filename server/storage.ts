@@ -1,60 +1,52 @@
-import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries, HeaderImage, InsertHeaderImage } from "@shared/schema";
-import { users, events, mediaItems, series as seriesTable, headerImages } from "@shared/schema";
+import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries } from "@shared/schema";
+import { users, events, mediaItems, series as seriesTable } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import session from "express-session";
 import memorystore from "memorystore";
 
-// Interface für alle Speicherfunktionen der Anwendung
 interface IStorage {
   sessionStore: session.Store;
 
-  // Benutzerverwaltung
+  // User management
   getUsers(): Promise<User[]>;
   getUser(id: number): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser & { isAdmin?: boolean }): Promise<User>;
 
-  // Eventverwaltung
+  // Event management
   getEvents(): Promise<Event[]>;
   getEvent(id: number): Promise<Event | undefined>;
   createEvent(event: InsertEvent): Promise<Event>;
   updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event>;
   deleteEvent(id: number): Promise<void>;
 
-  // Serienverwaltung
+  // Series management
   getSeries(id?: number): Promise<Series[] | Series | undefined>;
   createSeries(series: InsertSeries): Promise<Series>;
   updateSeries(id: number, series: Partial<InsertSeries>): Promise<Series>;
   deleteSeries(id: number): Promise<void>;
 
-  // Medienverwaltung
+  // Media management
   getAllMediaItems(): Promise<MediaItem[]>;
   getMediaItems(eventId: number): Promise<MediaItem[]>;
   createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem>;
   updateMediaItem(id: number, mediaItem: Partial<InsertMediaItem>): Promise<MediaItem>;
   deleteMediaItem(id: number): Promise<void>;
-
-  // Header image management
-  getActiveHeaderImage(): Promise<HeaderImage | undefined>;
-  createHeaderImage(headerImage: InsertHeaderImage): Promise<HeaderImage>;
-  setHeaderImageActive(id: number): Promise<HeaderImage>;
 }
 
-// Hauptklasse für Datenbankoperationen
 class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    // Speicher für Benutzersitzungen
     const MemoryStore = memorystore(session);
     this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000 // Bereinige abgelaufene Einträge alle 24h
+      checkPeriod: 86400000 // Prune expired entries every 24h
     });
   }
 
-  // Benutzerverwaltungsmethoden
+  // User management methods
   async getUsers(): Promise<User[]> {
     return await db.select().from(users);
   }
@@ -86,7 +78,7 @@ class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  // Eventverwaltungsmethoden
+  // Event management methods
   async getEvents(): Promise<Event[]> {
     return await db.select().from(events).orderBy(events.date);
   }
@@ -113,7 +105,7 @@ class DatabaseStorage implements IStorage {
       .returning();
 
     if (result.length === 0) {
-      throw new Error("Event nicht gefunden");
+      throw new Error("Event not found");
     }
 
     return result[0];
@@ -123,7 +115,7 @@ class DatabaseStorage implements IStorage {
     await db.delete(events).where(eq(events.id, id));
   }
 
-  // Serienverwaltungsmethoden
+  // Series management methods
   async getSeries(id?: number): Promise<Series[] | Series | undefined> {
     if (id) {
       const result = await db
@@ -150,7 +142,7 @@ class DatabaseStorage implements IStorage {
       .returning();
 
     if (result.length === 0) {
-      throw new Error("Serie nicht gefunden");
+      throw new Error("Series not found");
     }
 
     return result[0];
@@ -160,7 +152,7 @@ class DatabaseStorage implements IStorage {
     await db.delete(seriesTable).where(eq(seriesTable.id, id));
   }
 
-  // Medienverwaltungsmethoden
+  // Media management methods
   async getAllMediaItems(): Promise<MediaItem[]> {
     return await db.select().from(mediaItems);
   }
@@ -185,7 +177,7 @@ class DatabaseStorage implements IStorage {
       .returning();
 
     if (result.length === 0) {
-      throw new Error("Medienelement nicht gefunden");
+      throw new Error("Media item not found");
     }
 
     return result[0];
@@ -194,52 +186,6 @@ class DatabaseStorage implements IStorage {
   async deleteMediaItem(id: number): Promise<void> {
     await db.delete(mediaItems).where(eq(mediaItems.id, id));
   }
-
-  // Header image methods
-  async getActiveHeaderImage(): Promise<HeaderImage | undefined> {
-    const result = await db
-      .select()
-      .from(headerImages)
-      .where(eq(headerImages.active, true))
-      .limit(1);
-    return result[0];
-  }
-
-  async createHeaderImage(headerImage: InsertHeaderImage): Promise<HeaderImage> {
-    // Deactivate all existing header images
-    await db
-      .update(headerImages)
-      .set({ active: false })
-      .where(eq(headerImages.active, true));
-
-    // Create new header image (automatically active)
-    const result = await db
-      .insert(headerImages)
-      .values({ ...headerImage, active: true })
-      .returning();
-    return result[0];
-  }
-
-  async setHeaderImageActive(id: number): Promise<HeaderImage> {
-    // Deactivate all header images
-    await db
-      .update(headerImages)
-      .set({ active: false });
-
-    // Activate the selected header image
-    const result = await db
-      .update(headerImages)
-      .set({ active: true })
-      .where(eq(headerImages.id, id))
-      .returning();
-
-    if (result.length === 0) {
-      throw new Error("Header image not found");
-    }
-
-    return result[0];
-  }
 }
 
-// Einzelne Instanz für die gesamte Anwendung
 export const storage = new DatabaseStorage();

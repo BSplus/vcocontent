@@ -28,8 +28,6 @@ import {
 } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
-import { Input } from "@/components/ui/input";
-
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -46,15 +44,7 @@ export default function AdminDashboard() {
 
   // Load media items for statistics
   const { data: mediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
-    queryKey: ["/api/media"],
-    retry: false,
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to load media data",
-        variant: "destructive",
-      });
-    }
+    queryKey: ["/api/media"]
   });
 
   const deleteMutation = useMutation({
@@ -62,12 +52,10 @@ export default function AdminDashboard() {
       await apiRequest("DELETE", `/api/events/${eventId}`);
     },
     onSuccess: () => {
-      // Invalidate all related queries to trigger immediate updates
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/media"] });
       queryClient.invalidateQueries({ queryKey: ["/api/series"] });
 
-      // Also invalidate any specific event media queries that might exist
       if (eventToDelete?.id) {
         queryClient.invalidateQueries({
           queryKey: [`/api/events/${eventToDelete.id}/media`]
@@ -128,120 +116,6 @@ export default function AdminDashboard() {
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
-  // Add state for header image upload
-  const [headerImageFile, setHeaderImageFile] = useState<File | null>(null);
-  const [headerImagePreview, setHeaderImagePreview] = useState<string>("");
-
-  const handleHeaderImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Check image dimensions
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-
-    img.onload = () => {
-      const aspectRatio = img.width / img.height;
-      if (Math.abs(aspectRatio - (21 / 9)) > 0.1) { // Allow small deviation
-        toast({
-          title: "Invalid image dimensions",
-          description: "Please upload an image with a 21:9 aspect ratio",
-          variant: "destructive",
-        });
-        URL.revokeObjectURL(objectUrl);
-        return;
-      }
-
-      setHeaderImageFile(file);
-      setHeaderImagePreview(objectUrl);
-    };
-
-    img.src = objectUrl;
-  };
-
-  const handleHeaderImageUpload = async () => {
-    if (!headerImageFile) return;
-
-    try {
-      // Check file size (max 5MB)
-      if (headerImageFile.size > 5 * 1024 * 1024) {
-        toast({
-          title: "Error",
-          description: "Image file is too large. Maximum size is 5MB.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Validate file type
-      if (!headerImageFile.type.startsWith('image/')) {
-        toast({
-          title: "Error",
-          description: "Please upload a valid image file.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Convert to base64
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        if (typeof reader.result === 'string') {
-          try {
-            console.log('Starting header image upload...');
-
-            const response = await apiRequest("POST", "/api/header-image", {
-              url: reader.result
-            });
-
-            const responseData = await response.json();
-            console.log('Upload response:', responseData);
-
-            if (!response.ok) {
-              throw new Error(responseData.error || "Failed to upload header image");
-            }
-
-            queryClient.invalidateQueries({ queryKey: ["/api/header-image"] });
-
-            toast({
-              title: "Success",
-              description: "Header image updated successfully",
-            });
-            setHeaderImageFile(null);
-            setHeaderImagePreview("");
-          } catch (error) {
-            console.error('Upload error:', error);
-            toast({
-              title: "Error",
-              description: error instanceof Error ? error.message : "Failed to upload header image",
-              variant: "destructive",
-            });
-          }
-        }
-      };
-
-      reader.onerror = () => {
-        console.error('File reading error:', reader.error);
-        toast({
-          title: "Error",
-          description: "Failed to process the image file",
-          variant: "destructive",
-        });
-      };
-
-      console.log('Starting to read file...');
-      reader.readAsDataURL(headerImageFile);
-    } catch (error) {
-      console.error('File processing error:', error);
-      toast({
-        title: "Error",
-        description: "Failed to process the image file",
-        variant: "destructive",
-      });
-    }
-  };
-
-
   if (eventsLoading || mediaLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -252,7 +126,17 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-primary/20">
+      {/* Static Header Image */}
+      <div className="w-full h-[40vh] relative overflow-hidden">
+        <img
+          src="/attached_assets/IMG_7464.png"
+          alt="Racing track at sunset"
+          className="w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-background/80" />
+      </div>
+
+      <header className="border-b border-primary/20 relative">
         <div className="container mx-auto px-4 py-6">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             Admin Dashboard
@@ -273,7 +157,6 @@ export default function AdminDashboard() {
           <TabsList>
             <TabsTrigger value="events">Events</TabsTrigger>
             <TabsTrigger value="series">Race Series</TabsTrigger>
-            <TabsTrigger value="header">Header Image</TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
@@ -366,53 +249,6 @@ export default function AdminDashboard() {
 
           <TabsContent value="series" className="mt-6">
             <SeriesManager />
-          </TabsContent>
-
-          <TabsContent value="header" className="mt-6">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-bold">Header Image Management</h2>
-            </div>
-
-            <Card className="bg-black/40 border-primary/20">
-              <CardHeader>
-                <CardTitle>Upload Header Image</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleHeaderImageChange}
-                    />
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Please upload an image with a 21:9 aspect ratio for optimal display
-                    </p>
-                  </div>
-
-                  {headerImagePreview && (
-                    <div className="mt-4">
-                      <p className="text-sm font-medium mb-2">Preview:</p>
-                      <div className="w-full aspect-[21/9] rounded-lg overflow-hidden bg-black/20">
-                        <img
-                          src={headerImagePreview}
-                          alt="Header preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <Button
-                    onClick={handleHeaderImageUpload}
-                    disabled={!headerImageFile}
-                    className="mt-4"
-                  >
-                    Upload Header Image
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
           </TabsContent>
         </Tabs>
       </main>
