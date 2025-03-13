@@ -47,9 +47,6 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
       });
     }
 
-    // Always include title in search
-    keys.push({ name: 'title', weight: 2 });
-
     return keys;
   };
 
