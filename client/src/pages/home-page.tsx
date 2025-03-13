@@ -15,19 +15,26 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
 
-  // Medien laden
+  // Medien laden mit korrekter Typisierung
   const { data: fetchedMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
-    onSuccess: (data) => setMediaItems(data || [])
+    onSuccess: (newMediaItems: MediaItem[]) => setMediaItems(newMediaItems || [])
   });
 
   const handleMediaDelete = (deletedItemId: number) => {
-    setMediaItems(current => current.filter(item => item.id !== deletedItemId));
+    setMediaItems(prev => prev.filter(item => item.id !== deletedItemId));
   };
 
-  // Events laden
-  const { data: events, isLoading: eventsLoading } = useQuery<Event[]>({
-    queryKey: ["/api/events"]
+  // Events laden mit verbesserter Fehlerbehandlung
+  const { 
+    data: events = [], 
+    isLoading: eventsLoading,
+    error: eventsError 
+  } = useQuery<Event[]>({
+    queryKey: ["/api/events"],
+    onError: (error) => {
+      console.error("Failed to load events:", error);
+    }
   });
 
   // Suchlogik mit Memoization

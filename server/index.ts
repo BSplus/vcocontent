@@ -46,6 +46,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// Globale Error-Handler für bessere Stabilität
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  // Nicht beenden, um Server am Laufen zu halten
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Nicht beenden, um Server am Laufen zu halten
+});
+
 (async () => {
   const server = await registerRoutes(app);
 

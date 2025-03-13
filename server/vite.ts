@@ -25,7 +25,16 @@ export function log(message: string, source = "express") {
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
     middlewareMode: true,
-    hmr: { server },
+    hmr: { 
+      server,
+      timeout: 120000, // Erhöht den Timeout auf 2 Minuten
+      protocol: 'ws',
+      host: '0.0.0.0',
+      port: 5173,
+      clientPort: 5173,
+      path: '/hmr/',
+      reconnect: true
+    },
     allowedHosts: true,
   };
 
@@ -36,7 +45,11 @@ export async function setupVite(app: Express, server: Server) {
       ...viteLogger,
       error: (msg, options) => {
         viteLogger.error(msg, options);
-        process.exit(1);
+        console.error(`Vite Server Error: ${msg}`);
+        // Nicht sofort beenden, um Stabilität zu verbessern
+        if (msg.includes('Fatal') || msg.includes('Cannot start server')) {
+          process.exit(1);
+        }
       },
     },
     server: serverOptions,
