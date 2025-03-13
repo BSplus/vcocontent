@@ -29,8 +29,8 @@ export default function EventCard({ event }: EventCardProps) {
     (mediaItems?.find(item => item.type === "image")?.thumbnail) || 
     "/attached_assets/%2389_3.png";
 
-  return (
-    <Card className="overflow-hidden group hover:shadow-lg transition-shadow bg-black/40 border-primary/20 h-full flex flex-col">
+  const cardContent = (
+    <>
       <div className="relative aspect-video overflow-hidden">
         <img
           src={thumbnailUrl}
@@ -44,7 +44,7 @@ export default function EventCard({ event }: EventCardProps) {
             </Badge>
           </div>
         )}
-        {series?.logo && (  // Only show series logo if it exists
+        {series?.logo && (
           <div className="absolute top-3 left-3 h-8">
             <img
               src={series.logo}
@@ -71,6 +71,18 @@ export default function EventCard({ event }: EventCardProps) {
           {event.description}
         </p>
       </CardContent>
+    </>
+  );
+
+  return (
+    <Card className="overflow-hidden group hover:shadow-lg transition-shadow bg-black/40 border-primary/20 h-full flex flex-col">
+      {!isUpcoming ? (
+        <Link href={`/events/${event.id}`} className="flex-grow cursor-pointer">
+          {cardContent}
+        </Link>
+      ) : (
+        cardContent
+      )}
       {!isUpcoming && (
         <CardFooter>
           <Button asChild className="w-full bg-primary text-black hover:bg-primary/90">
