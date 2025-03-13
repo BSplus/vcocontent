@@ -23,8 +23,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MediaItem } from "@shared/schema";
 import { motion } from "framer-motion";
-import { Eye, PlayCircle, Download, Pencil, Trash2 } from "lucide-react";
+import { Eye, PlayCircle, Download, Pencil, Trash2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import EditMediaModal from "./edit-media-modal";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation } from "@tanstack/react-query";
@@ -32,59 +33,64 @@ import { useToast } from "@/hooks/use-toast";
 
 interface MediaGridProps {
   items: MediaItem[];
-  onDelete?: (deletedItemId: number) => void;
+  onDelete?: (deletedItemIds: number[]) => void;
 }
 
 export default function MediaGrid({ items, onDelete }: MediaGridProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<MediaItem | null>(null);
+  const [itemsToDelete, setItemsToDelete] = useState<MediaItem[]>([]);
   const [editItem, setEditItem] = useState<MediaItem | null>(null);
   const [hoveredItem, setHoveredItem] = useState<MediaItem | null>(null);
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [videoStills, setVideoStills] = useState<{ [key: number]: string[] }>({});
   const [currentStillIndex, setCurrentStillIndex] = useState<{ [key: number]: number }>({});
   const stillIntervalRef = useRef<{ [key: number]: NodeJS.Timeout }>({});
 
-  // Update the deleteMutation implementation
+  // Delete mutation implementation
   const deleteMutation = useMutation({
-    mutationFn: async (mediaId: number) => {
-      const res = await fetch(`/api/media/${mediaId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
+    mutationFn: async (mediaIds: number[]) => {
+      const results = await Promise.all(
+        mediaIds.map(async (id) => {
+          const res = await fetch(`/api/media/${id}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+          });
 
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to delete media");
-      }
+          if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.message || "Failed to delete media");
+          }
 
-      return mediaId;
+          return id;
+        })
+      );
+      return results;
     },
-    onSuccess: (mediaId) => {
-      // Notify parent component
-      onDelete?.(mediaId);
-
-      setItemToDelete(null);
+    onSuccess: (deletedIds) => {
+      onDelete?.(deletedIds);
+      setItemsToDelete([]);
+      setSelectedItems(new Set());
+      setIsSelectionMode(false);
       toast({
         title: "Success",
-        description: "Media item deleted successfully",
+        description: `${deletedIds.length} item${deletedIds.length > 1 ? 's' : ''} deleted successfully`,
       });
     },
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete media item",
+        description: error.message || "Failed to delete media items",
         variant: "destructive",
       });
-      setItemToDelete(null);
+      setItemsToDelete([]);
     },
   });
 
-  // Function to generate video stills
+  // Rest of your existing functions (generateVideoStills, handleDownload, etc.) remain unchanged
   const generateVideoStills = async (video: HTMLVideoElement, itemId: number) => {
     const stills: string[] = [];
     const duration = video.duration;
@@ -199,8 +205,54 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
     }
   };
 
+  const toggleSelection = (item: MediaItem) => {
+    const newSelectedItems = new Set(selectedItems);
+    if (selectedItems.has(item.id)) {
+      newSelectedItems.delete(item.id);
+    } else {
+      newSelectedItems.add(item.id);
+    }
+    setSelectedItems(newSelectedItems);
+  };
+
+  const handleBulkDelete = async () => {
+    const itemsToDelete = Array.from(selectedItems).map(id => items.find(item => item.id === id));
+    setItemsToDelete(itemsToDelete.filter(item => item !== undefined) as MediaItem[]);
+    setIsSelectionMode(false);
+  };
+
+  const handleSingleDelete = (item:MediaItem) => {
+    setItemsToDelete([item]);
+  }
+
   return (
     <>
+      {user?.isAdmin && selectedItems.size > 0 && (
+        <div className="sticky top-20 z-40 mb-4 flex items-center justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4 rounded-lg border">
+          <div className="flex items-center gap-2">
+            <Check className="h-5 w-5" />
+            <span>{selectedItems.size} items selected</span>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedItems(new Set());
+                setIsSelectionMode(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+            >
+              Delete Selected
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {items.map((item) => (
           <motion.div
@@ -208,7 +260,14 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
             className="relative aspect-square cursor-pointer overflow-hidden rounded-lg bg-black/20"
             onHoverStart={() => setHoveredItem(item)}
             onHoverEnd={() => setHoveredItem(null)}
-            onClick={() => setSelectedItem(item)}
+            onClick={(e) => {
+              if (isSelectionMode) {
+                e.preventDefault();
+                toggleSelection(item);
+              } else {
+                setSelectedItem(item);
+              }
+            }}
             whileHover={{ scale: 1.02 }}
             transition={{ duration: 0.2 }}
           >
@@ -224,6 +283,18 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               className="absolute inset-0 w-full h-full object-contain"
             />
 
+            {/* Selection Checkbox */}
+            {user?.isAdmin && (isSelectionMode || hoveredItem?.id === item.id) && (
+              <div className="absolute top-2 left-2 z-20">
+                <Checkbox
+                  checked={selectedItems.has(item.id)}
+                  onCheckedChange={() => toggleSelection(item)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-5 w-5 border-2 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                />
+              </div>
+            )}
+
             {/* Hover Preview Overlay */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -236,7 +307,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                 )}
                 <div className="flex gap-2">
                   <Eye className="h-6 w-6" />
-                  {user?.isAdmin && (
+                  {user?.isAdmin && !isSelectionMode && (
                     <>
                       <Button
                         variant="ghost"
@@ -255,7 +326,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                         className="h-6 w-6 text-white hover:text-red-500"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setItemToDelete(item);
+                          handleSingleDelete(item);
                         }}
                       >
                         <Trash2 className="h-6 w-6" />
@@ -403,20 +474,24 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Add Delete Confirmation Dialog */}
-      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={itemsToDelete.length > 0}
+        onOpenChange={(open) => !open && setItemsToDelete([])}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Media Item</AlertDialogTitle>
+            <AlertDialogTitle>Delete Media {itemsToDelete.length > 1 ? 'Items' : 'Item'}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this media item? This action cannot be undone.
+              Are you sure you want to delete {itemsToDelete.length > 1 ? `these ${itemsToDelete.length} items` : 'this item'}? 
+              This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-500 hover:bg-red-600"
-              onClick={() => itemToDelete && deleteMutation.mutateAsync(itemToDelete.id)}
+              onClick={() => deleteMutation.mutateAsync(itemsToDelete.map(item => item.id))}
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>

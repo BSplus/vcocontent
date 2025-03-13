@@ -11,14 +11,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Event, MediaItem } from "@shared/schema";
-import { Loader2, ArrowLeft, Search } from "lucide-react";
+import { Loader2, ArrowLeft, Search, CheckSquare } from "lucide-react";
 import MediaGrid from "@/components/media-grid";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function EventGallery() {
   const [, params] = useRoute<{ id: string }>("/events/:id");
   const eventId = parseInt(params?.id || "0");
   const [searchQuery, setSearchQuery] = useState("");
   const [mediaTypeFilter, setMediaTypeFilter] = useState<"all" | "image" | "video">("all");
+  const { user } = useAuth();
 
   // Fetch event data
   const { data: event, isLoading: eventLoading } = useQuery<Event>({
@@ -27,13 +29,17 @@ export default function EventGallery() {
   });
 
   // Fetch media items
-  const { data: mediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
+  const { 
+    data: mediaItems = [], 
+    isLoading: mediaLoading,
+    refetch: refetchMedia
+  } = useQuery<MediaItem[]>({
     queryKey: [`/api/events/${eventId}/media`],
     enabled: Boolean(eventId),
   });
 
-  const handleMediaDelete = (deletedItemId: number) => {
-    // No need to manage state manually as React Query will handle cache updates
+  const handleMediaDelete = async (deletedItemIds: number[]) => {
+    await refetchMedia();
   };
 
   const isLoading = eventLoading || mediaLoading;
@@ -109,7 +115,6 @@ export default function EventGallery() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
-              onKeyDown={(e) => e.key === 'Enter' && console.log('Searching for:', searchQuery)}
             />
           </div>
           <Select
