@@ -13,9 +13,13 @@ export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [, setLocation] = useLocation();
 
-  // Events loading
-  const { data: events = [], isLoading: eventsLoading } = useQuery<Event[]>({
-    queryKey: ["/api/events"]
+  // Events loading with improved error handling
+  const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
+    queryKey: ["/api/events"],
+    retry: 3,
+    onError: (error) => {
+      console.error('Failed to fetch events:', error);
+    }
   });
 
   // Series loading
@@ -52,10 +56,23 @@ export default function HomePage() {
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+  // Loading state
   if (eventsLoading || seriesLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  // Error state
+  if (eventsError) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="text-center">
+          <p className="text-red-500 mb-4">Failed to load events</p>
+          <Button onClick={() => window.location.reload()}>Retry</Button>
+        </div>
       </div>
     );
   }

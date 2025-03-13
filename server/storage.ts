@@ -80,7 +80,15 @@ class DatabaseStorage implements IStorage {
 
   // Event management methods
   async getEvents(): Promise<Event[]> {
-    return await db.select().from(events).orderBy(events.date);
+    console.log('Storage: Attempting to fetch events');
+    try {
+      const result = await db.select().from(events);
+      console.log('Storage: Successfully fetched events:', result);
+      return result;
+    } catch (error) {
+      console.error('Storage: Error fetching events:', error);
+      throw error;
+    }
   }
 
   async getEvent(id: number): Promise<Event | undefined> {
