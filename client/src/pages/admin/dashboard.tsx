@@ -37,8 +37,9 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Fetch events
   const { data: events, isLoading: eventsLoading, refetch } = useQuery<Event[]>({
-    queryKey: ["/api/events"],
+    queryKey: ["/api/events"]
   });
 
   // Sort events by date (newest first)
@@ -49,29 +50,16 @@ export default function AdminDashboard() {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (eventId: number) => {
-      try {
-        // Use simple DELETE request without body
-        const res = await fetch(`/api/events/${eventId}`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-        });
-
-        if (!res.ok) {
-          const error = await res.json();
-          throw new Error(error.message || "Failed to delete event");
-        }
-
-        return eventId; // Just return the ID on success
-      } catch (error) {
-        console.error('Delete event error:', error);
-        throw error;
+      const res = await apiRequest("DELETE", `/api/events/${eventId}`);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to delete event");
       }
+      return eventId;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/media"] }); // Also invalidate media cache
       toast({
         title: "Success",
         description: "Event deleted successfully",
@@ -79,7 +67,6 @@ export default function AdminDashboard() {
       setEventToDelete(null);
     },
     onError: (error: Error) => {
-      console.error('Delete mutation error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to delete event",
@@ -93,6 +80,7 @@ export default function AdminDashboard() {
     try {
       await createDemoContent();
       await refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/media"] }); // Invalidate media cache after demo content
       toast({
         title: "Success",
         description: "Demo content created successfully",
@@ -106,20 +94,10 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleDeleteEvent = async (event: Event) => {
-    try {
-      await deleteMutation.mutateAsync(event.id);
-    } catch (error) {
-      console.error('Handle delete event error:', error);
-    }
-  };
-
   // Fetch media items for all events
   const { data: allMediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
-    onSuccess: (data) => {
-      console.log('Fetched media items:', data?.length || 0);
-    }
+    enabled: Boolean(events?.length), // Only fetch media when we have events
   });
 
   // Calculate stats for each event
@@ -131,11 +109,19 @@ export default function AdminDashboard() {
       totalMedia: eventMedia.length,
       downloads: 0 // Placeholder for now
     };
-    console.log(`Stats for event ${eventId}:`, stats); // Debug log
+    console.log(`Stats for event ${eventId}:`, stats);
     return stats;
   };
 
   const isLoading = eventsLoading || mediaLoading;
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -174,11 +160,7 @@ export default function AdminDashboard() {
               </Button>
             </div>
 
-            {isLoading ? (
-              <div className="flex justify-center p-12">
-                <Loader2 className="h-8 w-8 animate-spin" />
-              </div>
-            ) : !sortedEvents.length ? (
+            {!sortedEvents.length ? (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <p className="text-muted-foreground mb-4">
