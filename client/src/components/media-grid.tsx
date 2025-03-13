@@ -345,10 +345,16 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               className="absolute inset-0 bg-black/60 flex flex-col justify-between p-4 text-white"
             >
               <div className="flex justify-between items-start">
-                {item.type === "video" && (
-                  <PlayCircle className="h-8 w-8" />
-                )}
-                <div className="flex gap-2">
+                {/* Left side - empty unless there's a video icon */}
+                <div className="flex-1">
+                  {/* This space intentionally left empty for the checkbox that's rendered separately */}
+                </div>
+
+                {/* Right side - all action icons */}
+                <div className="flex items-center gap-2">
+                  {item.type === "video" && (
+                    <PlayCircle className="h-6 w-6" />
+                  )}
                   <Eye className="h-6 w-6" />
                   {user?.isAdmin && !isSelectionMode && (
                     <>
