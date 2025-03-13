@@ -1,3 +1,4 @@
+
 import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries } from "@shared/schema";
 import { users, events, mediaItems, series as seriesTable } from "@shared/schema";
 import { db } from "./db";
@@ -36,7 +37,7 @@ export interface IStorage {
   sessionStore: session.Store;
 }
 
-export class DatabaseStorage implements IStorage {
+class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
@@ -164,6 +165,5 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-// Create a singleton instance to be used throughout the application
-const storageInstance = new DatabaseStorage();
-export { storageInstance as storage };
+// Singleton-Instanz erstellen und exportieren
+export const storage = new DatabaseStorage();
