@@ -1,33 +1,33 @@
-
 import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries } from "@shared/schema";
 import { users, events, mediaItems, series as seriesTable } from "@shared/schema";
 import { db } from "./db";
 import session from "express-session";
-import SQLiteStoreFactory from "connect-sqlite3";
+import { createStore } from "memorystore";
 
-// Interface für die Speicherfunktionalität
+// Interface for storage functionality
 interface IStorage {
   sessionStore: session.Store;
-  
-  // Benutzer-Methoden
+
+  // User methods
   getUsers(): Promise<User[]>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  
-  // Event-Methoden
+
+  // Event methods
   getEvents(): Promise<Event[]>;
   getEvent(id: number): Promise<Event | undefined>;
   createEvent(event: InsertEvent): Promise<Event>;
   updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event>;
   deleteEvent(id: number): Promise<void>;
-  
-  // Series-Methoden
+
+  // Series methods
   getSeries(id?: number): Promise<Series[] | Series | undefined>;
   createSeries(series: InsertSeries): Promise<Series>;
   updateSeries(id: number, series: Partial<InsertSeries>): Promise<Series>;
   deleteSeries(id: number): Promise<void>;
-  
-  // Media-Methoden
+
+  // Media methods
+  getAllMediaItems(): Promise<MediaItem[]>;
   getMediaItems(eventId: number): Promise<MediaItem[]>;
   createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem>;
   updateMediaItem(id: number, mediaItem: Partial<InsertMediaItem>): Promise<MediaItem>;
@@ -38,11 +38,13 @@ class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    const SQLiteStore = SQLiteStoreFactory(session);
-    this.sessionStore = new SQLiteStore({ db: "sessions.sqlite" });
+    const MemoryStore = createStore(session);
+    this.sessionStore = new MemoryStore({
+      checkPeriod: 86400000 // prune expired entries every 24h
+    });
   }
 
-  // Benutzer-Methoden
+  // User methods
   async getUsers(): Promise<User[]> {
     return await db.select().from(users);
   }
@@ -61,7 +63,7 @@ class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  // Event-Methoden
+  // Event methods
   async getEvents(): Promise<Event[]> {
     return await db.select().from(events).orderBy(events.date);
   }
@@ -86,11 +88,11 @@ class DatabaseStorage implements IStorage {
       .set(event)
       .where(db.eq(events.id, id))
       .returning();
-    
+
     if (result.length === 0) {
       throw new Error("Event not found");
     }
-    
+
     return result[0];
   }
 
@@ -98,7 +100,7 @@ class DatabaseStorage implements IStorage {
     await db.delete(events).where(db.eq(events.id, id));
   }
 
-  // Series-Methoden
+  // Series methods
   async getSeries(id?: number): Promise<Series[] | Series | undefined> {
     if (id) {
       const result = await db
@@ -123,11 +125,11 @@ class DatabaseStorage implements IStorage {
       .set(series)
       .where(db.eq(seriesTable.id, id))
       .returning();
-    
+
     if (result.length === 0) {
       throw new Error("Series not found");
     }
-    
+
     return result[0];
   }
 
@@ -135,7 +137,11 @@ class DatabaseStorage implements IStorage {
     await db.delete(seriesTable).where(db.eq(seriesTable.id, id));
   }
 
-  // Media-Methoden
+  // Media methods
+  async getAllMediaItems(): Promise<MediaItem[]> {
+    return await db.select().from(mediaItems);
+  }
+
   async getMediaItems(eventId: number): Promise<MediaItem[]> {
     return await db
       .select()
@@ -154,11 +160,11 @@ class DatabaseStorage implements IStorage {
       .set(mediaItem)
       .where(db.eq(mediaItems.id, id))
       .returning();
-    
+
     if (result.length === 0) {
       throw new Error("Media item not found");
     }
-    
+
     return result[0];
   }
 
@@ -167,5 +173,5 @@ class DatabaseStorage implements IStorage {
   }
 }
 
-// Singleton-Instanz erstellen und exportieren
+// Singleton instance
 export const storage = new DatabaseStorage();

@@ -120,16 +120,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Media routes
   app.get("/api/media", async (_req, res) => {
     try {
-      // First get all events
-      const events = await storage.getEvents();
-
-      // Then get media items for each event
-      const allMedia = [];
-      for (const event of events) {
-        const mediaItems = await storage.getMediaItems(event.id);
-        allMedia.push(...mediaItems);
-      }
-
+      console.time('getAllMedia');
+      const allMedia = await storage.getAllMediaItems();
+      console.timeEnd('getAllMedia');
       res.json(allMedia);
     } catch (error) {
       console.error('Failed to fetch all media items:', error);
@@ -139,19 +132,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/events/:eventId/media", async (req, res) => {
     const eventId = parseInt(req.params.eventId);
-    console.log(`Received request for media items of event ${eventId}`);
+    console.time(`getEventMedia-${eventId}`);
 
     try {
-      // First check if event exists
-      const event = await storage.getEvent(eventId);
-      if (!event) {
-        console.log(`Event ${eventId} not found`);
-        return res.status(404).json({ error: "Event not found" });
-      }
-
-      console.log(`Found event ${eventId}, fetching media items`);
       const media = await storage.getMediaItems(eventId);
-      console.log(`Successfully retrieved ${media.length} media items for event ${eventId}`);
+      console.timeEnd(`getEventMedia-${eventId}`);
       res.json(media);
     } catch (error) {
       console.error(`Error fetching media for event ${eventId}:`, error);

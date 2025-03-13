@@ -38,14 +38,18 @@ export default function AdminDashboard() {
   const queryClient = useQueryClient();
 
   // Fetch events
-  const { data: events, isLoading: eventsLoading, refetch } = useQuery<Event[]>({
-    queryKey: ["/api/events"]
+  const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
+    queryKey: ["/api/events"],
+    retry: 3,
+    onError: (error) => {
+      console.error('Failed to fetch events:', error);
+    }
   });
 
   // Sort events by date (newest first)
-  const sortedEvents = events?.sort((a, b) =>
+  const sortedEvents = [...events].sort((a, b) =>
     new Date(b.date).getTime() - new Date(a.date).getTime()
-  ) || [];
+  );
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -59,7 +63,7 @@ export default function AdminDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/media"] }); // Also invalidate media cache
+      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
       toast({
         title: "Success",
         description: "Event deleted successfully",
@@ -79,12 +83,12 @@ export default function AdminDashboard() {
   const handleCreateDemoContent = async () => {
     try {
       await createDemoContent();
-      await refetch();
-      queryClient.invalidateQueries({ queryKey: ["/api/media"] }); // Invalidate media cache after demo content
       toast({
         title: "Success",
         description: "Demo content created successfully",
       });
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
     } catch (error) {
       toast({
         title: "Error",
@@ -94,10 +98,18 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleDeleteEvent = async (event: Event) => {
+    if (!event?.id) return;
+    await deleteMutation.mutateAsync(event.id);
+  };
+
   // Fetch media items for all events
-  const { data: allMediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
+  const { data: allMediaItems = [], isLoading: mediaLoading, error: mediaError } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
-    enabled: Boolean(events?.length), // Only fetch media when we have events
+    retry: 3,
+    onError: (error) => {
+      console.error('Failed to fetch media items:', error);
+    }
   });
 
   // Calculate stats for each event
@@ -107,18 +119,28 @@ export default function AdminDashboard() {
       photos: eventMedia.filter(item => item.type === "image").length,
       videos: eventMedia.filter(item => item.type === "video").length,
       totalMedia: eventMedia.length,
-      downloads: 0 // Placeholder for now
+      downloads: 0 // Will be implemented later
     };
-    console.log(`Stats for event ${eventId}:`, stats);
     return stats;
   };
 
   const isLoading = eventsLoading || mediaLoading;
+  const hasError = eventsError || mediaError;
 
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+        <h1 className="text-2xl font-bold text-destructive">Error Loading Dashboard</h1>
+        <p className="text-muted-foreground">Please try refreshing the page.</p>
+        <Button onClick={() => window.location.reload()}>Refresh Page</Button>
       </div>
     );
   }
