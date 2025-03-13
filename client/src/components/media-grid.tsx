@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MediaItem } from "@shared/schema";
 import { motion } from "framer-motion";
-import { Eye, PlayCircle, Download, Pencil, Trash2, Check } from "lucide-react";
+import { Eye, PlayCircle, Download, Pencil, Trash2, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import EditMediaModal from "./edit-media-modal";
@@ -40,6 +40,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number>(-1);
   const [itemsToDelete, setItemsToDelete] = useState<MediaItem[]>([]);
   const [editItem, setEditItem] = useState<MediaItem | null>(null);
   const [hoveredItem, setHoveredItem] = useState<MediaItem | null>(null);
@@ -48,6 +49,39 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
   const [videoStills, setVideoStills] = useState<{ [key: number]: string[] }>({});
   const [currentStillIndex, setCurrentStillIndex] = useState<{ [key: number]: number }>({});
   const stillIntervalRef = useRef<{ [key: number]: NodeJS.Timeout }>({});
+
+  // Navigation functions
+  const navigateNext = () => {
+    if (selectedItemIndex < items.length - 1) {
+      const nextIndex = selectedItemIndex + 1;
+      setSelectedItemIndex(nextIndex);
+      setSelectedItem(items[nextIndex]);
+    }
+  };
+
+  const navigatePrevious = () => {
+    if (selectedItemIndex > 0) {
+      const prevIndex = selectedItemIndex - 1;
+      setSelectedItemIndex(prevIndex);
+      setSelectedItem(items[prevIndex]);
+    }
+  };
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (selectedItem) {
+        if (e.key === 'ArrowRight') {
+          navigateNext();
+        } else if (e.key === 'ArrowLeft') {
+          navigatePrevious();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [selectedItem, selectedItemIndex, items]);
 
   // Delete mutation implementation
   const deleteMutation = useMutation({
@@ -90,7 +124,6 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
     },
   });
 
-  // Rest of your existing functions (generateVideoStills, handleDownload, etc.) remain unchanged
   const generateVideoStills = async (video: HTMLVideoElement, itemId: number) => {
     const stills: string[] = [];
     const duration = video.duration;
@@ -254,7 +287,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {items.map((item) => (
+        {items.map((item, index) => (
           <motion.div
             key={item.id}
             className="relative aspect-square cursor-pointer overflow-hidden rounded-lg bg-black/20"
@@ -266,6 +299,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                 toggleSelection(item);
               } else {
                 setSelectedItem(item);
+                setSelectedItemIndex(index);
               }
             }}
             whileHover={{ scale: 1.02 }}
@@ -283,7 +317,6 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               className="absolute inset-0 w-full h-full object-contain"
             />
 
-            {/* Selection Checkbox */}
             {user?.isAdmin && (isSelectionMode || hoveredItem?.id === item.id) && (
               <div className="absolute top-2 left-2 z-20">
                 <Checkbox
@@ -295,7 +328,6 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               </div>
             )}
 
-            {/* Hover Preview Overlay */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: hoveredItem?.id === item.id ? 1 : 0 }}
@@ -391,14 +423,45 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
         ))}
       </div>
 
-      {/* Full Preview Dialog */}
-      <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
-        <DialogContent className="max-w-4xl">
+      <Dialog open={!!selectedItem} onOpenChange={() => {
+        setSelectedItem(null);
+        setSelectedItemIndex(-1);
+      }}>
+        <DialogContent className="max-w-4xl relative">
           <DialogHeader>
             <DialogTitle>
               {selectedItem?.caption || "Media Preview"}
             </DialogTitle>
           </DialogHeader>
+
+          {selectedItemIndex > 0 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute left-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/60 hover:bg-black/80"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigatePrevious();
+              }}
+            >
+              <ChevronLeft className="h-8 w-8" />
+            </Button>
+          )}
+
+          {selectedItemIndex < items.length - 1 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/60 hover:bg-black/80"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateNext();
+              }}
+            >
+              <ChevronRight className="h-8 w-8" />
+            </Button>
+          )}
+
           <div className="relative aspect-video bg-black/20">
             {selectedItem?.type === "video" ? (
               <video
@@ -474,7 +537,6 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog
         open={itemsToDelete.length > 0}
         onOpenChange={(open) => !open && setItemsToDelete([])}
@@ -499,7 +561,6 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit Modal */}
       {user?.isAdmin && editItem && (
         <EditMediaModal
           open={!!editItem}
