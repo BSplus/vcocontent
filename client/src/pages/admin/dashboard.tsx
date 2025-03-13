@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Event, MediaItem } from "@shared/schema";
-import { Loader2, Plus, Trash2, Image as ImageIcon, Film, Download } from "lucide-react";
+import { Event } from "@shared/schema";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
 import { createDemoContent } from "@/lib/demo-data";
@@ -26,7 +26,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
 
 export default function AdminDashboard() {
@@ -41,21 +40,12 @@ export default function AdminDashboard() {
     queryKey: ["/api/events"]
   });
 
-  const { data: allMediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
-    queryKey: ["/api/media"]
-  });
-
   const deleteMutation = useMutation({
     mutationFn: async (eventId: number) => {
-      const response = await apiRequest("DELETE", `/api/events/${eventId}`);
-      if (!response.ok) {
-        throw new Error("Failed to delete event");
-      }
-      return eventId;
+      await apiRequest("DELETE", `/api/events/${eventId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
       toast({
         title: "Success",
         description: "Event deleted successfully",
@@ -75,7 +65,6 @@ export default function AdminDashboard() {
     try {
       await createDemoContent();
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
       toast({
         title: "Success",
         description: "Demo content created successfully",
@@ -94,22 +83,11 @@ export default function AdminDashboard() {
     await deleteMutation.mutateAsync(event.id);
   };
 
-  // Simplify stats calculation
-  const getEventStats = (eventId: number) => {
-    const eventMedia = allMediaItems.filter(item => item.eventId === eventId) || [];
-    return {
-      photos: eventMedia.filter(item => item.type === "image").length,
-      videos: eventMedia.filter(item => item.type === "video").length,
-      totalMedia: eventMedia.length,
-      downloads: 0
-    };
-  };
-
   const sortedEvents = [...events].sort((a, b) => 
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
-  if (eventsLoading || mediaLoading) {
+  if (eventsLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -167,69 +145,51 @@ export default function AdminDashboard() {
               </Card>
             ) : (
               <div className="grid gap-6">
-                {sortedEvents.map((event) => {
-                  const stats = getEventStats(event.id);
-                  return (
-                    <Card key={event.id} className="bg-black/40 border-primary/20">
-                      <CardHeader>
-                        <CardTitle className="text-xl font-[Orbitron] tracking-wider">
-                          {event.title}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-col gap-4">
-                          <div className="flex flex-wrap gap-4">
-                            <Badge variant="secondary" className="flex gap-2 items-center">
-                              <ImageIcon className="h-3 w-3" />
-                              {stats.photos} Photos
-                            </Badge>
-                            <Badge variant="secondary" className="flex gap-2 items-center">
-                              <Film className="h-3 w-3" />
-                              {stats.videos} Videos
-                            </Badge>
-                            <Badge variant="outline" className="flex gap-2 items-center">
-                              <Download className="h-3 w-3" />
-                              {stats.downloads} Downloads
-                            </Badge>
-                          </div>
-
-                          <div className="flex justify-between items-center">
-                            <p className="text-muted-foreground font-[Rajdhani]">
-                              {new Date(event.date).toLocaleDateString()}
-                            </p>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedEventId(event.id);
-                                  setUploadModalOpen(true);
-                                }}
-                              >
-                                Edit Event
-                              </Button>
-                              <Button
-                                variant="secondary"
-                                onClick={() => {
-                                  setSelectedEventId(event.id);
-                                  setMediaUploadModalOpen(true);
-                                }}
-                              >
-                                Upload Media
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="icon"
-                                onClick={() => setEventToDelete(event)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                {sortedEvents.map((event) => (
+                  <Card key={event.id} className="bg-black/40 border-primary/20">
+                    <CardHeader>
+                      <CardTitle className="text-xl font-[Orbitron] tracking-wider">
+                        {event.title}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col gap-4">
+                        <div className="flex justify-between items-center">
+                          <p className="text-muted-foreground font-[Rajdhani]">
+                            {new Date(event.date).toLocaleDateString()}
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedEventId(event.id);
+                                setUploadModalOpen(true);
+                              }}
+                            >
+                              Edit Event
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              onClick={() => {
+                                setSelectedEventId(event.id);
+                                setMediaUploadModalOpen(true);
+                              }}
+                            >
+                              Upload Media
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              onClick={() => setEventToDelete(event)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             )}
           </TabsContent>
