@@ -70,7 +70,12 @@ export default function SeriesManager() {
       await apiRequest("DELETE", `/api/series/${id}`);
     },
     onSuccess: () => {
+      // Invalidate series queries
       queryClient.invalidateQueries({ queryKey: ["/api/series"] });
+
+      // Also invalidate events queries since they may reference the deleted series
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+
       toast({
         title: "Success",
         description: "Series deleted successfully",

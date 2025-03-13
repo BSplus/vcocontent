@@ -44,10 +44,10 @@ export default function EventCard({ event }: EventCardProps) {
             </Badge>
           </div>
         )}
-        {series && (
+        {series?.logo && (  // Only show series logo if it exists
           <div className="absolute top-3 left-3 h-8">
             <img
-              src={series.logo || undefined}
+              src={series.logo}
               alt={series.name}
               className="h-full w-auto object-contain"
               title={series.name}

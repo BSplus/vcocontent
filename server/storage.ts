@@ -157,6 +157,13 @@ class DatabaseStorage implements IStorage {
   }
 
   async deleteSeries(id: number): Promise<void> {
+    // First update all events that reference this series
+    await db
+      .update(events)
+      .set({ seriesId: null })
+      .where(eq(events.seriesId, id));
+
+    // Then delete the series
     await db.delete(seriesTable).where(eq(seriesTable.id, id));
   }
 

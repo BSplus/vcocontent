@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema } from "@shared/schema";
 import express from "express";
 import path from "path";
+import { WebSocketServer } from 'ws';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -61,6 +62,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Create media items
+  app.post("/api/media", async (req, res) => {
+    try {
+      const mediaItems = Array.isArray(req.body) ? req.body : [req.body];
+      const parsedItems = mediaItems.map(item => insertMediaItemSchema.parse(item));
+
+      const createdItems = await Promise.all(
+        parsedItems.map(item => storage.createMediaItem(item))
+      );
+
+      res.status(201).json(createdItems);
+    } catch (error) {
+      console.error('Error creating media items:', error);
+      res.status(400).json({ error: "Failed to create media items", details: error });
+    }
+  });
+
+  // Delete media item
+  app.delete("/api/media/:id", async (req, res) => {
+    try {
+      await storage.deleteMediaItem(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting media:', error);
+      res.status(500).json({ error: "Failed to delete media" });
+    }
+  });
+
   // Get series
   app.get("/api/series", async (req, res) => {
     try {
@@ -86,6 +115,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Create series
+  app.post("/api/series", async (req, res) => {
+    try {
+      const seriesData = insertSeriesSchema.parse(req.body);
+      const series = await storage.createSeries(seriesData);
+      res.status(201).json(series);
+    } catch (error) {
+      console.error('Error creating series:', error);
+      res.status(400).json({ error: "Failed to create series" });
+    }
+  });
+
+  // Update series
+  app.put("/api/series/:id", async (req, res) => {
+    try {
+      const seriesData = insertSeriesSchema.partial().parse(req.body);
+      const series = await storage.updateSeries(parseInt(req.params.id), seriesData);
+      res.json(series);
+    } catch (error) {
+      console.error('Error updating series:', error);
+      res.status(400).json({ error: "Failed to update series" });
+    }
+  });
+
+  // Delete series
+  app.delete("/api/series/:id", async (req, res) => {
+    try {
+      const seriesId = parseInt(req.params.id);
+
+      // First, update any events that reference this series to remove the reference
+      const events = await storage.getEvents();
+      const eventsToUpdate = events.filter(event => event.seriesId === seriesId);
+
+      for (const event of eventsToUpdate) {
+        await storage.updateEvent(event.id, { ...event, seriesId: null });
+      }
+
+      // Then delete the series
+      await storage.deleteSeries(seriesId);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting series:', error);
+      res.status(500).json({ error: "Failed to delete series" });
+    }
+  });
+
   const httpServer = createServer(app);
+
+  // Set up WebSocket server for real-time updates
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+  wss.on('connection', (ws) => {
+    console.log('Client connected to WebSocket');
+
+    ws.on('message', (message) => {
+      console.log('Received:', message);
+    });
+
+    ws.on('close', () => {
+      console.log('Client disconnected from WebSocket');
+    });
+  });
+
   return httpServer;
 }
