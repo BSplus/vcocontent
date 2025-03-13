@@ -40,13 +40,11 @@ export default function UploadModal({
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch event data when editing
   const { data: eventData } = useQuery<Event>({
     queryKey: [`/api/events/${eventId}`],
     enabled: isEditing,
   });
 
-  // Fetch available series
   const { data: seriesList } = useQuery<Series[]>({
     queryKey: ["/api/series"],
   });
@@ -63,7 +61,6 @@ export default function UploadModal({
     },
   });
 
-  // Pre-fill form with event data when editing
   useEffect(() => {
     if (eventData && isEditing) {
       form.reset({
@@ -217,7 +214,7 @@ export default function UploadModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl sm:max-h-[90vh] max-h-[100vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "Edit Event" : "Create New Event"}
@@ -229,6 +226,7 @@ export default function UploadModal({
             <Input
               id="title"
               {...form.register("title")}
+              className="touch-auto"
             />
             {form.formState.errors.title && (
               <p className="text-sm text-red-500">{form.formState.errors.title.message}</p>
@@ -239,6 +237,7 @@ export default function UploadModal({
             <Textarea
               id="description"
               {...form.register("description")}
+              className="min-h-[100px] touch-auto"
             />
             {form.formState.errors.description && (
               <p className="text-sm text-red-500">{form.formState.errors.description.message}</p>
@@ -250,6 +249,7 @@ export default function UploadModal({
               id="date"
               type="date"
               {...form.register("date")}
+              className="touch-auto"
             />
             {form.formState.errors.date && (
               <p className="text-sm text-red-500">{form.formState.errors.date.message}</p>

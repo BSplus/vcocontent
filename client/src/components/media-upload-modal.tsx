@@ -278,7 +278,7 @@ export default function MediaUploadModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl sm:max-h-[90vh] max-h-[100vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Upload Media</DialogTitle>
         </DialogHeader>
@@ -375,6 +375,7 @@ export default function MediaUploadModal({
             <Textarea
               id="caption"
               {...form.register("caption")}
+              className="min-h-[100px] touch-auto"
             />
           </div>
 
@@ -383,6 +384,7 @@ export default function MediaUploadModal({
             <Input
               id="photographer"
               {...form.register("photographer")}
+              className="touch-auto"
             />
           </div>
 
@@ -392,6 +394,7 @@ export default function MediaUploadModal({
               id="tags"
               placeholder="racing, action, pit-stop"
               {...form.register("tags")}
+              className="touch-auto"
             />
           </div>
 
