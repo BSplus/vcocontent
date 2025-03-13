@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type Event, type MediaItem, type Series } from "@shared/schema";
-import { Loader2, Calendar, Trophy, History, Clock, ChevronRight, Tag } from "lucide-react";
+import { Loader2, Calendar, Trophy, History, Clock, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useMemo } from "react";
 import MediaGrid from "@/components/media-grid";
@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchType, setSearchType] = useState<"all" | "media" | "series">("all");
+  const [selectedSeriesId, setSelectedSeriesId] = useState<string>("all");
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
 
   // Media loading
@@ -47,55 +47,43 @@ export default function HomePage() {
     queryKey: ["/api/series"]
   });
 
-  // Updated search logic with type filtering
-  const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) return { media: [], series: [] };
+  // Filter events based on series and search query
+  const filteredEvents = useMemo(() => {
+    let filtered = [...events];
 
-    const query = searchQuery.toLowerCase().trim();
+    // First filter by series if one is selected
+    if (selectedSeriesId !== "all") {
+      filtered = filtered.filter(event => event.seriesId === parseInt(selectedSeriesId));
+    }
 
-    let mediaResults: MediaItem[] = [];
-    let seriesResults: Series[] = [];
-
-    if (searchType === "all" || searchType === "media") {
-      mediaResults = mediaItems.filter(item => {
-        if (item.caption?.toLowerCase().includes(query)) return true;
-        if (item.photographer?.toLowerCase().includes(query)) return true;
-        if (item.tags?.some(tag => tag.toLowerCase().includes(query))) return true;
-        return false;
+    // Then filter by search query if present
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(event => {
+        return event.title.toLowerCase().includes(query) ||
+               event.description.toLowerCase().includes(query);
       });
     }
 
-    if (searchType === "all" || searchType === "series") {
-      seriesResults = series.filter(item => {
-        if (item.name.toLowerCase().includes(query)) return true;
-        if (item.description?.toLowerCase().includes(query)) return true;
-        return false;
-      });
-    }
+    return filtered;
+  }, [events, selectedSeriesId, searchQuery]);
 
-    return { media: mediaResults, series: seriesResults };
-  }, [searchQuery, mediaItems, series, searchType]);
-
-  // Event categorization
+  // Event categorization from filtered events
   const today = new Date();
   const fourWeeksAgo = new Date(today.getTime() - (28 * 24 * 60 * 60 * 1000));
 
-  const sortedEvents = events?.sort((a, b) =>
-    new Date(b.date).getTime() - new Date(a.date).getTime()
-  ) || [];
-
-  const currentEvents = sortedEvents
+  const currentEvents = filteredEvents
     .filter(event => {
       const eventDate = new Date(event.date);
       return eventDate >= fourWeeksAgo && eventDate <= today;
     })
     .slice(0, 4);
 
-  const upcomingEvents = sortedEvents.filter(event =>
+  const upcomingEvents = filteredEvents.filter(event =>
     new Date(event.date) > today
   );
 
-  const archiveEvents = sortedEvents.filter(event => {
+  const archiveEvents = filteredEvents.filter(event => {
     const eventDate = new Date(event.date);
     return eventDate < fourWeeksAgo && eventDate < today;
   });
@@ -154,124 +142,129 @@ export default function HomePage() {
       </header>
 
       <main className="container mx-auto px-4 py-8 space-y-16">
-        {/* Search Section */}
-        <section className="max-w-2xl mx-auto">
+        <section className="max-w-4xl mx-auto">
           <div className="flex flex-col gap-4">
-            <h2 className="text-2xl font-bold text-center">Search Media Assets & Series</h2>
-            <div className="flex gap-2">
+            <h2 className="text-2xl font-bold text-center">Find Racing Events</h2>
+            <div className="flex items-center gap-4">
+              <Select value={selectedSeriesId} onValueChange={setSelectedSeriesId}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Select Series" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Series</SelectItem>
+                  {series.map(s => (
+                    <SelectItem key={s.id} value={s.id.toString()}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <span className="text-muted-foreground font-medium">OR</span>
+
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by caption, photographer, tags, or series name..."
+                placeholder="Search by event title, description..."
                 className="flex-1"
               />
-              <Select value={searchType} onValueChange={(value: "all" | "media" | "series") => setSearchType(value)}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Filter by type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="media">Media Only</SelectItem>
-                  <SelectItem value="series">Series Only</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
-            {searchQuery && (
-              <div className="mt-4 space-y-8">
-                {mediaLoading || seriesLoading ? (
-                  <div className="flex justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                  </div>
-                ) : (
-                  <>
-                    {(searchType === "all" || searchType === "series") && searchResults.series.length > 0 && (
-                      <div>
-                        <h3 className="text-lg font-semibold mb-4">
-                          Series Matches ({searchResults.series.length})
-                        </h3>
-                        <div className="grid gap-4">
-                          {searchResults.series.map(item => (
-                            <div key={item.id} className="bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all">
-                              <div className="flex items-center gap-3">
-                                <Tag className="h-5 w-5 text-primary shrink-0" />
-                                <div>
-                                  <h4 className="font-bold">{item.name}</h4>
-                                  {item.description && (
-                                    <p className="text-sm text-muted-foreground">{item.description}</p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {(searchType === "all" || searchType === "media") && searchResults.media.length > 0 && (
-                      <div>
-                        <h3 className="text-lg font-semibold mb-4">
-                          Media Matches ({searchResults.media.length})
-                        </h3>
-                        <MediaGrid 
-                          items={searchResults.media} 
-                          onDelete={handleMediaDelete}
-                        />
-                      </div>
-                    )}
-
-                    {((searchType === "all" && searchResults.media.length === 0 && searchResults.series.length === 0) ||
-                      (searchType === "media" && searchResults.media.length === 0) ||
-                      (searchType === "series" && searchResults.series.length === 0)) && (
-                      <p className="text-center text-muted-foreground">
-                        No results found
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
           </div>
         </section>
 
-        {!searchQuery && (
-          <>
-            <section id="current">
-              <div className="flex items-center gap-3 mb-6">
-                <Trophy className="h-6 w-6 text-primary" />
-                <h2 className="text-2xl font-bold text-primary">Current Events</h2>
-              </div>
-              {!currentEvents.length ? (
-                <p className="text-center text-foreground/60 py-12">
-                  No current events.
-                </p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {currentEvents.map((event) => (
-                    <EventCard key={event.id} event={event} />
-                  ))}
-                </div>
-              )}
-            </section>
+        <section id="current">
+          <div className="flex items-center gap-3 mb-6">
+            <Trophy className="h-6 w-6 text-primary" />
+            <h2 className="text-2xl font-bold text-primary">Current Events</h2>
+          </div>
+          {!currentEvents.length ? (
+            <p className="text-center text-foreground/60 py-12">
+              No current events found.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {currentEvents.map((event) => (
+                <EventCard key={event.id} event={event} />
+              ))}
+            </div>
+          )}
+        </section>
 
-            <section id="upcoming" className="bg-black/40 rounded-lg p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <Calendar className="h-6 w-6 text-accent" />
-                <h2 className="text-2xl font-bold text-accent">Upcoming Events</h2>
+        <section id="upcoming" className="bg-black/40 rounded-lg p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Calendar className="h-6 w-6 text-accent" />
+            <h2 className="text-2xl font-bold text-accent">Upcoming Events</h2>
+          </div>
+          {!upcomingEvents.length ? (
+            <p className="text-center text-foreground/60 py-6">
+              No upcoming events scheduled.
+            </p>
+          ) : (
+            <div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {upcomingEvents.slice(0, 10).map((event) => (
+                  <div
+                    key={event.id}
+                    className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02] cursor-default h-[88px]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Clock className="h-5 w-5 text-primary shrink-0" />
+                      <div className="min-w-0">
+                        <h3 className="font-bold truncate group-hover:text-primary transition-colors">
+                          {event.title}
+                        </h3>
+                        <p className="text-sm text-foreground/60 truncate">
+                          {new Date(event.date).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              {!upcomingEvents.length ? (
-                <p className="text-center text-foreground/60 py-6">
-                  No upcoming events scheduled.
-                </p>
-              ) : (
-                <div>
+              {upcomingEvents.length > 10 && (
+                <Button
+                  variant="outline"
+                  className="w-full mt-4 hover:bg-black/20 transition-colors"
+                >
+                  View All {upcomingEvents.length} Upcoming Events
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
+
+        <section id="archive">
+          <div className="flex items-center gap-3 mb-6">
+            <History className="h-6 w-6 text-foreground/60" />
+            <h2 className="text-2xl font-bold text-foreground/80">Archive</h2>
+          </div>
+          {!archiveEvents.length ? (
+            <p className="text-center text-foreground/60 py-12">
+              No archived events available.
+            </p>
+          ) : (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {archiveEvents.slice(0, 4).map((event) => (
+                  <EventCard key={event.id} event={event} />
+                ))}
+              </div>
+              {archiveEvents.length > 4 && (
+                <div className="bg-black/40 rounded-lg p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {upcomingEvents.slice(0, 10).map((event) => (
+                    {archiveEvents.slice(4).map((event) => (
                       <div
                         key={event.id}
                         className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02] cursor-default h-[88px]"
                       >
                         <div className="flex items-center gap-3">
-                          <Clock className="h-5 w-5 text-primary shrink-0" />
+                          <History className="h-5 w-5 text-primary shrink-0" />
                           <div className="min-w-0">
                             <h3 className="font-bold truncate group-hover:text-primary transition-colors">
                               {event.title}
@@ -289,78 +282,20 @@ export default function HomePage() {
                       </div>
                     ))}
                   </div>
-                  {upcomingEvents.length > 10 && (
+                  <Link href="/archive-events">
                     <Button
                       variant="outline"
                       className="w-full mt-4 hover:bg-black/20 transition-colors"
                     >
-                      View All {upcomingEvents.length} Upcoming Events
+                      View All {archiveEvents.length} Archive Events
                       <ChevronRight className="h-4 w-4 ml-2" />
                     </Button>
-                  )}
+                  </Link>
                 </div>
               )}
-            </section>
-
-            <section id="archive">
-              <div className="flex items-center gap-3 mb-6">
-                <History className="h-6 w-6 text-foreground/60" />
-                <h2 className="text-2xl font-bold text-foreground/80">Archive</h2>
-              </div>
-              {!archiveEvents.length ? (
-                <p className="text-center text-foreground/60 py-12">
-                  No archived events available.
-                </p>
-              ) : (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {archiveEvents.slice(0, 4).map((event) => (
-                      <EventCard key={event.id} event={event} />
-                    ))}
-                  </div>
-                  {archiveEvents.length > 4 && (
-                    <div className="bg-black/40 rounded-lg p-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {archiveEvents.slice(4).map((event) => (
-                          <div
-                            key={event.id}
-                            className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02] cursor-default h-[88px]"
-                          >
-                            <div className="flex items-center gap-3">
-                              <History className="h-5 w-5 text-primary shrink-0" />
-                              <div className="min-w-0">
-                                <h3 className="font-bold truncate group-hover:text-primary transition-colors">
-                                  {event.title}
-                                </h3>
-                                <p className="text-sm text-foreground/60 truncate">
-                                  {new Date(event.date).toLocaleDateString('en-US', {
-                                    weekday: 'short',
-                                    month: 'short',
-                                    day: 'numeric',
-                                    year: 'numeric'
-                                  })}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <Link href="/archive-events">
-                        <Button
-                          variant="outline"
-                          className="w-full mt-4 hover:bg-black/20 transition-colors"
-                        >
-                          View All {archiveEvents.length} Archive Events
-                          <ChevronRight className="h-4 w-4 ml-2" />
-                        </Button>
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
-          </>
-        )}
+            </div>
+          )}
+        </section>
       </main>
       <Footer />
     </div>
