@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { InsertMediaItem, insertMediaItemSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Image as ImageIcon, Film, Upload, X } from "lucide-react";
+import { processImage, isImageFile } from "@/lib/image-processing";
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -38,6 +39,14 @@ interface FileUpload {
   progress: number;
   status: 'pending' | 'uploading' | 'success' | 'error';
   error?: string;
+  processedImage?: {
+    optimized: Buffer;
+    thumbnail: Buffer;
+    webp: Buffer;
+    width: number;
+    height: number;
+    format: string;
+  };
 }
 
 export default function MediaUploadModal({
@@ -108,10 +117,10 @@ export default function MediaUploadModal({
         console.log('Processing file from ZIP:', filename); // Debug log
 
         const blob = await file.async('blob');
-        const imageFile = new File([blob], filename, { 
-          type: ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 
-                ext === 'png' ? 'image/png' : 
-                'image/gif'
+        const imageFile = new File([blob], filename, {
+          type: ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+            ext === 'png' ? 'image/png' :
+              'image/gif'
         });
 
         const preview = await processImageFile(imageFile);
@@ -185,13 +194,48 @@ export default function MediaUploadModal({
         continue;
       }
 
-      const preview = await processImageFile(file);
-      newUploads.push({
-        file,
-        preview,
-        progress: 0,
-        status: 'pending'
-      });
+      try {
+        // Process image files
+        if (isImageFile(file)) {
+          const buffer = await file.arrayBuffer();
+          const imageBuffer = Buffer.from(buffer);
+          const processed = await processImage(imageBuffer);
+
+          // Convert processed image buffers to base64 for preview
+          const preview = `data:image/jpeg;base64,${processed.optimized.toString('base64')}`;
+
+          newUploads.push({
+            file,
+            preview,
+            progress: 0,
+            status: 'pending',
+            processedImage: {
+              optimized: processed.optimized,
+              thumbnail: processed.thumbnail,
+              webp: processed.webp,
+              width: processed.width,
+              height: processed.height,
+              format: processed.format
+            }
+          });
+        } else {
+          // Handle non-image files (videos)
+          const preview = await processImageFile(file);
+          newUploads.push({
+            file,
+            preview,
+            progress: 0,
+            status: 'pending'
+          });
+        }
+      } catch (error) {
+        console.error('Error processing file:', error);
+        toast({
+          title: "Error",
+          description: `Failed to process file ${file.name}`,
+          variant: "destructive",
+        });
+      }
     }
 
     setUploads(prev => [...prev, ...newUploads]);
