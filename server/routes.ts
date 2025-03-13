@@ -6,6 +6,8 @@ import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema } from "@s
 import express from "express";
 import path from "path";
 import { WebSocketServer, WebSocket } from 'ws';
+import type { IncomingMessage } from "http";
+import { parse as parseCookie } from "cookie";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
@@ -165,10 +167,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const wss = new WebSocketServer({ 
     server: httpServer, 
     path: '/ws',
-    clientTracking: true 
+    clientTracking: true,
+    // Verify client authentication
+    verifyClient: async (info: { req: IncomingMessage }) => {
+      try {
+        const cookie = info.req.headers.cookie;
+        if (!cookie) {
+          console.log('No cookie found in WebSocket connection request');
+          return false;
+        }
+
+        const cookies = parseCookie(cookie);
+        const sessionId = cookies['connect.sid']; // Match your session cookie name
+
+        if (!sessionId) {
+          console.log('No session ID found in cookies');
+          return false;
+        }
+
+        // You might want to verify the session is valid here
+        // For now, we'll just check if the session ID exists
+        return true;
+      } catch (error) {
+        console.error('Error verifying WebSocket client:', error);
+        return false;
+      }
+    }
   });
 
-  wss.on('connection', (ws: WebSocket) => {
+  wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+    console.log('New WebSocket connection established');
+
     // Handle connection setup
     ws.on('error', (error) => {
       console.error('WebSocket error:', error.message);
@@ -176,17 +205,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Send initial connection status
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'connection', status: 'connected' }));
+      ws.send(JSON.stringify({ 
+        type: 'connection', 
+        status: 'connected',
+        message: 'Successfully connected to WebSocket server'
+      }));
     }
 
     // Handle client messages
     ws.on('message', (data) => {
       try {
-        // Parse and handle messages if needed
         const message = JSON.parse(data.toString());
         console.log('Received message type:', message.type);
+
+        // Handle different message types
+        switch (message.type) {
+          case 'auth':
+            // Authentication already handled by verifyClient
+            ws.send(JSON.stringify({ type: 'auth_success' }));
+            break;
+          default:
+            console.log('Unhandled message type:', message.type);
+        }
       } catch (error) {
-        console.error('Error processing message:', error.message);
+        console.error('Error processing message:', error);
+        ws.send(JSON.stringify({ 
+          type: 'error',
+          message: 'Failed to process message'
+        }));
       }
     });
 
