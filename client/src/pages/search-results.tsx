@@ -19,13 +19,16 @@ export default function SearchResults() {
   // Fetch all media items
   const { data: mediaItems = [], isLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
+    onSuccess: (data) => {
+      console.log('Fetched media items:', data.length);
+      // Initial filtering based on URL parameters
+      let filtered = [...data];
+      if (initialType !== 'all') {
+        filtered = filtered.filter(item => item.type === initialType);
+      }
+      setFilteredMediaItems(filtered);
+    }
   });
-
-  useEffect(() => {
-    console.log('Loaded media items:', mediaItems.length);
-    console.log('Initial query:', initialQuery);
-    console.log('Initial type:', initialType);
-  }, [mediaItems, initialQuery, initialType]);
 
   if (isLoading) {
     return (

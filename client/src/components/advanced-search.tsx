@@ -50,9 +50,9 @@ export function AdvancedSearch({
     }
     if (filters.includeTags) {
       keys.push({ 
-        name: 'tags',
+        name: 'tags', 
         weight: 1.5,
-        getFn: (item: MediaItem) => item.tags?.join(' ') || ''
+        getFn: (item: MediaItem) => item.tags?.join(' ') || '' 
       });
     }
     return keys;
