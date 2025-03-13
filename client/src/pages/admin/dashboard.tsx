@@ -122,12 +122,14 @@ export default function AdminDashboard() {
   // Calculate stats for each event
   const getEventStats = (eventId: number) => {
     const eventMedia = allMediaItems.filter(item => item.eventId === eventId);
-    return {
+    const stats = {
       photos: eventMedia.filter(item => item.type === "image").length,
       videos: eventMedia.filter(item => item.type === "video").length,
       totalMedia: eventMedia.length,
-      downloads: 0 // Placeholder, needs backend implementation
+      downloads: 0 // Placeholder for now
     };
+    console.log(`Stats for event ${eventId}:`, stats); // Debug log
+    return stats;
   };
 
   return (

@@ -118,6 +118,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Media routes
+  app.get("/api/media", async (_req, res) => {
+    try {
+      // First get all events
+      const events = await storage.getEvents();
+
+      // Then get media items for each event
+      const allMedia = [];
+      for (const event of events) {
+        const mediaItems = await storage.getMediaItems(event.id);
+        allMedia.push(...mediaItems);
+      }
+
+      res.json(allMedia);
+    } catch (error) {
+      console.error('Failed to fetch all media items:', error);
+      res.status(500).json({ error: "Failed to fetch media items" });
+    }
+  });
+
   app.get("/api/events/:eventId/media", async (req, res) => {
     const eventId = parseInt(req.params.eventId);
     console.log(`Received request for media items of event ${eventId}`);
