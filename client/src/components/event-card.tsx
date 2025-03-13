@@ -78,3 +78,59 @@ export default function EventCard({ event }: EventCardProps) {
     </Card>
   );
 }
+import { Link } from "wouter";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { CalendarIcon, ChevronRight } from "lucide-react";
+import { Event } from "@shared/schema";
+import { formatDate } from "@/lib/utils";
+
+interface EventCardProps {
+  event: Event;
+}
+
+export default function EventCard({ event }: EventCardProps) {
+  return (
+    <Card className="overflow-hidden transition-all hover:shadow-lg">
+      <div className="relative h-48 overflow-hidden">
+        {event.coverImage ? (
+          <img
+            src={event.coverImage}
+            alt={event.title}
+            className="w-full h-full object-cover transition-transform hover:scale-105"
+          />
+        ) : (
+          <div className="w-full h-full bg-muted flex items-center justify-center">
+            <span className="text-muted-foreground">No image available</span>
+          </div>
+        )}
+      </div>
+      
+      <CardHeader className="pb-2">
+        <h3 className="text-xl font-bold tracking-tight">{event.title}</h3>
+      </CardHeader>
+      
+      <CardContent>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+          <CalendarIcon className="h-4 w-4" />
+          <span>{formatDate(event.date)}</span>
+        </div>
+        
+        <p className="text-sm line-clamp-3">{event.description}</p>
+      </CardContent>
+      
+      <CardFooter className="flex justify-between">
+        {event.seriesId && (
+          <Badge variant="outline">Series #{event.seriesId}</Badge>
+        )}
+        <Button asChild size="sm" className="ml-auto">
+          <Link href={`/events/${event.id}`}>
+            View Details
+            <ChevronRight className="ml-1 h-4 w-4" />
+          </Link>
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}

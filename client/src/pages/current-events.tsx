@@ -36,6 +36,28 @@ export default function CurrentEventsPage() {
         </div>
 
         {isLoading ? (
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : currentEvents.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {currentEvents.map((event) => (
+              <EventCard key={event.id} event={event} />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-16">
+            <h2 className="text-2xl font-bold mb-4">No current events</h2>
+            <p className="text-muted-foreground">
+              Check back soon for upcoming events.
+            </p>
+          </div>
+        )}
+      </main>
+      <Footer />
+    </div>
+
+        {isLoading ? (
           <div className="flex justify-center p-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
