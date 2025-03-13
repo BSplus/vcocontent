@@ -9,6 +9,7 @@ import HomePage from "@/pages/home-page";
 import AuthPage from "@/pages/auth-page";
 import AdminDashboard from "@/pages/admin/dashboard";
 import EventGallery from "@/pages/event-gallery";
+import SearchResults from "@/pages/search-results";
 import CurrentEvents from "@/pages/current-events";
 import UpcomingEvents from "@/pages/upcoming-events";
 import ArchiveEvents from "@/pages/archive-events";
@@ -19,6 +20,7 @@ function Router() {
     <Switch>
       <Route path="/" component={HomePage} />
       <Route path="/auth" component={AuthPage} />
+      <Route path="/search" component={SearchResults} />
       <Route path="/current-events" component={CurrentEvents} />
       <Route path="/upcoming-events" component={UpcomingEvents} />
       <Route path="/archive-events" component={ArchiveEvents} />

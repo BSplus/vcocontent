@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -20,17 +21,25 @@ interface AdvancedSearchProps {
   items: MediaItem[];
   onSearchResults: (results: MediaItem[]) => void;
   className?: string;
+  initialQuery?: string;
+  initialType?: 'all' | 'image' | 'video';
 }
 
-export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSearchProps) {
+export function AdvancedSearch({ 
+  items, 
+  onSearchResults, 
+  className,
+  initialQuery = '',
+  initialType = 'all'
+}: AdvancedSearchProps) {
+  const [, setLocation] = useLocation();
   const [filters, setFilters] = useState({
     includeCaption: true,
     includePhotographer: true,
     includeTags: true,
-    mediaType: 'all',
+    mediaType: initialType,
   });
 
-  // Generate search keys based on filters with appropriate weights
   const getSearchKeys = () => {
     const keys = [];
     if (filters.includeCaption) {
@@ -46,7 +55,6 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
         getFn: (item: MediaItem) => item.tags?.join(' ') || ''
       });
     }
-
     return keys;
   };
 
@@ -55,6 +63,13 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
     threshold: 0.3,
     distance: 100,
   });
+
+  // Initialize search query from URL if provided
+  useEffect(() => {
+    if (initialQuery) {
+      setSearchQuery(initialQuery);
+    }
+  }, [initialQuery]);
 
   // Update results whenever search parameters change
   React.useEffect(() => {
@@ -69,8 +84,18 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
     onSearchResults(filteredResults);
   }, [results, filters.mediaType, onSearchResults]);
 
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const searchParams = new URLSearchParams();
+    if (searchQuery) searchParams.set('q', searchQuery);
+    if (filters.mediaType !== 'all') searchParams.set('type', filters.mediaType);
+
+    // Navigate to search results page with parameters
+    setLocation(`/search?${searchParams.toString()}`);
+  };
+
   return (
-    <div className={`w-full ${className}`}>
+    <form onSubmit={handleSearch} className={`w-full ${className}`}>
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -193,6 +218,10 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
             )}
           </SheetContent>
         </Sheet>
+
+        <Button type="submit">
+          Suchen
+        </Button>
       </div>
 
       {searchQuery && (
@@ -214,6 +243,6 @@ export function AdvancedSearch({ items, onSearchResults, className }: AdvancedSe
           )}
         </div>
       )}
-    </div>
+    </form>
   );
 }
