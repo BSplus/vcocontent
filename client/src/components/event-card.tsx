@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Event, MediaItem, Series } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { generateEventThumbnail } from "@/lib/ai-thumbnail";
 
 interface EventCardProps {
   event: Event;
@@ -12,6 +15,7 @@ interface EventCardProps {
 export default function EventCard({ event }: EventCardProps) {
   const eventDate = event.date ? new Date(event.date) : null;
   const isUpcoming = eventDate ? eventDate >= new Date() : false;
+  const [isGeneratingThumbnail, setIsGeneratingThumbnail] = useState(false);
 
   // Fetch media items for this event to use as fallback thumbnail
   const { data: mediaItems } = useQuery<MediaItem[]>({
@@ -24,18 +28,66 @@ export default function EventCard({ event }: EventCardProps) {
     enabled: !!event.seriesId,
   });
 
-  // Get the thumbnail to display
-  const thumbnailToShow = event.customThumbnail || 
-    (mediaItems && mediaItems.length > 0 ? mediaItems[0].thumbnail : "/attached_assets/%2389_3.png");
+  // State for the thumbnail URL
+  const [thumbnailUrl, setThumbnailUrl] = useState<string>(event.customThumbnail || "/attached_assets/%2389_3.png");
+
+  // Effect to handle thumbnail logic
+  useEffect(() => {
+    const loadThumbnail = async () => {
+      // If there's a custom thumbnail, use it
+      if (event.customThumbnail) {
+        setThumbnailUrl(event.customThumbnail);
+        return;
+      }
+
+      // If there are media items, use the first image
+      if (mediaItems && mediaItems.length > 0) {
+        const firstImage = mediaItems.find(item => item.type === "image");
+        if (firstImage) {
+          setThumbnailUrl(firstImage.thumbnail);
+          return;
+        }
+      }
+
+      // If no custom thumbnail or media items, generate AI thumbnail
+      if (!isGeneratingThumbnail) {
+        try {
+          setIsGeneratingThumbnail(true);
+          const generatedThumbnail = await generateEventThumbnail(event.title, event.description);
+          setThumbnailUrl(generatedThumbnail);
+
+          // Update the event with the generated thumbnail
+          await fetch(`/api/events/${event.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customThumbnail: generatedThumbnail }),
+            credentials: 'include'
+          });
+        } catch (error) {
+          console.error('Failed to generate thumbnail:', error);
+        } finally {
+          setIsGeneratingThumbnail(false);
+        }
+      }
+    };
+
+    loadThumbnail();
+  }, [event, mediaItems, isGeneratingThumbnail]);
 
   return (
     <Card className="overflow-hidden group hover:shadow-lg transition-shadow bg-black/40 border-primary/20 h-full flex flex-col">
       <div className="relative aspect-video overflow-hidden">
-        <img
-          src={thumbnailToShow}
-          alt={event.title}
-          className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
-        />
+        {isGeneratingThumbnail ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        ) : (
+          <img
+            src={thumbnailUrl}
+            alt={event.title}
+            className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
+          />
+        )}
         {isUpcoming && (
           <div className="absolute top-3 right-3">
             <Badge className="bg-primary text-black">
