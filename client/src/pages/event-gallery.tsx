@@ -6,12 +6,10 @@ import { Event, MediaItem } from "@shared/schema";
 import { Loader2, ArrowLeft } from "lucide-react";
 import MediaGrid from "@/components/media-grid";
 import { useAuth } from "@/hooks/use-auth";
-import { AdvancedSearch } from "@/components/advanced-search";
 
 export default function EventGallery() {
   const [, params] = useRoute<{ id: string }>("/events/:id");
   const eventId = parseInt(params?.id || "0");
-  const [filteredMediaItems, setFilteredMediaItems] = useState<MediaItem[]>([]);
   const { user } = useAuth();
 
   // Fetch event data
@@ -28,13 +26,6 @@ export default function EventGallery() {
   } = useQuery<MediaItem[]>({
     queryKey: [`/api/events/${eventId}/media`],
     enabled: Boolean(eventId && eventId > 0),
-    onSuccess: (data) => {
-      console.log('Media items loaded:', data.length);
-      setFilteredMediaItems(data);
-    },
-    onError: (error) => {
-      console.error('Failed to load media items:', error);
-    }
   });
 
   const handleMediaDelete = async (deletedItemIds: number[]) => {
@@ -94,20 +85,14 @@ export default function EventGallery() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <AdvancedSearch
-          items={mediaItems}
-          onSearchResults={setFilteredMediaItems}
-          className="mb-8"
-        />
-
-        {!filteredMediaItems.length ? (
+        {!mediaItems.length ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg">
-              {mediaItems.length ? "Keine passenden Medien gefunden." : "Noch keine Medien für dieses Event verfügbar."}
+              Noch keine Medien für dieses Event verfügbar.
             </p>
           </div>
         ) : (
-          <MediaGrid items={filteredMediaItems} onDelete={handleMediaDelete} />
+          <MediaGrid items={mediaItems} onDelete={handleMediaDelete} />
         )}
       </main>
     </div>

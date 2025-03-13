@@ -450,36 +450,40 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               />
             )}
 
-            {/* Navigation buttons - now positioned inside the media container */}
+            {/* Navigation buttons */}
             <div className="absolute inset-0 flex items-center justify-between p-2">
-              {selectedItemIndex > 0 && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="bg-black/60 hover:bg-black/80 h-12 w-12"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigatePrevious();
-                  }}
-                >
-                  <ChevronLeft className="h-8 w-8" />
-                </Button>
-              )}
-
-              {selectedItemIndex < items.length - 1 && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="bg-black/60 hover:bg-black/80 h-12 w-12"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigateNext();
-                  }}
-                >
-                  <ChevronRight className="h-8 w-8" />
-                </Button>
-              )}
+              <div className="flex-none">
+                {selectedItemIndex > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="bg-black/60 hover:bg-black/80 h-12 w-12"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigatePrevious();
+                    }}
+                  >
+                    <ChevronLeft className="h-8 w-8" />
+                  </Button>
+                )}
+              </div>
+              <div className="flex-none">
+                {selectedItemIndex < items.length - 1 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="bg-black/60 hover:bg-black/80 h-12 w-12"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigateNext();
+                    }}
+                  >
+                    <ChevronRight className="h-8 w-8" />
+                  </Button>
+                )}
+              </div>
             </div>
+
           </div>
 
           <div className="space-y-4 mt-4">
