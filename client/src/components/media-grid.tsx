@@ -213,7 +213,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
     });
   };
 
-  const handleDownload = async (url: string, quality: 'high' | 'low', type: 'image' | 'video') => {
+  const handleDownload = async (url: string, quality: 'high' | 'low', type: 'image' | 'video', mediaId: number) => {
     try {
       let downloadUrl = url;
       let filename = url.split('/').pop() || 'download';
@@ -235,6 +235,12 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
           blob = await response.blob();
         }
       }
+
+      // Track download
+      await fetch(`/api/media/${mediaId}/download`, {
+        method: 'POST',
+        credentials: 'include',
+      });
 
       const extension = type === 'video' ? '.mp4' : '.jpg';
       const link = document.createElement('a');
@@ -391,13 +397,13 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                     <DropdownMenuContent>
                       <DropdownMenuItem onClick={(e) => {
                         e.stopPropagation();
-                        handleDownload(item.url, 'high', item.type as 'video' | 'image');
+                        handleDownload(item.url, 'high', item.type as 'video' | 'image', item.id);
                       }}>
                         Download High-Res
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={(e) => {
                         e.stopPropagation();
-                        handleDownload(item.thumbnail, 'low', item.type as 'video' | 'image');
+                        handleDownload(item.thumbnail, 'low', item.type as 'video' | 'image', item.id);
                       }}>
                         Download Low-Res
                       </DropdownMenuItem>
@@ -538,12 +544,12 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
                     <DropdownMenuItem onClick={() =>
-                      selectedItem && handleDownload(selectedItem.url, 'high', selectedItem.type as 'video' | 'image')
+                      selectedItem && handleDownload(selectedItem.url, 'high', selectedItem.type as 'video' | 'image', selectedItem.id)
                     }>
                       Download High-Res
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() =>
-                      selectedItem && handleDownload(selectedItem.thumbnail, 'low', selectedItem.type as 'video' | 'image')
+                      selectedItem && handleDownload(selectedItem.thumbnail, 'low', selectedItem.type as 'video' | 'image', selectedItem.id)
                     }>
                       Download Low-Res
                     </DropdownMenuItem>

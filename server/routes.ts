@@ -30,10 +30,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/media/top-shots", async (req, res) => {
     try {
       const media = await storage.getAllMediaItems();
+      console.log('Fetching top shots, total media items:', media.length);
+
       const topShots = media
         .filter(item => item.type === "image")
         .sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
         .slice(0, 3);
+
+      console.log('Top shots selected:', topShots.map(shot => ({
+        id: shot.id,
+        downloads: shot.downloadCount,
+        type: shot.type
+      })));
+
       res.json(topShots);
     } catch (error) {
       console.error('Error fetching top shots:', error);
