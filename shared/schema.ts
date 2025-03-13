@@ -9,7 +9,6 @@ export const users = pgTable("users", {
   isAdmin: boolean("is_admin").notNull().default(false),
 });
 
-// New Series table
 export const series = pgTable("series", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -38,6 +37,7 @@ export const mediaItems = pgTable("media_items", {
   photographer: text("photographer"),
   tags: text("tags").array(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  downloadCount: integer("download_count").notNull().default(0),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -45,7 +45,6 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
 });
 
-// New Series schema
 export const insertSeriesSchema = createInsertSchema(series).extend({
   name: z.string().min(1, "Series name is required"),
   logo: z.string().optional(),

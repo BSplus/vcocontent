@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { type Event, type Series } from "@shared/schema";
-import { Loader2, Calendar, Trophy, History, Clock, ChevronRight, Search } from "lucide-react";
+import { type Event, type Series, type MediaItem } from "@shared/schema";
+import { Loader2, Calendar, Trophy, History, Clock, ChevronRight, Star } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
@@ -23,6 +23,11 @@ export default function HomePage() {
   // Series loading
   const { data: series = [], isLoading: seriesLoading } = useQuery<Series[]>({
     queryKey: ["/api/series"]
+  });
+
+  // Top shots loading
+  const { data: topShots = [], isLoading: topShotsLoading } = useQuery<MediaItem[]>({
+    queryKey: ["/api/media/top-shots"]
   });
 
   // Event categorization
@@ -55,7 +60,7 @@ export default function HomePage() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // Loading state
-  if (eventsLoading || seriesLoading) {
+  if (eventsLoading || seriesLoading || topShotsLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -153,6 +158,54 @@ export default function HomePage() {
             )}
           </section>
         )}
+
+        {/* TOP SHOTS Section */}
+        <section id="top-shots" className="bg-gradient-to-r from-primary/10 via-accent/10 to-primary/10 rounded-lg p-8 border border-primary/20">
+          <div className="flex items-center gap-3 mb-8">
+            <Star className="h-8 w-8 text-primary" />
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              TOP SHOTS
+            </h2>
+          </div>
+
+          {topShotsLoading ? (
+            <div className="flex justify-center items-center h-48">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : !topShots.length ? (
+            <p className="text-center text-foreground/60 py-12">
+              No top shots available yet.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {topShots.map((shot) => (
+                <Link key={shot.id} href={`/events/${shot.eventId}`} className="group">
+                  <div className="relative aspect-video overflow-hidden rounded-lg bg-black/40 border border-primary/20">
+                    <img
+                      src={shot.url}
+                      alt={shot.caption || "Top shot"}
+                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                    <div className="absolute bottom-0 left-0 right-0 p-4">
+                      {shot.caption && (
+                        <p className="text-sm font-medium text-white line-clamp-2 mb-2">
+                          {shot.caption}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <Star className="h-4 w-4 text-primary fill-primary" />
+                        <span className="text-sm font-bold text-primary">
+                          {shot.downloadCount} Downloads
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
 
         <section id="archive">
           <div className="flex items-center gap-3 mb-6">

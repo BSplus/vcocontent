@@ -31,6 +31,7 @@ interface IStorage {
   // Media management
   getAllMediaItems(): Promise<MediaItem[]>;
   getMediaItems(eventId: number): Promise<MediaItem[]>;
+  getMediaItem(id: number): Promise<MediaItem | undefined>;
   createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem>;
   updateMediaItem(id: number, mediaItem: Partial<InsertMediaItem>): Promise<MediaItem>;
   deleteMediaItem(id: number): Promise<void>;
@@ -177,6 +178,15 @@ class DatabaseStorage implements IStorage {
       .select()
       .from(mediaItems)
       .where(eq(mediaItems.eventId, eventId));
+  }
+
+  async getMediaItem(id: number): Promise<MediaItem | undefined> {
+    const result = await db
+      .select()
+      .from(mediaItems)
+      .where(eq(mediaItems.id, id))
+      .limit(1);
+    return result[0];
   }
 
   async createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem> {

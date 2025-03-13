@@ -26,6 +26,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get top shots
+  app.get("/api/media/top-shots", async (req, res) => {
+    try {
+      const media = await storage.getAllMediaItems();
+      const topShots = media
+        .filter(item => item.type === "image")
+        .sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
+        .slice(0, 3);
+      res.json(topShots);
+    } catch (error) {
+      console.error('Error fetching top shots:', error);
+      res.status(500).json({ error: "Failed to fetch top shots" });
+    }
+  });
+
+  // Track downloads and increment counter
+  app.post("/api/media/:id/download", async (req, res) => {
+    try {
+      const mediaId = parseInt(req.params.id);
+      const mediaItem = await storage.getMediaItem(mediaId);
+
+      if (!mediaItem) {
+        return res.status(404).json({ error: "Media item not found" });
+      }
+
+      await storage.updateMediaItem(mediaId, {
+        ...mediaItem,
+        downloadCount: (mediaItem.downloadCount || 0) + 1
+      });
+
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('Error tracking download:', error);
+      res.status(500).json({ error: "Failed to track download" });
+    }
+  });
+
   // Get single event
   app.get("/api/events/:id", async (req, res) => {
     try {
