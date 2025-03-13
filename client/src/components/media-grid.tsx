@@ -30,6 +30,7 @@ import EditMediaModal from "./edit-media-modal";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { ShareMenu } from "./share-menu";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -503,6 +504,11 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                     Edit
                   </Button>
                 )}
+                <ShareMenu 
+                  url={window.location.href}
+                  title={selectedItem?.caption}
+                  description={`Photo by ${selectedItem?.photographer || 'Unknown'}`}
+                />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline">
