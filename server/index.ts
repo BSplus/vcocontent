@@ -9,12 +9,11 @@ app.use(express.json({ limit: '250mb' }));
 app.use(express.urlencoded({ extended: false, limit: '250mb' }));
 
 // Make Replicate API token available to the frontend
-// Ensure it's properly prefixed for Vite to expose it
 if (process.env.REPLICATE_API_TOKEN) {
   process.env.VITE_REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
   console.log('Replicate API token found and exposed to frontend');
 } else {
-  console.warn('Warning: REPLICATE_API_TOKEN not found in environment variables. AI thumbnail generation will not work.');
+  console.warn('Warning: REPLICATE_API_TOKEN not found in environment variables.');
 }
 
 app.use((req, res, next) => {
@@ -61,7 +60,6 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
     res.status(status).json({ message });
-    throw err;
   });
 
   if (app.get("env") === "development") {
@@ -70,12 +68,31 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  const port = process.env.PORT || 5000;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  // Find an available port if 5000 is in use
+  const startServer = async (port: number): Promise<void> => {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.listen({
+          port,
+          host: "0.0.0.0",
+          reusePort: true,
+        }, () => {
+          log(`Server running on port ${port}`);
+          resolve();
+        }).on('error', (error: any) => {
+          if (error.code === 'EADDRINUSE') {
+            console.log(`Port ${port} is in use, trying next port...`);
+            startServer(port + 1).then(resolve).catch(reject);
+          } else {
+            reject(error);
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Failed to start server:', error);
+      process.exit(1);
+    }
+  };
+
+  await startServer(5000);
 })();
