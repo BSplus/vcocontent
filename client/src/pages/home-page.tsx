@@ -144,7 +144,7 @@ export default function HomePage() {
       <main className="container mx-auto px-4 py-8 space-y-16">
         <section className="max-w-4xl mx-auto">
           <div className="flex flex-col gap-4">
-            <h2 className="text-2xl font-bold text-center">Find Racing Events</h2>
+            <h2 className="text-2xl font-bold text-center">Find Content</h2>
             <div className="flex items-center gap-4">
               <Select value={selectedSeriesId} onValueChange={setSelectedSeriesId}>
                 <SelectTrigger className="w-[200px]">

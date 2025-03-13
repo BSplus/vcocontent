@@ -36,11 +36,13 @@ export default function EventCard({ event }: EventCardProps) {
           alt={event.title}
           className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
         />
-        <div className="absolute top-3 right-3">
-          <Badge variant={isUpcoming ? "default" : "secondary"} className={isUpcoming ? "bg-primary text-black" : "bg-foreground/10"}>
-            {isUpcoming ? "Upcoming" : "Past"}
-          </Badge>
-        </div>
+        {isUpcoming && (
+          <div className="absolute top-3 right-3">
+            <Badge className="bg-primary text-black">
+              Upcoming
+            </Badge>
+          </div>
+        )}
         {series && (
           <div className="absolute top-3 left-3 h-8">
             <img
