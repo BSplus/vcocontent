@@ -10,6 +10,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertUserSchema, type InsertUser } from "@shared/schema";
 import { Loader2 } from "lucide-react";
+import { FormMessage } from "@/components/ui/form";
 
 export default function AuthPage() {
   const [_, setLocation] = useLocation();
@@ -60,8 +61,12 @@ export default function AuthPage() {
                     <Input
                       id="login-username"
                       {...loginForm.register("username")}
-                      error={loginForm.formState.errors.username?.message}
                     />
+                    {loginForm.formState.errors.username && (
+                      <p className="text-sm text-red-500">
+                        {loginForm.formState.errors.username.message}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="login-password">Password</Label>
@@ -69,8 +74,12 @@ export default function AuthPage() {
                       id="login-password"
                       type="password"
                       {...loginForm.register("password")}
-                      error={loginForm.formState.errors.password?.message}
                     />
+                    {loginForm.formState.errors.password && (
+                      <p className="text-sm text-red-500">
+                        {loginForm.formState.errors.password.message}
+                      </p>
+                    )}
                   </div>
                   <Button 
                     type="submit" 
@@ -93,8 +102,12 @@ export default function AuthPage() {
                     <Input
                       id="register-username"
                       {...registerForm.register("username")}
-                      error={registerForm.formState.errors.username?.message}
                     />
+                    {registerForm.formState.errors.username && (
+                      <p className="text-sm text-red-500">
+                        {registerForm.formState.errors.username.message}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="register-password">Password</Label>
@@ -102,8 +115,12 @@ export default function AuthPage() {
                       id="register-password"
                       type="password"
                       {...registerForm.register("password")}
-                      error={registerForm.formState.errors.password?.message}
                     />
+                    {registerForm.formState.errors.password && (
+                      <p className="text-sm text-red-500">
+                        {registerForm.formState.errors.password.message}
+                      </p>
+                    )}
                   </div>
                   <Button 
                     type="submit" 

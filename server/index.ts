@@ -51,6 +51,8 @@ app.use((req, res, next) => {
 
   // Better error handling for large files
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('Express error handler caught:', err);
+
     if (err.type === 'entity.too.large') {
       return res.status(413).json({
         message: "File size too large. Maximum size is 200MB for videos and 10MB for images."
@@ -59,7 +61,19 @@ app.use((req, res, next) => {
 
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-    res.status(status).json({ message });
+
+    // Versuche immer eine Antwort zu senden, selbst bei schwerwiegenden Fehlern
+    try {
+      res.status(status).json({ message });
+    } catch (responseError) {
+      console.error('Failed to send error response:', responseError);
+      // Versuche eine einfachere Antwort zu senden, falls die JSON-Antwort fehlschlägt
+      try {
+        res.status(500).send('Internal Server Error');
+      } catch (finalError) {
+        console.error('Could not send any error response:', finalError);
+      }
+    }
   });
 
   if (app.get("env") === "development") {

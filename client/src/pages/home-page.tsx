@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Event, MediaItem } from "@shared/schema";
+import { type Event, type MediaItem } from "@shared/schema";
 import { Loader2, Calendar, Trophy, History, Clock, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useMemo } from "react";
@@ -15,40 +15,35 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
 
+  // Medien laden
   const { data: fetchedMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
-    onSuccess: (data) => setMediaItems(data || []),
+    onSuccess: (data) => setMediaItems(data || [])
   });
 
   const handleMediaDelete = (deletedItemId: number) => {
     setMediaItems(current => current.filter(item => item.id !== deletedItemId));
   };
 
-  // Fetch events
+  // Events laden
   const { data: events, isLoading: eventsLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"]
   });
 
-  // Search logic with memoization
+  // Suchlogik mit Memoization
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
 
     const query = searchQuery.toLowerCase().trim();
     return mediaItems.filter(item => {
-      // Check caption
       if (item.caption?.toLowerCase().includes(query)) return true;
-
-      // Check photographer
       if (item.photographer?.toLowerCase().includes(query)) return true;
-
-      // Check tags
       if (item.tags?.some(tag => tag.toLowerCase().includes(query))) return true;
-
       return false;
     });
   }, [searchQuery, mediaItems]);
 
-  // Event categorization
+  // Event-Kategorisierung
   const today = new Date();
   const fourWeeksAgo = new Date(today.getTime() - (28 * 24 * 60 * 60 * 1000));
 
