@@ -19,8 +19,7 @@ export default function HomePage() {
 
   // Media loading
   const { data: fetchedMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
-    queryKey: ["/api/media"],
-    onSuccess: (newMediaItems: MediaItem[]) => setMediaItems(newMediaItems || [])
+    queryKey: ["/api/media"]
   });
 
   const handleMediaDelete = (deletedItemId: number) => {
@@ -33,10 +32,7 @@ export default function HomePage() {
     isLoading: eventsLoading,
     error: eventsError 
   } = useQuery<Event[]>({
-    queryKey: ["/api/events"],
-    onError: (error) => {
-      console.error("Failed to load events:", error);
-    }
+    queryKey: ["/api/events"]
   });
 
   // Series loading
@@ -61,33 +57,53 @@ export default function HomePage() {
       const query = searchQuery.toLowerCase().trim();
       filtered = filtered.filter(event => {
         return event.title.toLowerCase().includes(query) ||
-               event.description.toLowerCase().includes(query);
+               event.description?.toLowerCase().includes(query);
       });
     }
 
     return filtered;
   }, [events, selectedSeriesId, searchQuery]);
 
+  // Helper function to check if an event has images
+  const eventHasImages = (eventId: number) => {
+    return fetchedMediaItems?.some(item => item.eventId === eventId && item.type === "image") ?? false;
+  };
+
   // Event categorization from filtered events
   const today = new Date();
   const fourWeeksAgo = new Date(today.getTime() - (28 * 24 * 60 * 60 * 1000));
 
+  // Current events - only show events with images
   const currentEvents = filteredEvents
     .filter(event => {
       const eventDate = new Date(event.date);
-      return eventDate >= fourWeeksAgo && eventDate <= today;
+      return eventDate >= fourWeeksAgo && 
+             eventDate <= today && 
+             eventHasImages(event.id);
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 4);
 
+  // Upcoming events - include events without images regardless of date
   const upcomingEvents = filteredEvents
-    .filter(event => new Date(event.date) > today)
+    .filter(event => {
+      const eventDate = new Date(event.date);
+      // Show in upcoming if:
+      // 1. Event has no images OR
+      // 2. Event date is in the future
+      return !eventHasImages(event.id) || eventDate > today;
+    })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  const archiveEvents = filteredEvents.filter(event => {
-    const eventDate = new Date(event.date);
-    return eventDate < fourWeeksAgo && eventDate < today;
-  });
+  // Archive events - only show events with images
+  const archiveEvents = filteredEvents
+    .filter(event => {
+      const eventDate = new Date(event.date);
+      return eventDate < fourWeeksAgo && 
+             eventDate < today && 
+             eventHasImages(event.id);
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <div className="min-h-screen bg-background">
