@@ -510,8 +510,8 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                 )}
                 <ShareMenu 
                   url={window.location.href}
-                  title={selectedItem?.caption}
-                  description={`Photo by ${selectedItem?.photographer || 'Unknown'}`}
+                  title={selectedItem?.caption || 'Media item'}
+                  description={selectedItem?.photographer ? `Photo by ${selectedItem.photographer}` : undefined}
                 />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

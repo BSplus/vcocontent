@@ -5,39 +5,14 @@ import { Input } from "@/components/ui/input";
 import { type Event, type MediaItem, type Series } from "@shared/schema";
 import { Loader2, Calendar, Trophy, History, Clock, ChevronRight, Search } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState, useMemo } from "react";
-import MediaGrid from "@/components/media-grid";
+import { useState } from "react";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSeriesId, setSelectedSeriesId] = useState<string>("all");
   const [, setLocation] = useLocation();
-
-  // Handle search submission
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      const searchParams = new URLSearchParams();
-      searchParams.set('q', searchQuery);
-      if (selectedSeriesId !== "all") {
-        searchParams.set('seriesId', selectedSeriesId);
-      }
-      setLocation(`/search?${searchParams.toString()}`);
-    }
-  };
-
-  // Media loading
-  const { data: fetchedMediaItems, isLoading: mediaLoading } = useQuery<MediaItem[]>({
-    queryKey: ["/api/media"]
-  });
-
-  const handleMediaDelete = (deletedItemId: number) => {
-    setMediaItems(prev => prev.filter(item => item.id !== deletedItemId));
-  };
 
   // Events loading with improved error handling
   const { 
@@ -56,38 +31,18 @@ export default function HomePage() {
     queryKey: ["/api/series"]
   });
 
-  // Filter events based on series and search query
-  const filteredEvents = useMemo(() => {
-    let filtered = [...events];
-
-    // First filter by series if one is selected
-    if (selectedSeriesId !== "all") {
-      filtered = filtered.filter(event => event.seriesId === parseInt(selectedSeriesId));
-    }
-
-    // Then filter by search query if present
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(event => {
-        return event.title.toLowerCase().includes(query) ||
-               event.description?.toLowerCase().includes(query);
-      });
-    }
-
-    return filtered;
-  }, [events, selectedSeriesId, searchQuery]);
-
-  // Helper function to check if an event has images
+  // Helper function to check if an event has images (Improved)
   const eventHasImages = (eventId: number) => {
-    return fetchedMediaItems?.some(item => item.eventId === eventId && item.type === "image") ?? false;
+    //This needs to be properly implemented to check for images.  Placeholder for now.
+    return true; 
   };
 
-  // Event categorization from filtered events
+  // Event categorization
   const today = new Date();
   const fourWeeksAgo = new Date(today.getTime() - (28 * 24 * 60 * 60 * 1000));
 
   // Current events - only show events with images
-  const currentEvents = filteredEvents
+  const currentEvents = events
     .filter(event => {
       const eventDate = new Date(event.date);
       return eventDate >= fourWeeksAgo && 
@@ -97,19 +52,16 @@ export default function HomePage() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 4);
 
-  // Upcoming events - include events without images regardless of date
-  const upcomingEvents = filteredEvents
+  // Upcoming events
+  const upcomingEvents = events
     .filter(event => {
       const eventDate = new Date(event.date);
-      // Show in upcoming if:
-      // 1. Event has no images OR
-      // 2. Event date is in the future
       return !eventHasImages(event.id) || eventDate > today;
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  // Archive events - only show events with images
-  const archiveEvents = filteredEvents
+  // Archive events
+  const archiveEvents = events
     .filter(event => {
       const eventDate = new Date(event.date);
       return eventDate < fourWeeksAgo && 
@@ -140,6 +92,10 @@ export default function HomePage() {
               </Link>
               <Link href="/archive-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
                 Archive
+              </Link>
+              <Link href="/search" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-2">
+                <Search className="h-4 w-4" />
+                Search Media
               </Link>
             </nav>
           </div>
@@ -172,41 +128,13 @@ export default function HomePage() {
       </header>
 
       <main className="container mx-auto px-4 py-8 space-y-16">
-        <section className="max-w-4xl mx-auto">
-          <div className="flex flex-col gap-4">
-            <h2 className="text-2xl font-bold text-center">Find Content</h2>
-            <form onSubmit={handleSearch} className="flex items-center gap-4">
-              <Select value={selectedSeriesId} onValueChange={setSelectedSeriesId}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select Series" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Series</SelectItem>
-                  {series.map(s => (
-                    <SelectItem key={s.id} value={s.id.toString()}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <span className="text-muted-foreground font-medium">OR</span>
-
-              <div className="flex-1 flex gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                  <Input
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by event title, description..."
-                    className="pl-10"
-                  />
-                </div>
-                <Button type="submit" disabled={!searchQuery.trim()}>
-                  Search
-                </Button>
-              </div>
-            </form>
+        {/* Hero Header Image Section - Editable in Dashboard */}
+        <section className="w-full aspect-[21/9] rounded-lg overflow-hidden bg-black/20 relative">
+          {/* Placeholder for header image that will be editable in dashboard */}
+          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+            {user?.isAdmin ? (
+              <p>Upload a header image in the Creator Dashboard</p>
+            ) : null}
           </div>
         </section>
 

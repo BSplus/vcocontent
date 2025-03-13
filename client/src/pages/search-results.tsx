@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { MediaItem } from "@shared/schema";
@@ -15,32 +15,19 @@ export default function SearchResults() {
   const params = new URLSearchParams(location.split('?')[1]);
   const initialQuery = params.get('q') || '';
   const initialType = (params.get('type') || 'all') as 'all' | 'image' | 'video';
-  const seriesId = params.get('seriesId');
 
   // Fetch all media items
   const { data: mediaItems = [], isLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
-    onSuccess: (data) => {
-      // Initial filtering based on URL parameters
-      let filtered = [...data];
-
-      // Filter by type if specified
-      if (initialType !== 'all') {
-        filtered = filtered.filter(item => item.type === initialType);
-      }
-
-      // Filter by series if specified
-      if (seriesId) {
-        filtered = filtered.filter(item => {
-          // Find items that belong to events of the selected series
-          return item.eventId && item.eventId > 0;
-          // Note: We'll need to add series filtering once the API supports it
-        });
-      }
-
-      setFilteredMediaItems(filtered);
-    }
+    staleTime: 30000, // Cache for 30 seconds
   });
+
+  // Set initial filtered items if we have a search query
+  useEffect(() => {
+    if (mediaItems.length > 0 && initialQuery) {
+      setFilteredMediaItems(mediaItems);
+    }
+  }, [mediaItems, initialQuery]);
 
   if (isLoading) {
     return (
@@ -60,10 +47,10 @@ export default function SearchResults() {
               Back to Home
             </Link>
           </Button>
-          <h1 className="text-4xl font-bold">Search Results</h1>
+          <h1 className="text-4xl font-bold">Media Search</h1>
           {initialQuery && (
             <p className="text-muted-foreground mt-2">
-              Search for: "{initialQuery}"
+              Search results for: "{initialQuery}"
             </p>
           )}
         </div>
@@ -81,7 +68,10 @@ export default function SearchResults() {
         {!filteredMediaItems.length ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg">
-              No matching media found.
+              {initialQuery ? 
+                "No matching media found." : 
+                "Use the search above to find media items."
+              }
             </p>
           </div>
         ) : (
