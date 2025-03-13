@@ -121,13 +121,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteEvent(id: number): Promise<void> {
+    // First delete all associated media items
+    await db.delete(mediaItems).where(eq(mediaItems.eventId, id));
+    // Then delete the event
     await db.delete(events).where(eq(events.id, id));
   }
 
   async getMediaItems(eventId: number): Promise<MediaItem[]> {
-    return await db.select()
-      .from(mediaItems)
-      .where(eq(mediaItems.eventId, eventId));
+    try {
+      console.log(`Fetching media items for event ${eventId}`);
+      const items = await db
+        .select()
+        .from(mediaItems)
+        .where(eq(mediaItems.eventId, eventId));
+      console.log(`Found ${items.length} media items for event ${eventId}`);
+      return items;
+    } catch (error) {
+      console.error(`Error fetching media items for event ${eventId}:`, error);
+      return [];
+    }
   }
 
   async createMediaItem(data: InsertMediaItem): Promise<MediaItem> {

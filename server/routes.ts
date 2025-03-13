@@ -119,8 +119,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Media routes
   app.get("/api/events/:eventId/media", async (req, res) => {
-    const media = await storage.getMediaItems(parseInt(req.params.eventId));
-    res.json(media);
+    const eventId = parseInt(req.params.eventId);
+    console.log(`Received request for media items of event ${eventId}`);
+
+    try {
+      // First check if event exists
+      const event = await storage.getEvent(eventId);
+      if (!event) {
+        console.log(`Event ${eventId} not found`);
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      console.log(`Found event ${eventId}, fetching media items`);
+      const media = await storage.getMediaItems(eventId);
+      console.log(`Successfully retrieved ${media.length} media items for event ${eventId}`);
+      res.json(media);
+    } catch (error) {
+      console.error(`Error fetching media for event ${eventId}:`, error);
+      res.status(500).json({ error: "Failed to fetch media items" });
+    }
   });
 
   app.post("/api/media", async (req, res) => {
@@ -128,27 +145,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(403).send("Unauthorized");
     }
 
-    console.log('Received media upload request:', {
-      eventId: req.body.eventId,
-      type: req.body.type,
-      caption: req.body.caption,
-      photographer: req.body.photographer,
-      tags: req.body.tags,
-    });
-
-    const parseResult = insertMediaItemSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      console.error('Media upload validation failed:', parseResult.error);
-      return res.status(400).json(parseResult.error);
-    }
-
     try {
+      // Verify event exists before creating media
+      const event = await storage.getEvent(req.body.eventId);
+      if (!event) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      const parseResult = insertMediaItemSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json(parseResult.error);
+      }
+
       const mediaItem = await storage.createMediaItem(parseResult.data);
-      console.log('Media item created successfully:', mediaItem.id);
       res.status(201).json(mediaItem);
     } catch (error) {
       console.error('Failed to create media item:', error);
-      res.status(500).send((error as Error).message);
+      res.status(500).json({ error: "Failed to create media item" });
     }
   });
 
