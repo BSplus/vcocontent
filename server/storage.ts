@@ -145,7 +145,10 @@ class DatabaseStorage implements IStorage {
       return { success: true, message: "Event deleted successfully" };
     } catch (error) {
       console.error('Storage: Error deleting event:', error);
-      return { success: false, message: error instanceof Error ? error.message : "Failed to delete event" };
+      return { 
+        success: false, 
+        message: error instanceof Error ? error.message : "Failed to delete event" 
+      };
     }
   }
 

@@ -207,6 +207,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete event
+  app.delete("/api/events/:id", async (req, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      console.log('Routes: Attempting to delete event with ID:', eventId, 'Original ID parameter:', req.params.id);
+
+      // Check if eventId is a valid number
+      if (isNaN(eventId)) {
+        console.error('Routes: Invalid event ID:', req.params.id);
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid event ID provided" 
+        });
+      }
+
+      const result = await storage.deleteEvent(eventId);
+      console.log('Routes: Delete result:', result);
+
+      if (!result.success) {
+        return res.status(404).json(result);
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error('Routes: Error deleting event:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error instanceof Error ? error.message : "Failed to delete event" 
+      });
+    }
+  });
+
   const httpServer = createServer(app);
 
   // Set up WebSocket server with proper security and error handling

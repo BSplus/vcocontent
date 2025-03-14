@@ -73,13 +73,13 @@ export default function AdminDashboard() {
       }
     },
     onMutate: async (deletedId) => {
-      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["/api/events"] });
 
       // Snapshot the previous value
       const previousEvents = queryClient.getQueryData<Event[]>(["/api/events"]);
 
-      // Optimistically update the cache
+      // Optimistically update to remove the deleted event
       if (previousEvents) {
         queryClient.setQueryData<Event[]>(
           ["/api/events"],
@@ -123,7 +123,11 @@ export default function AdminDashboard() {
 
   const handleDeleteEvent = async (event: Event) => {
     try {
-      if (!event?.id) return;
+      if (!event?.id) {
+        console.error("Invalid event ID:", event);
+        return;
+      }
+      console.log("Attempting to delete event with ID:", event.id);
       await deleteMutation.mutateAsync(event.id);
     } catch (error) {
       console.error("Delete error:", error);
