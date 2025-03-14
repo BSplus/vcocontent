@@ -48,18 +48,23 @@ export default function AdminDashboard() {
 
   const deleteMutation = useMutation({
     mutationFn: async (eventId: number) => {
-      await apiRequest("DELETE", `/api/events/${eventId}`);
+      const response = await apiRequest("DELETE", `/api/events/${eventId}`);
+      if (!response.ok) {
+        throw new Error("Failed to delete event");
+      }
     },
     onSuccess: () => {
       // Force refetch all relevant queries
       queryClient.invalidateQueries({ 
         queryKey: ["/api/events"],
+        exact: true,
         refetchType: 'all' 
       });
 
       if (eventToDelete?.id) {
         queryClient.invalidateQueries({
           queryKey: [`/api/events/${eventToDelete.id}/media`],
+          exact: true,
           refetchType: 'all'
         });
       }
@@ -70,18 +75,23 @@ export default function AdminDashboard() {
       });
       setEventToDelete(null);
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         title: "Error",
-        description: "Failed to delete event",
+        description: error.message || "Failed to delete event",
         variant: "destructive",
       });
+      setEventToDelete(null);
     },
   });
 
   const handleDeleteEvent = async (event: Event) => {
-    if (!event?.id) return;
-    await deleteMutation.mutateAsync(event.id);
+    try {
+      if (!event?.id) return;
+      await deleteMutation.mutateAsync(event.id);
+    } catch (error) {
+      console.error("Delete error:", error);
+    }
   };
 
   const getEventStats = (eventId: number) => {
