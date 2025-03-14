@@ -249,18 +249,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Verify client authentication with better error handling
     verifyClient: async (info: { req: IncomingMessage }, done: (res: boolean, code?: number, message?: string) => void) => {
       try {
+        // Log all headers for debugging
+        console.log('WebSocket: Connection attempt - Headers:', info.req.headers);
+
         const cookie = info.req.headers.cookie;
         if (!cookie) {
           console.log('WebSocket: No cookie found in connection request');
+          // During development, allow connections without cookie
+          if (process.env.NODE_ENV === 'development') {
+            console.log('WebSocket: Development mode - accepting connection without cookie');
+            done(true);
+            return;
+          }
           done(false, 401, 'No authentication cookie found');
           return;
         }
 
         const cookies = parseCookie(cookie);
-        const sessionId = cookies['connect.sid']; // Match your session cookie name
+        console.log('WebSocket: Parsed cookies:', cookies);
 
+        const sessionId = cookies['connect.sid']; // Match your session cookie name
         if (!sessionId) {
           console.log('WebSocket: No session ID found in cookies');
+          // During development, allow connections without session
+          if (process.env.NODE_ENV === 'development') {
+            console.log('WebSocket: Development mode - accepting connection without session');
+            done(true);
+            return;
+          }
           done(false, 401, 'No session ID found');
           return;
         }
