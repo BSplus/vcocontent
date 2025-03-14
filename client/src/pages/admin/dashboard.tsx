@@ -51,13 +51,16 @@ export default function AdminDashboard() {
       await apiRequest("DELETE", `/api/events/${eventId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/series"] });
+      // Force refetch all relevant queries
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/events"],
+        refetchType: 'all' 
+      });
 
       if (eventToDelete?.id) {
         queryClient.invalidateQueries({
-          queryKey: [`/api/events/${eventToDelete.id}/media`]
+          queryKey: [`/api/events/${eventToDelete.id}/media`],
+          refetchType: 'all'
         });
       }
 
