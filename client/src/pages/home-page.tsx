@@ -1,15 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
-import { Button } from "@/components/ui/button";
 import { type Event, type Series, type MediaItem } from "@shared/schema";
-import { Loader2, Calendar, Trophy, History, Clock, ChevronRight, Star } from "lucide-react";
+import { Loader2, Calendar, Trophy, History, Clock, ChevronRight, Star, Download } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import EventCard from "@/components/event-card";
 import Footer from "@/components/footer";
 import MainNavigation from "@/components/main-navigation";
+import { useState } from "react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+
 
 export default function HomePage() {
   const { user } = useAuth();
+  const [selectedTopShot, setSelectedTopShot] = useState<MediaItem | null>(null);
 
   // Events loading with improved error handling
   const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
@@ -80,6 +84,32 @@ export default function HomePage() {
     );
   }
 
+  const handleDownload = async (url: string, quality: 'high' | 'low', mediaId: number) => {
+    try {
+      // Track download
+      await fetch(`/api/media/${mediaId}/download`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      // Download the file
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const filename = url.split('/').pop() || 'download';
+      const extension = '.jpg';
+
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${filename}-${quality}${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    } catch (error) {
+      console.error('Download failed:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section with Header Image */}
@@ -146,15 +176,13 @@ export default function HomePage() {
               ))}
             </div>
             {upcomingEvents.length > 10 && (
-              <Link href="/upcoming-events">
-                <Button
-                  variant="outline"
-                  className="w-full mt-4 hover:bg-black/20 transition-colors"
-                >
-                  View All {upcomingEvents.length} Upcoming Events
-                  <ChevronRight className="h-4 w-4 ml-2" />
-                </Button>
-              </Link>
+              <Button
+                variant="outline"
+                className="w-full mt-4 hover:bg-black/20 transition-colors"
+              >
+                View All {upcomingEvents.length} Upcoming Events
+                <ChevronRight className="h-4 w-4 ml-2" />
+              </Button>
             )}
           </section>
         )}
@@ -179,7 +207,11 @@ export default function HomePage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {topShots.map((shot) => (
-                <Link key={shot.id} href={`/events/${shot.eventId}`} className="group">
+                <div
+                  key={shot.id}
+                  className="group cursor-pointer"
+                  onClick={() => setSelectedTopShot(shot)}
+                >
                   <div className="relative aspect-video overflow-hidden rounded-lg bg-black/40 border border-primary/20">
                     <img
                       src={shot.url}
@@ -201,7 +233,7 @@ export default function HomePage() {
                       </div>
                     </div>
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           )}
@@ -250,21 +282,78 @@ export default function HomePage() {
                       </div>
                     ))}
                   </div>
-                  <Link href="/archive-events">
-                    <Button
-                      variant="outline"
-                      className="w-full mt-4 hover:bg-black/20 transition-colors"
-                    >
-                      View All {archiveEvents.length} Archive Events
-                      <ChevronRight className="h-4 w-4 ml-2" />
-                    </Button>
-                  </Link>
+                  <Button
+                    variant="outline"
+                    className="w-full mt-4 hover:bg-black/20 transition-colors"
+                  >
+                    View All {archiveEvents.length} Archive Events
+                    <ChevronRight className="h-4 w-4 ml-2" />
+                  </Button>
                 </div>
               )}
             </div>
           )}
         </section>
       </main>
+      {/* Top Shot Preview Dialog */}
+      <Dialog open={!!selectedTopShot} onOpenChange={(open) => !open && setSelectedTopShot(null)}>
+        <DialogContent className="max-w-4xl">
+          {selectedTopShot && (
+            <div className="space-y-4">
+              <div className="relative aspect-video bg-black/20">
+                <img
+                  src={selectedTopShot.url}
+                  alt={selectedTopShot.caption || "Media preview"}
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+              </div>
+
+              <div className="flex justify-between items-center">
+                <div>
+                  {selectedTopShot.photographer && (
+                    <p className="text-sm text-muted-foreground">
+                      Photographer: {selectedTopShot.photographer}
+                    </p>
+                  )}
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Download
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => handleDownload(selectedTopShot.url, 'high', selectedTopShot.id)}>
+                      Download High-Res
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleDownload(selectedTopShot.thumbnail || selectedTopShot.url, 'low', selectedTopShot.id)}>
+                      Download Low-Res
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              {selectedTopShot.caption && (
+                <p className="text-sm">{selectedTopShot.caption}</p>
+              )}
+
+              {selectedTopShot.tags && selectedTopShot.tags.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  {selectedTopShot.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-2 py-1 bg-secondary text-secondary-foreground text-sm rounded-full"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       <Footer />
     </div>
   );

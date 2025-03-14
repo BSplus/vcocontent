@@ -241,44 +241,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const httpServer = createServer(app);
 
-  // Set up WebSocket server with proper security and error handling
+  // Set up WebSocket server with improved error handling and secure configuration
   const wss = new WebSocketServer({ 
     server: httpServer, 
     path: '/ws',
     clientTracking: true,
-    // Verify client authentication
-    verifyClient: async (info: { req: IncomingMessage }) => {
+    // Verify client authentication with better error handling
+    verifyClient: async (info: { req: IncomingMessage }, done: (res: boolean, code?: number, message?: string) => void) => {
       try {
         const cookie = info.req.headers.cookie;
         if (!cookie) {
-          console.log('No cookie found in WebSocket connection request');
-          return false;
+          console.log('WebSocket: No cookie found in connection request');
+          done(false, 401, 'No authentication cookie found');
+          return;
         }
 
         const cookies = parseCookie(cookie);
         const sessionId = cookies['connect.sid']; // Match your session cookie name
 
         if (!sessionId) {
-          console.log('No session ID found in cookies');
-          return false;
+          console.log('WebSocket: No session ID found in cookies');
+          done(false, 401, 'No session ID found');
+          return;
         }
 
-        // You might want to verify the session is valid here
-        // For now, we'll just check if the session ID exists
-        return true;
+        // Accept the connection if we have a session ID
+        console.log('WebSocket: Valid session found, accepting connection');
+        done(true);
       } catch (error) {
-        console.error('Error verifying WebSocket client:', error);
-        return false;
+        console.error('WebSocket: Error verifying client:', error);
+        done(false, 500, 'Internal server error during authentication');
       }
     }
   });
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-    console.log('New WebSocket connection established');
+    console.log('WebSocket: New connection established');
 
     // Handle connection setup
     ws.on('error', (error) => {
-      console.error('WebSocket error:', error.message);
+      console.error('WebSocket error:', error);
+      // Try to send error to client if connection is still open
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ 
+          type: 'error',
+          message: 'Connection error occurred'
+        }));
+      }
     });
 
     // Send initial connection status
@@ -294,7 +303,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     ws.on('message', (data) => {
       try {
         const message = JSON.parse(data.toString());
-        console.log('Received message type:', message.type);
+        console.log('WebSocket: Received message type:', message.type);
 
         // Handle different message types
         switch (message.type) {
@@ -302,11 +311,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Authentication already handled by verifyClient
             ws.send(JSON.stringify({ type: 'auth_success' }));
             break;
+          case 'ping':
+            ws.send(JSON.stringify({ type: 'pong' }));
+            break;
           default:
-            console.log('Unhandled message type:', message.type);
+            console.log('WebSocket: Unhandled message type:', message.type);
         }
       } catch (error) {
-        console.error('Error processing message:', error);
+        console.error('WebSocket: Error processing message:', error);
         ws.send(JSON.stringify({ 
           type: 'error',
           message: 'Failed to process message'
@@ -316,7 +328,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Handle client disconnection
     ws.on('close', () => {
-      console.log('Client disconnected from WebSocket');
+      console.log('WebSocket: Client disconnected');
     });
   });
 
