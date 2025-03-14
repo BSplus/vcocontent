@@ -128,8 +128,12 @@ class DatabaseStorage implements IStorage {
       console.log('Storage: Deleted associated media items for event:', id);
 
       // Then delete the event itself
-      await db.delete(events).where(eq(events.id, id));
-      console.log('Storage: Successfully deleted event:', id);
+      const result = await db.delete(events).where(eq(events.id, id)).returning();
+      console.log('Storage: Successfully deleted event:', id, 'Result:', result);
+
+      if (result.length === 0) {
+        throw new Error("Event not found");
+      }
     } catch (error) {
       console.error('Storage: Error deleting event:', error);
       throw error;

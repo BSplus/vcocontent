@@ -26,8 +26,6 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-//import { apiRequest } from "@/lib/queryClient"; // Removed as fetch is used directly
-
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -62,22 +60,35 @@ export default function AdminDashboard() {
         });
 
         if (!response.ok) {
-          throw new Error("Failed to delete event");
+          const error = await response.json();
+          throw new Error(error.message || "Failed to delete event");
         }
+
+        return response.json();
       } catch (error) {
         console.error("Delete mutation error:", error);
         throw error;
       }
     },
-    onSuccess: () => {
-      // Remove event from cache immediately
-      if (eventToDelete?.id) {
-        queryClient.setQueryData<Event[]>(["/api/events"], (oldEvents) =>
-          oldEvents?.filter((event) => event.id !== eventToDelete.id) || []
+    onMutate: async (deletedId) => {
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ["/api/events"] });
+
+      // Snapshot the previous value
+      const previousEvents = queryClient.getQueryData<Event[]>(["/api/events"]);
+
+      // Optimistically update the cache
+      if (previousEvents) {
+        queryClient.setQueryData<Event[]>(
+          ["/api/events"],
+          previousEvents.filter((event) => event.id !== deletedId)
         );
       }
 
-      // Invalidate all affected queries
+      return { previousEvents };
+    },
+    onSuccess: () => {
+      // Invalidate and refetch all relevant queries
       queryClient.invalidateQueries({ 
         queryKey: ["/api/events"],
         exact: true,
@@ -93,7 +104,12 @@ export default function AdminDashboard() {
       });
       setEventToDelete(null);
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _deletedId, context) => {
+      // Revert the optimistic update
+      if (context?.previousEvents) {
+        queryClient.setQueryData(["/api/events"], context.previousEvents);
+      }
+
       toast({
         title: "Error",
         description: error.message || "Failed to delete event",
