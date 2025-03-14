@@ -121,7 +121,14 @@ class DatabaseStorage implements IStorage {
   }
 
   async deleteEvent(id: number): Promise<void> {
-    await db.delete(events).where(eq(events.id, id));
+    console.log('Storage: Attempting to delete event:', id);
+    try {
+      await db.delete(events).where(eq(events.id, id));
+      console.log('Storage: Successfully deleted event:', id);
+    } catch (error) {
+      console.error('Storage: Error deleting event:', error);
+      throw error;
+    }
   }
 
   // Series management methods

@@ -50,20 +50,18 @@ export default function AdminDashboard() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const res = await fetch(`/api/events/${id}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-      });
+      try {
+        console.log("Attempting to delete event:", id);
+        const response = await apiRequest("DELETE", `/api/events/${id}`);
+        console.log("Delete response:", response);
 
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to delete event");
+        if (!response.ok) {
+          throw new Error("Failed to delete event");
+        }
+      } catch (error) {
+        console.error("Delete mutation error:", error);
+        throw error;
       }
-
-      return res;
     },
     onSuccess: () => {
       // Immediately remove the event from the UI by updating the state directly
