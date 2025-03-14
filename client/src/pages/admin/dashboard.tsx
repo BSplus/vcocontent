@@ -59,12 +59,14 @@ export default function AdminDashboard() {
           credentials: "include",
         });
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "Failed to delete event");
+        const result = await response.json();
+        console.log("Delete response:", result);
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.message || "Failed to delete event");
         }
 
-        return response.json();
+        return result;
       } catch (error) {
         console.error("Delete mutation error:", error);
         throw error;

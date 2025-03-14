@@ -20,7 +20,7 @@ interface IStorage {
   getEvent(id: number): Promise<Event | undefined>;
   createEvent(event: InsertEvent): Promise<Event>;
   updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event>;
-  deleteEvent(id: number): Promise<void>;
+  deleteEvent(id: number): Promise<{ success: boolean; message: string }>;
 
   // Series management
   getSeries(id?: number): Promise<Series[] | Series | undefined>;
@@ -120,9 +120,20 @@ class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async deleteEvent(id: number): Promise<void> {
+  async deleteEvent(id: number): Promise<{ success: boolean; message: string }> {
     console.log('Storage: Attempting to delete event:', id);
     try {
+      // Verify the event exists before deletion
+      const eventExists = await db
+        .select()
+        .from(events)
+        .where(eq(events.id, id))
+        .limit(1);
+
+      if (eventExists.length === 0) {
+        return { success: false, message: "Event not found" };
+      }
+
       // First delete all media items associated with this event
       await db.delete(mediaItems).where(eq(mediaItems.eventId, id));
       console.log('Storage: Deleted associated media items for event:', id);
@@ -131,12 +142,10 @@ class DatabaseStorage implements IStorage {
       const result = await db.delete(events).where(eq(events.id, id)).returning();
       console.log('Storage: Successfully deleted event:', id, 'Result:', result);
 
-      if (result.length === 0) {
-        throw new Error("Event not found");
-      }
+      return { success: true, message: "Event deleted successfully" };
     } catch (error) {
       console.error('Storage: Error deleting event:', error);
-      throw error;
+      return { success: false, message: error instanceof Error ? error.message : "Failed to delete event" };
     }
   }
 
