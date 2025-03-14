@@ -45,17 +45,25 @@ export default function AdminDashboard() {
   // Load media items for statistics
   const { data: mediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
-    staleTime: 0, // Added staleTime back here for consistency and potential performance improvement.
+    staleTime: 0,
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (eventId: number) => {
-      const response = await apiRequest("DELETE", `/api/events/${eventId}`);
-      if (!response.ok) {
-        const error = await response.json();
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/events/${id}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
         throw new Error(error.message || "Failed to delete event");
       }
-      return response.json();
+
+      return res;
     },
     onSuccess: () => {
       // Immediately remove the event from the UI by updating the state directly
@@ -64,6 +72,7 @@ export default function AdminDashboard() {
           oldEvents?.filter((event) => event.id !== eventToDelete.id) || []
         );
       }
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       toast({
         title: "Success",
         description: "Event deleted successfully",
