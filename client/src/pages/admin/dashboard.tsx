@@ -26,7 +26,8 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { apiRequest } from "@/lib/queryClient";
+//import { apiRequest } from "@/lib/queryClient"; // Removed as fetch is used directly
+
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -52,8 +53,13 @@ export default function AdminDashboard() {
     mutationFn: async (id: number) => {
       try {
         console.log("Attempting to delete event:", id);
-        const response = await apiRequest("DELETE", `/api/events/${id}`);
-        console.log("Delete response:", response);
+        const response = await fetch(`/api/events/${id}`, {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+        });
 
         if (!response.ok) {
           throw new Error("Failed to delete event");
