@@ -123,6 +123,11 @@ class DatabaseStorage implements IStorage {
   async deleteEvent(id: number): Promise<void> {
     console.log('Storage: Attempting to delete event:', id);
     try {
+      // First delete all media items associated with this event
+      await db.delete(mediaItems).where(eq(mediaItems.eventId, id));
+      console.log('Storage: Deleted associated media items for event:', id);
+
+      // Then delete the event itself
       await db.delete(events).where(eq(events.id, id));
       console.log('Storage: Successfully deleted event:', id);
     } catch (error) {

@@ -64,13 +64,23 @@ export default function AdminDashboard() {
       }
     },
     onSuccess: () => {
-      // Immediately remove the event from the UI by updating the state directly
+      // Remove event from cache immediately
       if (eventToDelete?.id) {
         queryClient.setQueryData<Event[]>(["/api/events"], (oldEvents) =>
           oldEvents?.filter((event) => event.id !== eventToDelete.id) || []
         );
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+
+      // Invalidate all affected queries
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/events"],
+        exact: true,
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/media"],
+        exact: true,
+      });
+
       toast({
         title: "Success",
         description: "Event deleted successfully",
