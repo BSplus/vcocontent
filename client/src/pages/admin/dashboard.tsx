@@ -38,37 +38,32 @@ export default function AdminDashboard() {
 
   // Load events
   const { data: events = [], isLoading: eventsLoading } = useQuery<Event[]>({
-    queryKey: ["/api/events"]
+    queryKey: ["/api/events"],
+    staleTime: 0,
   });
 
   // Load media items for statistics
   const { data: mediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
-    queryKey: ["/api/media"]
+    queryKey: ["/api/media"],
+    staleTime: 0, // Added staleTime back here for consistency and potential performance improvement.
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (eventId: number) => {
       const response = await apiRequest("DELETE", `/api/events/${eventId}`);
       if (!response.ok) {
-        throw new Error("Failed to delete event");
+        const error = await response.json();
+        throw new Error(error.message || "Failed to delete event");
       }
+      return response.json();
     },
     onSuccess: () => {
-      // Force refetch all relevant queries
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/events"],
-        exact: true,
-        refetchType: 'all' 
-      });
-
+      // Immediately remove the event from the UI by updating the state directly
       if (eventToDelete?.id) {
-        queryClient.invalidateQueries({
-          queryKey: [`/api/events/${eventToDelete.id}/media`],
-          exact: true,
-          refetchType: 'all'
-        });
+        queryClient.setQueryData<Event[]>(["/api/events"], (oldEvents) =>
+          oldEvents?.filter((event) => event.id !== eventToDelete.id) || []
+        );
       }
-
       toast({
         title: "Success",
         description: "Event deleted successfully",
@@ -96,13 +91,13 @@ export default function AdminDashboard() {
 
   const getEventStats = (eventId: number) => {
     try {
-      const eventMedia = mediaItems.filter(item => item.eventId === eventId) || [];
+      const eventMedia = mediaItems.filter((item) => item.eventId === eventId) || [];
       return {
-        photos: eventMedia.filter(item => item.type === "image").length,
-        videos: eventMedia.filter(item => item.type === "video").length
+        photos: eventMedia.filter((item) => item.type === "image").length,
+        videos: eventMedia.filter((item) => item.type === "video").length,
       };
     } catch (error) {
-      console.error('Error calculating stats:', error);
+      console.error("Error calculating stats:", error);
       return { photos: 0, videos: 0 };
     }
   };
