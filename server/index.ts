@@ -22,7 +22,7 @@ if (process.env.REPLICATE_API_TOKEN) {
   console.warn('Warning: REPLICATE_API_TOKEN not found in environment variables.');
 }
 
-// Less restrictive CSP in development
+// Update CSP settings
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
     res.setHeader('Content-Security-Policy', 
@@ -50,7 +50,7 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-// Set up session first before any other middleware
+// Set up session settings
 const sessionSettings: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || 'dev-secret-key',
   resave: true,
