@@ -4,11 +4,19 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Event, MediaItem, User } from "@shared/schema";
-import { Loader2, Plus, Trash2, Image as ImageIcon, Film, UserCheck, UserX, Crown } from "lucide-react";
+import { Loader2, Plus, Trash2, Image as ImageIcon, Film, UserCheck, UserX, Crown, Users, Shield } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
 import { useToast } from "@/hooks/use-toast";
 import SeriesManager from "@/components/series-manager";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -143,7 +151,46 @@ export default function AdminDashboard() {
   const vcoEvents = sortedEvents.filter(event => !event.creatorId);
   const creatorEvents = sortedEvents.filter(event => event.creatorId);
 
-  if (eventsLoading || mediaLoading || creatorsLoading) {
+  // Load all users
+  const { data: allUsers = [], isLoading: usersLoading } = useQuery<User[]>({
+    queryKey: ["/api/admin/users"],
+    staleTime: 0,
+  });
+
+  // Update user role mutation
+  const updateUserRoleMutation = useMutation({
+    mutationFn: async ({ userId, action }: { userId: number; action: string }) => {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update user role");
+      }
+
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({
+        title: "Success",
+        description: "User role updated successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  if (eventsLoading || mediaLoading || creatorsLoading || usersLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -172,6 +219,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="events">Events</TabsTrigger>
             <TabsTrigger value="series">Race Series</TabsTrigger>
             <TabsTrigger value="creators">Creator Applications</TabsTrigger>
+            <TabsTrigger value="users">User Management</TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
@@ -379,6 +427,98 @@ export default function AdminDashboard() {
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="users" className="mt-6">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-2xl font-bold">User Management</h2>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>All Users</CardTitle>
+                <CardDescription>
+                  Manage user roles and permissions
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Username</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Credits</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allUsers.map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell>{user.username}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            {user.isAdmin && (
+                              <Badge variant="default" className="bg-red-500">
+                                Admin
+                              </Badge>
+                            )}
+                            {user.isCreator && (
+                              <Badge variant="default" className="bg-green-500">
+                                Creator
+                              </Badge>
+                            )}
+                            {!user.isAdmin && !user.isCreator && (
+                              <Badge variant="secondary">
+                                User
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{user.credits || 0}</TableCell>
+                        <TableCell>
+                          {new Date(user.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            {!user.isAdmin && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex gap-2 items-center"
+                                onClick={() => updateUserRoleMutation.mutate({
+                                  userId: user.id,
+                                  action: 'set_admin'
+                                })}
+                                disabled={updateUserRoleMutation.isPending}
+                              >
+                                <Shield className="h-4 w-4" />
+                                Make Admin
+                              </Button>
+                            )}
+                            {!user.isCreator && user.creatorStatus !== 'pending' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex gap-2 items-center"
+                                onClick={() => updateUserRoleMutation.mutate({
+                                  userId: user.id,
+                                  action: 'approve_creator'
+                                })}
+                                disabled={updateUserRoleMutation.isPending}
+                              >
+                                <UserCheck className="h-4 w-4" />
+                                Make Creator
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </main>
