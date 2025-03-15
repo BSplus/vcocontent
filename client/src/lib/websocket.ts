@@ -73,6 +73,8 @@ class WebSocketManager {
         // Log additional connection details for debugging
         console.log('WebSocket: Current connection state:', this.socket?.readyState);
         console.log('WebSocket: Using URL:', wsUrl);
+        console.log('WebSocket: Protocol:', protocol);
+        console.log('WebSocket: Host:', window.location.host);
       };
 
       this.socket.onmessage = (event) => {
