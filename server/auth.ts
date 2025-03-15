@@ -42,7 +42,7 @@ export function setupAuth(app: Express) {
     saveUninitialized: true,
     store: storage.sessionStore,
     cookie: {
-      secure: process.env.NODE_ENV === 'production',
+      secure: false, // Force to false for development
       sameSite: 'lax',
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000 // 24 hours
@@ -60,14 +60,14 @@ export function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Add request logging middleware for debugging
+  // Add detailed request logging middleware for debugging
   app.use((req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/ws')) {
       log(`Auth state for ${req.method} ${req.path}:`, 'auth');
       log(`- isAuthenticated: ${req.isAuthenticated()}`, 'auth');
       log(`- Session ID: ${req.sessionID}`, 'auth');
+      log(`- Session Cookie: ${req.headers.cookie}`, 'auth');
       log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}, Creator: ${req.user.isCreator}` : 'Not logged in'}`, 'auth');
-      log(`- Cookie present: ${!!req.headers.cookie}`, 'auth');
     }
     next();
   });
@@ -87,7 +87,7 @@ export function setupAuth(app: Express) {
         const isValid = await comparePasswords(password, user.password);
         log(`Login ${isValid ? 'successful' : 'failed'} for user: ${username}`, 'auth');
 
-        return done(null, isValid ? user : false, 
+        return done(null, isValid ? user : false,
           isValid ? undefined : { message: 'Invalid username or password' }
         );
       } catch (error) {

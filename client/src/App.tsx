@@ -13,6 +13,7 @@ import SearchResults from "@/pages/search-results";
 import CurrentEvents from "@/pages/current-events";
 import UpcomingEvents from "@/pages/upcoming-events";
 import ArchiveEvents from "@/pages/archive-events";
+import CreatorApplication from "@/pages/creator/apply";
 import Imprint from "@/pages/imprint";
 
 function Router() {
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/events/:id" component={EventGallery} />
       <Route path="/imprint" component={Imprint} />
       <ProtectedRoute path="/admin" component={AdminDashboard} />
+      <ProtectedRoute path="/creator/apply" component={CreatorApplication} />
       <Route component={NotFound} />
     </Switch>
   );

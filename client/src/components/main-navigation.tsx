@@ -40,24 +40,30 @@ export default function MainNavigation() {
           </nav>
         </div>
         <div className="flex gap-4 items-center">
-          {user?.isAdmin && (
-            <Button variant="outline" asChild className="border-primary/20 hover:bg-primary hover:text-black">
-              <Link href="/admin">Creator Dashboard</Link>
-            </Button>
-          )}
           {user ? (
-            <Button
-              variant="secondary"
-              onClick={() => logoutMutation.mutate()}
-              disabled={logoutMutation.isPending}
-              className="bg-primary text-black hover:bg-primary/90"
-            >
-              {logoutMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                'Logout'
+            <>
+              {user.isAdmin ? (
+                <Button variant="outline" asChild className="border-primary/20 hover:bg-primary hover:text-black">
+                  <Link href="/admin">Creator Dashboard</Link>
+                </Button>
+              ) : !user.isCreator && (
+                <Button variant="outline" asChild className="border-primary/20 hover:bg-primary hover:text-black">
+                  <Link href="/creator/apply">Become a Creator</Link>
+                </Button>
               )}
-            </Button>
+              <Button
+                variant="secondary"
+                onClick={() => logoutMutation.mutate()}
+                disabled={logoutMutation.isPending}
+                className="bg-primary text-black hover:bg-primary/90"
+              >
+                {logoutMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  'Logout'
+                )}
+              </Button>
+            </>
           ) : (
             <Button asChild className="bg-primary text-black hover:bg-primary/90">
               <Link href="/auth">CREATOR LOGIN</Link>
