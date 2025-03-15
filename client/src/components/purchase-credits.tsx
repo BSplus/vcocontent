@@ -40,6 +40,9 @@ function CheckoutForm({ amount, onSuccess }: { amount: number; onSuccess: () => 
         elements,
         confirmParams: {
           return_url: `${window.location.origin}/profile`,
+          payment_method_data: {
+            billing_details: {}
+          }
         },
       });
 
@@ -178,7 +181,12 @@ export function PurchaseCredits() {
             {stripePromise && clientSecret && (
               <Elements 
                 stripe={stripePromise} 
-                options={{ clientSecret }}
+                options={{ 
+                  clientSecret,
+                  appearance: {
+                    theme: 'stripe'
+                  }
+                }}
               >
                 <CheckoutForm 
                   amount={amount} 
