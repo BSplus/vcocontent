@@ -113,22 +113,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/events/:id", requireOwnershipOrAdmin('creatorId'), async (req, res) => {
     try {
       const eventId = parseInt(req.params.id);
-      const event = await storage.getEvent(eventId);
+      console.log('Routes: Attempting to delete event with ID:', eventId, 'Original ID parameter:', req.params.id);
 
-      if (!event) {
-        return res.status(404).json({ error: "Event not found" });
+      // Check if eventId is a valid number
+      if (isNaN(eventId)) {
+        console.error('Routes: Invalid event ID:', req.params.id);
+        return res.status(400).json({
+          success: false,
+          message: "Invalid event ID provided"
+        });
       }
 
-      // Only allow creators to delete their own events
-      if (!req.user.isAdmin && event.creatorId !== req.user.id) {
-        return res.status(403).json({ error: "Unauthorized" });
+      const result = await storage.deleteEvent(eventId);
+      console.log('Routes: Delete result:', result);
+
+      if (!result.success) {
+        return res.status(404).json(result);
       }
 
-      await storage.deleteEvent(eventId);
-      res.status(204).send();
+      res.json(result);
     } catch (error) {
-      console.error('Error deleting event:', error);
-      res.status(500).json({ error: "Failed to delete event" });
+      console.error('Routes: Error deleting event:', error);
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : "Failed to delete event"
+      });
     }
   });
 
@@ -514,38 +523,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error deleting series:', error);
       res.status(500).json({ error: "Failed to delete series" });
-    }
-  });
-
-  // Delete event 
-  app.delete("/api/events/:id", requireOwnershipOrAdmin('creatorId'), async (req, res) => {
-    try {
-      const eventId = parseInt(req.params.id);
-      console.log('Routes: Attempting to delete event with ID:', eventId, 'Original ID parameter:', req.params.id);
-
-      // Check if eventId is a valid number
-      if (isNaN(eventId)) {
-        console.error('Routes: Invalid event ID:', req.params.id);
-        return res.status(400).json({
-          success: false,
-          message: "Invalid event ID provided"
-        });
-      }
-
-      const result = await storage.deleteEvent(eventId);
-      console.log('Routes: Delete result:', result);
-
-      if (!result.success) {
-        return res.status(404).json(result);
-      }
-
-      res.json(result);
-    } catch (error) {
-      console.error('Routes: Error deleting event:', error);
-      res.status(500).json({
-        success: false,
-        message: error instanceof Error ? error.message : "Failed to delete event"
-      });
     }
   });
 

@@ -22,26 +22,31 @@ if (process.env.REPLICATE_API_TOKEN) {
   console.warn('Warning: REPLICATE_API_TOKEN not found in environment variables.');
 }
 
-// Development CSP settings - more permissive
+// CSP configuration
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
-    // Completely disable CSP in development
+    // Ensure all CSP headers are removed in development
     res.removeHeader('Content-Security-Policy');
     res.removeHeader('Content-Security-Policy-Report-Only');
-    log('CSP headers removed in development mode');
+    res.removeHeader('X-Content-Security-Policy');
+    res.removeHeader('X-WebKit-CSP');
+    log('Development mode: All CSP headers removed');
     next();
   });
 } else {
-  // Production CSP settings - more restrictive
+  // Production CSP settings with WebSocket security
   app.use((req, res, next) => {
+    const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const wsProtocol = isSecure ? 'wss' : 'ws';
+
     res.setHeader('Content-Security-Policy',
       "default-src 'self'; " +
-      "connect-src 'self' ws: wss:; " +
+      "connect-src 'self' " + `${wsProtocol}://${req.get('host')}; ` +
       "style-src 'self' 'unsafe-inline'; " +
-      "script-src 'self' 'unsafe-eval'; " +
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline'; " +
       "img-src 'self' data: blob:; " +
       "font-src 'self' data:; " +
-      "media-src 'self' data: blob:"
+      "media-src 'self' data: blob:;"
     );
     next();
   });
@@ -70,7 +75,7 @@ setupAuth(app);
 
 // Request logging middleware with detailed session info
 app.use((req, res, next) => {
-  log('Request:', {
+  const requestInfo = {
     path: req.path,
     method: req.method,
     sessionID: req.sessionID,
@@ -78,7 +83,9 @@ app.use((req, res, next) => {
     user: req.user?.id,
     cookies: req.headers.cookie,
     sessionData: req.session
-  });
+  };
+
+  log(`Request to ${req.method} ${req.path}:`, JSON.stringify(requestInfo, null, 2));
   next();
 });
 
