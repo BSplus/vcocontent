@@ -17,8 +17,13 @@ import UpcomingEvents from "@/pages/upcoming-events";
 import ArchiveEvents from "@/pages/archive-events";
 import CreatorApplication from "@/pages/creator/apply";
 import Imprint from "@/pages/imprint";
+import { useEffect } from "react";
 
 function Router() {
+  useEffect(() => {
+    console.log("Router component mounted");
+  }, []);
+
   return (
     <Switch>
       <Route path="/" component={HomePage} />
@@ -39,6 +44,16 @@ function Router() {
 }
 
 function App() {
+  console.log("App component initializing");
+
+  useEffect(() => {
+    console.log("App component mounted");
+    // Log any global errors
+    window.onerror = (message, source, lineno, colno, error) => {
+      console.error("Global error:", { message, source, lineno, colno, error });
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
