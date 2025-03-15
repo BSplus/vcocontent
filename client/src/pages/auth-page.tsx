@@ -16,6 +16,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useEffect } from "react";
 
 // Create a simplified schema for login/register
 const authSchema = z.object({
@@ -47,11 +48,11 @@ export default function AuthPage() {
   }, [user, setLocation]);
 
   const onLogin = async (data: AuthFormData) => {
-    console.log("Login form submitted with data:", { username: data.username });
+    console.log("Login form submitted with data:", { username: data.username, password: data.password });
     try {
       console.log("Starting login mutation...");
-      await loginMutation.mutateAsync(data);
-      console.log("Login mutation completed successfully");
+      const result = await loginMutation.mutateAsync(data);
+      console.log("Login mutation completed successfully", result);
     } catch (error) {
       console.error("Login error:", error);
       toast({
@@ -63,7 +64,7 @@ export default function AuthPage() {
   };
 
   const onRegister = async (data: AuthFormData) => {
-    console.log("Register form submitted with data:", { username: data.username });
+    console.log("Register form submitted with data:", { username: data.username, password: data.password });
     try {
       console.log("Starting registration mutation...");
       await registerMutation.mutateAsync(data);
@@ -144,7 +145,7 @@ export default function AuthPage() {
                   e.preventDefault();
                   console.log("Form submit event triggered");
                   const formData = loginForm.getValues();
-                  console.log("Form data:", formData);
+                  console.log("Form data:", { username: formData.username, password: formData.password });
                   loginForm.handleSubmit(onLogin)(e);
                 }} 
                 className="space-y-4"
@@ -156,6 +157,10 @@ export default function AuthPage() {
                       type="text"
                       {...loginForm.register("username")}
                       disabled={loginMutation.isPending}
+                      onChange={(e) => {
+                        loginForm.register("username").onChange(e);
+                        console.log("Username changed:", e.target.value);
+                      }}
                     />
                     {loginForm.formState.errors.username && (
                       <p className="text-sm font-medium text-destructive">
@@ -170,6 +175,10 @@ export default function AuthPage() {
                       type="password"
                       {...loginForm.register("password")}
                       disabled={loginMutation.isPending}
+                      onChange={(e) => {
+                        loginForm.register("password").onChange(e);
+                        console.log("Password field changed:", e.target.value);
+                      }}
                     />
                     {loginForm.formState.errors.password && (
                       <p className="text-sm font-medium text-destructive">
