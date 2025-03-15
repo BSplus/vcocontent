@@ -35,10 +35,18 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Load events
+  // Load events with better error handling
   const { data: events = [], isLoading: eventsLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"],
     staleTime: 0,
+    onError: (error) => {
+      console.error('Error fetching events:', error); 
+      toast({
+        title: "Error",
+        description: "Failed to load events",
+        variant: "destructive",
+      });
+    }
   });
 
   // Load media items for statistics
@@ -50,16 +58,18 @@ export default function AdminDashboard() {
   // Delete event mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
+      console.log('Attempting to delete event:', id); 
       const response = await fetch(`/api/events/${id}`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "include",
+        credentials: "include", 
       });
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Error deleting event:', errorData); 
         throw new Error(errorData.error || 'Failed to delete event');
       }
     },
@@ -73,6 +83,7 @@ export default function AdminDashboard() {
       setEventToDelete(null);
     },
     onError: (error: Error) => {
+      console.error('Delete mutation error:', error); 
       toast({
         title: "Error",
         description: error.message,
