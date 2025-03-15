@@ -22,6 +22,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Event, InsertEvent, insertEventSchema, Series } from "@shared/schema";
 import { Loader2, Upload, Image as ImageIcon } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
 interface UploadModalProps {
   open: boolean;
@@ -36,6 +37,7 @@ export default function UploadModal({
 }: UploadModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const isEditing = eventId !== null;
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
@@ -103,7 +105,8 @@ export default function UploadModal({
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEvent) => {
-      const res = await fetch("/api/events", {
+      const endpoint = user?.isCreator ? "/api/creator/events" : "/api/events";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -112,6 +115,7 @@ export default function UploadModal({
         body: JSON.stringify({
           ...data,
           date: new Date(data.date),
+          creatorId: user?.isCreator ? user.id : undefined,
         }),
       });
 
@@ -124,6 +128,7 @@ export default function UploadModal({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
       onOpenChange(false);
       form.reset();
       setThumbnailPreview(null);

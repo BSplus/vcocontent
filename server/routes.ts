@@ -53,6 +53,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/creator/events", requireCreator, async (req, res) => {
+    try {
+      console.log('Fetching events for creator:', req.user.id);
+      const events = await storage.getEventsByCreator(req.user.id);
+      res.json(events);
+    } catch (error) {
+      console.error('Error fetching creator events:', error);
+      res.status(500).json({ error: "Failed to fetch creator events" });
+    }
+  });
+
   // Update event (creator can only update own events, admin can update any)
   app.put("/api/events/:id", requireOwnershipOrAdmin('creatorId'), async (req, res) => {
     try {
@@ -252,7 +263,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Use JSON parser for all other routes
   app.use(express.json());
-
 
   // Download endpoint with credit check
   app.post("/api/media/:id/download", requireAuth, async (req, res) => {

@@ -26,11 +26,25 @@ if (process.env.REPLICATE_API_TOKEN) {
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
     res.setHeader('Content-Security-Policy', 
-      "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: wss:; " +
+      "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: wss: *; " +
       "connect-src 'self' ws: wss: *; " +
+      "style-src 'self' 'unsafe-inline' *; " +
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' *; " +
+      "img-src 'self' data: blob: *; " +
+      "font-src 'self' data: *"
+    );
+    next();
+  });
+} else {
+  // Production CSP settings
+  app.use((req, res, next) => {
+    res.setHeader('Content-Security-Policy',
+      "default-src 'self'; " +
+      "connect-src 'self' ws: wss:; " +
       "style-src 'self' 'unsafe-inline'; " +
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-      "img-src 'self' data: blob: *"
+      "script-src 'self' 'unsafe-eval'; " +
+      "img-src 'self' data: blob:; " +
+      "font-src 'self' data:"
     );
     next();
   });
@@ -43,7 +57,7 @@ const sessionSettings: session.SessionOptions = {
   saveUninitialized: true,
   store: storage.sessionStore,
   cookie: {
-    secure: false, // Force to false for development
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
