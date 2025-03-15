@@ -39,7 +39,24 @@ async function comparePasswords(supplied: string, stored: string) {
 
 // Main function to set up authentication
 export function setupAuth(app: Express) {
-  // Passport strategy setup - do this before initializing passport
+  // Passport user serialization
+  passport.serializeUser((user: Express.User, done) => {
+    log(`Serializing user: ${user.id}`, 'auth');
+    done(null, user.id);
+  });
+
+  passport.deserializeUser(async (id: number, done) => {
+    try {
+      const user = await storage.getUser(id);
+      log(`Deserialized user ${id}: ${user ? 'success' : 'not found'}`, 'auth');
+      done(null, user);
+    } catch (error) {
+      log(`Deserialization error for user ${id}: ${error}`, 'auth');
+      done(error);
+    }
+  });
+
+  // Passport strategy setup
   passport.use(
     new LocalStrategy(async (username: string, password: string, done) => {
       try {
@@ -64,30 +81,13 @@ export function setupAuth(app: Express) {
     }),
   );
 
-  // User session management
-  passport.serializeUser((user: Express.User, done) => {
-    log(`Serializing user: ${user.id}`, 'auth');
-    done(null, user.id);
-  });
-
-  passport.deserializeUser(async (id: number, done) => {
-    try {
-      const user = await storage.getUser(id);
-      log(`Deserialized user ${id}: ${user ? 'success' : 'not found'}`, 'auth');
-      done(null, user);
-    } catch (error) {
-      log(`Deserialization error for user ${id}: ${error}`, 'auth');
-      done(error);
-    }
-  });
-
-  // Initialize passport after setting up strategies but before routes
+  // Initialize passport middleware
   app.use(passport.initialize());
   app.use(passport.session());
 
   // Add detailed request logging middleware for debugging
   app.use((req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/ws')) {
+    if (req.path.startsWith('/api')) {
       log(`Auth state for ${req.method} ${req.path}:`, 'auth');
       log(`- isAuthenticated: ${req.isAuthenticated?.()}`, 'auth');
       log(`- Session ID: ${req.sessionID}`, 'auth');
@@ -100,7 +100,7 @@ export function setupAuth(app: Express) {
     next();
   });
 
-  // Login endpoint with better error handling
+  // Login endpoint with enhanced error handling
   app.post("/api/login", (req, res, next) => {
     if (!req.body.username || !req.body.password) {
       return res.status(400).json({ error: "Benutzername und Passwort sind erforderlich" });
@@ -139,19 +139,6 @@ export function setupAuth(app: Express) {
     })(req, res, next);
   });
 
-  // Logout endpoint
-  app.post("/api/logout", (req, res) => {
-    const username = req.user?.username;
-    req.logout((err) => {
-      if (err) {
-        log(`Logout error for user ${username}: ${err}`, 'auth');
-        return res.status(500).json({ error: "Ein Fehler ist aufgetreten" });
-      }
-      log(`Logout successful for user: ${username}`, 'auth');
-      res.sendStatus(200);
-    });
-  });
-
   // User info endpoint
   app.get("/api/user", (req, res) => {
     log('User info request:', {
@@ -167,5 +154,18 @@ export function setupAuth(app: Express) {
     }
     log(`User info request successful for: ${req.user.username}`, 'auth');
     res.json(req.user);
+  });
+
+  // Logout endpoint
+  app.post("/api/logout", (req, res) => {
+    const username = req.user?.username;
+    req.logout((err) => {
+      if (err) {
+        log(`Logout error for user ${username}: ${err}`, 'auth');
+        return res.status(500).json({ error: "Ein Fehler ist aufgetreten" });
+      }
+      log(`Logout successful for user: ${username}`, 'auth');
+      res.sendStatus(200);
+    });
   });
 }

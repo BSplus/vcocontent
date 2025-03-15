@@ -4,6 +4,7 @@ import { db } from "./db";
 import { eq } from "drizzle-orm";
 import session from "express-session";
 import memorystore from "memorystore";
+import { log } from "./vite";
 
 interface IStorage {
   sessionStore: session.Store;
@@ -45,14 +46,24 @@ interface IStorage {
   getCreatorEarnings(creatorId: number): Promise<{ totalCredits: number }>;
 }
 
+const MemoryStore = memorystore(session);
+
 class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    const MemoryStore = memorystore(session);
     this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000 // Prune expired entries every 24h
+      checkPeriod: 86400000, // Prune expired entries every 24h
+      max: 1000, // Maximum number of sessions to store
+      dispose: (key: string, value: any) => {
+        log(`Session disposed: ${key}`, 'auth');
+      },
+      stale: false, // Don't return stale data
+      ttl: 86400000 // 24 hours max age
     });
+
+    // Log when the session store is initialized
+    log('Session store initialized with MemoryStore', 'auth');
   }
 
   // User management methods
