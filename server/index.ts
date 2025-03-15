@@ -14,9 +14,40 @@ app.set("trust proxy", 1);
 app.use(express.json({ limit: '250mb' }));
 app.use(express.urlencoded({ extended: false, limit: '250mb' }));
 
+// Configure and initialize session first
+const sessionSettings: session.SessionOptions = {
+  secret: process.env.SESSION_SECRET || 'dev-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  store: storage.sessionStore,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    path: '/'
+  },
+  name: 'vco.sid' // Custom name to avoid conflicts
+};
+
+// In development, allow non-secure cookies
+if (process.env.NODE_ENV === 'development') {
+  sessionSettings.cookie = {
+    ...sessionSettings.cookie,
+    secure: false,
+    sameSite: 'lax'
+  };
+}
+
+// Initialize session before any other middleware
+app.use(session(sessionSettings));
+
+// Set up auth (includes passport initialization)
+setupAuth(app);
+
 // CORS configuration for development
 app.use((req, res, next) => {
-  const origin = process.env.NODE_ENV === 'development' 
+  const origin = process.env.NODE_ENV === 'development'
     ? req.get('origin') || 'http://localhost:5000'
     : req.get('origin');
 
@@ -65,37 +96,6 @@ if (process.env.NODE_ENV === 'development') {
     next();
   });
 }
-
-// Set up session settings with proper configuration and enhanced security
-const sessionSettings: session.SessionOptions = {
-  secret: process.env.SESSION_SECRET || 'dev-secret-key',
-  resave: false,
-  saveUninitialized: false,
-  store: storage.sessionStore,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    path: '/'
-  },
-  name: 'vco.sid' // Custom name to avoid conflicts
-};
-
-// In development, allow non-secure cookies
-if (process.env.NODE_ENV === 'development') {
-  sessionSettings.cookie = {
-    ...sessionSettings.cookie,
-    secure: false,
-    sameSite: 'lax'
-  };
-}
-
-// Initialize session before passport
-app.use(session(sessionSettings));
-
-// Set up auth (includes passport initialization)
-setupAuth(app);
 
 // Request logging middleware with detailed session info
 app.use((req, res, next) => {
