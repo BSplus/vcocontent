@@ -39,26 +39,7 @@ async function comparePasswords(supplied: string, stored: string) {
 
 // Main function to set up authentication
 export function setupAuth(app: Express) {
-  // Add detailed request logging middleware for debugging
-  app.use((req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/ws')) {
-      log(`Auth state for ${req.method} ${req.path}:`, 'auth');
-      log(`- isAuthenticated: ${req.isAuthenticated()}`, 'auth');
-      log(`- Session ID: ${req.sessionID}`, 'auth');
-      log(`- Session Cookie: ${req.headers.cookie}`, 'auth');
-      log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}, Creator: ${req.user.isCreator}` : 'Nicht eingeloggt'}`, 'auth');
-      if (req.session) {
-        log('Session data:', JSON.stringify(req.session, null, 2), 'auth');
-      }
-    }
-    next();
-  });
-
-  // Initialize passport middleware
-  app.use(passport.initialize());
-  app.use(passport.session());
-
-  // Passport strategy setup
+  // Passport strategy setup - do this before initializing passport
   passport.use(
     new LocalStrategy(async (username: string, password: string, done) => {
       try {
@@ -98,6 +79,25 @@ export function setupAuth(app: Express) {
       log(`Deserialization error for user ${id}: ${error}`, 'auth');
       done(error);
     }
+  });
+
+  // Initialize passport after setting up strategies but before routes
+  app.use(passport.initialize());
+  app.use(passport.session());
+
+  // Add detailed request logging middleware for debugging
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/ws')) {
+      log(`Auth state for ${req.method} ${req.path}:`, 'auth');
+      log(`- isAuthenticated: ${req.isAuthenticated?.()}`, 'auth');
+      log(`- Session ID: ${req.sessionID}`, 'auth');
+      log(`- Session Cookie: ${req.headers.cookie}`, 'auth');
+      log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}, Creator: ${req.user.isCreator}` : 'Nicht eingeloggt'}`, 'auth');
+      if (req.session) {
+        log('Session data:', JSON.stringify(req.session, null, 2), 'auth');
+      }
+    }
+    next();
   });
 
   // Login endpoint with better error handling
@@ -140,7 +140,7 @@ export function setupAuth(app: Express) {
   });
 
   // Logout endpoint
-  app.post("/api/logout", (req, res, next) => {
+  app.post("/api/logout", (req, res) => {
     const username = req.user?.username;
     req.logout((err) => {
       if (err) {
@@ -155,13 +155,13 @@ export function setupAuth(app: Express) {
   // User info endpoint
   app.get("/api/user", (req, res) => {
     log('User info request:', {
-      isAuthenticated: req.isAuthenticated(),
+      isAuthenticated: req.isAuthenticated?.(),
       sessionID: req.sessionID,
       headers: req.headers,
       user: req.user
     });
 
-    if (!req.isAuthenticated()) {
+    if (!req.isAuthenticated?.()) {
       log('User info request: Not authenticated', 'auth');
       return res.status(401).json({ error: "Nicht eingeloggt" });
     }
