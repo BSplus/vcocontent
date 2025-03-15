@@ -6,6 +6,14 @@ import { useAuth } from "@/hooks/use-auth";
 export default function MainNavigation() {
   const { user, logoutMutation } = useAuth();
 
+  // Add debug logging
+  console.log('Navigation: Current user state:', {
+    isLoggedIn: !!user,
+    isAdmin: user?.isAdmin,
+    isCreator: user?.isCreator,
+    username: user?.username
+  });
+
   return (
     <header className="border-b border-primary/20 bg-black/50 backdrop-blur-sm">
       <div className="container mx-auto px-4 py-2 flex justify-between items-center">
