@@ -25,7 +25,7 @@ if (process.env.REPLICATE_API_TOKEN) {
 // Development CSP settings - more permissive
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
-    // In development, allow everything for debugging
+    // In development, completely disable CSP for debugging
     res.removeHeader('Content-Security-Policy');
     next();
   });
