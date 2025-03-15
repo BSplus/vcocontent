@@ -216,9 +216,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if eventId is a valid number
       if (isNaN(eventId)) {
         console.error('Routes: Invalid event ID:', req.params.id);
-        return res.status(400).json({ 
-          success: false, 
-          message: "Invalid event ID provided" 
+        return res.status(400).json({
+          success: false,
+          message: "Invalid event ID provided"
         });
       }
 
@@ -232,9 +232,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (error) {
       console.error('Routes: Error deleting event:', error);
-      res.status(500).json({ 
-        success: false, 
-        message: error instanceof Error ? error.message : "Failed to delete event" 
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : "Failed to delete event"
       });
     }
   });
@@ -242,8 +242,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
   // Set up WebSocket server with improved error handling and secure configuration
-  const wss = new WebSocketServer({ 
-    server: httpServer, 
+  const wss = new WebSocketServer({
+    server: httpServer,
     path: '/ws',
     clientTracking: true,
     // Verify client authentication with better error handling
@@ -299,7 +299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('WebSocket error:', error);
       // Try to send error to client if connection is still open
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ 
+        ws.send(JSON.stringify({
           type: 'error',
           message: 'Connection error occurred'
         }));
@@ -308,8 +308,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Send initial connection status
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ 
-        type: 'connection', 
+      ws.send(JSON.stringify({
+        type: 'connection',
         status: 'connected',
         message: 'Successfully connected to WebSocket server'
       }));
@@ -335,7 +335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } catch (error) {
         console.error('WebSocket: Error processing message:', error);
-        ws.send(JSON.stringify({ 
+        ws.send(JSON.stringify({
           type: 'error',
           message: 'Failed to process message'
         }));
