@@ -29,15 +29,15 @@ class WebSocketManager {
         this.socket = null;
       }
 
-      // Always use ws:// in development for now
-      const wsUrl = `ws://${window.location.host}/ws`;
+      // Use appropriate WebSocket protocol based on current environment
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
 
       console.log('WebSocket: Attempting to connect to:', wsUrl);
       this.socket = new WebSocket(wsUrl);
 
       this.socket.onopen = () => {
         console.log('WebSocket: Connected successfully');
-        // Reset retry count on successful connection
         this.retryCount = 0;
         // Send initial authentication message
         this.send({ type: 'auth' });
@@ -46,12 +46,10 @@ class WebSocketManager {
       this.socket.onclose = (event) => {
         console.log('WebSocket: Connection closed -', 'Code:', event.code, 'Reason:', event.reason);
 
-        // Clear any existing reconnection timeout
         if (this.reconnectTimeout) {
           clearTimeout(this.reconnectTimeout);
         }
 
-        // Attempt to reconnect if we haven't exceeded max retries
         if (this.retryCount < this.maxRetryCount) {
           const backoffTime = this.getBackoffTime();
           console.log(`WebSocket: Attempting reconnect in ${backoffTime}ms (attempt ${this.retryCount + 1}/${this.maxRetryCount})`);
@@ -67,9 +65,9 @@ class WebSocketManager {
 
       this.socket.onerror = (error) => {
         console.error('WebSocket: Connection error occurred:', error);
-        // Log additional connection details for debugging
         console.log('WebSocket: Current connection state:', this.socket?.readyState);
         console.log('WebSocket: Using URL:', wsUrl);
+        console.log('WebSocket: Protocol:', protocol);
       };
 
       this.socket.onmessage = (event) => {
@@ -77,13 +75,14 @@ class WebSocketManager {
           const data = JSON.parse(event.data);
           console.log('WebSocket: Received message:', data);
 
-          // Handle different message types
           switch (data.type) {
             case 'auth_success':
               console.log('WebSocket: Authentication successful');
               break;
             case 'auth_error':
               console.error('WebSocket: Authentication failed:', data.error);
+              // Trigger a reconnect after auth error
+              setTimeout(() => this.reconnect(), 1000);
               break;
             case 'error':
               console.error('WebSocket: Server reported error:', data.message);
@@ -104,7 +103,6 @@ class WebSocketManager {
   }
 
   public send(message: any) {
-    // Connect if not already connected
     if (!this.socket || this.socket.readyState === WebSocket.CLOSED) {
       this.connect();
     }
@@ -132,13 +130,12 @@ class WebSocketManager {
     }
   }
 
-  // Add a method to check connection status
   public isConnected(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
   }
 
-  // Add a method to force a new connection
   public reconnect(): void {
+    console.log('WebSocket: Forcing reconnection');
     this.retryCount = 0;
     this.connect();
   }

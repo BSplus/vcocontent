@@ -36,19 +36,18 @@ async function comparePasswords(supplied: string, stored: string) {
 // Main function to set up authentication
 export function setupAuth(app: Express) {
   // Session settings
-  const isDevelopment = process.env.NODE_ENV === 'development';
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || 'dev-secret-key',
-    resave: true, // Changed to true to ensure session is saved
-    saveUninitialized: true, // Changed to true for development
+    resave: true,
+    saveUninitialized: true,
     store: storage.sessionStore,
     cookie: {
-      secure: false, // Disable secure for all environments temporarily
-      sameSite: 'lax', // Use lax to allow cross-site cookies
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000 // 24 hours
     },
-    name: 'connect.sid'
+    name: 'vco.sid' // Custom name to avoid conflicts
   };
 
   // Basic Express settings
@@ -61,20 +60,19 @@ export function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Add request logging middleware AFTER passport initialization
+  // Add request logging middleware for debugging
   app.use((req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/ws')) {
       log(`Auth state for ${req.method} ${req.path}:`, 'auth');
       log(`- isAuthenticated: ${req.isAuthenticated()}`, 'auth');
       log(`- Session ID: ${req.sessionID}`, 'auth');
-      log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}` : 'Not logged in'}`, 'auth');
+      log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}, Creator: ${req.user.isCreator}` : 'Not logged in'}`, 'auth');
       log(`- Cookie present: ${!!req.headers.cookie}`, 'auth');
-      log(`- Headers: ${JSON.stringify(req.headers)}`, 'auth');
     }
     next();
   });
 
-  // Passport strategy for local authentication
+  // Passport strategy setup
   passport.use(
     new LocalStrategy(async (username, password, done) => {
       try {
@@ -83,13 +81,15 @@ export function setupAuth(app: Express) {
 
         if (!user) {
           log(`Login failed: User ${username} not found`, 'auth');
-          return done(null, false);
+          return done(null, false, { message: 'Invalid username or password' });
         }
 
         const isValid = await comparePasswords(password, user.password);
         log(`Login ${isValid ? 'successful' : 'failed'} for user: ${username}`, 'auth');
 
-        return done(null, isValid ? user : false);
+        return done(null, isValid ? user : false, 
+          isValid ? undefined : { message: 'Invalid username or password' }
+        );
       } catch (error) {
         log(`Login error for ${username}: ${error}`, 'auth');
         return done(error);
@@ -130,7 +130,6 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ error: "Username already exists" });
       }
 
-      // Check if this is the first user
       const allUsers = await storage.getAllUsers();
       const isFirstUser = allUsers.length === 0;
       log(`Creating new user: ${req.body.username} (isFirstUser: ${isFirstUser})`, 'auth');
@@ -138,7 +137,7 @@ export function setupAuth(app: Express) {
       const user = await storage.createUser({
         username: req.body.username,
         password: await hashPassword(req.body.password),
-        isAdmin: isFirstUser // First user becomes admin automatically
+        isAdmin: isFirstUser
       });
 
       req.login(user, (err) => {
@@ -155,10 +154,26 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Login endpoint
-  app.post("/api/login", passport.authenticate("local"), (req, res) => {
-    log(`Login successful for user: ${req.user?.username}`, 'auth');
-    res.status(200).json(req.user);
+  // Login endpoint with better error handling
+  app.post("/api/login", (req, res, next) => {
+    passport.authenticate("local", (err, user, info) => {
+      if (err) {
+        log(`Login error: ${err}`, 'auth');
+        return next(err);
+      }
+      if (!user) {
+        log('Login failed: Invalid credentials', 'auth');
+        return res.status(401).json({ error: info?.message || "Invalid credentials" });
+      }
+      req.login(user, (err) => {
+        if (err) {
+          log(`Login session error: ${err}`, 'auth');
+          return next(err);
+        }
+        log(`Login successful for user: ${user.username}`, 'auth');
+        res.json(user);
+      });
+    })(req, res, next);
   });
 
   // Logout endpoint

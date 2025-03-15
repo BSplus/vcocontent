@@ -355,7 +355,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const cookies = parseCookie(cookie);
         console.log('WebSocket: Parsed cookies:', cookies);
 
-        const sessionId = cookies['connect.sid']; // Match your session cookie name
+        const sessionId = cookies['vco.sid']; // Match your session cookie name
         if (!sessionId) {
           console.log('WebSocket: No session ID found in cookies');
           // During development, allow connections without session
