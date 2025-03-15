@@ -26,10 +26,15 @@ async function hashPassword(password: string) {
 
 // Function to compare passwords
 async function comparePasswords(supplied: string, stored: string) {
-  const [hashed, salt] = stored.split(".");
-  const hashedBuf = Buffer.from(hashed, "hex");
-  const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-  return timingSafeEqual(hashedBuf, suppliedBuf);
+  try {
+    const [hashed, salt] = stored.split(".");
+    const hashedBuf = Buffer.from(hashed, "hex");
+    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+    return timingSafeEqual(hashedBuf, suppliedBuf);
+  } catch (error) {
+    log('Password comparison error:', error);
+    return false;
+  }
 }
 
 // Main function to set up authentication
@@ -45,7 +50,7 @@ export function setupAuth(app: Express) {
       log(`- isAuthenticated: ${req.isAuthenticated()}`, 'auth');
       log(`- Session ID: ${req.sessionID}`, 'auth');
       log(`- Session Cookie: ${req.headers.cookie}`, 'auth');
-      log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}, Creator: ${req.user.isCreator}` : 'Not logged in'}`, 'auth');
+      log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}, Creator: ${req.user.isCreator}` : 'Nicht eingeloggt'}`, 'auth');
     }
     next();
   });
@@ -59,14 +64,14 @@ export function setupAuth(app: Express) {
 
         if (!user) {
           log(`Login failed: User ${username} not found`, 'auth');
-          return done(null, false, { message: 'Invalid username or password' });
+          return done(null, false, { message: 'Benutzername oder Passwort ist falsch' });
         }
 
         const isValid = await comparePasswords(password, user.password);
         log(`Login ${isValid ? 'successful' : 'failed'} for user: ${username}`, 'auth');
 
         return done(null, isValid ? user : false, 
-          isValid ? undefined : { message: 'Invalid username or password' }
+          isValid ? undefined : { message: 'Benutzername oder Passwort ist falsch' }
         );
       } catch (error) {
         log(`Login error for ${username}: ${error}`, 'auth');
@@ -92,59 +97,27 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Authentication routes
-  app.post("/api/register", async (req, res, next) => {
-    try {
-      log(`Registration attempt for username: ${req.body.username}`, 'auth');
-
-      const userData = insertUserSchema.parse(req.body);
-
-      const existingUser = await storage.getUserByUsername(userData.username);
-      if (existingUser) {
-        log(`Registration failed: Username ${userData.username} already exists`, 'auth');
-        return res.status(400).json({ error: "Username already exists" });
-      }
-
-      const allUsers = await storage.getAllUsers();
-      const isFirstUser = allUsers.length === 0;
-      log(`Creating new user: ${userData.username} (isFirstUser: ${isFirstUser})`, 'auth');
-
-      const user = await storage.createUser({
-        ...userData,
-        password: await hashPassword(userData.password),
-        isAdmin: isFirstUser,
-        isCreator: false
-      });
-
-      req.login(user, (err) => {
-        if (err) {
-          log(`Auto-login failed for new user: ${err}`, 'auth');
-          return next(err);
-        }
-        log(`Registration successful for: ${user.username}`, 'auth');
-        res.status(201).json(user);
-      });
-    } catch (error) {
-      log(`Registration error: ${error}`, 'auth');
-      res.status(500).json({ error: "Internal server error during registration" });
-    }
-  });
-
   // Login endpoint with better error handling
   app.post("/api/login", (req, res, next) => {
+    if (!req.body.username || !req.body.password) {
+      return res.status(400).json({ error: "Benutzername und Passwort sind erforderlich" });
+    }
+
     passport.authenticate("local", (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
       if (err) {
         log(`Login error: ${err}`, 'auth');
-        return next(err);
+        return res.status(500).json({ error: "Ein Fehler ist aufgetreten" });
       }
+
       if (!user) {
         log('Login failed: Invalid credentials', 'auth');
-        return res.status(401).json({ error: info?.message || "Invalid credentials" });
+        return res.status(401).json({ error: info?.message || "Benutzername oder Passwort ist falsch" });
       }
+
       req.login(user, (err) => {
         if (err) {
           log(`Login session error: ${err}`, 'auth');
-          return next(err);
+          return res.status(500).json({ error: "Ein Fehler ist aufgetreten" });
         }
         log(`Login successful for user: ${user.username}`, 'auth');
         res.json(user);
@@ -158,7 +131,7 @@ export function setupAuth(app: Express) {
     req.logout((err) => {
       if (err) {
         log(`Logout error for user ${username}: ${err}`, 'auth');
-        return next(err);
+        return res.status(500).json({ error: "Ein Fehler ist aufgetreten" });
       }
       log(`Logout successful for user: ${username}`, 'auth');
       res.sendStatus(200);
@@ -169,7 +142,7 @@ export function setupAuth(app: Express) {
   app.get("/api/user", (req, res) => {
     if (!req.isAuthenticated()) {
       log('User info request: Not authenticated', 'auth');
-      return res.sendStatus(401);
+      return res.status(401).json({ error: "Nicht eingeloggt" });
     }
     log(`User info request successful for: ${req.user.username}`, 'auth');
     res.json(req.user);
