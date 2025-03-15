@@ -7,7 +7,7 @@ import { storage } from "./storage";
 
 const app = express();
 
-// Basic Express settings
+// Basic Express settings first
 app.set("trust proxy", 1);
 
 // Increase body parser limits to 250MB to accommodate base64 encoded files
@@ -37,7 +37,7 @@ const sessionSettings: session.SessionOptions = {
   saveUninitialized: true,
   store: storage.sessionStore,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // Force to false for development
     sameSite: 'lax',
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
@@ -63,14 +63,15 @@ app.use((req, res, next) => {
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
 
-  // Add session info to logs for debugging
+  // Add detailed session info to logs for debugging
   console.log('Request:', {
     path,
     method: req.method,
     sessionID: req.sessionID,
     isAuthenticated: req.isAuthenticated?.(),
     user: req.user?.id,
-    cookies: req.headers.cookie
+    cookies: req.headers.cookie,
+    sessionData: req.session
   });
 
   res.on("finish", () => {

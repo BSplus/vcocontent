@@ -24,6 +24,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Serve static files from the attached_assets directory
   app.use('/attached_assets', express.static(path.join(process.cwd(), 'attached_assets')));
 
+  // Credit purchase endpoint
+  app.post("/api/credits/purchase", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        console.log('Unauthenticated purchase attempt');
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { amount } = req.body; // Amount in EUR
+      const numericAmount = parseInt(amount);
+
+      if (!numericAmount || numericAmount < 1) {
+        console.log('Invalid amount provided:', amount);
+        return res.status(400).json({ error: "Invalid amount" });
+      }
+
+      console.log('Creating payment intent:', {
+        userId: req.user.id,
+        amount: numericAmount,
+        rawAmount: amount
+      });
+
+      // Create a payment intent with Stripe
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: numericAmount * 100, // Convert to cents
+        currency: "eur",
+        metadata: {
+          userId: req.user.id.toString(),
+          creditAmount: numericAmount.toString()
+        },
+        automatic_payment_methods: {
+          enabled: true,
+        }
+      });
+
+      console.log('Payment intent created:', {
+        clientSecret: paymentIntent.client_secret ? 'present' : 'missing',
+        intentId: paymentIntent.id,
+        status: paymentIntent.status
+      });
+
+      res.json({ clientSecret: paymentIntent.client_secret });
+    } catch (error) {
+      console.error('Error creating payment intent:', error);
+      if (error instanceof Error) {
+        // Log detailed error information
+        console.error({
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        });
+
+        // Send a more detailed error message to the client
+        res.status(500).json({ 
+          error: "Failed to create payment intent",
+          details: error.message
+        });
+      } else {
+        res.status(500).json({ error: "An unexpected error occurred" });
+      }
+    }
+  });
+
   // Configure raw body parser specifically for Stripe webhook
   app.post("/api/webhook/stripe", express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
@@ -87,45 +150,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching events:', error);
       res.status(500).json({ error: "Failed to fetch events" });
-    }
-  });
-
-  // Credit purchase endpoint
-  app.post("/api/credits/purchase", async (req, res) => {
-    try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
-      const { amount } = req.body; // Amount in EUR
-
-      if (!amount || amount < 1) {
-        return res.status(400).json({ error: "Invalid amount" });
-      }
-
-      console.log('Creating payment intent:', {
-        userId: req.user.id,
-        amount
-      });
-
-      // Create a payment intent with Stripe
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: amount * 100, // Convert to cents
-        currency: "eur",
-        metadata: {
-          userId: req.user.id.toString(),
-          creditAmount: amount.toString()
-        }
-      });
-
-      console.log('Payment intent created:', {
-        clientSecret: paymentIntent.client_secret ? 'present' : 'missing'
-      });
-
-      res.json({ clientSecret: paymentIntent.client_secret });
-    } catch (error) {
-      console.error('Error creating payment intent:', error);
-      res.status(500).json({ error: "Failed to create payment intent" });
     }
   });
 

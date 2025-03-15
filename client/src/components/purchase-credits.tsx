@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStripe, useElements, PaymentElement } from '@stripe/react-stripe-js';
+import { useStripe, useElements, PaymentElement, Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,11 @@ function CheckoutForm({ amount, onSuccess }: { amount: number; onSuccess: () => 
     e.preventDefault();
 
     if (!stripe || !elements) {
+      toast({
+        title: "Error",
+        description: "Stripe is not initialized",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -55,7 +60,7 @@ function CheckoutForm({ amount, onSuccess }: { amount: number; onSuccess: () => 
       console.error('Payment error:', error);
       toast({
         title: "Payment Error",
-        description: "An unexpected error occurred",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
         variant: "destructive",
       });
     } finally {
@@ -68,7 +73,7 @@ function CheckoutForm({ amount, onSuccess }: { amount: number; onSuccess: () => 
       <PaymentElement />
       <Button 
         type="submit" 
-        disabled={isProcessing} 
+        disabled={isProcessing || !stripe || !elements} 
         className="w-full"
       >
         {isProcessing ? (
@@ -85,23 +90,33 @@ export function PurchaseCredits() {
   const [clientSecret, setClientSecret] = useState("");
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const handlePurchase = async () => {
     setIsLoading(true);
     try {
+      if (amount < 1) {
+        throw new Error("Amount must be at least 1 credit");
+      }
+
       const response = await fetch('/api/credits/purchase', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ amount }),
+        body: JSON.stringify({ amount: Math.floor(amount) }), // Ensure integer amount
         credentials: 'include',
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
       const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to initiate purchase');
+      if (!data.clientSecret) {
+        throw new Error("No client secret received from server");
       }
 
       setClientSecret(data.clientSecret);
@@ -112,13 +127,14 @@ export function PurchaseCredits() {
         description: error instanceof Error ? error.message : "Failed to initiate purchase",
         variant: "destructive",
       });
+      setIsDialogOpen(false); // Close dialog on error
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <Dialog>
+    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
       <DialogTrigger asChild>
         <Button variant="outline">Purchase Credits</Button>
       </DialogTrigger>
@@ -142,13 +158,13 @@ export function PurchaseCredits() {
                   type="number"
                   min="1"
                   value={amount}
-                  onChange={(e) => setAmount(parseInt(e.target.value))}
+                  onChange={(e) => setAmount(parseInt(e.target.value) || 0)}
                 />
               </div>
               <Button 
                 onClick={handlePurchase} 
                 className="w-full"
-                disabled={isLoading}
+                disabled={isLoading || amount < 1}
               >
                 {isLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -166,7 +182,10 @@ export function PurchaseCredits() {
               >
                 <CheckoutForm 
                   amount={amount} 
-                  onSuccess={() => setClientSecret("")} 
+                  onSuccess={() => {
+                    setClientSecret("");
+                    setIsDialogOpen(false);
+                  }} 
                 />
               </Elements>
             )}
