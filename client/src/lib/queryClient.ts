@@ -3,8 +3,8 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    console.error(`API Error: ${res.status} - ${text}`); // Added error logging
-    throw new Error(`${res.status}: ${text}`);
+    console.error(`API Error: ${res.status} - ${text}`);
+    throw new Error(text);
   }
 }
 
@@ -13,15 +13,17 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  console.log(`Making ${method} request to ${url}`, { data }); // Added request logging
+  console.log(`Making ${method} request to ${url}`, { data });
   const res = await fetch(url, {
     method,
     headers: data ? { 
       "Content-Type": "application/json",
       "Accept": "application/json"
-    } : {},
+    } : {
+      "Accept": "application/json"
+    },
     body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",  // Ensure cookies are sent with request
+    credentials: "include",  // Always include credentials
   });
 
   await throwIfResNotOk(res);
@@ -34,21 +36,23 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    console.log('Making query request:', { queryKey }); // Added query logging
+    console.log('Making query request:', { queryKey });
     const res = await fetch(queryKey[0] as string, {
-      credentials: "include",  // Ensure cookies are sent with request
+      credentials: "include",  // Always include credentials
       headers: {
         "Accept": "application/json"
       }
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      console.log('Received 401, returning null as configured'); // Added auth logging
+      console.log('Received 401, returning null as configured');
       return null;
     }
 
     await throwIfResNotOk(res);
-    return await res.json();
+    const data = await res.json();
+    console.log('Query response:', { queryKey, data });
+    return data;
   };
 
 export const queryClient = new QueryClient({

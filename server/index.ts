@@ -14,18 +14,30 @@ app.set("trust proxy", 1);
 app.use(express.json({ limit: '250mb' }));
 app.use(express.urlencoded({ extended: false, limit: '250mb' }));
 
-// Make Replicate API token available to the frontend
-if (process.env.REPLICATE_API_TOKEN) {
-  process.env.VITE_REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
-  console.log('Replicate API token found and exposed to frontend');
-} else {
-  console.warn('Warning: REPLICATE_API_TOKEN not found in environment variables.');
-}
+// CORS configuration for development
+app.use((req, res, next) => {
+  const origin = process.env.NODE_ENV === 'development' 
+    ? req.get('origin') || 'http://localhost:5000'
+    : req.get('origin');
+
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
 
 // CSP configuration
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
-    // Ensure all CSP headers are removed in development
+    // Remove any existing CSP headers
     res.removeHeader('Content-Security-Policy');
     res.removeHeader('Content-Security-Policy-Report-Only');
     res.removeHeader('X-Content-Security-Policy');
@@ -43,11 +55,11 @@ if (process.env.NODE_ENV === 'development') {
     res.setHeader('Content-Security-Policy',
       "default-src 'self'; " +
       `connect-src 'self' ${wsProtocol}://${host} https://api.stripe.com; ` +
-      "style-src 'self' 'unsafe-inline'; " +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
       "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com; " +
       "frame-src 'self' https://js.stripe.com https://hooks.stripe.com; " +
-      "img-src 'self' data: blob: https://*.stripe.com; " +
-      "font-src 'self' data:; " +
+      "img-src 'self' data: blob: https://*.stripe.com https://raw.githubusercontent.com; " +
+      "font-src 'self' data: https://fonts.gstatic.com; " +
       "media-src 'self' data: blob:;"
     );
     next();
@@ -64,14 +76,19 @@ const sessionSettings: session.SessionOptions = {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    path: '/'
   },
   name: 'vco.sid' // Custom name to avoid conflicts
 };
 
 // In development, allow non-secure cookies
 if (process.env.NODE_ENV === 'development') {
-  sessionSettings.cookie.secure = false;
+  sessionSettings.cookie = {
+    ...sessionSettings.cookie,
+    secure: false,
+    sameSite: 'lax'
+  };
 }
 
 // Initialize session before passport
@@ -99,7 +116,7 @@ app.use((req, res, next) => {
 // Global error handler middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Global error:', err);
-  log(`Error processing ${req.method} ${req.path}:`, err);
+  log(`Error processing ${req.method} ${req.path}:`, err.toString());
 
   res.status(500).json({
     error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'

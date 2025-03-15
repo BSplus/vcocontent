@@ -65,14 +65,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('Login successful:', user);
       queryClient.setQueryData(["/api/user"], user);
       toast({
-        title: "Welcome back!",
-        description: `Logged in as ${user.username}`,
+        title: "Willkommen zurück!",
+        description: `Angemeldet als ${user.username}`,
       });
+      refetch(); // Refetch user data after successful login
     },
     onError: (error: Error) => {
       console.error('Login mutation error:', error);
       toast({
-        title: "Login failed",
+        title: "Anmeldung fehlgeschlagen",
         description: error.message,
         variant: "destructive",
       });
@@ -96,14 +97,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('Registration successful:', user);
       queryClient.setQueryData(["/api/user"], user);
       toast({
-        title: "Welcome!",
-        description: "Your account has been created successfully.",
+        title: "Willkommen!",
+        description: "Ihr Konto wurde erfolgreich erstellt.",
       });
+      refetch(); // Refetch user data after successful registration
     },
     onError: (error: Error) => {
       console.error('Registration mutation error:', error);
       toast({
-        title: "Registration failed",
+        title: "Registrierung fehlgeschlagen",
         description: error.message,
         variant: "destructive",
       });
@@ -125,14 +127,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('Logout mutation successful');
       queryClient.setQueryData(["/api/user"], null);
       toast({
-        title: "Logged out",
-        description: "You have been logged out successfully.",
+        title: "Abgemeldet",
+        description: "Sie wurden erfolgreich abgemeldet.",
       });
+      refetch(); // Refetch user data after successful logout
     },
     onError: (error: Error) => {
       console.error('Logout mutation error:', error);
       toast({
-        title: "Logout failed",
+        title: "Abmeldung fehlgeschlagen",
         description: error.message,
         variant: "destructive",
       });

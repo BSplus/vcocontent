@@ -32,17 +32,13 @@ async function comparePasswords(supplied: string, stored: string) {
     const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
     return timingSafeEqual(hashedBuf, suppliedBuf);
   } catch (error) {
-    log('Password comparison error:', error);
+    log('Password comparison error:', error?.toString() || 'Unknown error');
     return false;
   }
 }
 
 // Main function to set up authentication
 export function setupAuth(app: Express) {
-  // Initialize passport middleware
-  app.use(passport.initialize());
-  app.use(passport.session());
-
   // Add detailed request logging middleware for debugging
   app.use((req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/ws')) {
@@ -51,9 +47,16 @@ export function setupAuth(app: Express) {
       log(`- Session ID: ${req.sessionID}`, 'auth');
       log(`- Session Cookie: ${req.headers.cookie}`, 'auth');
       log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}, Creator: ${req.user.isCreator}` : 'Nicht eingeloggt'}`, 'auth');
+      if (req.session) {
+        log('Session data:', JSON.stringify(req.session, null, 2), 'auth');
+      }
     }
     next();
   });
+
+  // Initialize passport middleware
+  app.use(passport.initialize());
+  app.use(passport.session());
 
   // Passport strategy setup
   passport.use(
@@ -103,6 +106,12 @@ export function setupAuth(app: Express) {
       return res.status(400).json({ error: "Benutzername und Passwort sind erforderlich" });
     }
 
+    log('Login request received:', {
+      username: req.body.username,
+      headers: req.headers,
+      sessionID: req.sessionID
+    });
+
     passport.authenticate("local", (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
       if (err) {
         log(`Login error: ${err}`, 'auth');
@@ -120,6 +129,11 @@ export function setupAuth(app: Express) {
           return res.status(500).json({ error: "Ein Fehler ist aufgetreten" });
         }
         log(`Login successful for user: ${user.username}`, 'auth');
+        log('Session after login:', {
+          sessionID: req.sessionID,
+          user: user.username,
+          cookie: req.session?.cookie
+        });
         res.json(user);
       });
     })(req, res, next);
@@ -140,6 +154,13 @@ export function setupAuth(app: Express) {
 
   // User info endpoint
   app.get("/api/user", (req, res) => {
+    log('User info request:', {
+      isAuthenticated: req.isAuthenticated(),
+      sessionID: req.sessionID,
+      headers: req.headers,
+      user: req.user
+    });
+
     if (!req.isAuthenticated()) {
       log('User info request: Not authenticated', 'auth');
       return res.status(401).json({ error: "Nicht eingeloggt" });
