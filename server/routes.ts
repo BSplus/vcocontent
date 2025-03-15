@@ -8,12 +8,76 @@ import path from "path";
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from "http";
 import { parse as parseCookie } from "cookie";
+import Stripe from "stripe";
+
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
+}
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: "2023-10-16",
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
 
   // Serve static files from the attached_assets directory
   app.use('/attached_assets', express.static(path.join(process.cwd(), 'attached_assets')));
+
+  // Configure raw body parser specifically for Stripe webhook
+  app.post("/api/webhook/stripe", express.raw({ type: 'application/json' }), async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+
+    try {
+      console.log('Processing Stripe webhook:', {
+        signature: sig ? 'present' : 'missing',
+        bodyType: typeof req.body,
+        bodyLength: req.body.length
+      });
+
+      const event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+
+      console.log('Webhook event processed:', {
+        type: event.type,
+        object: event.data.object
+      });
+
+      if (event.type === 'payment_intent.succeeded') {
+        const paymentIntent = event.data.object;
+        const userId = parseInt(paymentIntent.metadata.userId);
+        const creditAmount = parseInt(paymentIntent.metadata.creditAmount);
+
+        console.log('Processing successful payment:', {
+          userId,
+          creditAmount
+        });
+
+        // Update user's credits
+        const user = await storage.getUser(userId);
+        if (user) {
+          const currentCredits = parseFloat(user.credits) || 0;
+          await storage.updateUserCredits(userId, currentCredits + creditAmount);
+          console.log('Credits updated successfully:', {
+            userId,
+            oldCredits: currentCredits,
+            newCredits: currentCredits + creditAmount
+          });
+        }
+      }
+
+      res.json({ received: true });
+    } catch (error) {
+      console.error('Webhook error:', error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Use JSON parser for all other routes
+  app.use(express.json());
 
   // API Routes
   app.get("/api/events", async (req, res) => {
@@ -23,6 +87,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching events:', error);
       res.status(500).json({ error: "Failed to fetch events" });
+    }
+  });
+
+  // Credit purchase endpoint
+  app.post("/api/credits/purchase", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { amount } = req.body; // Amount in EUR
+
+      if (!amount || amount < 1) {
+        return res.status(400).json({ error: "Invalid amount" });
+      }
+
+      console.log('Creating payment intent:', {
+        userId: req.user.id,
+        amount
+      });
+
+      // Create a payment intent with Stripe
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount * 100, // Convert to cents
+        currency: "eur",
+        metadata: {
+          userId: req.user.id.toString(),
+          creditAmount: amount.toString()
+        }
+      });
+
+      console.log('Payment intent created:', {
+        clientSecret: paymentIntent.client_secret ? 'present' : 'missing'
+      });
+
+      res.json({ clientSecret: paymentIntent.client_secret });
+    } catch (error) {
+      console.error('Error creating payment intent:', error);
+      res.status(500).json({ error: "Failed to create payment intent" });
+    }
+  });
+
+  // Download endpoint with credit check
+  app.post("/api/media/:id/download", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const mediaId = parseInt(req.params.id);
+      const mediaItem = await storage.getMediaItem(mediaId);
+
+      if (!mediaItem) {
+        return res.status(404).json({ error: "Media item not found" });
+      }
+
+      console.log('Processing download request:', {
+        mediaId,
+        isPremium: mediaItem.isPremium,
+        cost: mediaItem.creditCost
+      });
+
+      // Check if the media is premium and user has enough credits
+      if (mediaItem.isPremium) {
+        const user = await storage.getUser(req.user.id);
+        const currentCredits = parseFloat(user.credits) || 0;
+        const cost = mediaItem.creditCost || 1;
+
+        console.log('Checking user credits:', {
+          userId: user.id,
+          currentCredits,
+          requiredCredits: cost
+        });
+
+        if (currentCredits < cost) {
+          return res.status(402).json({ error: "Insufficient credits" });
+        }
+
+        // Deduct credits and update download count
+        await storage.updateUserCredits(req.user.id, currentCredits - cost);
+
+        // If there's a creator, give them 70% of the credits
+        if (mediaItem.eventId) {
+          const event = await storage.getEvent(mediaItem.eventId);
+          if (event?.creatorId) {
+            const creator = await storage.getUser(event.creatorId);
+            if (creator) {
+              const creatorCredits = parseFloat(creator.credits) || 0;
+              const creatorShare = cost * 0.7;
+              await storage.updateUserCredits(event.creatorId, creatorCredits + creatorShare);
+
+              console.log('Creator earnings processed:', {
+                creatorId: creator.id,
+                share: creatorShare,
+                newTotal: creatorCredits + creatorShare
+              });
+            }
+          }
+        }
+      }
+
+      // Update download count
+      await storage.updateMediaItem(mediaId, {
+        ...mediaItem,
+        downloadCount: (mediaItem.downloadCount || 0) + 1
+      });
+
+      console.log('Download processed successfully:', {
+        mediaId,
+        newDownloadCount: (mediaItem.downloadCount || 0) + 1
+      });
+
+      res.json({ success: true, url: mediaItem.url });
+    } catch (error) {
+      console.error('Error processing download:', error);
+      res.status(500).json({ error: "Failed to process download" });
     }
   });
 
@@ -49,29 +229,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to fetch top shots" });
     }
   });
-
-  // Track downloads and increment counter
-  app.post("/api/media/:id/download", async (req, res) => {
-    try {
-      const mediaId = parseInt(req.params.id);
-      const mediaItem = await storage.getMediaItem(mediaId);
-
-      if (!mediaItem) {
-        return res.status(404).json({ error: "Media item not found" });
-      }
-
-      await storage.updateMediaItem(mediaId, {
-        ...mediaItem,
-        downloadCount: (mediaItem.downloadCount || 0) + 1
-      });
-
-      res.status(200).json({ success: true });
-    } catch (error) {
-      console.error('Error tracking download:', error);
-      res.status(500).json({ error: "Failed to track download" });
-    }
-  });
-
   // Get single event
   app.get("/api/events/:id", async (req, res) => {
     try {
@@ -261,9 +418,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Only allow admins to access this endpoint
       if (!req.isAuthenticated() || !req.user.isAdmin) {
-        console.log('Unauthorized access attempt:', { 
+        console.log('Unauthorized access attempt:', {
           isAuthenticated: req.isAuthenticated(),
-          isAdmin: req.user?.isAdmin 
+          isAdmin: req.user?.isAdmin
         });
         return res.status(403).json({ error: "Unauthorized access" });
       }
@@ -287,7 +444,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(user);
     } catch (error) {
       console.error('Error updating creator status:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: "Failed to update creator status",
         details: error instanceof Error ? error.message : 'Unknown error'
       });

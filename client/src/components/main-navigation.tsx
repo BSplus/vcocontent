@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Loader2, Search } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { PurchaseCredits } from "@/components/purchase-credits";
 
 export default function MainNavigation() {
   const { user, logoutMutation } = useAuth();
@@ -11,7 +12,8 @@ export default function MainNavigation() {
     isLoggedIn: !!user,
     isAdmin: user?.isAdmin,
     isCreator: user?.isCreator,
-    username: user?.username
+    username: user?.username,
+    credits: user?.credits
   });
 
   return (
@@ -52,6 +54,16 @@ export default function MainNavigation() {
           <Button asChild className="bg-primary text-black hover:bg-primary/90">
             <Link href="/auth">BECOME A CREATOR</Link>
           </Button>
+
+          {/* Show credits and purchase button for logged-in users */}
+          {user && (
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-foreground/80">
+                Credits: {user.credits || 0}
+              </span>
+              <PurchaseCredits />
+            </div>
+          )}
 
           {/* Show additional buttons when logged in */}
           {user && (
