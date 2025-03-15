@@ -7,6 +7,9 @@ import { storage } from "./storage";
 
 const app = express();
 
+// Basic Express settings
+app.set("trust proxy", 1);
+
 // Increase body parser limits to 250MB to accommodate base64 encoded files
 app.use(express.json({ limit: '250mb' }));
 app.use(express.urlencoded({ extended: false, limit: '250mb' }));
@@ -19,6 +22,14 @@ if (process.env.REPLICATE_API_TOKEN) {
   console.warn('Warning: REPLICATE_API_TOKEN not found in environment variables.');
 }
 
+// Less restrictive CSP in development
+if (process.env.NODE_ENV === 'development') {
+  app.use((req, res, next) => {
+    res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' ws: wss:; style-src 'self' 'unsafe-inline';");
+    next();
+  });
+}
+
 // Set up session first before any other middleware
 const sessionSettings: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || 'dev-secret-key',
@@ -26,7 +37,7 @@ const sessionSettings: session.SessionOptions = {
   saveUninitialized: true,
   store: storage.sessionStore,
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // Only use secure in production
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
@@ -34,23 +45,13 @@ const sessionSettings: session.SessionOptions = {
   name: 'vco.sid' // Custom name to avoid conflicts
 };
 
-// Basic Express settings
-app.set("trust proxy", 1);
-
-// Less restrictive CSP in development
-if (process.env.NODE_ENV === 'development') {
-  app.use((req, res, next) => {
-    res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' ws: wss:");
-    next();
-  });
-}
-
 // Initialize session before passport
 app.use(session(sessionSettings));
 
 // Set up auth (includes passport initialization)
 setupAuth(app);
 
+// Request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;

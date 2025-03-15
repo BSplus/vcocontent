@@ -1,7 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
-import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
@@ -35,28 +34,7 @@ async function comparePasswords(supplied: string, stored: string) {
 
 // Main function to set up authentication
 export function setupAuth(app: Express) {
-  // Session settings
-  const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || 'dev-secret-key',
-    resave: true,
-    saveUninitialized: true,
-    store: storage.sessionStore,
-    cookie: {
-      secure: false, // Force to false for development
-      sameSite: 'lax',
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    },
-    name: 'vco.sid' // Custom name to avoid conflicts
-  };
-
-  // Basic Express settings
-  app.set("trust proxy", 1);
-
-  // Initialize session before passport
-  app.use(session(sessionSettings));
-
-  // Initialize passport and session
+  // Initialize passport middleware
   app.use(passport.initialize());
   app.use(passport.session());
 
@@ -114,7 +92,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Registration endpoint
+  // Authentication routes
   app.post("/api/register", async (req, res, next) => {
     try {
       log(`Registration attempt for username: ${req.body.username}`, 'auth');
