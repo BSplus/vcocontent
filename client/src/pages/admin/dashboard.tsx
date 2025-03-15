@@ -4,19 +4,11 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Event, MediaItem, User } from "@shared/schema";
-import { Loader2, Plus, Trash2, Image as ImageIcon, Film, UserCheck, UserX, Crown, Users, Shield } from "lucide-react";
+import { Loader2, Plus, Trash2, Image as ImageIcon, Film, UserCheck, UserX, Crown } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
 import { useToast } from "@/hooks/use-toast";
 import SeriesManager from "@/components/series-manager";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,51 +41,10 @@ export default function AdminDashboard() {
     staleTime: 0,
   });
 
-  // Load pending creators
-  const { data: pendingCreators = [], isLoading: creatorsLoading } = useQuery<User[]>({
-    queryKey: ["/api/users/pending-creators"],
-    staleTime: 0,
-  });
-
   // Load media items for statistics
   const { data: mediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
     staleTime: 0,
-  });
-
-  // Approve/reject creator mutation
-  const updateCreatorStatusMutation = useMutation({
-    mutationFn: async ({ userId, status }: { userId: number; status: 'approved' | 'rejected' }) => {
-      const response = await fetch(`/api/users/${userId}/creator-status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status }),
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || errorData.details || 'Failed to update creator status');
-      }
-
-      return await response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/users/pending-creators"] });
-      toast({
-        title: "Success",
-        description: "Creator status updated successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
   });
 
   // Delete event mutation
@@ -151,46 +102,7 @@ export default function AdminDashboard() {
   const vcoEvents = sortedEvents.filter(event => !event.creatorId);
   const creatorEvents = sortedEvents.filter(event => event.creatorId);
 
-  // Load all users
-  const { data: allUsers = [], isLoading: usersLoading } = useQuery<User[]>({
-    queryKey: ["/api/admin/users"],
-    staleTime: 0,
-  });
-
-  // Update user role mutation
-  const updateUserRoleMutation = useMutation({
-    mutationFn: async ({ userId, action }: { userId: number; action: string }) => {
-      const response = await fetch(`/api/admin/users/${userId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update user role");
-      }
-
-      return await response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({
-        title: "Success",
-        description: "User role updated successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  if (eventsLoading || mediaLoading || creatorsLoading || usersLoading) {
+  if (eventsLoading || mediaLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -209,6 +121,9 @@ export default function AdminDashboard() {
             <Button asChild variant="outline">
               <Link href="/">Back to Home</Link>
             </Button>
+            <Button asChild variant="outline">
+              <Link href="/admin/users">User Management</Link>
+            </Button>
           </div>
         </div>
       </header>
@@ -218,8 +133,6 @@ export default function AdminDashboard() {
           <TabsList>
             <TabsTrigger value="events">Events</TabsTrigger>
             <TabsTrigger value="series">Race Series</TabsTrigger>
-            <TabsTrigger value="creators">Creator Applications</TabsTrigger>
-            <TabsTrigger value="users">User Management</TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
@@ -368,157 +281,6 @@ export default function AdminDashboard() {
 
           <TabsContent value="series" className="mt-6">
             <SeriesManager />
-          </TabsContent>
-
-          <TabsContent value="creators" className="mt-6">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-bold">Creator Applications</h2>
-            </div>
-
-            {!pendingCreators.length ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <p className="text-muted-foreground">
-                    No pending creator applications.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-6">
-                {pendingCreators.map((creator) => (
-                  <Card key={creator.id} className="bg-black/40 border-primary/20">
-                    <CardHeader>
-                      <CardTitle className="text-xl font-[Orbitron] tracking-wider">
-                        {creator.username}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex justify-between items-center">
-                        <p className="text-muted-foreground font-[Rajdhani]">
-                          Applied: {new Date(creator.createdAt).toLocaleDateString()}
-                        </p>
-                        <div className="flex gap-2">
-                          <Button
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() => updateCreatorStatusMutation.mutate({
-                              userId: creator.id,
-                              status: 'approved'
-                            })}
-                            disabled={updateCreatorStatusMutation.isPending}
-                          >
-                            <UserCheck className="h-4 w-4 mr-2" />
-                            Approve
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            onClick={() => updateCreatorStatusMutation.mutate({
-                              userId: creator.id,
-                              status: 'rejected'
-                            })}
-                            disabled={updateCreatorStatusMutation.isPending}
-                          >
-                            <UserX className="h-4 w-4 mr-2" />
-                            Reject
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="users" className="mt-6">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-bold">User Management</h2>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>All Users</CardTitle>
-                <CardDescription>
-                  Manage user roles and permissions
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Username</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Credits</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {allUsers.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell>{user.username}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            {user.isAdmin && (
-                              <Badge variant="default" className="bg-red-500">
-                                Admin
-                              </Badge>
-                            )}
-                            {user.isCreator && (
-                              <Badge variant="default" className="bg-green-500">
-                                Creator
-                              </Badge>
-                            )}
-                            {!user.isAdmin && !user.isCreator && (
-                              <Badge variant="secondary">
-                                User
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>{user.credits || 0}</TableCell>
-                        <TableCell>
-                          {new Date(user.createdAt).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            {!user.isAdmin && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex gap-2 items-center"
-                                onClick={() => updateUserRoleMutation.mutate({
-                                  userId: user.id,
-                                  action: 'set_admin'
-                                })}
-                                disabled={updateUserRoleMutation.isPending}
-                              >
-                                <Shield className="h-4 w-4" />
-                                Make Admin
-                              </Button>
-                            )}
-                            {!user.isCreator && user.creatorStatus !== 'pending' && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex gap-2 items-center"
-                                onClick={() => updateUserRoleMutation.mutate({
-                                  userId: user.id,
-                                  action: 'approve_creator'
-                                })}
-                                disabled={updateUserRoleMutation.isPending}
-                              >
-                                <UserCheck className="h-4 w-4" />
-                                Make Creator
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
           </TabsContent>
         </Tabs>
       </main>

@@ -8,6 +8,7 @@ import { ProtectedRoute } from "./lib/protected-route";
 import HomePage from "@/pages/home-page";
 import AuthPage from "@/pages/auth-page";
 import AdminDashboard from "@/pages/admin/dashboard";
+import AdminUsers from "@/pages/admin/users";
 import CreatorDashboard from "@/pages/creator/dashboard";
 import EventGallery from "@/pages/event-gallery";
 import SearchResults from "@/pages/search-results";
@@ -28,7 +29,8 @@ function Router() {
       <Route path="/archive-events" component={ArchiveEvents} />
       <Route path="/events/:id" component={EventGallery} />
       <Route path="/imprint" component={Imprint} />
-      <ProtectedRoute path="/admin/*" component={AdminDashboard} requireAdmin />
+      <ProtectedRoute path="/admin/dashboard" component={AdminDashboard} requireAdmin />
+      <ProtectedRoute path="/admin/users" component={AdminUsers} requireAdmin />
       <ProtectedRoute path="/creator/dashboard" component={CreatorDashboard} requireCreator />
       <ProtectedRoute path="/creator/apply" component={CreatorApplication} />
       <Route component={NotFound} />
