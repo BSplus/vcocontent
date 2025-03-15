@@ -50,15 +50,20 @@ export default function MainNavigation() {
         <div className="flex gap-4 items-center">
           {user ? (
             <>
-              {user.isAdmin ? (
+              {/* Show admin dashboard for admins */}
+              {user.isAdmin && (
                 <Button variant="outline" asChild className="border-primary/20 hover:bg-primary hover:text-black">
                   <Link href="/admin">Creator Dashboard</Link>
                 </Button>
-              ) : !user.isCreator && (
+              )}
+
+              {/* Show Become a Creator button for non-admin, non-creator users */}
+              {!user.isAdmin && !user.isCreator && (
                 <Button variant="outline" asChild className="border-primary/20 hover:bg-primary hover:text-black">
                   <Link href="/creator/apply">Become a Creator</Link>
                 </Button>
               )}
+
               <Button
                 variant="secondary"
                 onClick={() => logoutMutation.mutate()}

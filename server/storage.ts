@@ -83,7 +83,20 @@ class DatabaseStorage implements IStorage {
   }
 
   async createUser(user: InsertUser & { isAdmin?: boolean }): Promise<User> {
-    const result = await db.insert(users).values(user).returning();
+    console.log('Creating new user:', {
+      username: user.username,
+      isAdmin: user.isAdmin || false,
+      isCreator: false // Always false for new users
+    });
+
+    const result = await db.insert(users).values({
+      ...user,
+      isAdmin: user.isAdmin || false,
+      isCreator: false, // Explicitly set isCreator to false for new users
+      creatorStatus: 'pending' // Set initial creator status
+    }).returning();
+
+    console.log('Created user:', result[0]);
     return result[0];
   }
 
@@ -132,9 +145,9 @@ class DatabaseStorage implements IStorage {
     console.log('Storage: Attempting to delete event:', id);
     try {
       if (isNaN(id) || id <= 0) {
-        return { 
-          success: false, 
-          message: "Invalid event ID provided" 
+        return {
+          success: false,
+          message: "Invalid event ID provided"
         };
       }
 
@@ -147,9 +160,9 @@ class DatabaseStorage implements IStorage {
 
       if (eventExists.length === 0) {
         console.log('Storage: Event not found:', id);
-        return { 
-          success: false, 
-          message: "Event not found" 
+        return {
+          success: false,
+          message: "Event not found"
         };
       }
 
@@ -162,15 +175,15 @@ class DatabaseStorage implements IStorage {
       const result = await db.delete(events).where(eq(events.id, id)).returning();
       console.log('Storage: Successfully deleted event:', id, 'Result:', result);
 
-      return { 
-        success: true, 
-        message: "Event and associated media items deleted successfully" 
+      return {
+        success: true,
+        message: "Event and associated media items deleted successfully"
       };
     } catch (error) {
       console.error('Storage: Error deleting event:', error);
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : "Failed to delete event" 
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "Failed to delete event"
       };
     }
   }
@@ -267,7 +280,7 @@ class DatabaseStorage implements IStorage {
     console.log('Storage: Updating user creator status:', userId, status);
     const result = await db
       .update(users)
-      .set({ 
+      .set({
         creatorStatus: status,
         isCreator: status === 'approved'
       })
@@ -293,7 +306,7 @@ class DatabaseStorage implements IStorage {
     console.log('Storage: Updating user credits:', userId, credits);
     const result = await db
       .update(users)
-      .set({ credits: credits.toString() }) 
+      .set({ credits: credits.toString() })
       .where(eq(users.id, userId))
       .returning();
 
