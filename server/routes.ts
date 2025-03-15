@@ -42,7 +42,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const eventData = insertEventSchema.parse({
         ...req.body,
-        creatorId: req.user.id
+        creatorId: req.user!.id
       });
 
       const event = await storage.createEvent(eventData);
@@ -55,8 +55,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/creator/events", requireCreator, async (req, res) => {
     try {
-      console.log('Fetching events for creator:', req.user.id);
-      const events = await storage.getEventsByCreator(req.user.id);
+      console.log('Fetching events for creator:', req.user!.id);
+      const events = await storage.getEventsByCreator(req.user!.id);
       res.json(events);
     } catch (error) {
       console.error('Error fetching creator events:', error);
