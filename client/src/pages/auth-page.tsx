@@ -45,55 +45,14 @@ export default function AuthPage() {
       <div className="flex items-center justify-center p-8">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Welcome to VCO Media Database</CardTitle>
+            <CardTitle>Become a VCO Creator</CardTitle>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="login">
+            <Tabs defaultValue="register">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="login">Login</TabsTrigger>
-                <TabsTrigger value="register">Register</TabsTrigger>
+                <TabsTrigger value="register">Register as Creator</TabsTrigger>
+                <TabsTrigger value="login">Creator Login</TabsTrigger>
               </TabsList>
-
-              <TabsContent value="login">
-                <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-username">Username</Label>
-                    <Input
-                      id="login-username"
-                      {...loginForm.register("username")}
-                    />
-                    {loginForm.formState.errors.username && (
-                      <p className="text-sm text-red-500">
-                        {loginForm.formState.errors.username.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password">Password</Label>
-                    <Input
-                      id="login-password"
-                      type="password"
-                      {...loginForm.register("password")}
-                    />
-                    {loginForm.formState.errors.password && (
-                      <p className="text-sm text-red-500">
-                        {loginForm.formState.errors.password.message}
-                      </p>
-                    )}
-                  </div>
-                  <Button 
-                    type="submit" 
-                    className="w-full"
-                    disabled={loginMutation.isPending}
-                  >
-                    {loginMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      'Login'
-                    )}
-                  </Button>
-                </form>
-              </TabsContent>
 
               <TabsContent value="register">
                 <form onSubmit={registerForm.handleSubmit(onRegister)} className="space-y-4">
@@ -130,7 +89,48 @@ export default function AuthPage() {
                     {registerMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      'Register'
+                      'Register as Creator'
+                    )}
+                  </Button>
+                </form>
+              </TabsContent>
+
+              <TabsContent value="login">
+                <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="login-username">Username</Label>
+                    <Input
+                      id="login-username"
+                      {...loginForm.register("username")}
+                    />
+                    {loginForm.formState.errors.username && (
+                      <p className="text-sm text-red-500">
+                        {loginForm.formState.errors.username.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="login-password">Password</Label>
+                    <Input
+                      id="login-password"
+                      type="password"
+                      {...loginForm.register("password")}
+                    />
+                    {loginForm.formState.errors.password && (
+                      <p className="text-sm text-red-500">
+                        {loginForm.formState.errors.password.message}
+                      </p>
+                    )}
+                  </div>
+                  <Button 
+                    type="submit" 
+                    className="w-full"
+                    disabled={loginMutation.isPending}
+                  >
+                    {loginMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Login as Creator'
                     )}
                   </Button>
                 </form>
@@ -143,10 +143,10 @@ export default function AuthPage() {
       <div className="hidden lg:flex items-center justify-center bg-muted p-8">
         <div className="max-w-md text-center">
           <h1 className="text-4xl font-bold mb-4">
-            Your Gateway to Sim Racing Media
+            Share Your Racing Content
           </h1>
           <p className="text-lg text-muted-foreground">
-            Access high-quality photos and videos from the most exciting Sim Racing events around the world.
+            Join our community of creators and share your high-quality photos and videos from the most exciting Sim Racing events around the world.
           </p>
         </div>
       </div>
