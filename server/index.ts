@@ -22,21 +22,15 @@ if (process.env.REPLICATE_API_TOKEN) {
   console.warn('Warning: REPLICATE_API_TOKEN not found in environment variables.');
 }
 
-// Update CSP settings
+// Development CSP settings - more permissive
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
-    res.setHeader('Content-Security-Policy', 
-      "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: wss: *; " +
-      "connect-src 'self' ws: wss: *; " +
-      "style-src 'self' 'unsafe-inline' *; " +
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' *; " +
-      "img-src 'self' data: blob: *; " +
-      "font-src 'self' data: *"
-    );
+    // In development, allow everything for debugging
+    res.removeHeader('Content-Security-Policy');
     next();
   });
 } else {
-  // Production CSP settings
+  // Production CSP settings - more restrictive
   app.use((req, res, next) => {
     res.setHeader('Content-Security-Policy',
       "default-src 'self'; " +
@@ -44,17 +38,18 @@ if (process.env.NODE_ENV === 'development') {
       "style-src 'self' 'unsafe-inline'; " +
       "script-src 'self' 'unsafe-eval'; " +
       "img-src 'self' data: blob:; " +
-      "font-src 'self' data:"
+      "font-src 'self' data:; " +
+      "media-src 'self' data: blob:"
     );
     next();
   });
 }
 
-// Set up session settings
+// Set up session settings with proper configuration
 const sessionSettings: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || 'dev-secret-key',
-  resave: true,
-  saveUninitialized: true,
+  resave: false,
+  saveUninitialized: false,
   store: storage.sessionStore,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
@@ -71,21 +66,10 @@ app.use(session(sessionSettings));
 // Set up auth (includes passport initialization)
 setupAuth(app);
 
-// Request logging middleware
+// Request logging middleware with detailed session info
 app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  // Add detailed session info to logs for debugging
   console.log('Request:', {
-    path,
+    path: req.path,
     method: req.method,
     sessionID: req.sessionID,
     isAuthenticated: req.isAuthenticated?.(),
@@ -93,66 +77,20 @@ app.use((req, res, next) => {
     cookies: req.headers.cookie,
     sessionData: req.session
   });
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
-    }
-  });
-
   next();
 });
 
 // Global Error Handlers
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
-  // Don't exit to keep server running
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit to keep server running
 });
 
 (async () => {
   const server = await registerRoutes(app);
-
-  // Better error handling for large files
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('Express error handler caught:', err);
-
-    if (err.type === 'entity.too.large') {
-      return res.status(413).json({
-        message: "File size too large. Maximum size is 200MB for videos and 10MB for images."
-      });
-    }
-
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    // Always try to send a response, even for severe errors
-    try {
-      res.status(status).json({ message });
-    } catch (responseError) {
-      console.error('Failed to send error response:', responseError);
-      // Try to send a simpler response if JSON response fails
-      try {
-        res.status(500).send('Internal Server Error');
-      } catch (finalError) {
-        console.error('Could not send any error response:', finalError);
-      }
-    }
-  });
 
   if (app.get("env") === "development") {
     await setupVite(app, server);

@@ -40,23 +40,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Creator routes
   app.post("/api/creator/events", requireCreator, async (req, res) => {
     try {
+      // Ensure user exists and is a creator
+      if (!req.user || !req.user.isCreator) {
+        return res.status(403).json({ error: "Unauthorized - Creator access required" });
+      }
+
+      console.log('Creating event for creator:', {
+        userId: req.user.id,
+        isCreator: req.user.isCreator,
+        body: req.body
+      });
+
       const eventData = insertEventSchema.parse({
         ...req.body,
-        creatorId: req.user!.id
+        creatorId: req.user.id
       });
 
       const event = await storage.createEvent(eventData);
+
+      console.log('Event created successfully:', event);
+
       res.status(201).json(event);
     } catch (error) {
       console.error('Error creating creator event:', error);
-      res.status(400).json({ error: "Failed to create event" });
+      res.status(400).json({ 
+        error: "Failed to create event",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
+  // Get creator's events with better error handling
   app.get("/api/creator/events", requireCreator, async (req, res) => {
     try {
-      console.log('Fetching events for creator:', req.user!.id);
-      const events = await storage.getEventsByCreator(req.user!.id);
+      if (!req.user || !req.user.isCreator) {
+        return res.status(403).json({ error: "Unauthorized - Creator access required" });
+      }
+
+      console.log('Fetching events for creator:', req.user.id);
+      const events = await storage.getEventsByCreator(req.user.id);
       res.json(events);
     } catch (error) {
       console.error('Error fetching creator events:', error);
@@ -622,15 +644,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Log all headers for debugging
         console.log('WebSocket: Connection attempt - Headers:', info.req.headers);
 
+        // During development, allow connections without authentication
+        if (process.env.NODE_ENV === 'development') {
+          console.log('WebSocket: Development mode - accepting connection without authentication');
+          done(true);
+          return;
+        }
+
         const cookie = info.req.headers.cookie;
         if (!cookie) {
           console.log('WebSocket: No cookie found in connection request');
-          // During development, allow connections without cookie
-          if (process.env.NODE_ENV === 'development') {
-            console.log('WebSocket: Development mode - accepting connection without cookie');
-            done(true);
-            return;
-          }
           done(false, 401, 'No authentication cookie found');
           return;
         }
@@ -641,12 +664,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const sessionId = cookies['vco.sid']; // Match your session cookie name
         if (!sessionId) {
           console.log('WebSocket: No session ID found in cookies');
-          // During development, allow connections without session
-          if (process.env.NODE_ENV === 'development') {
-            console.log('WebSocket: Development mode - accepting connection without session');
-            done(true);
-            return;
-          }
           done(false, 401, 'No session ID found');
           return;
         }
