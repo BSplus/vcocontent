@@ -1,6 +1,9 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { setupAuth } from "./auth";
+import session from "express-session";
+import { storage } from "./storage";
 
 const app = express();
 
@@ -16,6 +19,38 @@ if (process.env.REPLICATE_API_TOKEN) {
   console.warn('Warning: REPLICATE_API_TOKEN not found in environment variables.');
 }
 
+// Set up session first before any other middleware
+const sessionSettings: session.SessionOptions = {
+  secret: process.env.SESSION_SECRET || 'dev-secret-key',
+  resave: true,
+  saveUninitialized: true,
+  store: storage.sessionStore,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // Only use secure in production
+    sameSite: 'lax',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  },
+  name: 'vco.sid' // Custom name to avoid conflicts
+};
+
+// Basic Express settings
+app.set("trust proxy", 1);
+
+// Less restrictive CSP in development
+if (process.env.NODE_ENV === 'development') {
+  app.use((req, res, next) => {
+    res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' ws: wss:");
+    next();
+  });
+}
+
+// Initialize session before passport
+app.use(session(sessionSettings));
+
+// Set up auth (includes passport initialization)
+setupAuth(app);
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -26,6 +61,16 @@ app.use((req, res, next) => {
     capturedJsonResponse = bodyJson;
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
+
+  // Add session info to logs for debugging
+  console.log('Request:', {
+    path,
+    method: req.method,
+    sessionID: req.sessionID,
+    isAuthenticated: req.isAuthenticated?.(),
+    user: req.user?.id,
+    cookies: req.headers.cookie
+  });
 
   res.on("finish", () => {
     const duration = Date.now() - start;
