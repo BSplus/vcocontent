@@ -34,17 +34,19 @@ if (process.env.NODE_ENV === 'development') {
     next();
   });
 } else {
-  // Production CSP settings with WebSocket security
+  // Production CSP settings with WebSocket and Stripe security
   app.use((req, res, next) => {
     const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
     const wsProtocol = isSecure ? 'wss' : 'ws';
+    const host = req.get('host');
 
     res.setHeader('Content-Security-Policy',
       "default-src 'self'; " +
-      "connect-src 'self' " + `${wsProtocol}://${req.get('host')}; ` +
+      `connect-src 'self' ${wsProtocol}://${host} https://api.stripe.com; ` +
       "style-src 'self' 'unsafe-inline'; " +
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline'; " +
-      "img-src 'self' data: blob:; " +
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com; " +
+      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com; " +
+      "img-src 'self' data: blob: https://*.stripe.com; " +
       "font-src 'self' data:; " +
       "media-src 'self' data: blob:;"
     );
@@ -52,7 +54,7 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-// Set up session settings with proper configuration
+// Set up session settings with proper configuration and enhanced security
 const sessionSettings: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || 'dev-secret-key',
   resave: false,
@@ -66,6 +68,11 @@ const sessionSettings: session.SessionOptions = {
   },
   name: 'vco.sid' // Custom name to avoid conflicts
 };
+
+// In development, allow non-secure cookies
+if (process.env.NODE_ENV === 'development') {
+  sessionSettings.cookie.secure = false;
+}
 
 // Initialize session before passport
 app.use(session(sessionSettings));
@@ -87,6 +94,16 @@ app.use((req, res, next) => {
 
   log(`Request to ${req.method} ${req.path}:`, JSON.stringify(requestInfo, null, 2));
   next();
+});
+
+// Global error handler middleware
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  console.error('Global error:', err);
+  log(`Error processing ${req.method} ${req.path}:`, err);
+
+  res.status(500).json({
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+  });
 });
 
 // Global Error Handlers

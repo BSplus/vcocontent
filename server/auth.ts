@@ -4,7 +4,7 @@ import { Express } from "express";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
-import { User as SelectUser } from "@shared/schema";
+import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { log } from "./vite";
 
 // Extend Express User type for TypeScript
@@ -52,7 +52,7 @@ export function setupAuth(app: Express) {
 
   // Passport strategy setup
   passport.use(
-    new LocalStrategy(async (username, password, done) => {
+    new LocalStrategy(async (username: string, password: string, done) => {
       try {
         log(`Login attempt for user: ${username}`, 'auth');
         const user = await storage.getUserByUsername(username);
@@ -65,7 +65,7 @@ export function setupAuth(app: Express) {
         const isValid = await comparePasswords(password, user.password);
         log(`Login ${isValid ? 'successful' : 'failed'} for user: ${username}`, 'auth');
 
-        return done(null, isValid ? user : false,
+        return done(null, isValid ? user : false, 
           isValid ? undefined : { message: 'Invalid username or password' }
         );
       } catch (error) {
@@ -76,7 +76,7 @@ export function setupAuth(app: Express) {
   );
 
   // User session management
-  passport.serializeUser((user, done) => {
+  passport.serializeUser((user: Express.User, done) => {
     log(`Serializing user: ${user.id}`, 'auth');
     done(null, user.id);
   });
@@ -97,25 +97,23 @@ export function setupAuth(app: Express) {
     try {
       log(`Registration attempt for username: ${req.body.username}`, 'auth');
 
-      if (!req.body.username || !req.body.password) {
-        log('Registration failed: Missing username or password', 'auth');
-        return res.status(400).json({ error: "Username and password are required" });
-      }
+      const userData = insertUserSchema.parse(req.body);
 
-      const existingUser = await storage.getUserByUsername(req.body.username);
+      const existingUser = await storage.getUserByUsername(userData.username);
       if (existingUser) {
-        log(`Registration failed: Username ${req.body.username} already exists`, 'auth');
+        log(`Registration failed: Username ${userData.username} already exists`, 'auth');
         return res.status(400).json({ error: "Username already exists" });
       }
 
       const allUsers = await storage.getAllUsers();
       const isFirstUser = allUsers.length === 0;
-      log(`Creating new user: ${req.body.username} (isFirstUser: ${isFirstUser})`, 'auth');
+      log(`Creating new user: ${userData.username} (isFirstUser: ${isFirstUser})`, 'auth');
 
       const user = await storage.createUser({
-        username: req.body.username,
-        password: await hashPassword(req.body.password),
-        isAdmin: isFirstUser
+        ...userData,
+        password: await hashPassword(userData.password),
+        isAdmin: isFirstUser,
+        isCreator: false
       });
 
       req.login(user, (err) => {
@@ -134,7 +132,7 @@ export function setupAuth(app: Express) {
 
   // Login endpoint with better error handling
   app.post("/api/login", (req, res, next) => {
-    passport.authenticate("local", (err, user, info) => {
+    passport.authenticate("local", (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
       if (err) {
         log(`Login error: ${err}`, 'auth');
         return next(err);

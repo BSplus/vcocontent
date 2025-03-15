@@ -5,6 +5,7 @@ import { z } from "zod";
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
+  email: text("email").notNull().unique(),
   password: text("password").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),
   isCreator: boolean("is_creator").notNull().default(false),
@@ -12,6 +13,8 @@ export const users = pgTable("users", {
   credits: decimal("credits").notNull().default('0'),
   profileImage: text("profile_image"),
   bio: text("bio"),
+  stripeCustomerId: text("stripe_customer_id").unique(),
+  stripeSubscriptionId: text("stripe_subscription_id").unique(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -21,6 +24,7 @@ export const series = pgTable("series", {
   logo: text("logo"),
   description: text("description"),
   creatorId: integer("creator_id").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const events = pgTable("events", {
@@ -35,12 +39,13 @@ export const events = pgTable("events", {
   creatorId: integer("creator_id").references(() => users.id),
   isPremium: boolean("is_premium").notNull().default(false),
   creditCost: integer("credit_cost").default(1),
+  viewCount: integer("view_count").notNull().default(0),
 });
 
 export const mediaItems = pgTable("media_items", {
   id: serial("id").primaryKey(),
   eventId: integer("event_id").references(() => events.id),
-  type: text("type").notNull(),
+  type: text("type").notNull(), // 'image' or 'video'
   url: text("url").notNull(),
   thumbnail: text("thumbnail").notNull(),
   caption: text("caption"),
@@ -52,47 +57,47 @@ export const mediaItems = pgTable("media_items", {
   creditCost: integer("credit_cost").default(1),
 });
 
-// Update the insert schemas with the new fields
+// Insert schemas with validation
 export const insertUserSchema = createInsertSchema(users).extend({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  profileImage: z.string().optional(),
-  bio: z.string().optional(),
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  email: z.string().email("Invalid email format"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  profileImage: z.string().url("Invalid profile image URL").optional(),
+  bio: z.string().max(500, "Bio cannot exceed 500 characters").optional(),
 });
 
 export const insertSeriesSchema = createInsertSchema(series).extend({
   name: z.string().min(1, "Series name is required"),
-  logo: z.string().optional(),
-  description: z.string().optional(),
+  logo: z.string().url("Invalid logo URL").optional(),
+  description: z.string().max(1000, "Description cannot exceed 1000 characters").optional(),
   creatorId: z.number().optional(),
 });
 
 export const insertEventSchema = createInsertSchema(events).extend({
   title: z.string().min(1, "Title is required"),
   description: z.string().min(1, "Description is required"),
-  coverImage: z.string().optional(),
-  customThumbnail: z.string().optional(),
+  coverImage: z.string().url("Invalid cover image URL").optional(),
+  customThumbnail: z.string().url("Invalid thumbnail URL").optional(),
   date: z.coerce.date(),
   seriesId: z.number().optional(),
   creatorId: z.number().optional(),
   isPremium: z.boolean().optional(),
-  creditCost: z.number().optional(),
+  creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),
 });
 
 export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   eventId: z.number(),
   type: z.enum(["image", "video"]),
-  url: z.string().min(1, "Media URL is required"),
-  thumbnail: z.string().min(1, "Thumbnail is required"),
-  caption: z.string().optional(),
+  url: z.string().url("Invalid media URL"),
+  thumbnail: z.string().url("Invalid thumbnail URL"),
+  caption: z.string().max(200, "Caption cannot exceed 200 characters").optional(),
   photographer: z.string().optional(),
-  tags: z.union([z.string(), z.array(z.string())]).transform(val =>
-    typeof val === 'string' ? val.split(',').map(tag => tag.trim()) : val
-  ),
+  tags: z.array(z.string()),
   isPremium: z.boolean().optional(),
-  creditCost: z.number().optional(),
+  creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),
 });
 
+// Export types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Series = typeof series.$inferSelect;

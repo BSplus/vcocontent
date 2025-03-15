@@ -10,6 +10,7 @@ import type { IncomingMessage } from "http";
 import { parse as parseCookie } from "cookie";
 import Stripe from "stripe";
 import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
+import { log } from "./vite";
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
@@ -40,9 +41,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Creator routes
   app.post("/api/creator/events", requireCreator, async (req, res) => {
     try {
-      // Ensure user exists and is a creator
-      if (!req.user || !req.user.isCreator) {
-        return res.status(403).json({ error: "Unauthorized - Creator access required" });
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
       }
 
       console.log('Creating event for creator:', {
@@ -57,9 +57,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const event = await storage.createEvent(eventData);
-
       console.log('Event created successfully:', event);
-
       res.status(201).json(event);
     } catch (error) {
       console.error('Error creating creator event:', error);
@@ -180,9 +178,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Credit purchase endpoint
+  // Credit purchase endpoint with better error handling
   app.post("/api/credits/purchase", requireAuth, async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
       const { amount } = req.body;
       const numericAmount = parseInt(amount);
 
@@ -244,6 +246,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Configure raw body parser specifically for Stripe webhook
   app.post("/api/webhook/stripe", express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error('Missing Stripe webhook secret');
+      return res.status(500).json({ error: "Webhook secret not configured" });
+    }
 
     try {
       console.log('Processing Stripe webhook:', {
@@ -251,10 +259,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bodyType: typeof req.body,
         bodyLength: req.body.length
       });
+
       const event = stripe.webhooks.constructEvent(
         req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
+        sig as string,
+        webhookSecret
       );
 
       console.log('Webhook event processed:', {
@@ -263,7 +272,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (event.type === 'payment_intent.succeeded') {
-        const paymentIntent = event.data.object;
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
         const userId = parseInt(paymentIntent.metadata.userId);
         const creditAmount = parseInt(paymentIntent.metadata.creditAmount);
 
@@ -275,7 +284,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Update user's credits
         const user = await storage.getUser(userId);
         if (user) {
-          const currentCredits = parseFloat(user.credits) || 0;
+          const currentCredits = parseFloat(user.credits.toString()) || 0;
           await storage.updateUserCredits(userId, currentCredits + creditAmount);
           console.log('Credits updated successfully:', {
             userId,
@@ -288,16 +297,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ received: true });
     } catch (error) {
       console.error('Webhook error:', error);
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ 
+        error: error instanceof Error ? error.message : "Unknown webhook error" 
+      });
     }
   });
 
-  // Use JSON parser for all other routes
-  app.use(express.json());
-
-  // Download endpoint with credit check
+  // Download endpoint with credit check and better error handling
   app.post("/api/media/:id/download", requireAuth, async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
       const mediaId = parseInt(req.params.id);
       const mediaItem = await storage.getMediaItem(mediaId);
 
@@ -314,7 +326,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if the media is premium and user has enough credits
       if (mediaItem.isPremium) {
         const user = await storage.getUser(req.user.id);
-        const currentCredits = parseFloat(user.credits) || 0;
+        if (!user) {
+          return res.status(401).json({ error: "User not found" });
+        }
+
+        const currentCredits = parseFloat(user.credits.toString()) || 0;
         const cost = mediaItem.creditCost || 1;
 
         console.log('Checking user credits:', {
@@ -336,7 +352,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (event?.creatorId) {
             const creator = await storage.getUser(event.creatorId);
             if (creator) {
-              const creatorCredits = parseFloat(creator.credits) || 0;
+              const creatorCredits = parseFloat(creator.credits.toString()) || 0;
               const creatorShare = cost * 0.7;
               await storage.updateUserCredits(event.creatorId, creatorCredits + creatorShare);
 
@@ -367,6 +383,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to process download" });
     }
   });
+
+  // Use JSON parser for all other routes
+  app.use(express.json());
 
   // Get top shots
   app.get("/api/media/top-shots", async (req, res) => {
@@ -615,53 +634,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     server: httpServer,
     path: '/ws',
     clientTracking: true,
-    // Verify client authentication with better error handling
     verifyClient: async (info: { req: IncomingMessage }, done: (res: boolean, code?: number, message?: string) => void) => {
       try {
-        // Log all headers for debugging
-        console.log('WebSocket: Connection attempt - Headers:', info.req.headers);
+        log('WebSocket: Connection attempt - Headers:', info.req.headers);
 
-        // During development, allow connections without authentication
         if (process.env.NODE_ENV === 'development') {
-          console.log('WebSocket: Development mode - accepting connection without authentication');
+          log('WebSocket: Development mode - accepting connection without authentication');
           done(true);
           return;
         }
 
         const cookie = info.req.headers.cookie;
         if (!cookie) {
-          console.log('WebSocket: No cookie found in connection request');
+          log('WebSocket: No cookie found in connection request');
           done(false, 401, 'No authentication cookie found');
           return;
         }
 
         const cookies = parseCookie(cookie);
-        console.log('WebSocket: Parsed cookies:', cookies);
+        log('WebSocket: Parsed cookies:', cookies);
 
-        const sessionId = cookies['vco.sid']; // Match your session cookie name
+        const sessionId = cookies['vco.sid'];
         if (!sessionId) {
-          console.log('WebSocket: No session ID found in cookies');
+          log('WebSocket: No session ID found in cookies');
           done(false, 401, 'No session ID found');
           return;
         }
 
-        // Accept the connection if we have a session ID
-        console.log('WebSocket: Valid session found, accepting connection');
+        log('WebSocket: Valid session found, accepting connection');
         done(true);
       } catch (error) {
-        console.error('WebSocket: Error verifying client:', error);
+        log('WebSocket: Error verifying client:', error);
         done(false, 500, 'Internal server error during authentication');
       }
     }
   });
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-    console.log('WebSocket: New connection established');
+    log('WebSocket: New connection established');
 
-    // Handle connection setup
     ws.on('error', (error) => {
       console.error('WebSocket error:', error);
-      // Try to send error to client if connection is still open
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
           type: 'error',
@@ -670,7 +683,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
 
-    // Send initial connection status
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'connection',
@@ -679,23 +691,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }));
     }
 
-    // Handle client messages
     ws.on('message', (data) => {
       try {
         const message = JSON.parse(data.toString());
-        console.log('WebSocket: Received message type:', message.type);
+        log('WebSocket: Received message type:', message.type);
 
-        // Handle different message types
         switch (message.type) {
           case 'auth':
-            // Authentication already handled by verifyClient
             ws.send(JSON.stringify({ type: 'auth_success' }));
             break;
           case 'ping':
             ws.send(JSON.stringify({ type: 'pong' }));
             break;
           default:
-            console.log('WebSocket: Unhandled message type:', message.type);
+            log('WebSocket: Unhandled message type:', message.type);
         }
       } catch (error) {
         console.error('WebSocket: Error processing message:', error);
@@ -706,9 +715,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
 
-    // Handle client disconnection
     ws.on('close', () => {
-      console.log('WebSocket: Client disconnected');
+      log('WebSocket: Client disconnected');
     });
   });
 
