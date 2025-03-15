@@ -25,8 +25,10 @@ if (process.env.REPLICATE_API_TOKEN) {
 // Development CSP settings - more permissive
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
-    // In development, completely disable CSP for debugging
+    // Completely disable CSP in development
     res.removeHeader('Content-Security-Policy');
+    res.removeHeader('Content-Security-Policy-Report-Only');
+    log('CSP headers removed in development mode');
     next();
   });
 } else {
@@ -68,7 +70,7 @@ setupAuth(app);
 
 // Request logging middleware with detailed session info
 app.use((req, res, next) => {
-  console.log('Request:', {
+  log('Request:', {
     path: req.path,
     method: req.method,
     sessionID: req.sessionID,
