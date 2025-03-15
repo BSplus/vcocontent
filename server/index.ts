@@ -25,7 +25,13 @@ if (process.env.REPLICATE_API_TOKEN) {
 // Less restrictive CSP in development
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
-    res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' ws: wss:; style-src 'self' 'unsafe-inline';");
+    res.setHeader('Content-Security-Policy', 
+      "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: wss:; " +
+      "connect-src 'self' ws: wss: *; " +
+      "style-src 'self' 'unsafe-inline'; " +
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+      "img-src 'self' data: blob: *"
+    );
     next();
   });
 }

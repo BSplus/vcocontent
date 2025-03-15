@@ -1,20 +1,11 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, Settings, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { PurchaseCredits } from "@/components/purchase-credits";
 
 export default function MainNavigation() {
   const { user, logoutMutation } = useAuth();
-
-  // Add debug logging
-  console.log('Navigation: Current user state:', {
-    isLoggedIn: !!user,
-    isAdmin: user?.isAdmin,
-    isCreator: user?.isCreator,
-    username: user?.username,
-    credits: user?.credits
-  });
 
   return (
     <header className="border-b border-primary/20 bg-black/50 backdrop-blur-sm">
@@ -47,13 +38,43 @@ export default function MainNavigation() {
               <Search className="h-4 w-4" />
               Search Media
             </Link>
+
+            {/* Additional navigation items for creators */}
+            {user?.isCreator && (
+              <Link href="/creator/dashboard" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+                Creator Dashboard
+              </Link>
+            )}
+
+            {/* Admin-specific navigation items */}
+            {user?.isAdmin && (
+              <>
+                <Link href="/admin/dashboard" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  Admin Dashboard
+                </Link>
+                <Link href="/admin/users" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  User Management
+                </Link>
+              </>
+            )}
           </nav>
         </div>
         <div className="flex gap-4 items-center">
-          {/* Always show Creator Login/Register button */}
-          <Button asChild className="bg-primary text-black hover:bg-primary/90">
-            <Link href="/auth">BECOME A CREATOR</Link>
-          </Button>
+          {/* Show different buttons based on user state */}
+          {!user && (
+            <Button asChild className="bg-primary text-black hover:bg-primary/90">
+              <Link href="/auth">Login / Register</Link>
+            </Button>
+          )}
+
+          {/* Show creator application button for normal users */}
+          {user && !user.isCreator && !user.isAdmin && user.creatorStatus !== 'pending' && (
+            <Button asChild className="bg-primary text-black hover:bg-primary/90">
+              <Link href="/creator/apply">BECOME A CREATOR</Link>
+            </Button>
+          )}
 
           {/* Show credits and purchase button for logged-in users */}
           {user && (
@@ -65,29 +86,20 @@ export default function MainNavigation() {
             </div>
           )}
 
-          {/* Show additional buttons when logged in */}
+          {/* Show logout button when logged in */}
           {user && (
-            <>
-              {/* Show admin dashboard for admins */}
-              {user.isAdmin && (
-                <Button variant="outline" asChild className="border-primary/20 hover:bg-primary hover:text-black">
-                  <Link href="/admin">Creator Dashboard</Link>
-                </Button>
+            <Button
+              variant="secondary"
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+              className="bg-primary text-black hover:bg-primary/90"
+            >
+              {logoutMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                'Logout'
               )}
-
-              <Button
-                variant="secondary"
-                onClick={() => logoutMutation.mutate()}
-                disabled={logoutMutation.isPending}
-                className="bg-primary text-black hover:bg-primary/90"
-              >
-                {logoutMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  'Logout'
-                )}
-              </Button>
-            </>
+            </Button>
           )}
         </div>
       </div>

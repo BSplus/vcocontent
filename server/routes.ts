@@ -9,6 +9,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from "http";
 import { parse as parseCookie } from "cookie";
 import Stripe from "stripe";
+import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
@@ -25,14 +26,121 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Serve static files from the attached_assets directory
   app.use('/attached_assets', express.static(path.join(process.cwd(), 'attached_assets')));
 
-  // Credit purchase endpoint
-  app.post("/api/credits/purchase", async (req, res) => {
+  // Public routes (no auth required)
+  app.get("/api/events", async (req, res) => {
     try {
-      if (!req.isAuthenticated()) {
-        console.log('Unauthenticated purchase attempt');
-        return res.status(401).json({ error: "Not authenticated" });
+      const events = await storage.getEvents();
+      res.json(events);
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      res.status(500).json({ error: "Failed to fetch events" });
+    }
+  });
+
+  // Creator routes
+  app.post("/api/creator/events", requireCreator, async (req, res) => {
+    try {
+      const eventData = insertEventSchema.parse({
+        ...req.body,
+        creatorId: req.user.id
+      });
+
+      const event = await storage.createEvent(eventData);
+      res.status(201).json(event);
+    } catch (error) {
+      console.error('Error creating creator event:', error);
+      res.status(400).json({ error: "Failed to create event" });
+    }
+  });
+
+  // Update event (creator can only update own events, admin can update any)
+  app.put("/api/events/:id", requireOwnershipOrAdmin('creatorId'), async (req, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      const event = await storage.getEvent(eventId);
+
+      if (!event) {
+        return res.status(404).json({ error: "Event not found" });
       }
 
+      // Only allow creators to update their own events
+      if (!req.user.isAdmin && event.creatorId !== req.user.id) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const updatedEvent = await storage.updateEvent(eventId, req.body);
+      res.json(updatedEvent);
+    } catch (error) {
+      console.error('Error updating event:', error);
+      res.status(400).json({ error: "Failed to update event" });
+    }
+  });
+
+  // Delete event (creator can only delete own events, admin can delete any)
+  app.delete("/api/events/:id", requireOwnershipOrAdmin('creatorId'), async (req, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      const event = await storage.getEvent(eventId);
+
+      if (!event) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      // Only allow creators to delete their own events
+      if (!req.user.isAdmin && event.creatorId !== req.user.id) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      await storage.deleteEvent(eventId);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      res.status(500).json({ error: "Failed to delete event" });
+    }
+  });
+
+
+  // Admin routes
+  app.get("/api/admin/users", requireAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const { action } = req.body;
+
+      switch (action) {
+        case 'approve_creator':
+          await storage.updateUserCreatorStatus(userId, 'approved');
+          break;
+        case 'reject_creator':
+          await storage.updateUserCreatorStatus(userId, 'rejected');
+          break;
+        case 'set_admin':
+          // Additional admin management logic here
+          break;
+        default:
+          return res.status(400).json({ error: "Invalid action" });
+      }
+
+      const updatedUser = await storage.getUser(userId);
+      res.json(updatedUser);
+    } catch (error) {
+      console.error('Error updating user:', error);
+      res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+
+  // Credit purchase endpoint
+  app.post("/api/credits/purchase", requireAuth, async (req, res) => {
+    try {
       const { amount } = req.body;
       const numericAmount = parseInt(amount);
 
@@ -70,7 +178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         hasClientSecret: !!paymentIntent.client_secret
       });
 
-      res.json({ 
+      res.json({
         clientSecret: paymentIntent.client_secret,
         intentId: paymentIntent.id
       });
@@ -84,7 +192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } : error
       });
 
-      res.status(500).json({ 
+      res.status(500).json({
         error: "Failed to create payment intent",
         details: error instanceof Error ? error.message : "Unknown error occurred"
       });
@@ -145,24 +253,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Use JSON parser for all other routes
   app.use(express.json());
 
-  // API Routes
-  app.get("/api/events", async (req, res) => {
-    try {
-      const events = await storage.getEvents();
-      res.json(events);
-    } catch (error) {
-      console.error('Error fetching events:', error);
-      res.status(500).json({ error: "Failed to fetch events" });
-    }
-  });
 
   // Download endpoint with credit check
-  app.post("/api/media/:id/download", async (req, res) => {
+  app.post("/api/media/:id/download", requireAuth, async (req, res) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
       const mediaId = parseInt(req.params.id);
       const mediaItem = await storage.getMediaItem(mediaId);
 
@@ -293,7 +387,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create media items
-  app.post("/api/media", async (req, res) => {
+  app.post("/api/media", requireAuth, async (req, res) => {
     try {
       const mediaItems = Array.isArray(req.body) ? req.body : [req.body];
       const parsedItems = mediaItems.map(item => insertMediaItemSchema.parse(item));
@@ -310,7 +404,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete media item
-  app.delete("/api/media/:id", async (req, res) => {
+  app.delete("/api/media/:id", requireAuth, async (req, res) => {
     try {
       await storage.deleteMediaItem(parseInt(req.params.id));
       res.status(204).send();
@@ -346,7 +440,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create series
-  app.post("/api/series", async (req, res) => {
+  app.post("/api/series", requireAuth, async (req, res) => {
     try {
       const seriesData = insertSeriesSchema.parse(req.body);
       const series = await storage.createSeries(seriesData);
@@ -358,7 +452,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update series
-  app.put("/api/series/:id", async (req, res) => {
+  app.put("/api/series/:id", requireAuth, async (req, res) => {
     try {
       const seriesData = insertSeriesSchema.partial().parse(req.body);
       const series = await storage.updateSeries(parseInt(req.params.id), seriesData);
@@ -370,7 +464,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete series
-  app.delete("/api/series/:id", async (req, res) => {
+  app.delete("/api/series/:id", requireAuth, async (req, res) => {
     try {
       const seriesId = parseInt(req.params.id);
 
@@ -391,8 +485,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Delete event
-  app.delete("/api/events/:id", async (req, res) => {
+  // Delete event 
+  app.delete("/api/events/:id", requireOwnershipOrAdmin('creatorId'), async (req, res) => {
     try {
       const eventId = parseInt(req.params.id);
       console.log('Routes: Attempting to delete event with ID:', eventId, 'Original ID parameter:', req.params.id);
@@ -424,14 +518,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Add new endpoints for creator management
-  app.get("/api/users/pending-creators", async (req, res) => {
+  app.get("/api/users/pending-creators", requireAdmin, async (req, res) => {
     try {
       // Only allow admins to access this endpoint
-      if (!req.isAuthenticated() || !req.user.isAdmin) {
-        return res.status(403).json({ error: "Unauthorized access" });
-      }
-
-      // Get all users with pending creator status
       const users = await storage.getAllUsers();
       const pendingCreators = users.filter(user => user.creatorStatus === 'pending');
       res.json(pendingCreators);
@@ -441,17 +530,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/users/:id/creator-status", async (req, res) => {
+  app.patch("/api/users/:id/creator-status", requireAdmin, async (req, res) => {
     try {
-      // Only allow admins to access this endpoint
-      if (!req.isAuthenticated() || !req.user.isAdmin) {
-        console.log('Unauthorized access attempt:', {
-          isAuthenticated: req.isAuthenticated(),
-          isAdmin: req.user?.isAdmin
-        });
-        return res.status(403).json({ error: "Unauthorized access" });
-      }
-
       const userId = parseInt(req.params.id);
       const { status } = req.body;
 
@@ -478,12 +558,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/creator/request", async (req, res) => {
+  app.post("/api/creator/request", requireAuth, async (req, res) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
       const user = await storage.updateUserCreatorStatus(req.user.id, 'pending');
       res.json(user);
     } catch (error) {
@@ -492,16 +568,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/creator/events", async (req, res) => {
+  app.get("/api/creator/events", requireCreator, async (req, res) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
-      if (!req.user.isCreator) {
-        return res.status(403).json({ error: "Not a creator" });
-      }
-
       const events = await storage.getEventsByCreator(req.user.id);
       res.json(events);
     } catch (error) {
@@ -510,16 +578,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/creator/earnings", async (req, res) => {
+  app.get("/api/creator/earnings", requireCreator, async (req, res) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
-      if (!req.user.isCreator) {
-        return res.status(403).json({ error: "Not a creator" });
-      }
-
       const earnings = await storage.getCreatorEarnings(req.user.id);
       res.json(earnings);
     } catch (error) {
@@ -528,32 +588,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add this before the existing events POST endpoint
-  app.post("/api/creator/events", async (req, res) => {
-    try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
-      if (!req.user.isCreator) {
-        return res.status(403).json({ error: "Not a creator" });
-      }
-
-      const eventData = insertEventSchema.parse({
-        ...req.body,
-        creatorId: req.user.id
-      });
-
-      const event = await storage.createEvent(eventData);
-      res.status(201).json(event);
-    } catch (error) {
-      console.error('Error creating creator event:', error);
-      res.status(400).json({ error: "Failed to create event" });
-    }
-  });
-
-
-  app.post("/api/events", async (req, res) => {
+  app.post("/api/events", requireAuth, async (req, res) => {
     try {
       const eventData = insertEventSchema.parse(req.body);
       const event = await storage.createEvent(eventData);
@@ -566,7 +601,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const httpServer = createServer(app);
 
-  // Setup WebSocket server with improved error handling and secure configuration
+  // Update WebSocket server configuration section
   const wss = new WebSocketServer({
     server: httpServer,
     path: '/ws',

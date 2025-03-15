@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Event, MediaItem, User } from "@shared/schema";
-import { Loader2, Plus, Trash2, Image as ImageIcon, Film, UserCheck, UserX } from "lucide-react";
+import { Loader2, Plus, Trash2, Image as ImageIcon, Film, UserCheck, UserX, Crown } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
 import { useToast } from "@/hooks/use-toast";
@@ -70,12 +70,9 @@ export default function AdminDashboard() {
         throw new Error(errorData.error || errorData.details || 'Failed to update creator status');
       }
 
-      const data = await response.json();
-      console.log('Creator status update response:', data);
-      return data;
+      return await response.json();
     },
-    onSuccess: (data) => {
-      console.log('Successfully updated creator status:', data);
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users/pending-creators"] });
       toast({
         title: "Success",
@@ -83,7 +80,6 @@ export default function AdminDashboard() {
       });
     },
     onError: (error: Error) => {
-      console.error('Creator status update error:', error);
       toast({
         title: "Error",
         description: error.message,
@@ -95,27 +91,17 @@ export default function AdminDashboard() {
   // Delete event mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      try {
-        console.log("Attempting to delete event:", id);
-        const response = await fetch(`/api/events/${id}`, {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-        });
+      const response = await fetch(`/api/events/${id}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
 
-        const result = await response.json();
-        console.log("Delete response:", result);
-
-        if (!response.ok || !result.success) {
-          throw new Error(result.message || "Failed to delete event");
-        }
-
-        return result;
-      } catch (error) {
-        console.error("Delete mutation error:", error);
-        throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete event');
       }
     },
     onSuccess: () => {
@@ -133,29 +119,29 @@ export default function AdminDashboard() {
         description: error.message,
         variant: "destructive",
       });
-      setEventToDelete(null);
     },
   });
 
-  const handleDeleteEvent = async (event: Event) => {
-    if (!event?.id) {
-      console.error("Invalid event ID:", event);
-      return;
-    }
-    await deleteMutation.mutateAsync(event.id);
-  };
-
   const getEventStats = (eventId: number) => {
-    const eventMedia = mediaItems.filter((item) => item.eventId === eventId) || [];
+    const eventMedia = mediaItems.filter((item) => item.eventId === eventId);
+    const photos = eventMedia.filter((item) => item.type === "image");
+    const videos = eventMedia.filter((item) => item.type === "video");
+
     return {
-      photos: eventMedia.filter((item) => item.type === "image").length,
-      videos: eventMedia.filter((item) => item.type === "video").length,
+      photos: photos.length,
+      videos: videos.length,
+      premiumCount: eventMedia.filter(item => item.isPremium).length,
+      totalDownloads: eventMedia.reduce((sum, item) => sum + (item.downloadCount || 0), 0)
     };
   };
 
   const sortedEvents = [...events].sort((a, b) =>
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
+
+  // Separate VCO events from Creator events
+  const vcoEvents = sortedEvents.filter(event => !event.creatorId);
+  const creatorEvents = sortedEvents.filter(event => event.creatorId);
 
   if (eventsLoading || mediaLoading || creatorsLoading) {
     return (
@@ -170,7 +156,7 @@ export default function AdminDashboard() {
       <header className="border-b border-primary/20">
         <div className="container mx-auto px-4 py-6">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            CREATOR DASHBOARD
+            ADMIN DASHBOARD
           </h1>
           <div className="flex gap-2 mt-4">
             <Button asChild variant="outline">
@@ -196,24 +182,18 @@ export default function AdminDashboard() {
                 className="bg-primary text-black hover:bg-primary/90"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Create Event
+                Create VCO Event
               </Button>
             </div>
 
-            {!sortedEvents.length ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <p className="text-muted-foreground mb-4">
-                    No events created yet.
-                  </p>
-                  <Button onClick={() => setUploadModalOpen(true)}>
-                    Create Your First Event
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
+            {/* VCO Events Section */}
+            <div className="mb-8">
+              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Crown className="h-5 w-5 text-primary" />
+                VCO Events
+              </h3>
               <div className="grid gap-6">
-                {sortedEvents.map((event) => {
+                {vcoEvents.map((event) => {
                   const stats = getEventStats(event.id);
                   return (
                     <Card key={event.id} className="bg-black/40 border-primary/20">
@@ -232,6 +212,9 @@ export default function AdminDashboard() {
                             <Badge variant="secondary" className="flex gap-2 items-center">
                               <Film className="h-3 w-3" />
                               {stats.videos} Videos
+                            </Badge>
+                            <Badge variant="outline" className="flex gap-2 items-center">
+                              {stats.totalDownloads} Downloads
                             </Badge>
                           </div>
 
@@ -273,7 +256,66 @@ export default function AdminDashboard() {
                   );
                 })}
               </div>
-            )}
+            </div>
+
+            {/* Creator Events Section */}
+            <div className="mt-12">
+              <h3 className="text-xl font-semibold mb-4">
+                Creator Events
+              </h3>
+              <div className="grid gap-6">
+                {creatorEvents.map((event) => {
+                  const stats = getEventStats(event.id);
+                  return (
+                    <Card key={event.id} className="bg-black/40 border-primary/20">
+                      <CardHeader>
+                        <CardTitle className="text-xl font-[Orbitron] tracking-wider">
+                          {event.title}
+                        </CardTitle>
+                        <CardDescription>
+                          Creator Event
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex flex-col gap-4">
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="secondary" className="flex gap-2 items-center">
+                              <ImageIcon className="h-3 w-3" />
+                              {stats.photos} Photos
+                            </Badge>
+                            <Badge variant="secondary" className="flex gap-2 items-center">
+                              <Film className="h-3 w-3" />
+                              {stats.videos} Videos
+                            </Badge>
+                            <Badge variant="outline" className="flex gap-2 items-center">
+                              {stats.premiumCount} Premium Items
+                            </Badge>
+                            <Badge variant="outline" className="flex gap-2 items-center">
+                              {stats.totalDownloads} Downloads
+                            </Badge>
+                          </div>
+
+                          <div className="flex justify-between items-center">
+                            <p className="text-muted-foreground font-[Rajdhani]">
+                              {new Date(event.date).toLocaleDateString()}
+                            </p>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="destructive"
+                                size="icon"
+                                onClick={() => setEventToDelete(event)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="series" className="mt-6">
@@ -314,6 +356,7 @@ export default function AdminDashboard() {
                               userId: creator.id,
                               status: 'approved'
                             })}
+                            disabled={updateCreatorStatusMutation.isPending}
                           >
                             <UserCheck className="h-4 w-4 mr-2" />
                             Approve
@@ -324,6 +367,7 @@ export default function AdminDashboard() {
                               userId: creator.id,
                               status: 'rejected'
                             })}
+                            disabled={updateCreatorStatusMutation.isPending}
                           >
                             <UserX className="h-4 w-4 mr-2" />
                             Reject
@@ -369,7 +413,7 @@ export default function AdminDashboard() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-500 hover:bg-red-600"
-              onClick={() => eventToDelete && handleDeleteEvent(eventToDelete)}
+              onClick={() => eventToDelete && deleteMutation.mutate(eventToDelete.id)}
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
