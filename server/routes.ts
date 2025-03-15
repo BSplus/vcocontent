@@ -239,6 +239,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add these new creator endpoints after existing routes but before WebSocket setup
+  app.post("/api/creator/request", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const user = await storage.updateUserCreatorStatus(req.user.id, 'pending');
+      res.json(user);
+    } catch (error) {
+      console.error('Error requesting creator status:', error);
+      res.status(500).json({ error: "Failed to request creator status" });
+    }
+  });
+
+  app.get("/api/creator/events", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      if (!req.user.isCreator) {
+        return res.status(403).json({ error: "Not a creator" });
+      }
+
+      const events = await storage.getEventsByCreator(req.user.id);
+      res.json(events);
+    } catch (error) {
+      console.error('Error fetching creator events:', error);
+      res.status(500).json({ error: "Failed to fetch creator events" });
+    }
+  });
+
+  app.get("/api/creator/earnings", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      if (!req.user.isCreator) {
+        return res.status(403).json({ error: "Not a creator" });
+      }
+
+      const earnings = await storage.getCreatorEarnings(req.user.id);
+      res.json(earnings);
+    } catch (error) {
+      console.error('Error fetching creator earnings:', error);
+      res.status(500).json({ error: "Failed to fetch creator earnings" });
+    }
+  });
+
+  // Add this before the existing events POST endpoint
+  app.post("/api/creator/events", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      if (!req.user.isCreator) {
+        return res.status(403).json({ error: "Not a creator" });
+      }
+
+      const eventData = insertEventSchema.parse({
+        ...req.body,
+        creatorId: req.user.id
+      });
+
+      const event = await storage.createEvent(eventData);
+      res.status(201).json(event);
+    } catch (error) {
+      console.error('Error creating creator event:', error);
+      res.status(400).json({ error: "Failed to create event" });
+    }
+  });
+
+
+  app.post("/api/events", async (req, res) => {
+    try {
+      const eventData = insertEventSchema.parse(req.body);
+      const event = await storage.createEvent(eventData);
+      res.status(201).json(event);
+    } catch (error) {
+      console.error('Error creating event:', error);
+      res.status(400).json({ error: "Failed to create event" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   // Set up WebSocket server with improved error handling and secure configuration

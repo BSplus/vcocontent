@@ -35,6 +35,14 @@ interface IStorage {
   createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem>;
   updateMediaItem(id: number, mediaItem: Partial<InsertMediaItem>): Promise<MediaItem>;
   deleteMediaItem(id: number): Promise<void>;
+
+  // Creator management
+  updateUserCreatorStatus(userId: number, status: 'pending' | 'approved' | 'rejected'): Promise<User>;
+  getEventsByCreator(creatorId: number): Promise<Event[]>;
+  updateUserCredits(userId: number, credits: number): Promise<User>;
+
+  // Premium content management
+  getCreatorEarnings(creatorId: number): Promise<{ totalCredits: number }>;
 }
 
 class DatabaseStorage implements IStorage {
@@ -253,6 +261,54 @@ class DatabaseStorage implements IStorage {
 
   async deleteMediaItem(id: number): Promise<void> {
     await db.delete(mediaItems).where(eq(mediaItems.id, id));
+  }
+
+  async updateUserCreatorStatus(userId: number, status: 'pending' | 'approved' | 'rejected'): Promise<User> {
+    console.log('Storage: Updating user creator status:', userId, status);
+    const result = await db
+      .update(users)
+      .set({ 
+        creatorStatus: status,
+        isCreator: status === 'approved'
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (result.length === 0) {
+      throw new Error("User not found");
+    }
+
+    return result[0];
+  }
+
+  async getEventsByCreator(creatorId: number): Promise<Event[]> {
+    console.log('Storage: Fetching events for creator:', creatorId);
+    return await db
+      .select()
+      .from(events)
+      .where(eq(events.creatorId, creatorId));
+  }
+
+  async updateUserCredits(userId: number, credits: number): Promise<User> {
+    console.log('Storage: Updating user credits:', userId, credits);
+    const result = await db
+      .update(users)
+      .set({ credits: credits.toString() }) 
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (result.length === 0) {
+      throw new Error("User not found");
+    }
+
+    return result[0];
+  }
+
+  async getCreatorEarnings(creatorId: number): Promise<{ totalCredits: number }> {
+    console.log('Storage: Calculating earnings for creator:', creatorId);
+    // For now, just return placeholder data
+    // TODO: Implement actual earnings calculation based on downloaded content
+    return { totalCredits: 0 };
   }
 }
 
