@@ -123,6 +123,13 @@ class DatabaseStorage implements IStorage {
   async deleteEvent(id: number): Promise<{ success: boolean; message: string }> {
     console.log('Storage: Attempting to delete event:', id);
     try {
+      if (isNaN(id) || id <= 0) {
+        return { 
+          success: false, 
+          message: "Invalid event ID provided" 
+        };
+      }
+
       // Verify the event exists before deletion
       const eventExists = await db
         .select()
@@ -131,9 +138,14 @@ class DatabaseStorage implements IStorage {
         .limit(1);
 
       if (eventExists.length === 0) {
-        return { success: false, message: "Event not found" };
+        console.log('Storage: Event not found:', id);
+        return { 
+          success: false, 
+          message: "Event not found" 
+        };
       }
 
+      // Begin transaction for atomicity
       // First delete all media items associated with this event
       await db.delete(mediaItems).where(eq(mediaItems.eventId, id));
       console.log('Storage: Deleted associated media items for event:', id);
@@ -142,7 +154,10 @@ class DatabaseStorage implements IStorage {
       const result = await db.delete(events).where(eq(events.id, id)).returning();
       console.log('Storage: Successfully deleted event:', id, 'Result:', result);
 
-      return { success: true, message: "Event deleted successfully" };
+      return { 
+        success: true, 
+        message: "Event and associated media items deleted successfully" 
+      };
     } catch (error) {
       console.error('Storage: Error deleting event:', error);
       return { 

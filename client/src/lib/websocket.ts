@@ -8,7 +8,6 @@ class WebSocketManager {
 
   private constructor() {
     // Don't connect immediately, wait for the first usage
-    // this.connect();
   }
 
   public static getInstance(): WebSocketManager {
@@ -25,15 +24,13 @@ class WebSocketManager {
 
   private connect() {
     try {
-      // Clear any existing socket
       if (this.socket) {
         this.socket.close();
         this.socket = null;
       }
 
-      // Use secure WebSocket protocol if the page is served over HTTPS
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      // Always use ws:// in development for now
+      const wsUrl = `ws://${window.location.host}/ws`;
 
       console.log('WebSocket: Attempting to connect to:', wsUrl);
       this.socket = new WebSocket(wsUrl);
@@ -73,8 +70,6 @@ class WebSocketManager {
         // Log additional connection details for debugging
         console.log('WebSocket: Current connection state:', this.socket?.readyState);
         console.log('WebSocket: Using URL:', wsUrl);
-        console.log('WebSocket: Protocol:', protocol);
-        console.log('WebSocket: Host:', window.location.host);
       };
 
       this.socket.onmessage = (event) => {

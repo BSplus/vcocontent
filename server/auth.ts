@@ -36,18 +36,19 @@ async function comparePasswords(supplied: string, stored: string) {
 // Main function to set up authentication
 export function setupAuth(app: Express) {
   // Session settings
+  const isDevelopment = process.env.NODE_ENV === 'development';
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || 'dev-secret-key',
-    resave: false,
-    saveUninitialized: false,
+    resave: true, // Changed to true to ensure session is saved
+    saveUninitialized: true, // Changed to true for development
     store: storage.sessionStore,
     cookie: {
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: false, // Disable secure for all environments temporarily
+      sameSite: 'lax', // Use lax to allow cross-site cookies
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000 // 24 hours
     },
-    name: 'vco.sid' // Custom name to avoid conflicts
+    name: 'connect.sid'
   };
 
   // Basic Express settings
@@ -56,18 +57,19 @@ export function setupAuth(app: Express) {
   // Initialize session before passport
   app.use(session(sessionSettings));
 
-  // Initialize passport and session AFTER express session
+  // Initialize passport and session
   app.use(passport.initialize());
   app.use(passport.session());
 
   // Add request logging middleware AFTER passport initialization
   app.use((req, res, next) => {
-    if (req.path.startsWith('/api')) {
+    if (req.path.startsWith('/api') || req.path.startsWith('/ws')) {
       log(`Auth state for ${req.method} ${req.path}:`, 'auth');
       log(`- isAuthenticated: ${req.isAuthenticated()}`, 'auth');
       log(`- Session ID: ${req.sessionID}`, 'auth');
       log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}` : 'Not logged in'}`, 'auth');
       log(`- Cookie present: ${!!req.headers.cookie}`, 'auth');
+      log(`- Headers: ${JSON.stringify(req.headers)}`, 'auth');
     }
     next();
   });
