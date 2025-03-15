@@ -261,21 +261,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Only allow admins to access this endpoint
       if (!req.isAuthenticated() || !req.user.isAdmin) {
+        console.log('Unauthorized access attempt:', { 
+          isAuthenticated: req.isAuthenticated(),
+          isAdmin: req.user?.isAdmin 
+        });
         return res.status(403).json({ error: "Unauthorized access" });
       }
 
       const userId = parseInt(req.params.id);
       const { status } = req.body;
 
+      console.log('Processing creator status update:', {
+        userId,
+        status,
+        body: req.body
+      });
+
       if (!['approved', 'rejected'].includes(status)) {
+        console.log('Invalid status provided:', status);
         return res.status(400).json({ error: "Invalid status" });
       }
 
       const user = await storage.updateUserCreatorStatus(userId, status);
+      console.log('Successfully updated user status:', user);
       res.json(user);
     } catch (error) {
       console.error('Error updating creator status:', error);
-      res.status(500).json({ error: "Failed to update creator status" });
+      res.status(500).json({ 
+        error: "Failed to update creator status",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 

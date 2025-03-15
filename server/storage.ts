@@ -291,6 +291,7 @@ class DatabaseStorage implements IStorage {
       throw new Error("User not found");
     }
 
+    console.log('Storage: Updated user:', result[0]);
     return result[0];
   }
 

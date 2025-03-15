@@ -66,12 +66,16 @@ export default function AdminDashboard() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update creator status');
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.details || 'Failed to update creator status');
       }
 
-      return response.json();
+      const data = await response.json();
+      console.log('Creator status update response:', data);
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log('Successfully updated creator status:', data);
       queryClient.invalidateQueries({ queryKey: ["/api/users/pending-creators"] });
       toast({
         title: "Success",
@@ -79,6 +83,7 @@ export default function AdminDashboard() {
       });
     },
     onError: (error: Error) => {
+      console.error('Creator status update error:', error);
       toast({
         title: "Error",
         description: error.message,
