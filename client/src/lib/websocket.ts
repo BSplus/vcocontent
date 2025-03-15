@@ -84,7 +84,6 @@ class WebSocketManager {
               break;
             case 'auth_error':
               console.error('WebSocket: Authentication failed:', data.error);
-              // Don't close the socket here, let the reconnection logic handle it
               break;
             case 'error':
               console.error('WebSocket: Server reported error:', data.message);
