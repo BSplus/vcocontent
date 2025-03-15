@@ -239,7 +239,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add these new creator endpoints after existing routes but before WebSocket setup
+  // Add new endpoints for creator management
+  app.get("/api/users/pending-creators", async (req, res) => {
+    try {
+      // Only allow admins to access this endpoint
+      if (!req.isAuthenticated() || !req.user.isAdmin) {
+        return res.status(403).json({ error: "Unauthorized access" });
+      }
+
+      // Get all users with pending creator status
+      const users = await storage.getAllUsers();
+      const pendingCreators = users.filter(user => user.creatorStatus === 'pending');
+      res.json(pendingCreators);
+    } catch (error) {
+      console.error('Error fetching pending creators:', error);
+      res.status(500).json({ error: "Failed to fetch pending creators" });
+    }
+  });
+
+  app.patch("/api/users/:id/creator-status", async (req, res) => {
+    try {
+      // Only allow admins to access this endpoint
+      if (!req.isAuthenticated() || !req.user.isAdmin) {
+        return res.status(403).json({ error: "Unauthorized access" });
+      }
+
+      const userId = parseInt(req.params.id);
+      const { status } = req.body;
+
+      if (!['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+
+      const user = await storage.updateUserCreatorStatus(userId, status);
+      res.json(user);
+    } catch (error) {
+      console.error('Error updating creator status:', error);
+      res.status(500).json({ error: "Failed to update creator status" });
+    }
+  });
+
   app.post("/api/creator/request", async (req, res) => {
     try {
       if (!req.isAuthenticated()) {

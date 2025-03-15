@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Event, MediaItem } from "@shared/schema";
-import { Loader2, Plus, Trash2, Image as ImageIcon, Film } from "lucide-react";
+import { Event, MediaItem, User } from "@shared/schema";
+import { Loader2, Plus, Trash2, Image as ImageIcon, Film, UserCheck, UserX } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
 import { useToast } from "@/hooks/use-toast";
@@ -41,12 +41,53 @@ export default function AdminDashboard() {
     staleTime: 0,
   });
 
+  // Load pending creators
+  const { data: pendingCreators = [], isLoading: creatorsLoading } = useQuery<User[]>({
+    queryKey: ["/api/users/pending-creators"],
+    staleTime: 0,
+  });
+
   // Load media items for statistics
   const { data: mediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
     staleTime: 0,
   });
 
+  // Approve/reject creator mutation
+  const updateCreatorStatusMutation = useMutation({
+    mutationFn: async ({ userId, status }: { userId: number; status: 'approved' | 'rejected' }) => {
+      const response = await fetch(`/api/users/${userId}/creator-status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status }),
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update creator status');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users/pending-creators"] });
+      toast({
+        title: "Success",
+        description: "Creator status updated successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete event mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       try {
@@ -72,49 +113,19 @@ export default function AdminDashboard() {
         throw error;
       }
     },
-    onMutate: async (deletedId) => {
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["/api/events"] });
-
-      // Snapshot the previous value
-      const previousEvents = queryClient.getQueryData<Event[]>(["/api/events"]);
-
-      // Optimistically update to remove the deleted event
-      if (previousEvents) {
-        queryClient.setQueryData<Event[]>(
-          ["/api/events"],
-          previousEvents.filter((event) => event.id !== deletedId)
-        );
-      }
-
-      return { previousEvents };
-    },
     onSuccess: () => {
-      // Invalidate and refetch all relevant queries
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/events"],
-        exact: true,
-      });
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/media"],
-        exact: true,
-      });
-
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
       toast({
         title: "Success",
         description: "Event deleted successfully",
       });
       setEventToDelete(null);
     },
-    onError: (error: Error, _deletedId, context) => {
-      // Revert the optimistic update
-      if (context?.previousEvents) {
-        queryClient.setQueryData(["/api/events"], context.previousEvents);
-      }
-
+    onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete event",
+        description: error.message,
         variant: "destructive",
       });
       setEventToDelete(null);
@@ -122,36 +133,26 @@ export default function AdminDashboard() {
   });
 
   const handleDeleteEvent = async (event: Event) => {
-    try {
-      if (!event?.id) {
-        console.error("Invalid event ID:", event);
-        return;
-      }
-      console.log("Attempting to delete event with ID:", event.id);
-      await deleteMutation.mutateAsync(event.id);
-    } catch (error) {
-      console.error("Delete error:", error);
+    if (!event?.id) {
+      console.error("Invalid event ID:", event);
+      return;
     }
+    await deleteMutation.mutateAsync(event.id);
   };
 
   const getEventStats = (eventId: number) => {
-    try {
-      const eventMedia = mediaItems.filter((item) => item.eventId === eventId) || [];
-      return {
-        photos: eventMedia.filter((item) => item.type === "image").length,
-        videos: eventMedia.filter((item) => item.type === "video").length,
-      };
-    } catch (error) {
-      console.error("Error calculating stats:", error);
-      return { photos: 0, videos: 0 };
-    }
+    const eventMedia = mediaItems.filter((item) => item.eventId === eventId) || [];
+    return {
+      photos: eventMedia.filter((item) => item.type === "image").length,
+      videos: eventMedia.filter((item) => item.type === "video").length,
+    };
   };
 
   const sortedEvents = [...events].sort((a, b) =>
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
-  if (eventsLoading || mediaLoading) {
+  if (eventsLoading || mediaLoading || creatorsLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -179,6 +180,7 @@ export default function AdminDashboard() {
           <TabsList>
             <TabsTrigger value="events">Events</TabsTrigger>
             <TabsTrigger value="series">Race Series</TabsTrigger>
+            <TabsTrigger value="creators">Creator Applications</TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
@@ -271,6 +273,63 @@ export default function AdminDashboard() {
 
           <TabsContent value="series" className="mt-6">
             <SeriesManager />
+          </TabsContent>
+
+          <TabsContent value="creators" className="mt-6">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-2xl font-bold">Creator Applications</h2>
+            </div>
+
+            {!pendingCreators.length ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <p className="text-muted-foreground">
+                    No pending creator applications.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-6">
+                {pendingCreators.map((creator) => (
+                  <Card key={creator.id} className="bg-black/40 border-primary/20">
+                    <CardHeader>
+                      <CardTitle className="text-xl font-[Orbitron] tracking-wider">
+                        {creator.username}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex justify-between items-center">
+                        <p className="text-muted-foreground font-[Rajdhani]">
+                          Applied: {new Date(creator.createdAt).toLocaleDateString()}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => updateCreatorStatusMutation.mutate({
+                              userId: creator.id,
+                              status: 'approved'
+                            })}
+                          >
+                            <UserCheck className="h-4 w-4 mr-2" />
+                            Approve
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            onClick={() => updateCreatorStatusMutation.mutate({
+                              userId: creator.id,
+                              status: 'rejected'
+                            })}
+                          >
+                            <UserX className="h-4 w-4 mr-2" />
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </main>
