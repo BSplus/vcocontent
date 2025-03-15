@@ -33,7 +33,7 @@ export default function CreatorDashboard() {
   });
 
   // Load creator earnings
-  const { data: earnings, isLoading: earningsLoading } = useQuery({
+  const { data: earnings = { totalCredits: 0, totalDownloads: 0 }, isLoading: earningsLoading } = useQuery({
     queryKey: ["/api/creator/earnings"],
     staleTime: 0,
   });
@@ -194,10 +194,10 @@ export default function CreatorDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-4xl font-bold">
-                    {earnings?.totalCredits || 0} Credits
+                    {earnings.totalCredits} Credits
                   </div>
                   <p className="text-muted-foreground mt-2">
-                    From {earnings?.totalDownloads || 0} premium downloads
+                    From {earnings.totalDownloads} premium downloads
                   </p>
                 </CardContent>
               </Card>
