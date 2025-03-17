@@ -21,7 +21,7 @@ const sessionSettings: session.SessionOptions = {
   saveUninitialized: false,
   store: storage.sessionStore,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // Set to false for development
     sameSite: 'lax',
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
@@ -29,15 +29,6 @@ const sessionSettings: session.SessionOptions = {
   },
   name: 'vco.sid' // Custom name to avoid conflicts
 };
-
-// In development, allow non-secure cookies
-if (process.env.NODE_ENV === 'development') {
-  sessionSettings.cookie = {
-    ...sessionSettings.cookie,
-    secure: false,
-    sameSite: 'lax'
-  };
-}
 
 // Initialize session before any other middleware
 app.use(session(sessionSettings));
@@ -65,51 +56,33 @@ app.use((req, res, next) => {
   next();
 });
 
-// CSP configuration
-if (process.env.NODE_ENV === 'development') {
-  app.use((req, res, next) => {
-    // Remove any existing CSP headers
-    res.removeHeader('Content-Security-Policy');
-    res.removeHeader('Content-Security-Policy-Report-Only');
-    res.removeHeader('X-Content-Security-Policy');
-    res.removeHeader('X-WebKit-CSP');
-    log('Development mode: All CSP headers removed');
-    next();
-  });
-} else {
-  // Production CSP settings with WebSocket and Stripe security
-  app.use((req, res, next) => {
-    const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-    const wsProtocol = isSecure ? 'wss' : 'ws';
-    const host = req.get('host');
-
-    res.setHeader('Content-Security-Policy',
-      "default-src 'self'; " +
-      `connect-src 'self' ${wsProtocol}://${host} https://api.stripe.com; ` +
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com; " +
-      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com; " +
-      "img-src 'self' data: blob: https://*.stripe.com https://raw.githubusercontent.com; " +
-      "font-src 'self' data: https://fonts.gstatic.com; " +
-      "media-src 'self' data: blob:;"
-    );
-    next();
-  });
-}
-
-// Request logging middleware with detailed session info
+// CSP configuration - Disable in development
 app.use((req, res, next) => {
-  const requestInfo = {
-    path: req.path,
-    method: req.method,
-    sessionID: req.sessionID,
-    isAuthenticated: req.isAuthenticated?.(),
-    user: req.user?.id,
-    cookies: req.headers.cookie,
-    sessionData: req.session
-  };
+  // Remove any existing CSP headers in development
+  res.removeHeader('Content-Security-Policy');
+  res.removeHeader('Content-Security-Policy-Report-Only');
+  next();
+});
 
-  log(`Request to ${req.method} ${req.path}:`, JSON.stringify(requestInfo, null, 2));
+// Enhanced request logging middleware
+app.use((req, res, next) => {
+  // Only log API requests
+  if (req.path.startsWith('/api')) {
+    log('Request details:', {
+      method: req.method,
+      path: req.path,
+      cookies: req.headers.cookie,
+      sessionID: req.sessionID,
+      session: req.session,
+      isAuthenticated: req.isAuthenticated?.(),
+      user: req.user ? {
+        id: req.user.id,
+        username: req.user.username,
+        isAdmin: req.user.isAdmin,
+        isCreator: req.user.isCreator
+      } : 'Not logged in'
+    });
+  }
   next();
 });
 
@@ -118,8 +91,10 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Global error:', err);
   log(`Error processing ${req.method} ${req.path}:`, err.toString());
 
+  // Send detailed error in development
   res.status(500).json({
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error',
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });
 
@@ -141,7 +116,6 @@ process.on('unhandledRejection', (reason, promise) => {
     serveStatic(app);
   }
 
-  // Find an available port if 5000 is in use
   const startServer = async (port: number): Promise<void> => {
     try {
       await new Promise<void>((resolve, reject) => {

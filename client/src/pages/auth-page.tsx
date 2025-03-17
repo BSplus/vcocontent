@@ -47,32 +47,23 @@ export default function AuthPage() {
     }
   }, [user, setLocation]);
 
-  const onLogin = async (data: AuthFormData) => {
-    console.log("Login form submitted with data:", { username: data.username, password: data.password });
-    try {
-      console.log("Starting login mutation...");
-      const result = await loginMutation.mutateAsync(data);
-      console.log("Login mutation completed successfully", result);
-    } catch (error) {
-      console.error("Login error:", error);
-      toast({
-        title: "Anmeldung fehlgeschlagen",
-        description: error instanceof Error ? error.message : "Ein unbekannter Fehler ist aufgetreten",
-        variant: "destructive",
-      });
-    }
-  };
+  const onSubmit = async (formData: AuthFormData, isLogin: boolean) => {
+    console.log(`${isLogin ? 'Login' : 'Register'} form submitted:`, { username: formData.username });
 
-  const onRegister = async (data: AuthFormData) => {
-    console.log("Register form submitted with data:", { username: data.username, password: data.password });
     try {
-      console.log("Starting registration mutation...");
-      await registerMutation.mutateAsync(data);
-      console.log("Registration mutation completed successfully");
+      if (isLogin) {
+        console.log('Starting login mutation...');
+        const result = await loginMutation.mutateAsync(formData);
+        console.log('Login successful:', result);
+      } else {
+        console.log('Starting registration mutation...');
+        const result = await registerMutation.mutateAsync(formData);
+        console.log('Registration successful:', result);
+      }
     } catch (error) {
-      console.error("Registration error:", error);
+      console.error(`${isLogin ? 'Login' : 'Registration'} error:`, error);
       toast({
-        title: "Registrierung fehlgeschlagen",
+        title: isLogin ? "Anmeldung fehlgeschlagen" : "Registrierung fehlgeschlagen",
         description: error instanceof Error ? error.message : "Ein unbekannter Fehler ist aufgetreten",
         variant: "destructive",
       });
@@ -94,7 +85,10 @@ export default function AuthPage() {
               </TabsList>
 
               <TabsContent value="register">
-                <form onSubmit={registerForm.handleSubmit(onRegister)} className="space-y-4">
+                <form 
+                  onSubmit={registerForm.handleSubmit((data) => onSubmit(data, false))}
+                  className="space-y-4"
+                >
                   <div className="space-y-2">
                     <Label htmlFor="register-username">Benutzername</Label>
                     <Input
@@ -141,14 +135,9 @@ export default function AuthPage() {
               </TabsContent>
 
               <TabsContent value="login">
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  console.log("Form submit event triggered");
-                  const formData = loginForm.getValues();
-                  console.log("Form data:", { username: formData.username, password: formData.password });
-                  loginForm.handleSubmit(onLogin)(e);
-                }} 
-                className="space-y-4"
+                <form 
+                  onSubmit={loginForm.handleSubmit((data) => onSubmit(data, true))}
+                  className="space-y-4"
                 >
                   <div className="space-y-2">
                     <Label htmlFor="login-username">Benutzername</Label>
@@ -157,10 +146,6 @@ export default function AuthPage() {
                       type="text"
                       {...loginForm.register("username")}
                       disabled={loginMutation.isPending}
-                      onChange={(e) => {
-                        loginForm.register("username").onChange(e);
-                        console.log("Username changed:", e.target.value);
-                      }}
                     />
                     {loginForm.formState.errors.username && (
                       <p className="text-sm font-medium text-destructive">
@@ -175,10 +160,6 @@ export default function AuthPage() {
                       type="password"
                       {...loginForm.register("password")}
                       disabled={loginMutation.isPending}
-                      onChange={(e) => {
-                        loginForm.register("password").onChange(e);
-                        console.log("Password field changed:", e.target.value);
-                      }}
                     />
                     {loginForm.formState.errors.password && (
                       <p className="text-sm font-medium text-destructive">
