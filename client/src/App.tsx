@@ -63,7 +63,6 @@ function Router() {
 
   return (
     <Switch>
-      <Route path="/" component={HomePage} />
       <Route path="/auth" component={AuthPage} />
       <Route path="/search" component={SearchResults} />
       <Route path="/current-events" component={CurrentEvents} />
@@ -75,6 +74,7 @@ function Router() {
       <ProtectedRoute path="/admin/users" component={AdminUsers} requireAdmin />
       <ProtectedRoute path="/creator/dashboard" component={CreatorDashboard} requireCreator />
       <ProtectedRoute path="/creator/apply" component={CreatorApplication} />
+      <Route path="/" component={HomePage} />
       <Route component={NotFound} />
     </Switch>
   );
