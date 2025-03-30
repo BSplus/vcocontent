@@ -22,7 +22,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  setupAuth(app);
+  // Auth already set up in index.ts
 
   // Serve static files from the attached_assets directory
   app.use('/attached_assets', express.static(path.join(process.cwd(), 'attached_assets')));

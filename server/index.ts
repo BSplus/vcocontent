@@ -14,6 +14,26 @@ app.set("trust proxy", 1);
 app.use(express.json({ limit: '250mb' }));
 app.use(express.urlencoded({ extended: false, limit: '250mb' }));
 
+// CORS configuration for development
+app.use((req, res, next) => {
+  const origin = process.env.NODE_ENV === 'development'
+    ? req.get('origin') || 'http://localhost:5000'
+    : req.get('origin');
+
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
+
 // Configure and initialize session first
 const sessionSettings: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || 'dev-secret-key',
@@ -35,26 +55,6 @@ app.use(session(sessionSettings));
 
 // Set up auth (includes passport initialization)
 setupAuth(app);
-
-// CORS configuration for development
-app.use((req, res, next) => {
-  const origin = process.env.NODE_ENV === 'development'
-    ? req.get('origin') || 'http://localhost:5000'
-    : req.get('origin');
-
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  }
-
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-
-  next();
-});
 
 // CSP configuration - Disable in development
 app.use((req, res, next) => {

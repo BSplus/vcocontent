@@ -47,23 +47,30 @@ export default function AuthPage() {
     }
   }, [user, setLocation]);
 
-  const onSubmit = async (formData: AuthFormData, isLogin: boolean) => {
-    console.log(`${isLogin ? 'Login' : 'Register'} form submitted:`, { username: formData.username });
-
+  const onLoginSubmit = async (formData: AuthFormData) => {
+    console.log('Login form submitted:', { username: formData.username });
     try {
-      if (isLogin) {
-        console.log('Starting login mutation...');
-        const result = await loginMutation.mutateAsync(formData);
-        console.log('Login successful:', result);
-      } else {
-        console.log('Starting registration mutation...');
-        const result = await registerMutation.mutateAsync(formData);
-        console.log('Registration successful:', result);
-      }
+      console.log('Starting login mutation...');
+      await loginMutation.mutateAsync(formData);
     } catch (error) {
-      console.error(`${isLogin ? 'Login' : 'Registration'} error:`, error);
+      console.error('Login error:', error);
       toast({
-        title: isLogin ? "Anmeldung fehlgeschlagen" : "Registrierung fehlgeschlagen",
+        title: "Anmeldung fehlgeschlagen",
+        description: error instanceof Error ? error.message : "Ein unbekannter Fehler ist aufgetreten",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const onRegisterSubmit = async (formData: AuthFormData) => {
+    console.log('Register form submitted:', { username: formData.username });
+    try {
+      console.log('Starting registration mutation...');
+      await registerMutation.mutateAsync(formData);
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast({
+        title: "Registrierung fehlgeschlagen",
         description: error instanceof Error ? error.message : "Ein unbekannter Fehler ist aufgetreten",
         variant: "destructive",
       });
@@ -86,7 +93,7 @@ export default function AuthPage() {
 
               <TabsContent value="register">
                 <form 
-                  onSubmit={registerForm.handleSubmit((data) => onSubmit(data, false))}
+                  onSubmit={registerForm.handleSubmit(onRegisterSubmit)}
                   className="space-y-4"
                 >
                   <div className="space-y-2">
@@ -136,7 +143,7 @@ export default function AuthPage() {
 
               <TabsContent value="login">
                 <form 
-                  onSubmit={loginForm.handleSubmit((data) => onSubmit(data, true))}
+                  onSubmit={loginForm.handleSubmit(onLoginSubmit)}
                   className="space-y-4"
                 >
                   <div className="space-y-2">

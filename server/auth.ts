@@ -168,4 +168,53 @@ export function setupAuth(app: Express) {
       res.sendStatus(200);
     });
   });
+
+  // Registration endpoint
+  app.post("/api/register", async (req, res, next) => {
+    try {
+      if (!req.body.username || !req.body.password) {
+        return res.status(400).json({ error: "Benutzername und Passwort sind erforderlich" });
+      }
+
+      log('Registration request received:', {
+        username: req.body.username,
+        sessionID: req.sessionID
+      });
+
+      // Check if username already exists
+      const existingUser = await storage.getUserByUsername(req.body.username);
+      if (existingUser) {
+        log(`Registration failed: Username ${req.body.username} already exists`, 'auth');
+        return res.status(400).json({ error: "Benutzername existiert bereits" });
+      }
+
+      // Hash the password
+      const hashedPassword = await hashPassword(req.body.password);
+
+      // Create the user
+      const user = await storage.createUser({
+        ...req.body,
+        password: hashedPassword,
+        isAdmin: false,
+        isCreator: false,
+        creatorStatus: 'pending',
+        credits: 0
+      });
+
+      log(`User registered successfully: ${user.username}`, 'auth');
+
+      // Log the user in automatically
+      req.login(user, (err) => {
+        if (err) {
+          log(`Auto-login after registration failed: ${err}`, 'auth');
+          return next(err);
+        }
+        log(`Auto-login after registration successful for: ${user.username}`, 'auth');
+        res.status(201).json(user);
+      });
+    } catch (error) {
+      log(`Registration error: ${error}`, 'auth');
+      res.status(500).json({ error: "Ein Fehler ist bei der Registrierung aufgetreten" });
+    }
+  });
 }
