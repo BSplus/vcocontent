@@ -627,6 +627,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/creator/events", requireCreator, async (req, res) => {
+    try {
+      const eventData = insertEventSchema.parse({
+        ...req.body,
+        creatorId: req.user.id
+      });
+      console.log('Creating event as creator:', eventData);
+      const event = await storage.createEvent(eventData);
+      res.status(201).json(event);
+    } catch (error) {
+      console.error('Error creating event as creator:', error);
+      res.status(400).json({ 
+        error: "Failed to create event", 
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   app.post("/api/events", requireAuth, async (req, res) => {
     try {
       const eventData = insertEventSchema.parse(req.body);
