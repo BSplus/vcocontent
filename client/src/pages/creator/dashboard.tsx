@@ -98,7 +98,12 @@ export default function CreatorDashboard() {
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-bold">My Events</h2>
               <Button
-                onClick={() => setUploadModalOpen(true)}
+                onClick={() => {
+                  console.log("Create New Event button clicked");
+                  console.log("Current uploadModalOpen state:", uploadModalOpen);
+                  setUploadModalOpen(true);
+                  console.log("New uploadModalOpen state should be true");
+                }}
                 className="bg-primary text-black hover:bg-primary/90"
               >
                 <Plus className="h-4 w-4 mr-2" />

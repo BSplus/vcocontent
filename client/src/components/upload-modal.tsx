@@ -35,6 +35,7 @@ export default function UploadModal({
   onOpenChange,
   eventId,
 }: UploadModalProps) {
+  console.log("UploadModal rendered with props:", { open, eventId });
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
