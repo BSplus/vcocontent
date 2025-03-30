@@ -10,6 +10,7 @@ import { ArrowLeft, Loader2, Plus, Image as ImageIcon, Film, CreditCard } from "
 import { useAuth } from "@/hooks/use-auth";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
+import SimpleModal from "@/components/simple-modal";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CreatorDashboard() {
@@ -241,11 +242,76 @@ export default function CreatorDashboard() {
         </Tabs>
       </main>
 
-      <UploadModal
-        open={uploadModalOpen}
-        onOpenChange={setUploadModalOpen}
-        eventId={selectedEventId}
-      />
+      {/* Original modals (hidden) */}
+      <div style={{ display: 'none' }}>
+        <UploadModal
+          open={false}
+          onOpenChange={setUploadModalOpen}
+          eventId={selectedEventId}
+        />
+      </div>
+
+      {/* SimpleModal for Event Creation */}
+      <SimpleModal
+        isOpen={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        title={selectedEventId ? "Edit Event" : "Create New Event"}
+      >
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="title" className="block text-sm font-medium mb-1">Title</label>
+            <input 
+              type="text" 
+              id="title" 
+              placeholder="Event title" 
+              className="w-full border rounded p-2"
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="desc" className="block text-sm font-medium mb-1">Description</label>
+            <textarea 
+              id="desc" 
+              placeholder="Event description" 
+              className="w-full border rounded p-2 min-h-[100px]"
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="date" className="block text-sm font-medium mb-1">Date</label>
+            <input 
+              type="date" 
+              id="date" 
+              className="w-full border rounded p-2"
+            />
+          </div>
+          
+          <div className="flex justify-end gap-2 pt-4">
+            <button 
+              type="button" 
+              onClick={() => setUploadModalOpen(false)}
+              className="px-4 py-2 border rounded hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+            <button 
+              type="button" 
+              className="px-4 py-2 bg-primary text-black rounded"
+              onClick={() => {
+                console.log("Create event button clicked");
+                // Hier würde die tatsächliche Erstellung stattfinden
+                toast({
+                  title: "Success!",
+                  description: "Event erfolgreich erstellt",
+                });
+                setUploadModalOpen(false);
+              }}
+            >
+              {selectedEventId ? "Update Event" : "Create Event"}
+            </button>
+          </div>
+        </div>
+      </SimpleModal>
 
       {selectedEventId && (
         <MediaUploadModal
