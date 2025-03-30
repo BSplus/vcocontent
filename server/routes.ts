@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema } from "@shared/schema";
+import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, users } from "@shared/schema";
 import express from "express";
 import path from "path";
 import { WebSocketServer, WebSocket } from 'ws';
@@ -11,6 +11,8 @@ import { parse as parseCookie } from "cookie";
 import Stripe from "stripe";
 import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
 import { log } from "./vite";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
@@ -164,7 +166,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.updateUserCreatorStatus(userId, 'rejected');
           break;
         case 'set_admin':
-          // Additional admin management logic here
+          // Update the user to make them an admin
+          const user = await storage.getUser(userId);
+          if (user) {
+            // Direct database update since we don't have a dedicated storage method for this
+            await db.update(users)
+              .set({ isAdmin: true })
+              .where(eq(users.id, userId))
+              .execute();
+            console.log(`User ${userId} has been granted admin privileges`);
+          }
           break;
         default:
           return res.status(400).json({ error: "Invalid action" });
