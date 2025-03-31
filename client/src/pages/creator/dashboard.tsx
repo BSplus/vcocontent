@@ -65,22 +65,22 @@ export default function CreatorDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
       toast({
-        title: "Erfolg!",
-        description: selectedEventId ? "Event aktualisiert" : "Event erstellt",
+        title: "Success!",
+        description: selectedEventId ? "Event updated" : "Event created",
       });
       setUploadModalOpen(false);
     },
     onError: (error: Error) => {
       console.error("Error creating event:", error);
       toast({
-        title: "Fehler",
-        description: `Fehler beim ${selectedEventId ? "Aktualisieren" : "Erstellen"} des Events: ${error.message}`,
+        title: "Error",
+        description: `Error ${selectedEventId ? "updating" : "creating"} event: ${error.message}`,
         variant: "destructive",
       });
     }
   });
   
-  // Event aktualisieren Mutation
+  // Event update mutation
   const updateEventMutation = useMutation({
     mutationFn: async (data: { id: number, event: Partial<InsertEvent> }) => {
       console.log("Updating event with data:", data);
@@ -90,51 +90,51 @@ export default function CreatorDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
       toast({
-        title: "Erfolg!",
-        description: "Event aktualisiert",
+        title: "Success!",
+        description: "Event updated",
       });
       setUploadModalOpen(false);
     },
     onError: (error: Error) => {
       console.error("Error updating event:", error);
       toast({
-        title: "Fehler",
-        description: `Fehler beim Aktualisieren des Events: ${error.message}`,
+        title: "Error",
+        description: `Error updating event: ${error.message}`,
         variant: "destructive",
       });
     }
   });
   
-  // Formular absenden
+  // Submit form
   const handleSubmit = () => {
     setIsSubmitting(true);
     
-    // Formvalidierung
+    // Form validation
     if (!formData.title || !formData.date) {
       toast({
-        title: "Fehler",
-        description: "Bitte füllen Sie alle Pflichtfelder aus (Titel und Datum)",
+        title: "Error",
+        description: "Please fill in all required fields (Title and Date)",
         variant: "destructive",
       });
       setIsSubmitting(false);
       return;
     }
     
-    // Erstelle InsertEvent-Objekt mit allen erforderlichen Feldern
+    // Create InsertEvent object with all required fields
     const eventData = {
       title: formData.title,
       description: formData.description,
-      date: formData.date, // Datum als ISO-String
+      date: formData.date, // Date as ISO string
       isPremium: formData.isPremium,
       creditCost: formData.creditCost
-    } as any; // Verwende any, um TypeScript-Fehler zu vermeiden
+    } as any; // Using any to avoid TypeScript errors
     
     try {
       if (selectedEventId) {
-        // Update eines vorhandenen Events
+        // Update existing event
         updateEventMutation.mutate({ id: selectedEventId, event: eventData });
       } else {
-        // Erstellen eines neuen Events
+        // Create new event
         createEventMutation.mutate(eventData);
       }
     } catch (error) {
@@ -378,34 +378,34 @@ export default function CreatorDashboard() {
       <SimpleModal
         isOpen={uploadModalOpen}
         onClose={() => setUploadModalOpen(false)}
-        title={selectedEventId ? "Event bearbeiten" : "Neues Event erstellen"}
+        title={selectedEventId ? "Edit Event" : "Create New Event"}
       >
         <div className="space-y-4">
           <div>
-            <label htmlFor="title" className="block text-sm font-medium mb-1">Titel</label>
+            <label htmlFor="title" className="block text-sm font-medium mb-1">Title</label>
             <input 
               type="text" 
               id="title"
               value={formData.title}
               onChange={(e) => setFormData({...formData, title: e.target.value})}
-              placeholder="Event-Titel" 
+              placeholder="Event title" 
               className="w-full border rounded p-2"
             />
           </div>
           
           <div>
-            <label htmlFor="desc" className="block text-sm font-medium mb-1">Beschreibung</label>
+            <label htmlFor="desc" className="block text-sm font-medium mb-1">Description</label>
             <textarea 
               id="desc" 
               value={formData.description}
               onChange={(e) => setFormData({...formData, description: e.target.value})}
-              placeholder="Event-Beschreibung" 
+              placeholder="Event description" 
               className="w-full border rounded p-2 min-h-[100px]"
             />
           </div>
           
           <div>
-            <label htmlFor="date" className="block text-sm font-medium mb-1">Datum</label>
+            <label htmlFor="date" className="block text-sm font-medium mb-1">Date</label>
             <input 
               type="date" 
               id="date"
@@ -424,14 +424,14 @@ export default function CreatorDashboard() {
               className="rounded"
             />
             <label htmlFor="isPremium" className="text-sm font-medium">
-              Premium Event (kostenpflichtig)
+              Premium Event (paid)
             </label>
           </div>
           
           {formData.isPremium && (
             <div>
               <label htmlFor="creditCost" className="block text-sm font-medium mb-1">
-                Kosten (Credits)
+                Cost (Credits)
               </label>
               <input
                 type="number"
@@ -451,7 +451,7 @@ export default function CreatorDashboard() {
               onClick={() => setUploadModalOpen(false)}
               className="px-4 py-2 border rounded hover:bg-gray-100"
             >
-              Abbrechen
+              Cancel
             </button>
             <button 
               type="button" 
@@ -462,9 +462,9 @@ export default function CreatorDashboard() {
               {isSubmitting ? (
                 <span className="flex items-center">
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Lädt...
+                  Loading...
                 </span>
-              ) : selectedEventId ? "Event aktualisieren" : "Event erstellen"}
+              ) : selectedEventId ? "Update Event" : "Create Event"}
             </button>
           </div>
         </div>
