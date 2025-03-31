@@ -201,13 +201,14 @@ export function setupAuth(app: Express) {
       // Hash the password
       const hashedPassword = await hashPassword(req.body.password);
 
-      // Create the user
+      // Create the user with proper creator status based on registration type
+      const isCreatorRequest = req.body.requestCreator === true;
       const user = await storage.createUser({
         ...req.body,
         password: hashedPassword,
         isAdmin: false,
         isCreator: false,
-        creatorStatus: 'pending',
+        creatorStatus: isCreatorRequest ? 'pending' : 'none',
         credits: 0
       });
 

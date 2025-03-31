@@ -22,7 +22,10 @@ type LoginData = {
   password: string;
 };
 
-type RegisterData = LoginData;
+type RegisterData = LoginData & {
+  email: string;
+  requestCreator?: boolean;
+};
 
 export const AuthContext = createContext<AuthContextType | null>(null);
 

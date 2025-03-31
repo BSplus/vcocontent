@@ -17,28 +17,42 @@ import { z } from "zod";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
 
-// Create a simplified schema for login/register
-const authSchema = z.object({
+// Create schemas for login/register
+const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
   password: z.string().min(6, "Password must be at least 6 characters long"),
 });
 
-type AuthFormData = z.infer<typeof authSchema>;
+const registerSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  email: z.string().email("Invalid email format"),
+  password: z.string().min(8, "Password must be at least 8 characters long"),
+  requestCreator: z.boolean().optional(),
+});
+
+type LoginFormData = z.infer<typeof loginSchema>;
+type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
   const [_, setLocation] = useLocation();
   const { user, loginMutation, registerMutation } = useAuth();
   const { toast } = useToast();
 
-  const loginForm = useForm<AuthFormData>({
-    resolver: zodResolver(authSchema),
+  const loginForm = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
     defaultValues: { username: "", password: "" }
   });
 
-  const registerForm = useForm<AuthFormData>({
-    resolver: zodResolver(authSchema),
-    defaultValues: { username: "", password: "" }
+  const registerForm = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { 
+      username: "", 
+      email: "", 
+      password: "", 
+      requestCreator: false 
+    }
   });
 
   useEffect(() => {
@@ -47,7 +61,7 @@ export default function AuthPage() {
     }
   }, [user, setLocation]);
 
-  const onLoginSubmit = async (formData: AuthFormData) => {
+  const onLoginSubmit = async (formData: LoginFormData) => {
     console.log('Login form submitted:', { username: formData.username });
     try {
       console.log('Starting login mutation...');
@@ -62,11 +76,20 @@ export default function AuthPage() {
     }
   };
 
-  const onRegisterSubmit = async (formData: AuthFormData) => {
-    console.log('Register form submitted:', { username: formData.username });
+  const onRegisterSubmit = async (formData: RegisterFormData) => {
+    console.log('Register form submitted:', { 
+      username: formData.username, 
+      requestCreator: formData.requestCreator 
+    });
     try {
       console.log('Starting registration mutation...');
       await registerMutation.mutateAsync(formData);
+      if (formData.requestCreator) {
+        toast({
+          title: "Creator Account Pending",
+          description: "Your creator account request has been submitted and is pending approval.",
+        });
+      }
     } catch (error) {
       console.error('Registration error:', error);
       toast({
@@ -82,64 +105,17 @@ export default function AuthPage() {
       <div className="flex items-center justify-center p-8">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Become a VCO Creator</CardTitle>
+            <CardTitle>VCO Media Platform</CardTitle>
+            <CardDescription>
+              Access premium sim racing content or become a creator
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="login">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="register">Register as Creator</TabsTrigger>
-                <TabsTrigger value="login">Creator Login</TabsTrigger>
+                <TabsTrigger value="login">Login</TabsTrigger>
+                <TabsTrigger value="register">Register</TabsTrigger>
               </TabsList>
-
-              <TabsContent value="register">
-                <form 
-                  onSubmit={registerForm.handleSubmit(onRegisterSubmit)}
-                  className="space-y-4"
-                >
-                  <div className="space-y-2">
-                    <Label htmlFor="register-username">Username</Label>
-                    <Input
-                      id="register-username"
-                      type="text"
-                      {...registerForm.register("username")}
-                      disabled={registerMutation.isPending}
-                    />
-                    {registerForm.formState.errors.username && (
-                      <p className="text-sm font-medium text-destructive">
-                        {registerForm.formState.errors.username.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-password">Password</Label>
-                    <Input
-                      id="register-password"
-                      type="password"
-                      {...registerForm.register("password")}
-                      disabled={registerMutation.isPending}
-                    />
-                    {registerForm.formState.errors.password && (
-                      <p className="text-sm font-medium text-destructive">
-                        {registerForm.formState.errors.password.message}
-                      </p>
-                    )}
-                  </div>
-                  <Button 
-                    type="submit" 
-                    className="w-full"
-                    disabled={registerMutation.isPending || registerForm.formState.isSubmitting}
-                  >
-                    {registerMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Registering...
-                      </>
-                    ) : (
-                      'Register as Creator'
-                    )}
-                  </Button>
-                </form>
-              </TabsContent>
 
               <TabsContent value="login">
                 <form 
@@ -185,7 +161,94 @@ export default function AuthPage() {
                         Logging in...
                       </>
                     ) : (
-                      'Login as Creator'
+                      'Login'
+                    )}
+                  </Button>
+                </form>
+              </TabsContent>
+
+              <TabsContent value="register">
+                <form 
+                  onSubmit={registerForm.handleSubmit(onRegisterSubmit)}
+                  className="space-y-4"
+                >
+                  <div className="space-y-2">
+                    <Label htmlFor="register-username">Username</Label>
+                    <Input
+                      id="register-username"
+                      type="text"
+                      {...registerForm.register("username")}
+                      disabled={registerMutation.isPending}
+                    />
+                    {registerForm.formState.errors.username && (
+                      <p className="text-sm font-medium text-destructive">
+                        {registerForm.formState.errors.username.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="register-email">Email</Label>
+                    <Input
+                      id="register-email"
+                      type="email"
+                      {...registerForm.register("email")}
+                      disabled={registerMutation.isPending}
+                    />
+                    {registerForm.formState.errors.email && (
+                      <p className="text-sm font-medium text-destructive">
+                        {registerForm.formState.errors.email.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="register-password">Password</Label>
+                    <Input
+                      id="register-password"
+                      type="password"
+                      {...registerForm.register("password")}
+                      disabled={registerMutation.isPending}
+                    />
+                    {registerForm.formState.errors.password && (
+                      <p className="text-sm font-medium text-destructive">
+                        {registerForm.formState.errors.password.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2 mt-4">
+                    <Checkbox 
+                      id="request-creator" 
+                      {...registerForm.register("requestCreator")}
+                      disabled={registerMutation.isPending}
+                    />
+                    <Label htmlFor="request-creator" className="font-normal">
+                      Register as Content Creator
+                    </Label>
+                  </div>
+                  {registerForm.watch("requestCreator") && (
+                    <div className="p-3 rounded-md bg-muted text-sm">
+                      <p>Creator benefits:</p>
+                      <ul className="list-disc pl-5 mt-1 space-y-1">
+                        <li>Upload photos and videos from racing events</li>
+                        <li>Earn credits when users download your premium content</li>
+                        <li>Get recognized in the sim racing community</li>
+                      </ul>
+                      <p className="mt-2 text-muted-foreground text-xs">Your creator application will be reviewed by VCO admins.</p>
+                    </div>
+                  )}
+                  <Button 
+                    type="submit" 
+                    className="w-full"
+                    disabled={registerMutation.isPending || registerForm.formState.isSubmitting}
+                  >
+                    {registerMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Registering...
+                      </>
+                    ) : (
+                      registerForm.watch("requestCreator") 
+                        ? 'Register as Creator' 
+                        : 'Register as User'
                     )}
                   </Button>
                 </form>
@@ -196,13 +259,45 @@ export default function AuthPage() {
       </div>
 
       <div className="hidden lg:flex items-center justify-center bg-muted p-8">
-        <div className="max-w-md text-center">
+        <div className="max-w-md">
           <h1 className="text-4xl font-bold mb-4">
-            Share Your Racing Content
+            VCO Sim Racing Media Platform
           </h1>
-          <p className="text-lg text-muted-foreground">
-            Join our community of creators and share your high-quality photos and videos from the most exciting Sim Racing events around the world.
+          <p className="text-lg text-muted-foreground mb-6">
+            Access high-quality photos and videos from the most exciting Sim Racing events around the world.
           </p>
+          
+          <div className="space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 15h14a2 2 0 1 1 0 4H3"/><path d="M21 12H5a2 2 0 0 0 0 4h16"/></svg>
+              </div>
+              <div>
+                <h3 className="font-medium">Premium Content</h3>
+                <p className="text-sm text-muted-foreground">Access exclusive high-quality racing content from top events</p>
+              </div>
+            </div>
+            
+            <div className="flex items-start space-x-3">
+              <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <div>
+                <h3 className="font-medium">Creator Opportunities</h3>
+                <p className="text-sm text-muted-foreground">Share your content and earn from premium downloads</p>
+              </div>
+            </div>
+            
+            <div className="flex items-start space-x-3">
+              <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+              </div>
+              <div>
+                <h3 className="font-medium">Official VCO Events</h3>
+                <p className="text-sm text-muted-foreground">Content from the most prestigious sim racing competitions</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
