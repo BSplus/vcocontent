@@ -37,9 +37,10 @@ app.use((req, res, next) => {
 // Configure and initialize session first
 const sessionSettings: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || 'dev-secret-key',
-  resave: false,
-  saveUninitialized: false,
+  resave: true, // Changed to true to ensure session is saved on each request
+  saveUninitialized: true, // Changed to true to create session on all requests
   store: storage.sessionStore,
+  rolling: true, // Reset maxAge on every response
   cookie: {
     secure: false, // Set to false for development
     sameSite: 'lax',
@@ -68,12 +69,11 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   // Only log API requests
   if (req.path.startsWith('/api')) {
-    log('Request details:', {
+    const details = {
       method: req.method,
       path: req.path,
       cookies: req.headers.cookie,
       sessionID: req.sessionID,
-      session: req.session,
       isAuthenticated: req.isAuthenticated?.(),
       user: req.user ? {
         id: req.user.id,
@@ -81,7 +81,10 @@ app.use((req, res, next) => {
         isAdmin: req.user.isAdmin,
         isCreator: req.user.isCreator
       } : 'Not logged in'
-    });
+    };
+    
+    log(`Request details for ${req.method} ${req.path}`, '');
+    console.log(details); // Using console.log for object output
   }
   next();
 });

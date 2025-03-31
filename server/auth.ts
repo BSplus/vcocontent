@@ -39,6 +39,12 @@ async function comparePasswords(supplied: string, stored: string) {
 
 // Main function to set up authentication
 export function setupAuth(app: Express) {
+  log('Setting up authentication', 'auth');
+
+  // Initialize passport middleware first
+  app.use(passport.initialize());
+  app.use(passport.session());
+
   // Passport user serialization
   passport.serializeUser((user: Express.User, done) => {
     log(`Serializing user: ${user.id}`, 'auth');
@@ -52,13 +58,18 @@ export function setupAuth(app: Express) {
       done(null, user);
     } catch (error) {
       log(`Deserialization error for user ${id}: ${error}`, 'auth');
-      done(error);
+      done(null, false); // Instead of passing error, return false to prevent middleware crash
     }
   });
 
   // Passport strategy setup
   passport.use(
-    new LocalStrategy(async (username: string, password: string, done) => {
+    new LocalStrategy({
+      usernameField: 'username',
+      passwordField: 'password',
+      session: true,
+      passReqToCallback: false
+    }, async (username: string, password: string, done) => {
       try {
         log(`Login attempt for user: ${username}`, 'auth');
         const user = await storage.getUserByUsername(username);
@@ -76,14 +87,10 @@ export function setupAuth(app: Express) {
         );
       } catch (error) {
         log(`Login error for ${username}: ${error}`, 'auth');
-        return done(error);
+        return done(null, false, { message: 'Ein interner Fehler ist aufgetreten.' });
       }
     }),
   );
-
-  // Initialize passport middleware
-  app.use(passport.initialize());
-  app.use(passport.session());
 
   // Add detailed request logging middleware for debugging
   app.use((req, res, next) => {
@@ -94,7 +101,7 @@ export function setupAuth(app: Express) {
       log(`- Session Cookie: ${req.headers.cookie}`, 'auth');
       log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}, Creator: ${req.user.isCreator}` : 'Nicht eingeloggt'}`, 'auth');
       if (req.session) {
-        log('Session data:', JSON.stringify(req.session, null, 2), 'auth');
+        console.log('Session data:', req.session);
       }
     }
     next();
@@ -106,11 +113,12 @@ export function setupAuth(app: Express) {
       return res.status(400).json({ error: "Benutzername und Passwort sind erforderlich" });
     }
 
-    log('Login request received:', {
+    console.log('Login request received:', {
       username: req.body.username,
       headers: req.headers,
       sessionID: req.sessionID
     });
+    log(`Login request for user: ${req.body.username}`, 'auth');
 
     passport.authenticate("local", (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
       if (err) {
@@ -129,7 +137,7 @@ export function setupAuth(app: Express) {
           return res.status(500).json({ error: "Ein Fehler ist aufgetreten" });
         }
         log(`Login successful for user: ${user.username}`, 'auth');
-        log('Session after login:', {
+        console.log('Session after login:', {
           sessionID: req.sessionID,
           user: user.username,
           cookie: req.session?.cookie
@@ -141,12 +149,13 @@ export function setupAuth(app: Express) {
 
   // User info endpoint
   app.get("/api/user", (req, res) => {
-    log('User info request:', {
+    console.log('User info request:', {
       isAuthenticated: req.isAuthenticated?.(),
       sessionID: req.sessionID,
       headers: req.headers,
       user: req.user
     });
+    log(`User info request - Session ID: ${req.sessionID}`, 'auth');
 
     if (!req.isAuthenticated?.()) {
       log('User info request: Not authenticated', 'auth');
@@ -176,10 +185,11 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ error: "Benutzername und Passwort sind erforderlich" });
       }
 
-      log('Registration request received:', {
+      console.log('Registration request received:', {
         username: req.body.username,
         sessionID: req.sessionID
       });
+      log(`Registration request for username: ${req.body.username}`, 'auth');
 
       // Check if username already exists
       const existingUser = await storage.getUserByUsername(req.body.username);
