@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -52,15 +53,18 @@ export default function UploadModal({
     queryKey: ["/api/series"],
   });
 
+  // Using as any to bypass type checking for date field which is handled by z.coerce.date() in the schema
   const form = useForm<InsertEvent>({
     resolver: zodResolver(insertEventSchema),
     defaultValues: {
       title: "",
       description: "",
-      date: new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().split('T')[0] as any,
       coverImage: "/attached_assets/%2389_3.png",
       customThumbnail: undefined,
       seriesId: undefined,
+      isPremium: false,
+      creditCost: 1,
     },
   });
 
@@ -69,10 +73,12 @@ export default function UploadModal({
       form.reset({
         title: eventData.title,
         description: eventData.description || "",
-        date: new Date(eventData.date).toISOString().split('T')[0],
+        date: new Date(eventData.date).toISOString().split('T')[0] as any,
         coverImage: eventData.coverImage || "",
         customThumbnail: eventData.customThumbnail || undefined,
         seriesId: eventData.seriesId || undefined,
+        isPremium: eventData.isPremium || false,
+        creditCost: eventData.creditCost || 1,
       });
 
       if (eventData.customThumbnail) {
@@ -164,6 +170,8 @@ export default function UploadModal({
           coverImage: formData.coverImage,
           customThumbnail: thumbnailPreview,
           seriesId: formData.seriesId,
+          isPremium: formData.isPremium,
+          creditCost: formData.creditCost,
         }),
       });
 
@@ -280,6 +288,44 @@ export default function UploadModal({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          
+          {/* Premium Settings */}
+          <div className="space-y-4 border p-4 rounded-md">
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="isPremium"
+                checked={form.watch("isPremium")}
+                onCheckedChange={(checked: boolean | "indeterminate") => {
+                  form.setValue("isPremium", checked === true);
+                }}
+              />
+              <Label htmlFor="isPremium" className="font-medium">Premium-Inhalte aktivieren</Label>
+            </div>
+            
+            {form.watch("isPremium") && (
+              <div className="space-y-2 pl-6">
+                <Label htmlFor="creditCost">Credit-Kosten pro Download</Label>
+                <Input
+                  id="creditCost"
+                  type="number"
+                  min="1"
+                  {...form.register("creditCost", { 
+                    valueAsNumber: true,
+                    validate: {
+                      minValue: (value) => (value && value >= 1) || "Mindestens 1 Credit erforderlich"
+                    }
+                  })}
+                  className="touch-auto w-24"
+                />
+                {form.formState.errors.creditCost && (
+                  <p className="text-sm text-red-500">{form.formState.errors.creditCost.message}</p>
+                )}
+                <p className="text-sm text-muted-foreground">
+                  Benutzer müssen diese Anzahl an Credits ausgeben, um Medien aus diesem Event herunterzuladen.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
