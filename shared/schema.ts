@@ -51,6 +51,7 @@ export const mediaItems = pgTable("media_items", {
   caption: text("caption"),
   photographer: text("photographer"),
   tags: text("tags").array(),
+  category: text("category"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   downloadCount: integer("download_count").notNull().default(0),
   isPremium: boolean("is_premium").notNull().default(false),
@@ -93,6 +94,7 @@ export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   caption: z.string().max(200, "Caption cannot exceed 200 characters").optional(),
   photographer: z.string().optional(),
   tags: z.array(z.string()),
+  category: z.string().optional(),
   isPremium: z.boolean().optional(),
   creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),
 });

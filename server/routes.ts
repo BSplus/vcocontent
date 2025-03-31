@@ -13,6 +13,7 @@ import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } fr
 import { log } from "./vite";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
+import { generateTagsForImage, generateTagsForVideo, categorizeContent } from "./utils/ai-tagger";
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
@@ -653,6 +654,148 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error creating event:', error);
       res.status(400).json({ error: "Failed to create event" });
+    }
+  });
+
+  // AI tagging endpoints
+  app.post("/api/media/:id/analyze", requireAuth, async (req, res) => {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).json({ error: "OpenAI API key not configured" });
+      }
+
+      const mediaId = parseInt(req.params.id);
+      const mediaItem = await storage.getMediaItem(mediaId);
+
+      if (!mediaItem) {
+        return res.status(404).json({ error: "Media item not found" });
+      }
+
+      log(`Processing AI analysis request for media ID: ${mediaId}`, 'ai-analysis');
+
+      // Generate tags based on media type
+      let tags: string[] = [];
+      if (mediaItem.type === 'image') {
+        tags = await generateTagsForImage(mediaItem.url);
+      } else if (mediaItem.type === 'video') {
+        // For videos, use the thumbnail URL for tag generation
+        tags = await generateTagsForVideo(mediaItem.url, mediaItem.thumbnail || mediaItem.url);
+      }
+
+      // If tags were successfully generated
+      if (tags.length > 0) {
+        // Categorize the content
+        const category = await categorizeContent(tags);
+
+        // Update the media item with the generated tags and category
+        const updatedMediaItem = await storage.updateMediaItem(mediaId, {
+          tags,
+          category
+        });
+
+        log(`AI analysis completed for media ID: ${mediaId}, tags: ${tags.join(', ')}, category: ${category}`, 'ai-analysis');
+        
+        res.json({
+          success: true,
+          tags,
+          category,
+          mediaItem: updatedMediaItem
+        });
+      } else {
+        res.status(422).json({ 
+          error: "Failed to generate tags for this media",
+          mediaItem 
+        });
+      }
+    } catch (error) {
+      console.error('Error in AI analysis:', error);
+      res.status(500).json({ 
+        error: "AI analysis failed", 
+        details: error instanceof Error ? error.message : "Unknown error" 
+      });
+    }
+  });
+
+  // Batch analyze endpoint for multiple media items
+  app.post("/api/media/batch-analyze", requireAuth, async (req, res) => {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).json({ error: "OpenAI API key not configured" });
+      }
+
+      const { mediaIds } = req.body;
+      
+      if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
+        return res.status(400).json({ error: "No media IDs provided" });
+      }
+
+      log(`Processing batch AI analysis for ${mediaIds.length} media items`, 'batch-analysis');
+
+      const results = [];
+      const errors = [];
+
+      // Process each media item sequentially to avoid rate limiting
+      for (const id of mediaIds) {
+        try {
+          const mediaId = parseInt(id);
+          const mediaItem = await storage.getMediaItem(mediaId);
+
+          if (!mediaItem) {
+            errors.push({ id, error: "Media item not found" });
+            continue;
+          }
+
+          // Generate tags based on media type
+          let tags: string[] = [];
+          if (mediaItem.type === 'image') {
+            tags = await generateTagsForImage(mediaItem.url);
+          } else if (mediaItem.type === 'video') {
+            tags = await generateTagsForVideo(mediaItem.url, mediaItem.thumbnail || mediaItem.url);
+          }
+
+          if (tags.length > 0) {
+            // Categorize the content
+            const category = await categorizeContent(tags);
+
+            // Update the media item with the generated tags and category
+            const updatedMediaItem = await storage.updateMediaItem(mediaId, {
+              tags,
+              category
+            });
+
+            results.push({
+              id: mediaId,
+              success: true,
+              tags,
+              category
+            });
+
+            log(`AI analysis completed for media ID: ${mediaId}`, 'batch-analysis');
+          } else {
+            errors.push({ id: mediaId, error: "Failed to generate tags" });
+          }
+        } catch (error) {
+          console.error(`Error analyzing media ID ${id}:`, error);
+          errors.push({ 
+            id, 
+            error: error instanceof Error ? error.message : "Unknown error" 
+          });
+        }
+      }
+
+      res.json({
+        success: results.length > 0,
+        processed: results.length,
+        failed: errors.length,
+        results,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    } catch (error) {
+      console.error('Error in batch AI analysis:', error);
+      res.status(500).json({ 
+        error: "Batch AI analysis failed", 
+        details: error instanceof Error ? error.message : "Unknown error" 
+      });
     }
   });
 
