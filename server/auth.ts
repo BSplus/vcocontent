@@ -76,18 +76,18 @@ export function setupAuth(app: Express) {
 
         if (!user) {
           log(`Login failed: User ${username} not found`, 'auth');
-          return done(null, false, { message: 'Benutzername oder Passwort ist falsch' });
+          return done(null, false, { message: 'Invalid username or password' });
         }
 
         const isValid = await comparePasswords(password, user.password);
         log(`Login ${isValid ? 'successful' : 'failed'} for user: ${username}`, 'auth');
 
         return done(null, isValid ? user : false, 
-          isValid ? undefined : { message: 'Benutzername oder Passwort ist falsch' }
+          isValid ? undefined : { message: 'Invalid username or password' }
         );
       } catch (error) {
         log(`Login error for ${username}: ${error}`, 'auth');
-        return done(null, false, { message: 'Ein interner Fehler ist aufgetreten.' });
+        return done(null, false, { message: 'An internal error has occurred.' });
       }
     }),
   );
@@ -99,7 +99,7 @@ export function setupAuth(app: Express) {
       log(`- isAuthenticated: ${req.isAuthenticated?.()}`, 'auth');
       log(`- Session ID: ${req.sessionID}`, 'auth');
       log(`- Session Cookie: ${req.headers.cookie}`, 'auth');
-      log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}, Creator: ${req.user.isCreator}` : 'Nicht eingeloggt'}`, 'auth');
+      log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}, Creator: ${req.user.isCreator}` : 'Not logged in'}`, 'auth');
       if (req.session) {
         console.log('Session data:', req.session);
       }
@@ -110,7 +110,7 @@ export function setupAuth(app: Express) {
   // Login endpoint with enhanced error handling
   app.post("/api/login", (req, res, next) => {
     if (!req.body.username || !req.body.password) {
-      return res.status(400).json({ error: "Benutzername und Passwort sind erforderlich" });
+      return res.status(400).json({ error: "Username and password are required" });
     }
 
     console.log('Login request received:', {
@@ -123,18 +123,18 @@ export function setupAuth(app: Express) {
     passport.authenticate("local", (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
       if (err) {
         log(`Login error: ${err}`, 'auth');
-        return res.status(500).json({ error: "Ein Fehler ist aufgetreten" });
+        return res.status(500).json({ error: "An error has occurred" });
       }
 
       if (!user) {
         log('Login failed: Invalid credentials', 'auth');
-        return res.status(401).json({ error: info?.message || "Benutzername oder Passwort ist falsch" });
+        return res.status(401).json({ error: info?.message || "Invalid username or password" });
       }
 
       req.login(user, (err) => {
         if (err) {
           log(`Login session error: ${err}`, 'auth');
-          return res.status(500).json({ error: "Ein Fehler ist aufgetreten" });
+          return res.status(500).json({ error: "An error has occurred" });
         }
         log(`Login successful for user: ${user.username}`, 'auth');
         console.log('Session after login:', {
@@ -159,7 +159,7 @@ export function setupAuth(app: Express) {
 
     if (!req.isAuthenticated?.()) {
       log('User info request: Not authenticated', 'auth');
-      return res.status(401).json({ error: "Nicht eingeloggt" });
+      return res.status(401).json({ error: "Not logged in" });
     }
     log(`User info request successful for: ${req.user.username}`, 'auth');
     res.json(req.user);
@@ -171,7 +171,7 @@ export function setupAuth(app: Express) {
     req.logout((err) => {
       if (err) {
         log(`Logout error for user ${username}: ${err}`, 'auth');
-        return res.status(500).json({ error: "Ein Fehler ist aufgetreten" });
+        return res.status(500).json({ error: "An error has occurred" });
       }
       log(`Logout successful for user: ${username}`, 'auth');
       res.sendStatus(200);
@@ -182,7 +182,7 @@ export function setupAuth(app: Express) {
   app.post("/api/register", async (req, res, next) => {
     try {
       if (!req.body.username || !req.body.password) {
-        return res.status(400).json({ error: "Benutzername und Passwort sind erforderlich" });
+        return res.status(400).json({ error: "Username and password are required" });
       }
 
       console.log('Registration request received:', {
@@ -195,7 +195,7 @@ export function setupAuth(app: Express) {
       const existingUser = await storage.getUserByUsername(req.body.username);
       if (existingUser) {
         log(`Registration failed: Username ${req.body.username} already exists`, 'auth');
-        return res.status(400).json({ error: "Benutzername existiert bereits" });
+        return res.status(400).json({ error: "Username already exists" });
       }
 
       // Hash the password
@@ -224,7 +224,7 @@ export function setupAuth(app: Express) {
       });
     } catch (error) {
       log(`Registration error: ${error}`, 'auth');
-      res.status(500).json({ error: "Ein Fehler ist bei der Registrierung aufgetreten" });
+      res.status(500).json({ error: "An error occurred during registration" });
     }
   });
 }

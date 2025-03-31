@@ -20,8 +20,8 @@ import { useEffect } from "react";
 
 // Create a simplified schema for login/register
 const authSchema = z.object({
-  username: z.string().min(1, "Benutzername ist erforderlich"),
-  password: z.string().min(6, "Passwort muss mindestens 6 Zeichen lang sein"),
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(6, "Password must be at least 6 characters long"),
 });
 
 type AuthFormData = z.infer<typeof authSchema>;
@@ -55,8 +55,8 @@ export default function AuthPage() {
     } catch (error) {
       console.error('Login error:', error);
       toast({
-        title: "Anmeldung fehlgeschlagen",
-        description: error instanceof Error ? error.message : "Ein unbekannter Fehler ist aufgetreten",
+        title: "Login Failed",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
         variant: "destructive",
       });
     }
@@ -70,8 +70,8 @@ export default function AuthPage() {
     } catch (error) {
       console.error('Registration error:', error);
       toast({
-        title: "Registrierung fehlgeschlagen",
-        description: error instanceof Error ? error.message : "Ein unbekannter Fehler ist aufgetreten",
+        title: "Registration Failed",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
         variant: "destructive",
       });
     }
@@ -97,7 +97,7 @@ export default function AuthPage() {
                   className="space-y-4"
                 >
                   <div className="space-y-2">
-                    <Label htmlFor="register-username">Benutzername</Label>
+                    <Label htmlFor="register-username">Username</Label>
                     <Input
                       id="register-username"
                       type="text"
@@ -111,7 +111,7 @@ export default function AuthPage() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="register-password">Passwort</Label>
+                    <Label htmlFor="register-password">Password</Label>
                     <Input
                       id="register-password"
                       type="password"
@@ -132,10 +132,10 @@ export default function AuthPage() {
                     {registerMutation.isPending ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Registrierung...
+                        Registering...
                       </>
                     ) : (
-                      'Als Creator registrieren'
+                      'Register as Creator'
                     )}
                   </Button>
                 </form>
@@ -147,7 +147,7 @@ export default function AuthPage() {
                   className="space-y-4"
                 >
                   <div className="space-y-2">
-                    <Label htmlFor="login-username">Benutzername</Label>
+                    <Label htmlFor="login-username">Username</Label>
                     <Input
                       id="login-username"
                       type="text"
@@ -161,7 +161,7 @@ export default function AuthPage() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="login-password">Passwort</Label>
+                    <Label htmlFor="login-password">Password</Label>
                     <Input
                       id="login-password"
                       type="password"
@@ -182,10 +182,10 @@ export default function AuthPage() {
                     {loginMutation.isPending ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Anmeldung...
+                        Logging in...
                       </>
                     ) : (
-                      'Als Creator anmelden'
+                      'Login as Creator'
                     )}
                   </Button>
                 </form>

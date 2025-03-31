@@ -10,14 +10,15 @@ import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/use-auth';
 
-// Lade Stripe außerhalb der Komponente, um keine unnötigen Reintialisierungen zu haben
-if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
-  throw new Error('VITE_STRIPE_PUBLIC_KEY umgebungsvariable fehlt');
-}
+// Load Stripe outside of components to avoid unnecessary re-initializations
+const stripePublicKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+// Avoid hard failure if Stripe key is not available
+const stripePromise = stripePublicKey 
+  ? loadStripe(stripePublicKey)
+  : Promise.reject(new Error('Missing Stripe public key'));
 
-// Komponente für das Zahlungsformular
+// Component for the payment form
 function CheckoutForm({ amount, onSuccess }: { amount: number; onSuccess: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -45,23 +46,23 @@ function CheckoutForm({ amount, onSuccess }: { amount: number; onSuccess: () => 
       });
 
       if (error) {
-        setMessage(error.message || 'Ein Fehler ist aufgetreten.');
+        setMessage(error.message || 'An error occurred.');
         toast({
-          title: 'Zahlungsfehler',
+          title: 'Payment Error',
           description: error.message,
           variant: 'destructive',
         });
       } else {
-        // Die Zahlung war erfolgreich
+        // Payment was successful
         toast({
-          title: 'Zahlung erfolgreich',
-          description: `${amount} Credits wurden deinem Konto gutgeschrieben.`,
+          title: 'Payment Successful',
+          description: `${amount} credits have been added to your account.`,
         });
         onSuccess();
       }
     } catch (error) {
       console.error('Payment error:', error);
-      setMessage('Ein unerwarteter Fehler ist aufgetreten.');
+      setMessage('An unexpected error occurred.');
     } finally {
       setIsProcessing(false);
     }
@@ -85,12 +86,12 @@ function CheckoutForm({ amount, onSuccess }: { amount: number; onSuccess: () => 
         {isProcessing ? (
           <span className="flex items-center">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Verarbeitung...
+            Processing...
           </span>
         ) : (
           <span className="flex items-center">
             <CreditCard className="mr-2 h-4 w-4" />
-            Jetzt {amount} Credits für {amount}€ kaufen
+            Buy {amount} Credits for €{amount} now
           </span>
         )}
       </Button>
@@ -98,12 +99,13 @@ function CheckoutForm({ amount, onSuccess }: { amount: number; onSuccess: () => 
   );
 }
 
-// Hauptkomponente für den Credit-Kauf
+// Main component for credit purchase
 export function PurchaseCredits() {
   const [amount, setAmount] = useState(10);
   const [clientSecret, setClientSecret] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [stripeError, setStripeError] = useState<string | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -123,8 +125,8 @@ export function PurchaseCredits() {
   const getClientSecret = async () => {
     if (!user) {
       toast({
-        title: 'Anmeldung erforderlich',
-        description: 'Bitte melde dich an, um Credits zu kaufen.',
+        title: 'Login Required',
+        description: 'Please sign in to purchase credits.',
         variant: 'destructive',
       });
       return;
@@ -132,28 +134,39 @@ export function PurchaseCredits() {
 
     if (amount < 1) {
       toast({
-        title: 'Ungültiger Betrag',
-        description: 'Bitte gib einen positiven Betrag ein.',
+        title: 'Invalid Amount',
+        description: 'Please enter a positive amount.',
         variant: 'destructive',
       });
+      return;
+    }
+
+    if (!stripePublicKey) {
+      setStripeError('Stripe is not configured. Please contact the administrator.');
       return;
     }
 
     setIsLoading(true);
     try {
       const response = await apiRequest('POST', '/api/credits/purchase', { amount });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.details || 'Payment initialization failed');
+      }
+      
       const data = await response.json();
       
       if (data.clientSecret) {
         setClientSecret(data.clientSecret);
       } else {
-        throw new Error('Keine Client-Secret-Antwort vom Server');
+        throw new Error('No client secret received from server');
       }
     } catch (error) {
       console.error('Error getting client secret:', error);
       toast({
-        title: 'Fehler',
-        description: 'Die Zahlungsinitialisierung ist fehlgeschlagen. Bitte versuche es erneut.',
+        title: 'Payment Error',
+        description: error instanceof Error ? error.message : 'Payment initialization failed. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -164,8 +177,8 @@ export function PurchaseCredits() {
   const handleSuccess = () => {
     setSuccess(true);
     setClientSecret('');
-    // Wir könnten hier die Seite neuladen, um den aktualisierten Credit-Stand zu sehen
-    // Alternativ könnten wir auch den Auth-Context aktualisieren
+    // We could reload the page here to see the updated credit balance
+    // Alternatively, we could update the Auth context
     setTimeout(() => {
       window.location.reload();
     }, 2000);
@@ -176,17 +189,32 @@ export function PurchaseCredits() {
     setClientSecret('');
   };
 
+  // Check if Stripe is available before rendering
+  useEffect(() => {
+    if (!stripePublicKey) {
+      setStripeError('Stripe is not configured. Please contact the administrator.');
+    } else {
+      setStripeError(null);
+    }
+  }, []);
+
   return (
     <Card className="max-w-md mx-auto">
       <CardHeader>
-        <CardTitle>Credits kaufen</CardTitle>
-        <CardDescription>Kaufe Credits, um Premium-Inhalte herunterzuladen</CardDescription>
+        <CardTitle>Purchase Credits</CardTitle>
+        <CardDescription>Buy credits to download premium content</CardDescription>
       </CardHeader>
       <CardContent>
-        {!clientSecret && !success && (
+        {stripeError && (
+          <div className="p-4 bg-red-50 text-red-700 rounded-md mb-4">
+            {stripeError}
+          </div>
+        )}
+        
+        {!clientSecret && !success && !stripeError && (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="amount">Anzahl der Credits</Label>
+              <Label htmlFor="amount">Number of Credits</Label>
               <Input
                 id="amount"
                 type="number"
@@ -196,7 +224,7 @@ export function PurchaseCredits() {
                 className="bg-card"
               />
               <p className="text-sm text-muted-foreground mt-1">
-                1 Credit = 1€. Credits werden für Premium-Downloads verwendet.
+                1 Credit = €1. Credits are used for premium downloads.
               </p>
             </div>
             <Button 
@@ -207,13 +235,13 @@ export function PurchaseCredits() {
               {isLoading ? (
                 <span className="flex items-center">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Laden...
+                  Loading...
                 </span>
-              ) : 'Weiter zur Zahlung'}
+              ) : 'Proceed to Payment'}
             </Button>
             {!user && (
               <p className="text-sm text-destructive mt-2">
-                Du musst angemeldet sein, um Credits zu kaufen.
+                You must be logged in to purchase credits.
               </p>
             )}
           </div>
@@ -230,16 +258,16 @@ export function PurchaseCredits() {
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
               <Check className="h-8 w-8 text-green-600" />
             </div>
-            <h3 className="text-xl font-bold text-green-600">Zahlung erfolgreich!</h3>
-            <p>{amount} Credits wurden deinem Konto gutgeschrieben.</p>
+            <h3 className="text-xl font-bold text-green-600">Payment Successful!</h3>
+            <p>{amount} credits have been added to your account.</p>
             <Button onClick={resetForm} variant="outline" className="mt-4">
-              Weitere Credits kaufen
+              Purchase More Credits
             </Button>
           </div>
         )}
       </CardContent>
       <CardFooter className="text-sm text-muted-foreground">
-        <p>Alle Zahlungen werden sicher über Stripe abgewickelt.</p>
+        <p>All payments are securely processed through Stripe.</p>
       </CardFooter>
     </Card>
   );
