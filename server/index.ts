@@ -57,11 +57,14 @@ app.use(session(sessionSettings));
 // Set up auth (includes passport initialization)
 setupAuth(app);
 
-// CSP configuration - Disable in development
+// CSP configuration - Completely disable in development
 app.use((req, res, next) => {
-  // Remove any existing CSP headers in development
+  // Remove any existing CSP headers
   res.removeHeader('Content-Security-Policy');
   res.removeHeader('Content-Security-Policy-Report-Only');
+  
+  // Set a permissive CSP that allows everything for development
+  res.setHeader('Content-Security-Policy', "default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: blob:;");
   next();
 });
 

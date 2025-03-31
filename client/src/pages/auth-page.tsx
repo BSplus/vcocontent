@@ -55,10 +55,24 @@ export default function AuthPage() {
     }
   });
 
+  // Improved redirect logic with debouncing to prevent race conditions
   useEffect(() => {
+    let redirectTimeout: NodeJS.Timeout;
+    
     if (user) {
-      setLocation("/");
+      console.log('User detected in auth page, redirecting to home', user);
+      // Use a short timeout to ensure all auth state is properly initialized
+      redirectTimeout = setTimeout(() => {
+        console.log('Executing redirect to home page');
+        setLocation("/");
+      }, 100);
     }
+    
+    return () => {
+      if (redirectTimeout) {
+        clearTimeout(redirectTimeout);
+      }
+    };
   }, [user, setLocation]);
 
   const onLoginSubmit = async (formData: LoginFormData) => {

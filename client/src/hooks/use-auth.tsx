@@ -39,7 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   } = useQuery<SelectUser | null>({
     queryKey: ["/api/user"],
     queryFn: getQueryFn({ on401: "returnNull" }),
-    retry: false
+    retry: 1,
+    retryDelay: 1000,
+    staleTime: 30000, // 30 seconds
+    refetchOnWindowFocus: true
   });
 
   // Debug logging
@@ -67,11 +70,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: SelectUser) => {
       console.log('Login successful:', user);
       queryClient.setQueryData(["/api/user"], user);
+      
+      // Force a refetch with delay to ensure session is properly established
+      setTimeout(() => {
+        refetch().then(result => {
+          if (!result.data) {
+            console.warn('User refetch after login returned null, retrying...');
+            setTimeout(() => refetch(), 500);
+          } else {
+            console.log('User successfully retrieved after login');
+          }
+        });
+      }, 300);
+      
       toast({
         title: "Welcome back!",
         description: `Logged in as ${user.username}`,
       });
-      refetch(); // Refetch user data after successful login
     },
     onError: (error: Error) => {
       console.error('Login mutation error:', error);
@@ -99,11 +114,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: SelectUser) => {
       console.log('Registration successful:', user);
       queryClient.setQueryData(["/api/user"], user);
+
+      // Force a refetch with delay to ensure session is properly established
+      setTimeout(() => {
+        refetch().then(result => {
+          if (!result.data) {
+            console.warn('User refetch after registration returned null, retrying...');
+            setTimeout(() => refetch(), 500);
+          } else {
+            console.log('User successfully retrieved after registration');
+          }
+        });
+      }, 300);
+      
       toast({
         title: "Welcome!",
         description: "Your account has been created successfully.",
       });
-      refetch(); // Refetch user data after successful registration
     },
     onError: (error: Error) => {
       console.error('Registration mutation error:', error);

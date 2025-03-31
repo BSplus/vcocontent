@@ -1,6 +1,7 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
+import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
@@ -41,7 +42,24 @@ async function comparePasswords(supplied: string, stored: string) {
 export function setupAuth(app: Express) {
   log('Setting up authentication', 'auth');
 
-  // Initialize passport middleware first
+  // Configure express-session before passport
+  const sessionConfig = {
+    secret: process.env.SESSION_SECRET || 'vco-racing-secret',
+    resave: true,
+    saveUninitialized: true,
+    cookie: {
+      secure: false, // set to true in production with HTTPS
+      sameSite: 'lax' as const,
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+  };
+  
+  // Initialize session and passport middleware
+  const sessionStore = storage.sessionStore;
+  app.use(session({
+    ...sessionConfig,
+    store: sessionStore
+  }));
   app.use(passport.initialize());
   app.use(passport.session());
 

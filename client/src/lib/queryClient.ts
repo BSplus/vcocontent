@@ -89,18 +89,20 @@ export const getQueryFn: <T>(options: {
     return data;
   };
 
+// Create a queryClient with optimized settings for auth flows
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: 3, // Allow up to 3 retries for queries
+      refetchOnWindowFocus: true,      // Changed to true to update on tab focus
+      staleTime: 5 * 60 * 1000,        // 5 minutes instead of Infinity
+      gcTime: 10 * 60 * 1000,          // 10 minutes (was previously cacheTime in v4)
+      retry: 3,                        // Allow up to 3 retries for queries
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // exponential backoff with max of 30 seconds
     },
     mutations: {
-      retry: 2, // Allow up to 2 retries for mutations
+      retry: 2,                        // Allow up to 2 retries for mutations
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 15000), // exponential backoff with max of 15 seconds
     },
   },
