@@ -17,24 +17,34 @@ import UpcomingEvents from "@/pages/upcoming-events";
 import ArchiveEvents from "@/pages/archive-events";
 import CreatorApplication from "@/pages/creator/apply";
 import Imprint from "@/pages/imprint";
+import CreditsPage from "@/pages/credits";
 import { useEffect } from "react";
 import React from 'react';
 
-class ErrorBoundary extends React.Component {
-  constructor(props) {
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error, errorInfo) {
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     console.error('React Error Boundary caught error:', error, errorInfo);
   }
 
-  render() {
+  render(): React.ReactNode {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-background">
@@ -70,6 +80,7 @@ function Router() {
       <Route path="/archive-events" component={ArchiveEvents} />
       <Route path="/events/:id" component={EventGallery} />
       <Route path="/imprint" component={Imprint} />
+      <Route path="/credits" component={CreditsPage} />
       <ProtectedRoute path="/admin/dashboard" component={AdminDashboard} requireAdmin />
       <ProtectedRoute path="/admin/users" component={AdminUsers} requireAdmin />
       <ProtectedRoute path="/creator/dashboard" component={CreatorDashboard} requireCreator />

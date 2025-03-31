@@ -1,8 +1,7 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, Settings, Users } from "lucide-react";
+import { Loader2, Search, Settings, Users, CreditCard } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { PurchaseCredits } from "@/components/purchase-credits";
 
 export default function MainNavigation() {
   const { user, logoutMutation } = useAuth();
@@ -79,10 +78,10 @@ export default function MainNavigation() {
           {/* Show credits and purchase button for logged-in users */}
           {user && (
             <div className="flex items-center gap-4">
-              <span className="text-sm text-foreground/80">
-                Credits: {user.credits || 0}
-              </span>
-              <PurchaseCredits />
+              <Link href="/credits" className="flex items-center gap-2 text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
+                <CreditCard className="h-4 w-4" />
+                <span>Credits: {user.credits || 0}</span>
+              </Link>
             </div>
           )}
 
