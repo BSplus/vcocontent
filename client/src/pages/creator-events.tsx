@@ -26,25 +26,36 @@ export default function CreatorEventsPage() {
   // Filter to only include creator events
   const creatorEvents = allEvents.filter(event => event.creatorId !== null);
   
-  // Setup search
-  const { results: filteredEvents } = useSearch(creatorEvents, searchQuery, {
-    keys: [
-      { name: "title", weight: 2 },
-      { name: "description", weight: 1 },
-    ],
-    threshold: 0.3,
-  });
+  // Manual filtering instead of using useSearch hook due to some issues
+  const filteredEvents = !searchQuery 
+    ? creatorEvents 
+    : creatorEvents.filter(event => 
+        (event.title && event.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (event.description && event.description.toLowerCase().includes(searchQuery.toLowerCase()))
+      );
 
   // Separate events into current and past
   const currentDate = new Date();
-  const currentEvents = filteredEvents.filter(
-    (event) => new Date(event.date) <= currentDate
-  ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const currentEvents = filteredEvents
+    .filter(event => {
+      if (!event.date) return false;
+      return new Date(event.date) <= currentDate;
+    })
+    .sort((a, b) => {
+      if (!a.date || !b.date) return 0;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
 
   // Upcoming events (future dates)
-  const upcomingEvents = filteredEvents.filter(
-    (event) => new Date(event.date) > currentDate
-  ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const upcomingEvents = filteredEvents
+    .filter(event => {
+      if (!event.date) return false;
+      return new Date(event.date) > currentDate;
+    })
+    .sort((a, b) => {
+      if (!a.date || !b.date) return 0;
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
 
   return (
     <div className="container py-6 min-h-screen">

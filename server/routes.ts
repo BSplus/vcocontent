@@ -463,6 +463,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to fetch popular creator content" });
     }
   });
+  
+  // Get popular content by a specific creator
+  app.get("/api/media/top/creator/:id", async (req, res) => {
+    try {
+      const creatorId = parseInt(req.params.id);
+      if (isNaN(creatorId)) {
+        return res.status(400).json({ error: "Invalid creator ID" });
+      }
+      
+      const media = await storage.getAllMediaItems();
+      const events = await storage.getEvents();
+      
+      // Get all media items from this specific creator's events
+      const creatorMedia = media.filter(item => {
+        // If media item has this creator's ID directly
+        if (item.creatorId === creatorId) return true;
+        
+        // If media is associated with an event created by this creator
+        if (item.eventId) {
+          const event = events.find(e => e.id === item.eventId);
+          if (event && event.creatorId === creatorId) return true;
+        }
+        
+        return false;
+      });
+      
+      // Sort by download count, views, or other popularity metrics
+      const topCreatorMedia = creatorMedia
+        .sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
+        .slice(0, 8); // Return more items for the creator profile page
+      
+      res.json(topCreatorMedia);
+    } catch (error) {
+      console.error(`Error fetching creator ${req.params.id} top media:`, error);
+      res.status(500).json({ error: "Failed to fetch creator's popular media" });
+    }
+  });
   // Get single event
   app.get("/api/events/:id", async (req, res) => {
     try {
@@ -677,6 +714,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/creator/events", requireCreator, async (req, res) => {
     try {
       const events = await storage.getEventsByCreator(req.user.id);
+      res.json(events);
+    } catch (error) {
+      console.error('Error fetching creator events:', error);
+      res.status(500).json({ error: "Failed to fetch creator events" });
+    }
+  });
+  
+  // Get events by creator ID (public endpoint)
+  app.get("/api/events/creator/:id", async (req, res) => {
+    try {
+      const creatorId = parseInt(req.params.id);
+      if (isNaN(creatorId)) {
+        return res.status(400).json({ error: "Invalid creator ID" });
+      }
+      
+      const events = await storage.getEventsByCreator(creatorId);
       res.json(events);
     } catch (error) {
       console.error('Error fetching creator events:', error);

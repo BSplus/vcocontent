@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Fuse from 'fuse.js';
 import { MediaItem } from '@shared/schema';
 
-export type SearchableItem = MediaItem;
+export type SearchableItem = MediaItem | any;
 
 interface UseSearchOptions {
   includeScore?: boolean;
@@ -27,9 +27,10 @@ const DEFAULT_OPTIONS: Partial<UseSearchOptions> = {
 
 export function useSearch<T extends SearchableItem>(
   items: T[],
+  searchQuery: string,
   options: UseSearchOptions
 ) {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [internalSearchQuery, setInternalSearchQuery] = useState(searchQuery);
   const [results, setResults] = useState<T[]>([]);
   const [fuse, setFuse] = useState<Fuse<T> | null>(null);
 

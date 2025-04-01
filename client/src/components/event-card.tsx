@@ -4,16 +4,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Event, MediaItem, Series, User } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
-import { User as UserIcon } from "lucide-react";
+import { User as UserIcon, ImagePlus } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
 interface EventCardProps {
   event: Event;
 }
 
 export default function EventCard({ event }: EventCardProps) {
+  const { user } = useAuth();
   const eventDate = event.date ? new Date(event.date) : null;
   const isUpcoming = eventDate ? eventDate >= new Date() : false;
   const isCreatorEvent = !!event.creatorId;
+  const canManageMedia = 
+    (user?.isAdmin) || 
+    (user?.isCreator && user.id === event.creatorId);
 
   // Fetch media items for this event to use as fallback thumbnail
   const { data: mediaItems } = useQuery<MediaItem[]>({
@@ -98,10 +103,19 @@ export default function EventCard({ event }: EventCardProps) {
         cardContent
       )}
       {!isUpcoming && (
-        <CardFooter>
+        <CardFooter className="flex flex-col gap-2">
           <Button asChild className="w-full bg-primary text-black hover:bg-primary/90">
             <Link href={`/events/${event.id}`}>View Gallery</Link>
           </Button>
+          
+          {canManageMedia && (
+            <Button asChild className="w-full bg-accent text-black hover:bg-accent/90 flex items-center gap-2">
+              <Link href={`/events/${event.id}?tab=media`}>
+                <ImagePlus className="h-4 w-4" />
+                <span>Manage Media</span>
+              </Link>
+            </Button>
+          )}
         </CardFooter>
       )}
     </Card>

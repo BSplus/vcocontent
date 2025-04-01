@@ -17,6 +17,7 @@ import UpcomingEvents from "@/pages/upcoming-events";
 import ArchiveEvents from "@/pages/archive-events";
 import CreatorApplication from "@/pages/creator/apply";
 import CreatorEvents from "@/pages/creator-events";
+import CreatorProfile from "@/pages/creator-profile";
 import Imprint from "@/pages/imprint";
 import CreditsPage from "@/pages/credits";
 import { useEffect } from "react";
@@ -81,6 +82,7 @@ function Router() {
       <Route path="/archive-events" component={ArchiveEvents} />
       <Route path="/events/:id" component={EventGallery} />
       <Route path="/creator-events" component={CreatorEvents} />
+      <Route path="/creator/:id" component={CreatorProfile} />
       <Route path="/imprint" component={Imprint} />
       <Route path="/credits" component={CreditsPage} />
       <ProtectedRoute path="/admin/dashboard" component={AdminDashboard} requireAdmin />

@@ -3,9 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Event, MediaItem } from "@shared/schema";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, User as UserIcon } from "lucide-react";
 import MediaGrid from "@/components/media-grid";
 import { useAuth } from "@/hooks/use-auth";
+import { Badge } from "@/components/ui/badge";
 
 export default function EventGallery() {
   const [, params] = useRoute<{ id: string }>("/events/:id");
@@ -16,6 +17,12 @@ export default function EventGallery() {
   const { data: event, isLoading: eventLoading } = useQuery<Event>({
     queryKey: [`/api/events/${eventId}`],
     enabled: Boolean(eventId && eventId > 0),
+  });
+  
+  // Fetch creator data if this is a creator event
+  const { data: creator } = useQuery<{username: string, id: number, isCreator: boolean}>({
+    queryKey: [`/api/users/${event?.creatorId}`],
+    enabled: Boolean(event?.creatorId),
   });
 
   // Fetch media items
@@ -67,6 +74,16 @@ export default function EventGallery() {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               {event.title}
             </h1>
+            
+            {event.creatorId && creator && (
+              <Link href={`/creator/${creator.id}`} className="inline-block mt-2 mb-1">
+                <Badge className="bg-accent text-black text-sm px-3 py-1 flex items-center gap-2 hover:bg-accent/80 transition-colors cursor-pointer">
+                  <UserIcon className="h-3 w-3" />
+                  <span>By {creator.username}</span>
+                </Badge>
+              </Link>
+            )}
+            
             {event.date && (
               <p className="text-muted-foreground font-[Rajdhani] text-lg">
                 {new Date(event.date).toLocaleDateString('en-US', {
