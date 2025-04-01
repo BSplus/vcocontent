@@ -42,26 +42,8 @@ async function comparePasswords(supplied: string, stored: string) {
 export function setupAuth(app: Express) {
   log('Setting up authentication', 'auth');
 
-  // Configure express-session before passport
-  const sessionConfig = {
-    secret: process.env.SESSION_SECRET || 'vco-racing-secret',
-    resave: true,
-    saveUninitialized: true,
-    cookie: {
-      secure: process.env.NODE_ENV === 'production', // secure only in production
-      sameSite: 'lax' as const,
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      path: '/'
-    }
-  };
-  
-  // Initialize session and passport middleware
-  const sessionStore = storage.sessionStore;
-  app.use(session({
-    ...sessionConfig,
-    store: sessionStore
-  }));
+  // We don't initialize session here since it's already initialized in index.ts
+  // Just initialize passport
   app.use(passport.initialize());
   app.use(passport.session());
 

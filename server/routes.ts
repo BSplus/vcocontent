@@ -536,12 +536,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all media (admin access required)
-  app.get("/api/media", requireAuth, async (req, res) => {
+  // Get all media (different behavior based on auth status)
+  app.get("/api/media", async (req, res) => {
     try {
       // Log all request details for debugging
       console.log('GET /api/media - Auth state:', {
-        isAuthenticated: req.isAuthenticated(),
+        isAuthenticated: req.isAuthenticated?.() || false,
         user: req.user ? {
           id: req.user.id,
           username: req.user.username,
@@ -550,21 +550,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } : 'Not logged in'
       });
       
+      const allMedia = await storage.getAllMediaItems();
+      
       // Admin and creator can access all media
-      if (req.user && (req.user.isAdmin || req.user.isCreator)) {
-        const media = await storage.getAllMediaItems();
-        return res.json(media);
+      if (req.isAuthenticated?.() && req.user && (req.user.isAdmin || req.user.isCreator)) {
+        console.log('Returning all media for admin/creator');
+        return res.json(allMedia);
       }
       
-      // Regular users can only see public media
-      if (req.user) {
-        const allMedia = await storage.getAllMediaItems();
-        const publicMedia = allMedia.filter(item => !item.isPremium);
-        return res.json(publicMedia);
-      }
-      
-      // Not authenticated
-      res.status(401).json({ error: "Authentication required" });
+      // Regular users and unauthenticated users can only see public media
+      const publicMedia = allMedia.filter(item => !item.isPremium);
+      console.log(`Returning ${publicMedia.length} public media items`);
+      return res.json(publicMedia);
     } catch (error) {
       console.error('Error fetching all media:', error);
       res.status(500).json({ error: "Failed to fetch media" });
