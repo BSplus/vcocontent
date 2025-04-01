@@ -650,7 +650,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: user.id,
         username: user.username,
         isCreator: user.isCreator,
-        creatorStatus: user.creatorStatus
+        creatorStatus: user.creatorStatus,
+        profileImage: user.profileImage,
+        bio: user.bio
       };
       
       res.json(safeUser);
