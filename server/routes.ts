@@ -537,6 +537,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create media items
+  // Auto-tag media using AI
+  app.post("/api/media/:id/analyze", requireAuth, async (req, res) => {
+    try {
+      const mediaId = parseInt(req.params.id);
+      if (isNaN(mediaId)) {
+        return res.status(400).json({ error: "Invalid media ID" });
+      }
+
+      const mediaItem = await storage.getMediaItem(mediaId);
+      if (!mediaItem) {
+        return res.status(404).json({ error: "Media item not found" });
+      }
+
+      console.log(`Beginning AI analysis for media ${mediaId} of type ${mediaItem.type}`);
+
+      // Generate tags based on media type
+      let generatedTags: string[] = [];
+      if (mediaItem.type === "image") {
+        generatedTags = await generateTagsForImage(mediaItem.url);
+      } else if (mediaItem.type === "video") {
+        generatedTags = await generateTagsForVideo(mediaItem.url, mediaItem.thumbnail);
+      }
+
+      if (generatedTags.length === 0) {
+        console.log(`No tags were generated for media ${mediaId}`);
+        return res.status(200).json({ message: "No tags were generated" });
+      }
+
+      console.log(`Generated ${generatedTags.length} tags for media ${mediaId}:`, generatedTags);
+
+      // Combine with existing tags if present
+      const existingTags = Array.isArray(mediaItem.tags) ? mediaItem.tags : [];
+      const combinedTags = [...new Set([...existingTags, ...generatedTags])];
+
+      // Attempt to categorize the content
+      const category = await categorizeContent(combinedTags);
+      console.log(`Categorized media ${mediaId} as: ${category}`);
+
+      // Update the media item with new tags and category
+      await storage.updateMediaItem(mediaId, {
+        tags: combinedTags,
+        category
+      });
+
+      res.json({
+        success: true,
+        tags: combinedTags,
+        category
+      });
+    } catch (error) {
+      console.error('Error analyzing media:', error);
+      res.status(500).json({
+        error: "Failed to analyze media",
+        details: error instanceof Error ? error.message : "Unknown error occurred"
+      });
+    }
+  });
+
   app.post("/api/media", requireAuth, async (req, res) => {
     try {
       const mediaItems = Array.isArray(req.body) ? req.body : [req.body];

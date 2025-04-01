@@ -9,6 +9,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { 
+  HoverCard, 
+  HoverCardContent, 
+  HoverCardTrigger 
+} from "@/components/ui/hover-card";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +29,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { InsertMediaItem, insertMediaItemSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Upload, X } from "lucide-react";
+import { Loader2, Upload, X, Info } from "lucide-react";
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -49,6 +55,8 @@ export default function MediaUploadModal({
   const [uploads, setUploads] = useState<FileUpload[]>([]);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [autoTagEnabled, setAutoTagEnabled] = useState(true);
+  const [tagsInput, setTagsInput] = useState("");
 
   const form = useForm<InsertMediaItem>({
     resolver: zodResolver(insertMediaItemSchema),
@@ -59,7 +67,7 @@ export default function MediaUploadModal({
       thumbnail: "",
       caption: "",
       photographer: "",
-      tags: [],
+      tags: [], // Must be an array of strings
     },
   });
 
@@ -217,9 +225,11 @@ export default function MediaUploadModal({
           upload.status = 'uploading';
           setUploads([...uploads]);
 
-          const tags = typeof form.getValues("tags") === 'string'
-            ? form.getValues("tags").split(',').map(tag => tag.trim()).filter(Boolean)
-            : (form.getValues("tags") || []);
+          // Process tags from tagsInput (comma-separated string)
+          const tags: string[] = tagsInput
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(Boolean);
 
           const mediaItem: InsertMediaItem = {
             eventId,
@@ -231,7 +241,23 @@ export default function MediaUploadModal({
             tags,
           };
 
-          await uploadMutation.mutateAsync(mediaItem);
+          const mediaResponse = await uploadMutation.mutateAsync(mediaItem);
+          
+          // If auto-tagging is enabled, analyze the uploaded media
+          if (autoTagEnabled && mediaResponse && mediaResponse.id) {
+            try {
+              console.log(`Auto-tagging media item ${mediaResponse.id}`);
+              const tagResponse = await apiRequest("POST", `/api/media/${mediaResponse.id}/analyze`, {});
+              if (!tagResponse.ok) {
+                console.error("Auto-tagging failed:", await tagResponse.text());
+              } else {
+                console.log("Auto-tagging completed");
+              }
+            } catch (tagError) {
+              console.error("Error during auto-tagging:", tagError);
+              // We don't make the upload fail if tagging fails
+            }
+          }
 
           upload.status = 'success';
           upload.progress = 100;
@@ -273,6 +299,7 @@ export default function MediaUploadModal({
     if (!open) {
       form.reset();
       setUploads([]);
+      setTagsInput("");
     }
   }, [open, form]);
 
@@ -389,13 +416,38 @@ export default function MediaUploadModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="tags">Tags (comma-separated)</Label>
+            <Label htmlFor="tagsInput">Tags (comma-separated)</Label>
             <Input
-              id="tags"
+              id="tagsInput"
               placeholder="racing, action, pit-stop"
-              {...form.register("tags")}
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
               className="touch-auto"
             />
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Switch 
+              id="auto-tag" 
+              checked={autoTagEnabled}
+              onCheckedChange={setAutoTagEnabled}
+            />
+            <Label htmlFor="auto-tag" className="text-sm font-medium">
+              Automatisch Sim-Racing Tags generieren
+            </Label>
+            <div className="ml-2">
+              <HoverCard>
+                <HoverCardTrigger asChild>
+                  <Info className="h-4 w-4 cursor-help text-muted-foreground" />
+                </HoverCardTrigger>
+                <HoverCardContent className="w-80 p-3">
+                  <p className="text-sm">
+                    Aktiviert die KI-basierte automatische Erkennung von Tags wie: Front View, Rear View, Aerial View, 
+                    Side View, Onboard View, Group, Crash, Atmosphere, Day/Night, Rain/Wet Track, GT Car, Formula Car, usw.
+                  </p>
+                </HoverCardContent>
+              </HoverCard>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2">
