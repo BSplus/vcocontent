@@ -38,18 +38,25 @@ export default function AdminDashboard() {
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("events");
 
   // Load events with better error handling
-  const { data: events = [], isLoading: eventsLoading } = useQuery<Event[]>({
+  const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
     queryKey: ["/api/events"],
     staleTime: 0,
+    retry: 1, // Only retry once on failure 
   });
 
   // Load media items for statistics
-  const { data: mediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
+  const { data: mediaItems = [], isLoading: mediaLoading, error: mediaError } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
     staleTime: 0,
+    retry: 1, // Only retry once on failure
   });
+  
+  // Log any errors for debugging
+  if (eventsError) console.error("Error loading events:", eventsError);
+  if (mediaError) console.error("Error loading media items:", mediaError);
 
   // Explicit type for mediaItems array to fix TypeScript errors
   const mediaItemsArray: MediaItem[] = Array.isArray(mediaItems) ? mediaItems : [];
@@ -131,11 +138,7 @@ export default function AdminDashboard() {
   // Function to switch to the media tab
   const switchToMediaTab = (eventId: number) => {
     setActiveMediaEventId(eventId);
-    // Using TypeScript cast to help with type checking
-    const mediaTab = document.querySelector('[data-value="media"]') as HTMLElement;
-    if (mediaTab) {
-      mediaTab.click();
-    }
+    setActiveTab("media");
   };
 
   return (
@@ -157,7 +160,7 @@ export default function AdminDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="events">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="events">Events</TabsTrigger>
             <TabsTrigger value="media">Media Management</TabsTrigger>
@@ -233,10 +236,7 @@ export default function AdminDashboard() {
                               </Button>
                               <Button
                                 variant="outline"
-                                onClick={() => {
-                                  setActiveMediaEventId(event.id);
-                                  document.querySelector('[data-value="media"]')?.click();
-                                }}
+                                onClick={() => switchToMediaTab(event.id)}
                               >
                                 <Eye className="h-4 w-4 mr-1" /> Manage Media
                               </Button>
@@ -301,10 +301,7 @@ export default function AdminDashboard() {
                             <div className="flex gap-2">
                               <Button
                                 variant="outline"
-                                onClick={() => {
-                                  setActiveMediaEventId(event.id);
-                                  document.querySelector('[data-value="media"]')?.click();
-                                }}
+                                onClick={() => switchToMediaTab(event.id)}
                               >
                                 <Eye className="h-4 w-4 mr-1" /> Manage Media
                               </Button>
@@ -470,6 +467,14 @@ export default function AdminDashboard() {
         />
       )}
 
+      {selectedMediaItem && (
+        <EditMediaModal
+          open={editMediaModalOpen}
+          onOpenChange={setEditMediaModalOpen}
+          mediaItem={selectedMediaItem}
+        />
+      )}
+
       <AlertDialog
         open={!!eventToDelete}
         onOpenChange={(open) => !open && setEventToDelete(null)}
@@ -485,23 +490,18 @@ export default function AdminDashboard() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-500 hover:bg-red-600"
-              onClick={() => eventToDelete && deleteMutation.mutate(eventToDelete.id)}
+              onClick={() => {
+                if (eventToDelete) {
+                  deleteMutation.mutate(eventToDelete.id);
+                }
+              }}
+              className="bg-destructive hover:bg-destructive/90"
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* EditMediaModal for media management */}
-      {selectedMediaItem && (
-        <EditMediaModal
-          open={editMediaModalOpen}
-          onOpenChange={setEditMediaModalOpen}
-          mediaItem={selectedMediaItem}
-        />
-      )}
     </div>
   );
 }

@@ -19,10 +19,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
 }
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2023-10-16",
-  typescript: true
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth already set up in index.ts
@@ -30,10 +27,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Serve static files from the attached_assets directory
   app.use('/attached_assets', express.static(path.join(process.cwd(), 'attached_assets')));
 
-  // Public routes (no auth required)
+  // Events route - different behavior based on auth status
   app.get("/api/events", async (req, res) => {
     try {
+      // Log authentication state for debugging
+      console.log('GET /api/events - Auth state:', {
+        isAuthenticated: req?.isAuthenticated?.() || false,
+        user: req.user ? {
+          id: req.user.id,
+          username: req.user.username,
+          isAdmin: req.user.isAdmin,
+          isCreator: req.user.isCreator
+        } : 'Not logged in'
+      });
+      
       const events = await storage.getEvents();
+      
+      // Return all events, regardless of auth status
+      // This is needed for the public-facing event listing
       res.json(events);
     } catch (error) {
       console.error('Error fetching events:', error);
@@ -525,11 +536,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all media
-  app.get("/api/media", async (req, res) => {
+  // Get all media (admin access required)
+  app.get("/api/media", requireAuth, async (req, res) => {
     try {
-      const media = await storage.getAllMediaItems();
-      res.json(media);
+      // Log all request details for debugging
+      console.log('GET /api/media - Auth state:', {
+        isAuthenticated: req.isAuthenticated(),
+        user: req.user ? {
+          id: req.user.id,
+          username: req.user.username,
+          isAdmin: req.user.isAdmin,
+          isCreator: req.user.isCreator
+        } : 'Not logged in'
+      });
+      
+      // Admin and creator can access all media
+      if (req.user && (req.user.isAdmin || req.user.isCreator)) {
+        const media = await storage.getAllMediaItems();
+        return res.json(media);
+      }
+      
+      // Regular users can only see public media
+      if (req.user) {
+        const allMedia = await storage.getAllMediaItems();
+        const publicMedia = allMedia.filter(item => !item.isPremium);
+        return res.json(publicMedia);
+      }
+      
+      // Not authenticated
+      res.status(401).json({ error: "Authentication required" });
     } catch (error) {
       console.error('Error fetching all media:', error);
       res.status(500).json({ error: "Failed to fetch media" });
