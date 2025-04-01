@@ -48,7 +48,7 @@ export function requireCreator(req: Request, res: Response, next: NextFunction) 
     return res.status(401).json({ error: "Authentication required" });
   }
 
-  if (!user.isCreator && !user.isAdmin) {
+  if (!user.isCreator && !user.isAdmin && user.creatorStatus !== 'approved') {
     log('Creator access denied - not a creator or admin', 'auth');
     return res.status(403).json({ error: "Creator access required" });
   }
