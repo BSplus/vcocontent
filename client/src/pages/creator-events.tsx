@@ -5,7 +5,9 @@ import EventCard from "@/components/event-card";
 import { SearchInput } from "@/components/search-input";
 import { useSearch } from "@/hooks/use-search";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Calendar, CalendarSearch } from "lucide-react";
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Loader2, Calendar, CalendarSearch, ArrowLeft } from "lucide-react";
 
 export default function CreatorEventsPage() {
   const { toast } = useToast();
@@ -59,6 +61,15 @@ export default function CreatorEventsPage() {
 
   return (
     <div className="container py-6 min-h-screen">
+      <div className="flex items-center justify-between mb-6">
+        <Button variant="ghost" asChild className="flex items-center gap-2">
+          <Link href="/">
+            <ArrowLeft className="h-4 w-4" />
+            Zurück zur Startseite
+          </Link>
+        </Button>
+      </div>
+    
       <h1 className="text-3xl font-bold mb-8 text-center">Creator Events</h1>
       
       <div className="max-w-lg mx-auto mb-8">

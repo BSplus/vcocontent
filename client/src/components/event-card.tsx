@@ -57,10 +57,12 @@ export default function EventCard({ event }: EventCardProps) {
             </Badge>
           )}
           {isCreatorEvent && creator && (
-            <Badge className="bg-accent text-black flex items-center gap-1" variant="outline">
-              <UserIcon className="h-3 w-3" />
-              <span>By {creator.username}</span>
-            </Badge>
+            <Link href={`/creator/${creator.id}`}>
+              <Badge className="bg-accent text-black flex items-center gap-1 hover:bg-accent/80 cursor-pointer" variant="outline">
+                <UserIcon className="h-3 w-3" />
+                <span>By {creator.username}</span>
+              </Badge>
+            </Link>
           )}
         </div>
         {series?.logo && (
