@@ -598,6 +598,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get user by ID
+  app.get("/api/users/:id", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Return a simplified version without sensitive information
+      const safeUser = {
+        id: user.id,
+        username: user.username,
+        isCreator: user.isCreator,
+        creatorStatus: user.creatorStatus
+      };
+      
+      res.json(safeUser);
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
   // Add new endpoints for creator management
   app.get("/api/users/pending-creators", requireAdmin, async (req, res) => {
     try {

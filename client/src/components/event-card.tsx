@@ -2,8 +2,9 @@ import { Link } from "wouter";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Event, MediaItem, Series } from "@shared/schema";
+import { Event, MediaItem, Series, User } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
+import { User as UserIcon } from "lucide-react";
 
 interface EventCardProps {
   event: Event;
@@ -12,6 +13,7 @@ interface EventCardProps {
 export default function EventCard({ event }: EventCardProps) {
   const eventDate = event.date ? new Date(event.date) : null;
   const isUpcoming = eventDate ? eventDate >= new Date() : false;
+  const isCreatorEvent = !!event.creatorId;
 
   // Fetch media items for this event to use as fallback thumbnail
   const { data: mediaItems } = useQuery<MediaItem[]>({
@@ -22,6 +24,12 @@ export default function EventCard({ event }: EventCardProps) {
   const { data: series } = useQuery<Series>({
     queryKey: [`/api/series/${event.seriesId}`],
     enabled: !!event.seriesId,
+  });
+  
+  // Fetch creator data if this is a creator event
+  const { data: creator } = useQuery<{username: string, id: number, isCreator: boolean}>({
+    queryKey: [`/api/users/${event.creatorId}`],
+    enabled: isCreatorEvent,
   });
 
   // Get thumbnail URL - custom thumbnail, first media item, or fallback
@@ -37,13 +45,19 @@ export default function EventCard({ event }: EventCardProps) {
           alt={event.title}
           className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
         />
-        {isUpcoming && (
-          <div className="absolute top-3 right-3">
+        <div className="absolute top-3 right-3 flex flex-col gap-2">
+          {isUpcoming && (
             <Badge className="bg-primary text-black">
               Upcoming
             </Badge>
-          </div>
-        )}
+          )}
+          {isCreatorEvent && creator && (
+            <Badge className="bg-accent text-black flex items-center gap-1" variant="outline">
+              <UserIcon className="h-3 w-3" />
+              <span>By {creator.username}</span>
+            </Badge>
+          )}
+        </div>
         {series?.logo && (
           <div className="absolute top-3 left-3 h-8">
             <img

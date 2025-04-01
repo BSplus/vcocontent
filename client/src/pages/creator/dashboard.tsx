@@ -300,7 +300,7 @@ export default function CreatorDashboard() {
                                   setUploadModalOpen(true);
                                 }}
                               >
-                                Edit Event
+                                <Edit className="h-4 w-4 mr-1" /> Edit Event
                               </Button>
                               <Button
                                 variant="secondary"
@@ -309,7 +309,16 @@ export default function CreatorDashboard() {
                                   setMediaUploadModalOpen(true);
                                 }}
                               >
-                                Upload Media
+                                <Plus className="h-4 w-4 mr-1" /> Upload Media
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedEventId(event.id);
+                                  setActiveTab("media");
+                                }}
+                              >
+                                <Eye className="h-4 w-4 mr-1" /> Manage Media
                               </Button>
                             </div>
                           </div>

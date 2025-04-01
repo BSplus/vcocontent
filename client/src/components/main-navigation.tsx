@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, Settings, Users, CreditCard } from "lucide-react";
+import { Loader2, Search, Settings, Users, CreditCard, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function MainNavigation() {
@@ -36,6 +36,11 @@ export default function MainNavigation() {
             <Link href="/search" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-2">
               <Search className="h-4 w-4" />
               Search Media
+            </Link>
+            
+            <Link href="/creator-events" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-2">
+              <UserIcon className="h-4 w-4" />
+              Creator Events
             </Link>
 
             {/* Additional navigation items for creators */}

@@ -127,6 +127,16 @@ export default function AdminDashboard() {
   const [selectedMediaItem, setSelectedMediaItem] = useState<MediaItem | null>(null);
   const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
   const [activeMediaEventId, setActiveMediaEventId] = useState<number | null>(null);
+  
+  // Function to switch to the media tab
+  const switchToMediaTab = (eventId: number) => {
+    setActiveMediaEventId(eventId);
+    // Using TypeScript cast to help with type checking
+    const mediaTab = document.querySelector('[data-value="media"]') as HTMLElement;
+    if (mediaTab) {
+      mediaTab.click();
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -210,7 +220,7 @@ export default function AdminDashboard() {
                                   setUploadModalOpen(true);
                                 }}
                               >
-                                Edit Event
+                                <Edit className="h-4 w-4 mr-1" /> Edit Event
                               </Button>
                               <Button
                                 variant="secondary"
@@ -219,7 +229,16 @@ export default function AdminDashboard() {
                                   setMediaUploadModalOpen(true);
                                 }}
                               >
-                                Upload Media
+                                <Plus className="h-4 w-4 mr-1" /> Upload Media
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setActiveMediaEventId(event.id);
+                                  document.querySelector('[data-value="media"]')?.click();
+                                }}
+                              >
+                                <Eye className="h-4 w-4 mr-1" /> Manage Media
                               </Button>
                               <Button
                                 variant="destructive"
@@ -280,6 +299,15 @@ export default function AdminDashboard() {
                               {new Date(event.date).toLocaleDateString()}
                             </p>
                             <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setActiveMediaEventId(event.id);
+                                  document.querySelector('[data-value="media"]')?.click();
+                                }}
+                              >
+                                <Eye className="h-4 w-4 mr-1" /> Manage Media
+                              </Button>
                               <Button
                                 variant="destructive"
                                 size="icon"
