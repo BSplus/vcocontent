@@ -40,7 +40,7 @@ export function ProtectedRoute({
           return <Redirect to="/" />;
         }
         
-        if (requireCreator && !user.isCreator) {
+        if (requireCreator && !(user.isCreator || user.creatorStatus === 'approved')) {
           console.log(`Redirecting from ${path} to /creator/apply - Not a creator`);
           return <Redirect to="/creator/apply" />;
         }
