@@ -48,9 +48,11 @@ export function setupAuth(app: Express) {
     resave: true,
     saveUninitialized: true,
     cookie: {
-      secure: false, // set to true in production with HTTPS
+      secure: process.env.NODE_ENV === 'production', // secure only in production
       sameSite: 'lax' as const,
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      path: '/'
     }
   };
   
