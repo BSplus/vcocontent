@@ -406,7 +406,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('Fetching top shots, total media items:', media.length);
 
       const topShots = media
-        .filter(item => item.type === "image")
+        .filter(item => item.type === "image" && !item.creatorId) // Only VCO official content
         .sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
         .slice(0, 3);
 
@@ -420,6 +420,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching top shots:', error);
       res.status(500).json({ error: "Failed to fetch top shots" });
+    }
+  });
+  
+  // Get popular creator content
+  app.get("/api/media/creator-top", async (req, res) => {
+    try {
+      const media = await storage.getAllMediaItems();
+      const events = await storage.getEvents();
+      console.log('Fetching popular creator content, total media items:', media.length);
+
+      // Get all media items from creator events
+      const creatorMedia = media.filter(item => {
+        if (item.creatorId) return true;
+        
+        // If media is associated with an event, check if that event has a creator
+        if (item.eventId) {
+          // Find the event that contains this media item
+          const event = events.find(e => e.id === item.eventId);
+          if (event && event.creatorId) return true;
+        }
+        
+        return false;
+      });
+      
+      console.log('Found creator media items:', creatorMedia.length);
+
+      const topCreatorMedia = creatorMedia
+        .sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
+        .slice(0, 3);
+
+      console.log('Top creator content selected:', topCreatorMedia.map(item => ({
+        id: item.id,
+        downloads: item.downloadCount,
+        type: item.type,
+        isPremium: item.isPremium
+      })));
+
+      res.json(topCreatorMedia);
+    } catch (error) {
+      console.error('Error fetching popular creator content:', error);
+      res.status(500).json({ error: "Failed to fetch popular creator content" });
     }
   });
   // Get single event

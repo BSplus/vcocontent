@@ -4,9 +4,13 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Event, MediaItem, User } from "@shared/schema";
-import { Loader2, Plus, Trash2, Image as ImageIcon, Film, UserCheck, UserX, Crown } from "lucide-react";
+import { 
+  Loader2, Plus, Trash2, Image as ImageIcon, Film, 
+  UserCheck, UserX, Crown, PenLine, Eye, Edit
+} from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
+import EditMediaModal from "@/components/edit-media-modal";
 import { useToast } from "@/hooks/use-toast";
 import SeriesManager from "@/components/series-manager";
 import {
@@ -39,14 +43,6 @@ export default function AdminDashboard() {
   const { data: events = [], isLoading: eventsLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"],
     staleTime: 0,
-    onError: (error) => {
-      console.error('Error fetching events:', error); 
-      toast({
-        title: "Error",
-        description: "Failed to load events",
-        variant: "destructive",
-      });
-    }
   });
 
   // Load media items for statistics
@@ -54,6 +50,9 @@ export default function AdminDashboard() {
     queryKey: ["/api/media"],
     staleTime: 0,
   });
+
+  // Explicit type for mediaItems array to fix TypeScript errors
+  const mediaItemsArray: MediaItem[] = Array.isArray(mediaItems) ? mediaItems : [];
 
   // Delete event mutation
   const deleteMutation = useMutation({
@@ -93,7 +92,7 @@ export default function AdminDashboard() {
   });
 
   const getEventStats = (eventId: number) => {
-    const eventMedia = mediaItems.filter((item) => item.eventId === eventId);
+    const eventMedia = mediaItemsArray.filter((item) => item.eventId === eventId);
     const photos = eventMedia.filter((item) => item.type === "image");
     const videos = eventMedia.filter((item) => item.type === "video");
 
@@ -105,7 +104,10 @@ export default function AdminDashboard() {
     };
   };
 
-  const sortedEvents = [...events].sort((a, b) =>
+  // Explicit type for events array to fix TypeScript errors
+  const eventsArray: Event[] = Array.isArray(events) ? events : [];
+  
+  const sortedEvents = [...eventsArray].sort((a, b) =>
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
@@ -120,6 +122,11 @@ export default function AdminDashboard() {
       </div>
     );
   }
+
+  // State for media management
+  const [selectedMediaItem, setSelectedMediaItem] = useState<MediaItem | null>(null);
+  const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
+  const [activeMediaEventId, setActiveMediaEventId] = useState<number | null>(null);
 
   return (
     <div className="min-h-screen bg-background">
@@ -143,6 +150,7 @@ export default function AdminDashboard() {
         <Tabs defaultValue="events">
           <TabsList>
             <TabsTrigger value="events">Events</TabsTrigger>
+            <TabsTrigger value="media">Media Management</TabsTrigger>
             <TabsTrigger value="series">Race Series</TabsTrigger>
           </TabsList>
 
@@ -290,6 +298,130 @@ export default function AdminDashboard() {
             </div>
           </TabsContent>
 
+          <TabsContent value="media" className="mt-6">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-2xl font-bold">Media Management</h2>
+              <div className="flex gap-2">
+                <select 
+                  className="border rounded p-2 bg-background text-foreground"
+                  onChange={(e) => {
+                    const id = parseInt(e.target.value);
+                    if (!isNaN(id)) {
+                      setActiveMediaEventId(id);
+                    } else {
+                      setActiveMediaEventId(null);
+                    }
+                  }}
+                  value={activeMediaEventId || ""}
+                >
+                  <option value="">Select Event...</option>
+                  {sortedEvents.map(event => (
+                    <option key={event.id} value={event.id}>{event.title}</option>
+                  ))}
+                </select>
+                {activeMediaEventId && (
+                  <Button
+                    onClick={() => {
+                      setSelectedEventId(activeMediaEventId);
+                      setMediaUploadModalOpen(true);
+                    }}
+                    className="bg-primary text-black hover:bg-primary/90"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Upload Media
+                  </Button>
+                )}
+              </div>
+            </div>
+            
+            {!activeMediaEventId ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <p className="text-muted-foreground mb-4">
+                    Please select an event to view and manage its media
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Display media items for selected event */}
+                {(() => {
+                  const eventMediaItems = mediaItemsArray.filter(item => item.eventId === activeMediaEventId);
+                  const event = eventsArray.find(e => e.id === activeMediaEventId);
+                  
+                  if (eventMediaItems.length === 0) {
+                    return (
+                      <Card>
+                        <CardContent className="flex flex-col items-center justify-center py-12">
+                          <p className="text-muted-foreground mb-4">
+                            No media uploaded for this event yet
+                          </p>
+                          <Button 
+                            onClick={() => {
+                              setSelectedEventId(activeMediaEventId);
+                              setMediaUploadModalOpen(true);
+                            }}
+                          >
+                            Upload Media
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  }
+                  
+                  return (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">
+                        Media for: {event?.title}
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {eventMediaItems.map((item) => (
+                          <Card key={item.id} className="overflow-hidden group">
+                            <div className="aspect-video relative">
+                              <img 
+                                src={item.thumbnail} 
+                                alt={item.caption || "Media thumbnail"} 
+                                className="object-cover w-full h-full"
+                              />
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => {
+                                    setSelectedMediaItem(item);
+                                    setEditMediaModalOpen(true);
+                                  }}
+                                >
+                                  <PenLine className="h-4 w-4 mr-1" /> Edit
+                                </Button>
+                              </div>
+                              {item.isPremium && (
+                                <Badge className="absolute top-2 right-2 bg-primary text-black">
+                                  Premium
+                                </Badge>
+                              )}
+                            </div>
+                            <CardContent className="p-3">
+                              <p className="text-sm truncate">{item.caption || "No caption"}</p>
+                              <div className="flex justify-between items-center mt-2">
+                                <p className="text-xs text-muted-foreground">
+                                  {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {item.downloadCount || 0} downloads
+                                </p>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            )}
+          </TabsContent>
+
           <TabsContent value="series" className="mt-6">
             <SeriesManager />
           </TabsContent>
@@ -333,6 +465,15 @@ export default function AdminDashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* EditMediaModal for media management */}
+      {selectedMediaItem && (
+        <EditMediaModal
+          open={editMediaModalOpen}
+          onOpenChange={setEditMediaModalOpen}
+          mediaItem={selectedMediaItem}
+        />
+      )}
     </div>
   );
 }

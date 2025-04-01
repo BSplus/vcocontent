@@ -38,14 +38,30 @@ export default function HomePage() {
   const today = new Date();
   const fourWeeksAgo = new Date(today.getTime() - (28 * 24 * 60 * 60 * 1000));
 
-  // Current events
-  const currentEvents = events
+  // Separate VCO events from Creator events
+  const vcoEvents = events.filter(event => !event.creatorId);
+  const creatorEvents = events.filter(event => event.creatorId);
+
+  // Current VCO events
+  const currentVcoEvents = vcoEvents
     .filter(event => {
       const eventDate = new Date(event.date);
       return eventDate >= fourWeeksAgo && eventDate <= today;
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 4);
+
+  // Current Creator events
+  const currentCreatorEvents = creatorEvents
+    .filter(event => {
+      const eventDate = new Date(event.date);
+      return eventDate >= fourWeeksAgo && eventDate <= today;
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 4);
+
+  // All current events (for backward compatibility)
+  const currentEvents = [...currentVcoEvents, ...currentCreatorEvents].slice(0, 4);
 
   // Upcoming events
   const upcomingEvents = events
@@ -62,9 +78,15 @@ export default function HomePage() {
       return eventDate < fourWeeksAgo && eventDate < today;
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+  // Popular creator content (based on download count, limited to 3 items)
+  const { data: creatorTopMedia = [], isLoading: creatorMediaLoading } = useQuery<MediaItem[]>({
+    queryKey: ["/api/media/creator-top"],
+    enabled: !topShotsLoading, // Load after top shots
+  });
 
   // Loading state
-  if (eventsLoading || seriesLoading || topShotsLoading) {
+  if (eventsLoading || seriesLoading || topShotsLoading || creatorMediaLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -126,23 +148,39 @@ export default function HomePage() {
       </div>
 
       <main className="container mx-auto px-4 py-8 space-y-16">
-        <section id="current">
+        {/* VCO Current Events */}
+        <section id="current-vco">
           <div className="flex items-center gap-3 mb-6">
             <Trophy className="h-6 w-6 text-primary" />
-            <h2 className="text-2xl font-bold text-primary">Current Events</h2>
+            <h2 className="text-2xl font-bold text-primary">VCO Official Events</h2>
           </div>
-          {!currentEvents.length ? (
+          {!currentVcoEvents.length ? (
             <p className="text-center text-foreground/60 py-12">
-              No current events found.
+              No current VCO events found.
             </p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {currentEvents.map((event) => (
+              {currentVcoEvents.map((event) => (
                 <EventCard key={event.id} event={event} />
               ))}
             </div>
           )}
         </section>
+        
+        {/* Creator Events - Only shown if not empty and not included in POPULAR CREATOR CONTENT section */}
+        {currentCreatorEvents.length > 0 && !creatorTopMedia.length && (
+          <section id="current-creator" className="mt-12">
+            <div className="flex items-center gap-3 mb-6">
+              <Trophy className="h-6 w-6 text-accent" />
+              <h2 className="text-2xl font-bold text-accent">Creator Events</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {currentCreatorEvents.map((event) => (
+                <EventCard key={event.id} event={event} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {upcomingEvents.length > 0 && (
           <section id="upcoming" className="bg-black/40 rounded-lg p-6">
@@ -238,6 +276,75 @@ export default function HomePage() {
             </div>
           )}
         </section>
+
+        {/* POPULAR CREATOR CONTENT Section */}
+        {creatorTopMedia.length > 0 && (
+          <section id="creator-content" className="bg-gradient-to-r from-accent/10 via-primary/10 to-accent/10 rounded-lg p-8 border border-accent/20">
+            <div className="flex items-center gap-3 mb-8">
+              <Star className="h-8 w-8 text-accent" />
+              <h2 className="text-3xl font-bold bg-gradient-to-r from-accent to-primary bg-clip-text text-transparent">
+                POPULAR CREATOR CONTENT
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {creatorTopMedia.map((item) => (
+                <div
+                  key={item.id}
+                  className="group cursor-pointer"
+                  onClick={() => setSelectedTopShot(item)}
+                >
+                  <div className="relative aspect-video overflow-hidden rounded-lg bg-black/40 border border-accent/20">
+                    <img
+                      src={item.url}
+                      alt={item.caption || "Creator content"}
+                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                    
+                    {item.isPremium && (
+                      <div className="absolute top-2 right-2 bg-accent text-black px-2 py-1 rounded text-xs font-bold">
+                        Premium
+                      </div>
+                    )}
+                    
+                    <div className="absolute bottom-0 left-0 right-0 p-4">
+                      {item.caption && (
+                        <p className="text-sm font-medium text-white line-clamp-2 mb-2">
+                          {item.caption}
+                        </p>
+                      )}
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <Download className="h-4 w-4 text-accent" />
+                          <span className="text-sm font-bold text-accent">
+                            {item.downloadCount} Downloads
+                          </span>
+                        </div>
+                        {item.photographer && (
+                          <span className="text-xs text-white/80">
+                            By: {item.photographer}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {currentCreatorEvents.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-xl font-bold mb-4 text-accent">Creator Events</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {currentCreatorEvents.map((event) => (
+                    <EventCard key={event.id} event={event} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         <section id="archive">
           <div className="flex items-center gap-3 mb-6">
