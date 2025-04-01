@@ -36,9 +36,12 @@ export default function AdminDashboard() {
   const [mediaUploadModalOpen, setMediaUploadModalOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
+  const [selectedMediaItem, setSelectedMediaItem] = useState<MediaItem | null>(null);
+  const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
+  const [activeMediaEventId, setActiveMediaEventId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState("events");
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("events");
 
   // Load events with better error handling
   const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
@@ -130,11 +133,6 @@ export default function AdminDashboard() {
     );
   }
 
-  // State for media management
-  const [selectedMediaItem, setSelectedMediaItem] = useState<MediaItem | null>(null);
-  const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
-  const [activeMediaEventId, setActiveMediaEventId] = useState<number | null>(null);
-  
   // Function to switch to the media tab
   const switchToMediaTab = (eventId: number) => {
     setActiveMediaEventId(eventId);
