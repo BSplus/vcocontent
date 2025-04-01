@@ -20,8 +20,13 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   log(`Admin check for ${req.method} ${req.path}`, 'auth');
   log(`User: ${req.user ? JSON.stringify(req.user) : 'Not logged in'}`, 'auth');
 
-  if (!req.isAuthenticated() || !req.user?.isAdmin) {
-    log('Admin access denied', 'auth');
+  if (!req.isAuthenticated()) {
+    log('Admin access denied - not authenticated', 'auth');
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  
+  if (!req.user?.isAdmin) {
+    log('Admin access denied - not an admin', 'auth');
     return res.status(403).json({ error: "Admin access required" });
   }
   next();
@@ -37,7 +42,13 @@ export function requireCreator(req: Request, res: Response, next: NextFunction) 
     return res.status(401).json({ error: "Authentication required" });
   }
 
-  if (!req.user?.isCreator && !req.user?.isAdmin) {
+  const user = req.user;
+  if (!user) {
+    log('Creator access denied - no user object', 'auth');
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  if (!user.isCreator && !user.isAdmin) {
     log('Creator access denied - not a creator or admin', 'auth');
     return res.status(403).json({ error: "Creator access required" });
   }
