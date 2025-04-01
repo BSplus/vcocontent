@@ -6,11 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Event, MediaItem, InsertEvent } from "@shared/schema";
-import { ArrowLeft, Loader2, Plus, Image as ImageIcon, Film, CreditCard } from "lucide-react";
+import { 
+  ArrowLeft, Loader2, Plus, Image as ImageIcon, Film, CreditCard, 
+  Edit, Eye, Trash2, PenLine
+} from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
 import SimpleModal from "@/components/simple-modal";
+import EditMediaModal from "@/components/edit-media-modal";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -18,6 +22,9 @@ export default function CreatorDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [mediaUploadModalOpen, setMediaUploadModalOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const [selectedMediaItem, setSelectedMediaItem] = useState<MediaItem | null>(null);
+  const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"events" | "media" | "earnings">("events");
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -212,9 +219,10 @@ export default function CreatorDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="events">
+        <Tabs defaultValue="events" onValueChange={(value) => setActiveTab(value as "events" | "media" | "earnings")}>
           <TabsList>
             <TabsTrigger value="events">My Events</TabsTrigger>
+            <TabsTrigger value="media">My Media</TabsTrigger>
             <TabsTrigger value="earnings">Earnings & Analytics</TabsTrigger>
           </TabsList>
 
@@ -311,6 +319,124 @@ export default function CreatorDashboard() {
                   );
                 })}
               </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="media" className="mt-6">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-2xl font-bold">My Media</h2>
+              <div className="flex gap-2">
+                {sortedEvents.length > 0 && (
+                  <select 
+                    className="border rounded p-2 bg-background text-foreground"
+                    onChange={(e) => {
+                      const id = parseInt(e.target.value);
+                      if (!isNaN(id)) {
+                        setSelectedEventId(id);
+                      } else {
+                        setSelectedEventId(null);
+                      }
+                    }}
+                    value={selectedEventId || ""}
+                  >
+                    <option value="">Select Event...</option>
+                    {sortedEvents.map(event => (
+                      <option key={event.id} value={event.id}>{event.title}</option>
+                    ))}
+                  </select>
+                )}
+                {selectedEventId && (
+                  <Button
+                    onClick={() => setMediaUploadModalOpen(true)}
+                    className="bg-primary text-black hover:bg-primary/90"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Upload Media
+                  </Button>
+                )}
+              </div>
+            </div>
+            
+            {!selectedEventId ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <p className="text-muted-foreground mb-4">
+                    Please select an event to view its media
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Display media items for selected event */}
+                {(() => {
+                  const eventMediaItems = mediaItems.filter(item => item.eventId === selectedEventId);
+                  const event = events.find(e => e.id === selectedEventId);
+                  
+                  if (eventMediaItems.length === 0) {
+                    return (
+                      <Card>
+                        <CardContent className="flex flex-col items-center justify-center py-12">
+                          <p className="text-muted-foreground mb-4">
+                            No media uploaded for this event yet
+                          </p>
+                          <Button onClick={() => setMediaUploadModalOpen(true)}>
+                            Upload Media
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  }
+                  
+                  return (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">
+                        Media for: {event?.title}
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {eventMediaItems.map((item) => (
+                          <Card key={item.id} className="overflow-hidden group">
+                            <div className="aspect-video relative">
+                              <img 
+                                src={item.thumbnail} 
+                                alt={item.caption || "Media thumbnail"} 
+                                className="object-cover w-full h-full"
+                              />
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => {
+                                    setSelectedMediaItem(item);
+                                    setEditMediaModalOpen(true);
+                                  }}
+                                >
+                                  <PenLine className="h-4 w-4 mr-1" /> Edit
+                                </Button>
+                              </div>
+                              {item.isPremium && (
+                                <Badge className="absolute top-2 right-2 bg-primary text-black">
+                                  Premium
+                                </Badge>
+                              )}
+                            </div>
+                            <CardContent className="p-3">
+                              <p className="text-sm truncate">{item.caption || "No caption"}</p>
+                              <div className="flex justify-between items-center mt-2">
+                                <p className="text-xs text-muted-foreground">
+                                  {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {item.downloadCount || 0} downloads
+                                </p>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
             )}
           </TabsContent>
 
@@ -475,6 +601,14 @@ export default function CreatorDashboard() {
           open={mediaUploadModalOpen}
           onOpenChange={setMediaUploadModalOpen}
           eventId={selectedEventId}
+        />
+      )}
+      
+      {selectedMediaItem && (
+        <EditMediaModal
+          open={editMediaModalOpen}
+          onOpenChange={setEditMediaModalOpen}
+          mediaItem={selectedMediaItem}
         />
       )}
     </div>
