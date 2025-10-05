@@ -43,9 +43,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const events = await storage.getEvents();
       
+      // Remove heavy base64 thumbnails from the list to improve performance
+      // Thumbnails will be loaded lazily by the frontend when needed
+      const eventsWithoutThumbnails = events.map(event => ({
+        ...event,
+        customThumbnail: null // Replace with null to keep structure but remove payload
+      }));
+      
       // Return all events, regardless of auth status
       // This is needed for the public-facing event listing
-      res.json(events);
+      res.json(eventsWithoutThumbnails);
     } catch (error) {
       console.error('Error fetching events:', error);
       res.status(500).json({ error: "Failed to fetch events" });
