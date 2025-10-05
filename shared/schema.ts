@@ -77,8 +77,8 @@ export const insertSeriesSchema = createInsertSchema(series).extend({
 export const insertEventSchema = createInsertSchema(events).extend({
   title: z.string().min(1, "Title is required"),
   description: z.string().min(1, "Description is required"),
-  coverImage: z.string().url("Invalid cover image URL").optional(),
-  customThumbnail: z.string().url("Invalid thumbnail URL").optional(),
+  coverImage: z.string().optional(),
+  customThumbnail: z.string().optional(),
   date: z.coerce.date(),
   seriesId: z.number().optional(),
   creatorId: z.number().optional(),
