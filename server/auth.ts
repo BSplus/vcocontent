@@ -138,13 +138,22 @@ export function setupAuth(app: Express) {
           log(`Login session error: ${err}`, 'auth');
           return res.status(500).json({ error: "An error has occurred" });
         }
-        log(`Login successful for user: ${user.username}`, 'auth');
-        console.log('Session after login:', {
-          sessionID: req.sessionID,
-          user: user.username,
-          cookie: req.session?.cookie
+        
+        // Explicitly save the session before sending response
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            log(`Session save error: ${saveErr}`, 'auth');
+            return res.status(500).json({ error: "Failed to save session" });
+          }
+          
+          log(`Login successful for user: ${user.username}`, 'auth');
+          console.log('Session after login:', {
+            sessionID: req.sessionID,
+            user: user.username,
+            cookie: req.session?.cookie
+          });
+          res.json(user);
         });
-        res.json(user);
       });
     })(req, res, next);
   });
@@ -222,8 +231,17 @@ export function setupAuth(app: Express) {
           log(`Auto-login after registration failed: ${err}`, 'auth');
           return next(err);
         }
-        log(`Auto-login after registration successful for: ${user.username}`, 'auth');
-        res.status(201).json(user);
+        
+        // Explicitly save the session before sending response
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            log(`Session save error after registration: ${saveErr}`, 'auth');
+            return res.status(500).json({ error: "Failed to save session" });
+          }
+          
+          log(`Auto-login after registration successful for: ${user.username}`, 'auth');
+          res.status(201).json(user);
+        });
       });
     } catch (error) {
       log(`Registration error: ${error}`, 'auth');
