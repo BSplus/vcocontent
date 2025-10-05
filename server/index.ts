@@ -42,8 +42,8 @@ const sessionSettings: session.SessionOptions = {
   store: storage.sessionStore,
   rolling: true, // Reset maxAge on every response
   cookie: {
-    secure: false, // Set to false for development
-    sameSite: 'lax',
+    secure: true, // Must be true for SameSite=None to work in Replit
+    sameSite: 'none', // Required for cross-origin requests in Replit proxy environment
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     path: '/'
