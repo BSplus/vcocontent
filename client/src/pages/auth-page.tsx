@@ -55,16 +55,16 @@ export default function AuthPage() {
     }
   });
 
-  // Improved redirect logic with debouncing to prevent race conditions
+  // Improved redirect logic with full page reload to ensure cookies are set
   useEffect(() => {
     let redirectTimeout: NodeJS.Timeout;
     
     if (user) {
       console.log('User detected in auth page, redirecting to home', user);
-      // Use a short timeout to ensure all auth state is properly initialized
+      // Use a full page reload to ensure session cookies are properly set
       redirectTimeout = setTimeout(() => {
-        console.log('Executing redirect to home page');
-        setLocation("/");
+        console.log('Executing full page reload to home');
+        window.location.href = "/";
       }, 100);
     }
     
@@ -73,7 +73,7 @@ export default function AuthPage() {
         clearTimeout(redirectTimeout);
       }
     };
-  }, [user, setLocation]);
+  }, [user]);
 
   const onLoginSubmit = async (formData: LoginFormData) => {
     console.log('Login form submitted:', { username: formData.username });
