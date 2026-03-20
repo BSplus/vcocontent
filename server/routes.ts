@@ -15,11 +15,9 @@ import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { generateTagsForImage, generateTagsForVideo, categorizeContent } from "./utils/ai-tagger";
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
-}
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth already set up in index.ts
@@ -229,6 +227,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid amount" });
       }
 
+      if (!stripe) {
+        return res.status(503).json({ error: "Payment service not configured" });
+      }
+
       // Create a payment intent with Stripe
       const paymentIntent = await stripe.paymentIntents.create({
         amount: numericAmount * 100, // Convert to cents
@@ -289,6 +291,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bodyType: typeof req.body,
         bodyLength: req.body.length
       });
+
+      if (!stripe) {
+        return res.status(503).json({ error: "Payment service not configured" });
+      }
 
       const event = stripe.webhooks.constructEvent(
         req.body,
