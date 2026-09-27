@@ -4,12 +4,14 @@ import { randomUUID } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { spawn } from "node:child_process";
+import { createServer } from "node:net";
+import { once } from "node:events";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { Client } from "@replit/object-storage";
 import sharp from "sharp";
 import ws from "ws";
 
-const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5000";
 // The route validates the MP4 container signature; it does not transcode videos.
 const video = Buffer.from("000000186674797069736f6d0000020069736f6d6d703431", "hex");
 const objectKey = /^\/api\/media\/files\/((?:media|thumb)-[0-9a-f-]{36}\.(?:jpg|png|gif|webp|mp4|mov|webm))$/;
@@ -34,7 +36,68 @@ async function temporaryFiles() {
   }
 }
 
-function client() {
+async function freePort() {
+  const server = createServer();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const port = server.address().port;
+  server.close();
+  await once(server, "close");
+  return port;
+}
+
+async function startServer(port) {
+  const child = spawn(process.execPath, ["--import", "tsx", "server/index.ts"], {
+    cwd: process.cwd(),
+    env: { ...process.env, PORT: String(port), NODE_ENV: "development" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  for (const stream of [child.stdout, child.stderr]) {
+    stream.on("data", (chunk) => { output = (output + chunk.toString()).slice(-8000); });
+  }
+  const url = `http://127.0.0.1:${port}/api/media/files/not-a-media-key`;
+  try {
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        throw new Error(`Test server exited before becoming ready:\n${output}`);
+      }
+      // A response from the port alone might belong to another process if the
+      // port was claimed between freePort() and spawn().
+      if (!output.includes(`Server running on port ${port}`)) {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        continue;
+      }
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(1000) });
+        if (response.status === 404) return child;
+        throw new Error(`Unexpected test server response: ${response.status}`);
+      } catch (error) {
+        if (!(error instanceof TypeError) && error.name !== "TimeoutError") throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    throw new Error(`Test server did not become ready:\n${output}`);
+  } catch (error) {
+    await stopServer(child);
+    throw error;
+  }
+}
+
+async function stopServer(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = once(child, "exit");
+  child.kill("SIGTERM");
+  const timeout = setTimeout(() => child.kill("SIGKILL"), 5_000);
+  try {
+    await exited;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function client(base) {
   let cookie = "";
   return async (path, { method = "GET", body, json = false } = {}) => {
     const response = await fetch(new URL(path, base), {
@@ -73,14 +136,18 @@ test("creator image/video uploads, delivery and ownership", async () => {
   neonConfig.webSocketConstructor = ws;
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const objects = new Client();
-  const owner = client();
-  const outsider = client();
-  const anonymous = client();
+  const port = await freePort();
+  const base = `http://127.0.0.1:${port}`;
+  const owner = client(base);
+  const outsider = client(base);
+  const anonymous = client(base);
   const suffix = randomUUID().slice(0, 12);
   const accounts = [];
   let eventId;
+  let server;
 
   try {
+    server = await startServer(port);
     for (const [request, role] of [[owner, "owner"], [outsider, "outsider"]]) {
       const username = `upload_smoke_${role}_${suffix}`;
       const user = await json(await request("/api/register", {
@@ -197,8 +264,33 @@ test("creator image/video uploads, delivery and ownership", async () => {
     assert.deepEqual(newKeys.filter(key => !referenced.has(`/api/media/files/${key}`)), [],
       "Rejected upload left an unreferenced storage object");
     assert.deepEqual(await temporaryFiles(), beforeTemp, "Rejected upload left a temporary file");
+
+    // Stop this test's own server completely, then boot a fresh process against
+    // the same database and object bucket. The owner keeps the persisted session.
+    await stopServer(server);
+    server = undefined;
+    server = await startServer(port);
+    const persisted = await json(await owner(`/api/events/${eventId}/media`), 200);
+    assert.deepEqual(new Set(persisted.map((item) => item.id)), new Set(uploaded.map((item) => item.id)));
+    for (const media of uploaded) {
+      const restored = persisted.find((item) => item.id === media.id);
+      assert.equal(restored.url, media.url);
+      assert.equal(restored.thumbnail, media.thumbnail);
+      await json(await anonymous(media.url), 401);
+      const bytes = media.type === "image" ? image : video;
+      const mime = media.type === "image" ? "image/png" : "video/mp4";
+      const original = await owner(media.url);
+      assert.equal(original.status, 200);
+      assert.equal(original.headers.get("content-type"), mime);
+      assert.deepEqual(Buffer.from(await original.arrayBuffer()), bytes);
+      const thumbnail = await anonymous(media.thumbnail);
+      assert.equal(thumbnail.status, 200);
+      assert.match(thumbnail.headers.get("content-type") ?? "", /^image\/webp/);
+      assert.ok((await thumbnail.arrayBuffer()).byteLength > 0);
+    }
   } finally {
     const cleanupErrors = [];
+    try { await stopServer(server); } catch (error) { cleanupErrors.push(error); }
     // Save the keys before deleting metadata. Restrict every query to IDs made
     // by this test; never use a broad username prefix or delete shared rows.
     if (eventId && accounts[0]) {

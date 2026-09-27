@@ -128,7 +128,7 @@ process.on('unhandledRejection', (reason) => {
           log(`Server running on port ${port}`);
           resolve();
         }).on('error', (error: any) => {
-          if (error.code === 'EADDRINUSE') {
+          if (error.code === 'EADDRINUSE' && process.env.PORT === undefined) {
             console.log(`Port ${port} is in use, trying next port...`);
             startServer(port + 1).then(resolve).catch(reject);
           } else {
@@ -142,5 +142,9 @@ process.on('unhandledRejection', (reason) => {
     }
   };
 
-  await startServer(5000);
+  const port = process.env.PORT === undefined ? 5000 : Number(process.env.PORT);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("PORT must be an integer between 1 and 65535");
+  }
+  await startServer(port);
 })();
