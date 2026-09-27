@@ -76,8 +76,30 @@ Wiederholungs-Knopf. Bei anhaltenden Fehlern nicht blind Objekte löschen:
 `media_cleanup.last_error` prüfen, Speicherzugriff reparieren und erneut ausführen.
 Die Tabellen `media_reservations` und `media_cleanup` sind keine
 Medienbestände. Vor Veröffentlichung die additive Migration
-`migrations/0001-media-budget.sql` auf die Produktionsdatenbank anwenden;
+`migrations/0001-media-budget.sql` und danach `migrations/0002-nextcloud-import.sql` auf die Produktionsdatenbank anwenden;
 keine vorhandenen Medien migrieren oder löschen.
+
+### Nextcloud-Bildimport für Admins
+
+Nach der Migration `0002-nextcloud-import.sql` die Umgebungsvariable
+`NEXTCLOUD_BASE_URL` auf die HTTPS-Basisadresse **einer** vertrauenswürdigen
+Nextcloud-Instanz setzen (z. B. `https://cloud.example.org`, bei Installation
+im Unterpfad `https://cloud.example.org/nextcloud`). Nur Links dieser Instanz
+werden angenommen. Für interne Ordnerlinks zusätzlich `NEXTCLOUD_USERNAME`
+und das separate **App-Passwort** `NEXTCLOUD_APP_PASSWORD` als serverseitige
+Secrets einrichten. Das Konto braucht Lesezugriff auf die Ordner; reguläre
+Kontopasswörter nicht verwenden. Öffentliche Links `/s/TOKEN` brauchen keine
+Konto-Konfiguration; ein Freigabepasswort kann der Admin pro Link im Dialog
+eingeben. Die Zugangsdaten werden nicht in Importtabellen gespeichert. Nach
+einem Serverneustart oder Abbruch trägt der Admin dieselben Links (und
+gegebenenfalls Freigabepasswörter) erneut im Event-Dialog ein und startet
+den Import dort erneut. Bereits gespeicherte Dateien werden nicht verdoppelt.
+Interne Links werden als `/apps/files/files/ID?dir=/Ordner` oder als
+`/remote.php/dav/files/BENUTZER/Ordner` unterstützt; andere Ansichtslinks
+werden bewusst abgewiesen. Es gibt keine laufende Synchronisierung. Ein
+Import läuft mit maximal 10 Links, 300 Unterordnern, 500 Bildern,
+500 MiB übertragenen Bilddaten, 5 MiB je Bild, 60 Sekunden Vorschau und
+10 Minuten Verarbeitung; die normalen Album-Speicherbudgets gelten zusätzlich.
 
 Bestandsmessung der Entwicklungsdatenbank bei Einführung: 72 Medienzeilen,
 davon 15 Base64-URLs; URL- und Vorschaubildtexte historischer Einträge belegten

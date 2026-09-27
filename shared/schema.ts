@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, boolean, decimal, bigint, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, decimal, bigint, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
@@ -81,6 +81,26 @@ export const mediaCleanup = pgTable("media_cleanup", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   lastError: text("last_error"),
 });
+
+export const nextcloudJobs = pgTable("nextcloud_jobs", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("idle"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  error: text("error"),
+  skipped: integer("skipped").notNull().default(0),
+}, table => [uniqueIndex("nextcloud_job_event_idx").on(table.eventId)]);
+
+export const nextcloudFiles = pgTable("nextcloud_files", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+  sourceKey: text("source_key").notNull(),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("pending"),
+  mediaId: integer("media_id").references(() => mediaItems.id, { onDelete: "set null" }),
+  message: text("message"),
+  aiWarning: text("ai_warning"),
+}, table => [uniqueIndex("nextcloud_file_source_idx").on(table.eventId, table.sourceKey)]);
 
 // Insert schemas with validation
 export const insertUserSchema = createInsertSchema(users).extend({

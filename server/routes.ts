@@ -11,10 +11,12 @@ import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { generateTagsForImage, generateTagsForVideo, categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
 import { mediaUpload, uploadMedia, createMediaKeys, readMediaStream, getMediaContentType } from "./media-storage";
+import { analysisImageInput } from "./image-analysis";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { z } from "zod";
+import { discover, importStatus, startImport, NextcloudError } from "./nextcloud";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 function mediaPage(value: unknown): number | null {
@@ -31,23 +33,6 @@ const publicMedia = <T extends { isPremium: boolean; url: string; thumbnail: str
     ? "/attached_assets/%2389_3.png"
     : item.thumbnail,
 });
-
-async function analysisImageInput(url: string): Promise<string> {
-  const key = /^\/api\/media\/files\/(thumb-[0-9a-f-]{36}\.webp)$/.exec(url)?.[1];
-  if (!key) {
-    if (/^https:\/\//.test(url) || /^data:image\/(jpeg|png|webp);base64,/.test(url)) return url;
-    throw new Error("No analyzable image thumbnail");
-  }
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of readMediaStream(key)) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 5 * 1024 * 1024) throw new Error("Thumbnail exceeds analysis limit");
-    chunks.push(bytes);
-  }
-  return `data:image/webp;base64,${Buffer.concat(chunks).toString("base64")}`;
-}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth already set up in index.ts
@@ -277,6 +262,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     zipCount: mediaPolicy.zipCount,
     zipBytes: mediaPolicy.zipBytes,
   }));
+
+  const nextcloudRequest = z.object({
+    sources: z.array(z.object({ link: z.string().url().max(2048), password: z.string().max(256).optional() })).min(1).max(10),
+  });
+  app.post("/api/admin/nextcloud/preview", requireAdmin, async (req, res) => {
+    try {
+      const { files, skipped } = await discover(nextcloudRequest.parse(req.body).sources);
+      res.json({ count: files.length, skipped });
+    } catch (error) {
+      res.status(error instanceof z.ZodError || error instanceof NextcloudError ? 400 : 502)
+        .json({ error: error instanceof NextcloudError ? error.message : "Nextcloud-Vorschau konnte nicht geladen werden." });
+    }
+  });
+  app.get("/api/admin/events/:id/nextcloud", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Ungültiges Album." });
+    if (!await storage.getEvent(id)) return res.status(404).json({ error: "Album nicht gefunden." });
+    res.json(await importStatus(id));
+  });
+  app.post("/api/admin/events/:id/nextcloud", requireAdmin, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Ungültiges Album." });
+      const event = await storage.getEvent(id);
+      if (!event || event.creatorId || event.isPremium) return res.status(404).json({ error: "Admin-Album nicht gefunden." });
+      await startImport(id, nextcloudRequest.parse(req.body).sources);
+      res.status(202).json(await importStatus(id));
+    } catch (error) {
+      res.status(error instanceof z.ZodError || error instanceof NextcloudError ? 400 : 502)
+        .json({ error: error instanceof NextcloudError ? error.message : "Import konnte nicht gestartet werden." });
+    }
+  });
 
   // Get top shots
   app.get("/api/media/top-shots", async (req, res) => {
@@ -799,7 +816,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/events", requireAdmin, async (req, res) => {
     try {
-      const eventData = insertEventSchema.parse({ ...req.body, creatorId: null, isPremium: false });
+      const { creatorId: _ignored, ...details } = req.body;
+      const eventData = insertEventSchema.parse({ ...details, isPremium: false });
       const event = await storage.createEvent(eventData);
       res.status(201).json(event);
     } catch (error) {

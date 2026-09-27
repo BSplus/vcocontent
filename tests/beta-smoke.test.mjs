@@ -52,6 +52,9 @@ test("registration, session, role boundaries and disabled purchases", async () =
   });
   assert.equal(event.status, 403);
   assert.equal((await request("/api/series", "POST", { name: "Unauthorized" })).status, 403);
+  assert.equal((await request("/api/admin/nextcloud/preview", "POST", { sources: [] })).status, 403);
+  assert.equal((await request("/api/admin/events/1/nextcloud", "POST", { sources: [] })).status, 403);
+  assert.equal((await request("/api/admin/events/1/nextcloud")).status, 403);
   assert.equal((await request("/api/media", "POST", { eventId: 1 })).status, 403);
   assert.equal((await request("/api/credits/purchase", "POST", { amount: 10 })).status, 503);
   assert.equal((await request("/api/webhook/stripe", "POST", {})).status, 503);

@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Event, InsertEvent, insertEventSchema, Series } from "@shared/schema";
 import { Loader2, Upload, Image as ImageIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { eventCreateRoute } from "@/lib/event-create-route";
 
 interface UploadModalProps {
   open: boolean;
@@ -42,6 +43,11 @@ export default function UploadModal({
   const isEditing = eventId !== null;
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const [validationSummary, setValidationSummary] = useState<string[]>([]);
+  const [imageSource, setImageSource] = useState<"local" | "nextcloud">("local");
+  const [links, setLinks] = useState<{ link: string; password: string }[]>([{ link: "", password: "" }]);
+  const [preview, setPreview] = useState<{ count: number; skipped: number } | null>(null);
+  const [importEventId, setImportEventId] = useState<number | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
 
   const { data: eventData } = useQuery<Event>({
@@ -52,6 +58,32 @@ export default function UploadModal({
   const { data: seriesList } = useQuery<Series[]>({
     queryKey: ["/api/series"],
   });
+  const { data: importProgress } = useQuery<{
+    status: string; error?: string; total: number; imported: number; failed: number; skipped: number;
+    warnings: number; files: { name: string; status: string; message?: string; aiWarning?: string }[];
+  }>({
+    queryKey: [`/api/admin/events/${importEventId}/nextcloud`],
+    enabled: open && !!importEventId,
+    refetchInterval: importEventId ? 2000 : false,
+  });
+
+  const sources = () => links.map(({ link, password }) => ({ link: link.trim(), password: password || undefined }));
+  const nextcloudPost = async (url: string, body: unknown) => {
+    const response = await fetch(url, { method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Nextcloud-Anfrage fehlgeschlagen.");
+    return result;
+  };
+  const checkLinks = async () => {
+    setPreview(null);
+    try {
+      const result = await nextcloudPost("/api/admin/nextcloud/preview", { sources: sources() });
+      setPreview(result);
+    } catch (error) {
+      toast({ title: "Nextcloud-Zugriff fehlgeschlagen", description: (error as Error).message, variant: "destructive" });
+    }
+  };
 
   // Using as any to bypass type checking for date field which is handled by z.coerce.date() in the schema
   const form = useForm<InsertEvent>({
@@ -83,6 +115,10 @@ export default function UploadModal({
     }
   }, [eventData, isEditing, form]);
 
+  useEffect(() => {
+    if (open && eventId) setImportEventId(eventId);
+  }, [open, eventId]);
+
   const handleThumbnailChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -108,8 +144,7 @@ export default function UploadModal({
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEvent) => {
-      const isCreator = user?.isCreator || user?.creatorStatus === "approved";
-      const endpoint = isCreator ? "/api/creator/events" : "/api/events";
+      const { endpoint, creatorId } = eventCreateRoute(user, imageSource);
       const res = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -120,7 +155,7 @@ export default function UploadModal({
           ...data,
           date: new Date(data.date),
           isPremium: false,
-          creatorId: isCreator ? user?.id : undefined,
+          creatorId,
         }),
       });
 
@@ -134,6 +169,7 @@ export default function UploadModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
+      if (imageSource === "nextcloud") return;
       onOpenChange(false);
       form.reset();
       setThumbnailPreview(null);
@@ -202,6 +238,17 @@ export default function UploadModal({
   const onSubmit = async (data: InsertEvent) => {
     try {
       setValidationSummary([]);
+      if (imageSource === "nextcloud") {
+        setImportBusy(true);
+        const id = importEventId || (isEditing ? eventId : null);
+        const event = id ? null : await createMutation.mutateAsync(data);
+        const targetId = id || event.id;
+        setImportEventId(targetId);
+        await nextcloudPost(`/api/admin/events/${targetId}/nextcloud`, { sources: sources() });
+        queryClient.invalidateQueries({ queryKey: [`/api/admin/events/${targetId}/nextcloud`] });
+        toast({ title: "Nextcloud-Import gestartet", description: "Das Album bleibt erhalten. Fortschritt und Fehler sind hier sichtbar." });
+        return;
+      }
       if (isEditing && eventId) {
         await updateMutation.mutateAsync(eventId);
       } else {
@@ -214,6 +261,8 @@ export default function UploadModal({
         description: error instanceof Error ? error.message : "Failed to save event",
         variant: "destructive",
       });
+    } finally {
+      setImportBusy(false);
     }
   };
 
@@ -228,6 +277,10 @@ export default function UploadModal({
     if (!open) {
       form.reset();
       setThumbnailPreview(null);
+      setImportEventId(null);
+      setPreview(null);
+      setLinks([{ link: "", password: "" }]);
+      setImageSource("local");
     }
   }, [open, form]);
 
@@ -338,25 +391,68 @@ export default function UploadModal({
             </div>
           </div>
 
+          {user?.isAdmin && (
+            <div className="space-y-3 rounded-md border p-4">
+              <Label htmlFor="image-source">Bildquelle für das Album</Label>
+              <Select value={imageSource} onValueChange={value => { setImageSource(value as "local" | "nextcloud"); setPreview(null); }}>
+                <SelectTrigger id="image-source"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="local">Lokaler Upload nach dem Anlegen</SelectItem>
+                  <SelectItem value="nextcloud">Nextcloud-Ordner importieren</SelectItem>
+                </SelectContent>
+              </Select>
+              {imageSource === "nextcloud" && <>
+                <p className="text-sm text-muted-foreground">Alle Links und Unterordner werden in dieses eine Album importiert. Für interne Links muss der Betreiber den Nextcloud-Zugang einrichten.</p>
+                {links.map((entry, i) => (
+                  <div className="space-y-2 border-b pb-3" key={i}>
+                    <Label htmlFor={`nc-link-${i}`}>Ordnerlink {i + 1}</Label>
+                    <Input id={`nc-link-${i}`} type="url" value={entry.link} placeholder="https://cloud.example/s/..."
+                      onChange={e => { const next = [...links]; next[i] = { ...entry, link: e.target.value }; setLinks(next); setPreview(null); }} />
+                    <Input aria-label={`Freigabepasswort für Link ${i + 1}`} type="password" autoComplete="off"
+                      placeholder="Freigabepasswort (falls erforderlich)" value={entry.password}
+                      onChange={e => { const next = [...links]; next[i] = { ...entry, password: e.target.value }; setLinks(next); setPreview(null); }} />
+                    {links.length > 1 && <Button type="button" variant="ghost" onClick={() => { setLinks(links.filter((_, index) => index !== i)); setPreview(null); }}>Link entfernen</Button>}
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" disabled={links.length >= 10} onClick={() => setLinks([...links, { link: "", password: "" }])}>Weiterer Link</Button>
+                  <Button type="button" variant="outline" onClick={checkLinks}>Zugriff und Bilder prüfen</Button>
+                </div>
+                {preview && <p role="status">{preview.count} Bilder gefunden; {preview.skipped} Dateien übersprungen.</p>}
+                {importProgress && <div role="status" className="text-sm space-y-1">
+                  <p>Import: {importProgress.status} · {importProgress.imported}/{importProgress.total} Bilder · {importProgress.skipped} übersprungen · {importProgress.failed} Fehler · {importProgress.warnings} KI-Warnungen</p>
+                  {importProgress.error && <p className="text-amber-600">{importProgress.error}</p>}
+                  <div className="max-h-28 overflow-y-auto">
+                    {importProgress.files.filter(file => file.message || file.aiWarning).map((file, index) =>
+                      <p key={index}>{file.name}: {file.message || file.aiWarning}</p>)}
+                  </div>
+                  <p>Bei Unterbrechung dieselben Links erneut eingeben und den Import erneut starten. Bereits importierte Bilder werden nicht verdoppelt.</p>
+                </div>}
+              </>}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={createMutation.isPending || updateMutation.isPending}
+              disabled={createMutation.isPending || updateMutation.isPending || importBusy}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={createMutation.isPending || updateMutation.isPending}
+              disabled={createMutation.isPending || updateMutation.isPending || importBusy || (imageSource === "nextcloud" && !preview)}
               className="bg-primary text-black hover:bg-primary/90"
             >
-              {createMutation.isPending || updateMutation.isPending ? (
+              {createMutation.isPending || updateMutation.isPending || importBusy ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   {isEditing ? "Updating..." : "Creating..."}
                 </>
+              ) : imageSource === "nextcloud" ? (
+                importEventId || isEditing ? "Import starten / fortsetzen" : "Album anlegen und importieren"
               ) : isEditing ? (
                 "Update Event"
               ) : (

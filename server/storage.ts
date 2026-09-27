@@ -1,5 +1,5 @@
 import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries } from "@shared/schema";
-import { users, events, mediaItems, mediaReservations, mediaCleanup, series as seriesTable } from "@shared/schema";
+import { users, events, mediaItems, mediaReservations, mediaCleanup, nextcloudFiles, series as seriesTable } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, sql, desc, lt, ilike, getTableColumns } from "drizzle-orm";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
@@ -375,12 +375,17 @@ class DatabaseStorage implements IStorage {
     });
   }
 
-  async finishMedia(id: string, mediaItem: InsertMediaItem): Promise<MediaItem> {
+  async finishMedia(id: string, mediaItem: InsertMediaItem, nextcloudFileId?: number): Promise<MediaItem> {
     return db.transaction(async tx => {
       await tx.execute(sql`select id from media_reservations where id = ${id} for update`);
       const [reservation] = await tx.select().from(mediaReservations).where(eq(mediaReservations.id, id));
       if (!reservation) throw new Error("Upload reservation has expired");
       const [item] = await tx.insert(mediaItems).values(mediaItem).returning();
+      if (nextcloudFileId) {
+        const [file] = await tx.update(nextcloudFiles).set({ status: "saved", mediaId: item.id, message: null })
+          .where(and(eq(nextcloudFiles.id, nextcloudFileId), eq(nextcloudFiles.status, "pending"))).returning();
+        if (!file) throw new Error("Import file reservation is no longer pending");
+      }
       await tx.delete(mediaReservations).where(eq(mediaReservations.id, id));
       return item;
     });

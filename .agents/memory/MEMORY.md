@@ -4,3 +4,4 @@
 - [Live-server test freshness](live-server-test-freshness.md) — integration tests may hit an older preview process after merges; restart it before interpreting failures.
 - [Development dependency rebuild](dev-dependency-rebuild.md) — stop Vite during merge-time installs; a later restart alone cannot prevent transient missing chunks.
 - [Browser role assertions](browser-role-assertions.md) — a route's static text can appear before the auth query settles; wait for role-specific UI before asserting navigation.
+- [Fetch mocks and object storage](fetch-mocks-object-storage.md) — Nextcloud network mocks must delegate unrelated requests or they also intercept App Storage's sidecar calls.
