@@ -7,6 +7,7 @@ import { Loader2, ArrowLeft, Calendar, Star } from "lucide-react";
 import EventCard from "@/components/event-card";
 import { useToast } from "@/hooks/use-toast";
 import MediaGrid from "@/components/media-grid";
+import MainNavigation from "@/components/main-navigation";
 
 export default function CreatorProfile() {
   const [, params] = useRoute<{ id: string }>("/creator/:id");
@@ -69,6 +70,7 @@ export default function CreatorProfile() {
 
   return (
     <div className="min-h-screen bg-background">
+      <MainNavigation />
       <header className="border-b border-primary/20">
         <div className="container mx-auto px-4 py-6">
           <Button variant="ghost" asChild className="mb-4">
@@ -88,7 +90,7 @@ export default function CreatorProfile() {
               </div>
             )}
             <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              <h1 className="text-2xl md:text-4xl font-bold text-foreground break-words">
                 {creator.username}
               </h1>
               {creator.bio && (

@@ -1,78 +1,83 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Event } from "@shared/schema";
-import { Loader2, Calendar, ArrowLeft, Clock } from "lucide-react";
-import Footer from "@/components/footer"; // Fixed case in import
-
+import { type Event } from "@shared/schema";
+import { ArrowLeft, CalendarDays, Clock3, Search } from "lucide-react";
+import Footer from "@/components/footer";
+import MainNavigation from "@/components/main-navigation";
 
 export default function UpcomingEventsPage() {
-  const { data: events, isLoading } = useQuery<Event[]>({
-    queryKey: ["/api/events"]
-  });
-
-  const today = new Date();
-
-  // Filter and sort upcoming events
-  const upcomingEvents = events?.filter(event => 
-    new Date(event.date) > today
-  ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()) || [];
+  const { data: events, isLoading, error, refetch, isFetching } = useQuery<Event[]>({ queryKey: ["/api/events"] });
+  const upcomingEvents = (events ?? [])
+    .filter((event) => new Date(event.date) > new Date())
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   return (
-    <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-8"> {/* Added main tag */}
-        <Button variant="ghost" asChild className="mb-8">
-          <Link href="/">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Home
-          </Link>
-        </Button>
-
-        <div className="flex items-center gap-3 mb-8">
-          <Calendar className="h-8 w-8 text-accent" />
-          <h1 className="text-4xl font-bold text-accent">Upcoming Events</h1>
+    <div className="min-h-[100dvh] bg-background">
+      <MainNavigation />
+      <main className="container mx-auto px-4 pb-16 pt-9 sm:pt-12">
+        <Link href="/" className="mb-8 inline-flex min-h-10 items-center gap-2 rounded-sm text-sm font-semibold text-foreground/75 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <ArrowLeft className="h-4 w-4" />Back to home
+        </Link>
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-5 border-b border-foreground/15 pb-6">
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-accent">Next on the calendar</p>
+            <div className="flex items-center gap-3">
+              <CalendarDays className="h-7 w-7 text-accent" aria-hidden="true" />
+              <h1 className="text-3xl font-bold tracking-wide text-foreground sm:text-4xl">Upcoming events</h1>
+            </div>
+          </div>
+          <p className="max-w-sm text-sm leading-relaxed text-foreground/75">See what is coming up across the VCO and creator calendars.</p>
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center p-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <div className="space-y-3">
+            {Array.from({ length: 5 }, (_, index) => <div key={index} className="h-[88px] animate-pulse rounded-md border border-foreground/10 bg-card/60" />)}
           </div>
-        ) : !upcomingEvents.length ? (
-          <p className="text-center text-foreground/60 py-12">
-            No upcoming events scheduled.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {upcomingEvents.map((event) => (
-              <div
-                key={event.id}
-                className="group bg-black/20 rounded-lg p-4 hover:bg-black/30 transition-all hover:scale-[1.02]"
-              >
-                <div className="flex items-center gap-3">
-                  <Clock className="h-5 w-5 text-primary shrink-0" />
-                  <div className="min-w-0">
-                    <h3 className="font-bold truncate group-hover:text-primary transition-colors">
-                      {event.title}
-                    </h3>
-                    <p className="text-sm text-foreground/60">
-                      {new Date(event.date).toLocaleDateString('en-US', {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
-                      })}
-                    </p>
-                    <p className="text-sm text-foreground/40 line-clamp-2 mt-2">
-                      {event.description}
-                    </p>
+        ) : error ? (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-6 py-12 text-center">
+            <h2 className="text-xl font-bold">Calendar could not be loaded</h2>
+            <p className="mt-2 text-sm text-foreground/75">Please try again in a moment.</p>
+            <Button onClick={() => refetch()} disabled={isFetching} className="mt-5">{isFetching ? "Retrying…" : "Try again"}</Button>
+          </div>
+        ) : upcomingEvents.length ? (
+          <ol className="divide-y divide-foreground/10 border-y border-foreground/10">
+            {upcomingEvents.map((event, index) => {
+              const date = new Date(event.date);
+              return (
+                <li key={event.id} className="grid grid-cols-[3.5rem_1fr] gap-4 py-5 sm:grid-cols-[4.5rem_1fr_auto] sm:items-center sm:gap-6">
+                  <div className="flex h-14 w-14 flex-col items-center justify-center border-l-2 border-accent bg-accent/10 text-accent">
+                    <span className="text-[10px] font-bold uppercase tracking-wider">{date.toLocaleDateString("en-US", { month: "short" })}</span>
+                    <span className="font-[Orbitron] text-xl font-bold leading-tight">{date.getDate().toString().padStart(2, "0")}</span>
                   </div>
-                </div>
-              </div>
-            ))}
+                  <div className="min-w-0">
+                    <h2 className="truncate text-lg font-bold tracking-wide sm:text-xl">{event.title}</h2>
+                    <p className="mt-1 flex items-center gap-2 text-sm text-foreground/75">
+                      <Clock3 className="h-4 w-4 shrink-0 text-accent" />
+                      {date.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                    </p>
+                    {event.description && <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-relaxed text-foreground/70">{event.description}</p>}
+                  </div>
+                  <span className="col-start-2 text-xs font-semibold uppercase tracking-widest text-foreground/45 sm:col-start-auto sm:text-right">
+                    {index === 0 ? "Next event" : "Scheduled"}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <div className="rounded-lg border border-foreground/15 bg-card/50 px-6 py-14 text-center">
+            <CalendarDays className="mx-auto h-8 w-8 text-accent" />
+            <h2 className="mt-4 text-xl font-bold">No events on the calendar</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-foreground/75">Take a look through recent galleries while the next race weekend takes shape.</p>
+            <div className="mt-5 flex justify-center gap-3">
+              <Button asChild variant="outline"><Link href="/current-events">Current events</Link></Button>
+              <Button asChild><Link href="/search"><Search className="mr-2 h-4 w-4" />Search media</Link></Button>
+            </div>
           </div>
         )}
       </main>
-      <Footer /> {/* Added Footer component */}
+      <Footer />
     </div>
   );
 }

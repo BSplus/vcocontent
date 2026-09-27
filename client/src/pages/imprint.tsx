@@ -1,10 +1,12 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
+import MainNavigation from "@/components/main-navigation";
 
 export default function ImprintPage() {
   return (
     <div className="min-h-screen bg-background">
+      <MainNavigation />
       <div className="container mx-auto px-4 py-8">
         <Button variant="ghost" asChild className="mb-8">
           <Link href="/">

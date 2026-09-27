@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -7,6 +6,8 @@ import { Loader2, ArrowLeft, User as UserIcon } from "lucide-react";
 import MediaGrid from "@/components/media-grid";
 import { useAuth } from "@/hooks/use-auth";
 import { Badge } from "@/components/ui/badge";
+import MainNavigation from "@/components/main-navigation";
+import Footer from "@/components/footer";
 
 export default function EventGallery() {
   const [, params] = useRoute<{ id: string }>("/events/:id");
@@ -62,8 +63,9 @@ export default function EventGallery() {
 
   return (
     <div className="min-h-screen bg-background">
+      <MainNavigation />
       <header className="border-b border-primary/20">
-        <div className="container mx-auto px-4 py-6">
+        <div className="container mx-auto px-4 py-8">
           <Button variant="ghost" asChild className="mb-4">
             <Link href="/">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -71,7 +73,8 @@ export default function EventGallery() {
             </Link>
           </Button>
           <div className="space-y-4">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            <p className="text-sm uppercase tracking-widest text-primary">Event gallery</p>
+            <h1 className="text-2xl md:text-4xl font-bold text-foreground break-words">
               {event.title}
             </h1>
             
@@ -102,6 +105,10 @@ export default function EventGallery() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        <div className="mb-6">
+          <h2 className="text-xl md:text-2xl font-semibold">Media <span className="text-foreground/70">({mediaItems.length})</span></h2>
+          <p className="text-sm text-foreground/75 mt-2">Open a photo or video, use the arrow keys to browse, and choose an available download.</p>
+        </div>
         {!mediaItems.length ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg">
@@ -112,6 +119,7 @@ export default function EventGallery() {
           <MediaGrid items={mediaItems} onDelete={handleMediaDelete} />
         )}
       </main>
+      <Footer />
     </div>
   );
 }

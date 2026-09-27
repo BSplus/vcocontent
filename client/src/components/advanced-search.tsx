@@ -14,12 +14,11 @@ import {
   SheetTitle,
   SheetTrigger 
 } from '@/components/ui/sheet';
-import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 
 interface AdvancedSearchProps {
   items: MediaItem[];
-  onSearchResults: (results: MediaItem[]) => void;
+  onSearchResults: (results: MediaItem[], query: string) => void;
   className?: string;
   initialQuery?: string;
   initialType?: 'all' | 'image' | 'video';
@@ -68,14 +67,16 @@ export function AdvancedSearch({
 
   // Initialize search query from URL if provided
   useEffect(() => {
-    if (initialQuery) {
-      setSearchQuery(initialQuery);
-    }
+    setSearchQuery(initialQuery);
   }, [initialQuery, setSearchQuery]);
+
+  useEffect(() => {
+    setFilters(prev => prev.mediaType === initialType ? prev : { ...prev, mediaType: initialType });
+  }, [initialType]);
 
   // Update results whenever search parameters change
   useEffect(() => {
-    let filteredResults = searchQuery ? [...results] : []; // Only show results if there's a search query
+    let filteredResults = searchQuery.trim() ? [...results] : [];
 
     if (filters.mediaType !== 'all') {
       filteredResults = filteredResults.filter(item => 
@@ -83,7 +84,7 @@ export function AdvancedSearch({
       );
     }
 
-    onSearchResults(filteredResults);
+    onSearchResults(filteredResults, searchQuery);
   }, [results, filters.mediaType, onSearchResults, searchQuery]);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -98,23 +99,29 @@ export function AdvancedSearch({
 
   return (
     <form onSubmit={handleSearch} className={`w-full ${className}`}>
-      <div className="flex gap-2">
-        <div className="relative flex-1">
+      <label htmlFor="media-search" className="block text-sm font-semibold mb-2">Search media</label>
+      <p id="media-search-help" className="text-sm text-foreground/75 mb-3">Search captions, photographers or tags. Use Filters to narrow the results.</p>
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
+            id="media-search"
+            type="search"
+            aria-describedby="media-search-help"
             placeholder="Search in media..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="pl-10 min-h-11"
           />
         </div>
 
         <Sheet>
           <SheetTrigger asChild>
-            <Button variant="outline" size="icon">
+            <Button variant="outline" className="min-h-11" aria-label="Open search filters">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
               </svg>
+              <span className="ml-2">Filters</span>
             </Button>
           </SheetTrigger>
           <SheetContent>
@@ -127,7 +134,7 @@ export function AdvancedSearch({
 
             <div className="grid gap-4 py-4">
               <div className="space-y-2">
-                <Label>Search Areas</Label>
+                <p className="text-sm font-semibold">Search fields</p>
                 <div className="flex items-center space-x-2">
                   <Checkbox 
                     id="caption" 
@@ -169,41 +176,23 @@ export function AdvancedSearch({
               </div>
 
               <div className="space-y-2">
-                <Label>Media Type</Label>
+                <p className="text-sm font-semibold">Media type (choose one)</p>
                 <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="all" 
-                    checked={filters.mediaType === 'all'}
-                    onCheckedChange={(checked) => {
-                      if (checked) setFilters(prev => ({ ...prev, mediaType: 'all' }));
-                    }}
-                  />
+                  <input type="radio" name="media-type" id="all" value="all" checked={filters.mediaType === 'all'} onChange={() => setFilters(prev => ({ ...prev, mediaType: 'all' }))} className="h-5 w-5 accent-primary" />
                   <label htmlFor="all" className="text-sm font-medium">
                     All Media
                   </label>
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="image" 
-                    checked={filters.mediaType === 'image'}
-                    onCheckedChange={(checked) => {
-                      if (checked) setFilters(prev => ({ ...prev, mediaType: 'image' }));
-                    }}
-                  />
+                  <input type="radio" name="media-type" id="image" value="image" checked={filters.mediaType === 'image'} onChange={() => setFilters(prev => ({ ...prev, mediaType: 'image' }))} className="h-5 w-5 accent-primary" />
                   <label htmlFor="image" className="text-sm font-medium">
                     Images Only
                   </label>
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="video" 
-                    checked={filters.mediaType === 'video'}
-                    onCheckedChange={(checked) => {
-                      if (checked) setFilters(prev => ({ ...prev, mediaType: 'video' }));
-                    }}
-                  />
+                  <input type="radio" name="media-type" id="video" value="video" checked={filters.mediaType === 'video'} onChange={() => setFilters(prev => ({ ...prev, mediaType: 'video' }))} className="h-5 w-5 accent-primary" />
                   <label htmlFor="video" className="text-sm font-medium">
                     Videos Only
                   </label>
@@ -221,7 +210,7 @@ export function AdvancedSearch({
           </SheetContent>
         </Sheet>
 
-        <Button type="submit">
+        <Button type="submit" className="min-h-11">
           Search
         </Button>
       </div>
@@ -230,9 +219,9 @@ export function AdvancedSearch({
         <div className="mt-2 flex flex-wrap gap-2">
           <Badge variant="outline" className="flex items-center gap-1">
             Search term: {searchQuery}
-            <button 
+            <button type="button" aria-label="Clear search term"
               onClick={() => setSearchQuery('')}
-              className="ml-1 h-4 w-4 rounded-full hover:bg-muted flex items-center justify-center"
+              className="ml-1 h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center"
             >
               ×
             </button>

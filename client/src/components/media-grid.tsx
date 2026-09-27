@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +22,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MediaItem } from "@shared/schema";
-import { motion } from "framer-motion";
 import { Eye, PlayCircle, Download, Pencil, Trash2, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,9 +43,15 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
   const [selectedItemIndex, setSelectedItemIndex] = useState<number>(-1);
   const [itemsToDelete, setItemsToDelete] = useState<MediaItem[]>([]);
   const [editItem, setEditItem] = useState<MediaItem | null>(null);
-  const [hoveredItem, setHoveredItem] = useState<MediaItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  const openItem = (item: MediaItem, index: number, opener: HTMLElement) => {
+    openerRef.current = opener;
+    setSelectedItem(item);
+    setSelectedItemIndex(index);
+  };
 
   // Navigation functions
   const navigateNext = () => {
@@ -69,9 +74,12 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (selectedItem) {
+        if (e.target instanceof HTMLElement && (e.target.closest('[role="menu"]') || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName))) return;
         if (e.key === 'ArrowRight') {
+          e.preventDefault();
           navigateNext();
         } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
           navigatePrevious();
         }
       }
@@ -217,148 +225,67 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {items.map((item, index) => (
-          <motion.div
+          <article
             key={item.id}
-            className="relative aspect-square cursor-pointer overflow-hidden rounded-lg bg-black/20"
-            onHoverStart={() => setHoveredItem(item)}
-            onHoverEnd={() => setHoveredItem(null)}
-            onClick={(e) => {
-              if (isSelectionMode) {
-                e.preventDefault();
-                toggleSelection(item);
-              } else {
-                setSelectedItem(item);
-                setSelectedItemIndex(index);
-              }
-            }}
-            whileHover={{ scale: 1.02 }}
-            transition={{ duration: 0.2 }}
+            className="min-w-0 overflow-hidden rounded-lg border border-border bg-card"
           >
-            <img
-              src={item.thumbnail}
-              alt={item.caption || "Media item"}
-              className="absolute inset-0 w-full h-full object-contain"
-            />
-
-            {user?.isAdmin && (isSelectionMode || hoveredItem?.id === item.id) && (
-              <div className="absolute top-2 left-2 z-20">
+            <div className="relative">
+              <button
+                type="button"
+                className="block w-full aspect-[4/3] bg-black/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                aria-label={`Open ${item.type === 'video' ? 'video' : 'photo'}: ${item.caption || `Media ${item.id}`}`}
+                onClick={(event) => {
+                  if (isSelectionMode) { toggleSelection(item); return; }
+                  openItem(item, index, event.currentTarget);
+                }}
+              >
+                <img src={item.thumbnail} alt={item.caption || (item.type === 'video' ? 'Video preview' : 'Photo preview')} loading="lazy" className="h-full w-full object-contain" />
+                <span className="absolute bottom-3 right-3 rounded bg-black/80 px-2 py-1 text-sm text-white flex items-center gap-2">
+                  {item.type === 'video' ? <PlayCircle className="h-4 w-4" /> : <Eye className="h-4 w-4" />} Open
+                </span>
+              </button>
+              {user?.isAdmin && (
+              <div className="absolute top-2 left-2 z-20 rounded bg-black/80 p-2">
                 <Checkbox
+                  aria-label={`Select ${item.caption || `media ${item.id}`}`}
                   checked={selectedItems.has(item.id)}
                   onCheckedChange={() => toggleSelection(item)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="h-5 w-5 border-2 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                  className="h-6 w-6 border-2 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                 />
               </div>
-            )}
-
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: hoveredItem?.id === item.id ? 1 : 0 }}
-              className="absolute inset-0 bg-black/60 flex flex-col justify-between p-4 text-white"
-            >
-              <div className="flex justify-between items-start">
-                {/* Left side - empty unless there's a video icon */}
-                <div className="flex-1">
-                  {/* This space intentionally left empty for the checkbox that's rendered separately */}
-                </div>
-
-                {/* Right side - all action icons */}
-                <div className="flex items-center gap-2">
-                  {item.type === "video" && (
-                    <PlayCircle className="h-6 w-6" />
-                  )}
-                  <Eye className="h-6 w-6" />
-                  {user?.isAdmin && !isSelectionMode && (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-white"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditItem(item);
-                        }}
-                      >
-                        <Pencil className="h-6 w-6" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-white hover:text-red-500"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSingleDelete(item);
-                        }}
-                      >
-                        <Trash2 className="h-6 w-6" />
-                      </Button>
-                    </>
-                  )}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-white">
-                        <Download className="h-6 w-6" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownload(item, 'high');
-                      }}>
-                        Download High-Res
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownload(item, 'low');
-                      }}>
-                        Download Low-Res
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+              )}
+            </div>
+            <div className="p-4 space-y-2">
+              <p className="text-sm font-medium line-clamp-2 min-h-5">{item.caption || (item.type === 'video' ? 'Video' : 'Photo')}</p>
+              {item.photographer && <p className="text-sm text-foreground/75">By {item.photographer}</p>}
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                <Button variant="outline" size="sm" className="min-h-11" onClick={(event) => openItem(item, index, event.currentTarget)}>View</Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="min-h-11" aria-label={`Download ${item.caption || 'media'}`}><Download className="h-4 w-4" /> Download</Button></DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onSelect={() => handleDownload(item, 'high')}>High resolution</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => handleDownload(item, 'low')}>Low resolution</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                {user?.isAdmin && <><Button variant="outline" size="icon" className="h-11 w-11" aria-label="Edit media" onClick={() => setEditItem(item)}><Pencil /></Button><Button variant="outline" size="icon" className="h-11 w-11" aria-label="Delete media" onClick={() => handleSingleDelete(item)}><Trash2 /></Button></>}
               </div>
-
-              <div className="space-y-2">
-                {item.caption && (
-                  <p className="text-sm font-medium line-clamp-2">
-                    {item.caption}
-                  </p>
-                )}
-                {item.photographer && (
-                  <p className="text-xs text-gray-300">
-                    📸 {item.photographer}
-                  </p>
-                )}
-                {item.tags && item.tags.length > 0 && (
-                  <div className="flex gap-1 flex-wrap">
-                    {item.tags.slice(0, 3).map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-2 py-0.5 bg-white/20 rounded-full text-xs"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                    {item.tags.length > 3 && (
-                      <span className="text-xs text-gray-300">
-                        +{item.tags.length - 3} more
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </article>
         ))}
       </div>
 
-      <Dialog open={!!selectedItem} onOpenChange={() => {
+      <Dialog open={!!selectedItem} onOpenChange={(open) => { if (open) return;
         setSelectedItem(null);
         setSelectedItemIndex(-1);
       }}>
-        <DialogContent className="max-w-4xl sm:max-h-[90vh] max-h-[100vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100%-1rem)] max-w-4xl max-h-[95dvh] overflow-y-auto" onCloseAutoFocus={(event) => {
+          if (openerRef.current?.isConnected) {
+            event.preventDefault();
+            openerRef.current.focus();
+          }
+        }}>
           <DialogHeader>
             <DialogTitle>
               {selectedItem?.caption || "Media Preview"}
@@ -380,15 +307,19 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   alt={selectedItem?.caption || "Media preview"}
                   className="absolute inset-0 w-full h-full object-contain"
                 />}
+            {selectedItem?.type === "video" && !user && (
+              <p className="absolute bottom-2 left-2 right-2 rounded bg-black/85 px-3 py-2 text-sm text-white">Sign in to play this video. The preview is still available.</p>
+            )}
 
             {/* Navigation buttons */}
-            <div className="absolute inset-0 flex items-center justify-between p-2">
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-between p-2">
               <div className="flex-none">
                 {selectedItemIndex > 0 && (
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="bg-black/60 hover:bg-black/80 h-12 w-12"
+                    className="pointer-events-auto bg-black/80 hover:bg-black h-12 w-12"
+                    aria-label="Previous media item"
                     onClick={(e) => {
                       e.stopPropagation();
                       navigatePrevious();
@@ -403,7 +334,8 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="bg-black/60 hover:bg-black/80 h-12 w-12"
+                    className="pointer-events-auto bg-black/80 hover:bg-black h-12 w-12"
+                    aria-label="Next media item"
                     onClick={(e) => {
                       e.stopPropagation();
                       navigateNext();
@@ -418,7 +350,8 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
           </div>
 
           <div className="space-y-4 mt-4">
-            <div className="flex justify-between items-center">
+            <p className="text-sm text-foreground/75" aria-live="polite">{selectedItemIndex + 1} of {items.length} · Use arrow keys to browse</p>
+            <div className="flex flex-wrap justify-between items-center gap-3">
               <div>
                 {selectedItem?.photographer && (
                   <p className="text-sm text-muted-foreground">
@@ -426,7 +359,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   </p>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {user?.isAdmin && (
                   <Button
                     variant="outline"

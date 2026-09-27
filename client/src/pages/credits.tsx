@@ -1,10 +1,12 @@
 import { Link } from 'wouter';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import MainNavigation from '@/components/main-navigation';
 
 export default function CreditsPage() {
   return (
     <div className="min-h-screen bg-background">
+      <MainNavigation />
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center mb-8">
           <Button asChild variant="outline" className="mr-4">

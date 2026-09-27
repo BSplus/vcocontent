@@ -2,9 +2,9 @@ import { Link } from "wouter";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Event, MediaItem, Series, User } from "@shared/schema";
+import { type Event, type MediaItem, type Series } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
-import { User as UserIcon, ImagePlus } from "lucide-react";
+import { ArrowUpRight, CalendarDays, ImagePlus, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 interface EventCardProps {
@@ -16,106 +16,74 @@ export default function EventCard({ event }: EventCardProps) {
   const eventDate = event.date ? new Date(event.date) : null;
   const isUpcoming = eventDate ? eventDate >= new Date() : false;
   const isCreatorEvent = !!event.creatorId;
-  const canManageMedia = 
-    (user?.isAdmin) || 
-    (user?.isCreator && user.id === event.creatorId);
-
-  // Fetch media items for this event to use as fallback thumbnail
-  const { data: mediaItems } = useQuery<MediaItem[]>({
-    queryKey: [`/api/events/${event.id}/media`],
-  });
-
-  // Fetch series data if the event belongs to a series
+  const canManageMedia = user?.isAdmin || (user?.isCreator && user.id === event.creatorId);
+  const { data: mediaItems } = useQuery<MediaItem[]>({ queryKey: [`/api/events/${event.id}/media`] });
   const { data: series } = useQuery<Series>({
     queryKey: [`/api/series/${event.seriesId}`],
     enabled: !!event.seriesId,
   });
-  
-  // Fetch creator data if this is a creator event
-  const { data: creator } = useQuery<{username: string, id: number, isCreator: boolean}>({
+  const { data: creator } = useQuery<{ username: string; id: number; isCreator: boolean }>({
     queryKey: [`/api/users/${event.creatorId}`],
     enabled: isCreatorEvent,
   });
-
-  // Get thumbnail URL - custom thumbnail, first media item, or fallback
-  const thumbnailUrl = event.customThumbnail || 
-    (mediaItems?.find(item => item.type === "image")?.thumbnail) || 
+  const thumbnailUrl = event.customThumbnail ||
+    mediaItems?.find((item) => item.type === "image")?.thumbnail ||
     "/attached_assets/%2389_3.png";
-
-  const cardContent = (
-    <>
-      <div className="relative aspect-video overflow-hidden">
-        <img
-          src={thumbnailUrl}
-          alt={event.title}
-          className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
-        />
-        <div className="absolute top-3 right-3 flex flex-col gap-2">
-          {isUpcoming && (
-            <Badge className="bg-primary text-black">
-              Upcoming
-            </Badge>
-          )}
-          {isCreatorEvent && creator && (
-            <Link href={`/creator/${creator.id}`}>
-              <Badge className="bg-accent text-black flex items-center gap-1 hover:bg-accent/80 cursor-pointer" variant="outline">
-                <UserIcon className="h-3 w-3" />
-                <span>By {creator.username}</span>
-              </Badge>
-            </Link>
-          )}
-        </div>
-        {series?.logo && (
-          <div className="absolute top-3 left-3 h-8">
-            <img
-              src={series.logo}
-              alt={series.name}
-              className="h-full w-auto object-contain"
-              title={series.name}
-            />
-          </div>
-        )}
-      </div>
-      <CardContent className="pt-6 flex-grow">
-        <h3 className="text-xl font-semibold mb-2 line-clamp-1 group-hover:text-primary transition-colors">
-          {event.title}
-        </h3>
-        <p className="text-sm text-foreground/60 mb-4">
-          {eventDate ? eventDate.toLocaleDateString('en-US', { 
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-          }) : 'Date not available'}
-        </p>
-        <p className="line-clamp-2 text-sm text-foreground/80">
-          {event.description}
-        </p>
-      </CardContent>
-    </>
-  );
+  const galleryUrl = `/events/${event.id}`;
 
   return (
-    <Card className="overflow-hidden group hover:shadow-lg transition-shadow bg-black/40 border-primary/20 h-full flex flex-col">
-      {!isUpcoming ? (
-        <Link href={`/events/${event.id}`} className="flex-grow cursor-pointer">
-          {cardContent}
-        </Link>
-      ) : (
-        cardContent
-      )}
-      {!isUpcoming && (
-        <CardFooter className="flex flex-col gap-2">
-          <Button asChild className="w-full bg-primary text-black hover:bg-primary/90">
-            <Link href={`/events/${event.id}`}>View Gallery</Link>
-          </Button>
-          
-          {canManageMedia && (
-            <Button asChild className="w-full bg-accent text-black hover:bg-accent/90 flex items-center gap-2">
-              <Link href={`/events/${event.id}?tab=media`}>
-                <ImagePlus className="h-4 w-4" />
-                <span>Manage Media</span>
+    <Card className={`flex h-full flex-col overflow-hidden border-foreground/10 bg-card/80 ${isUpcoming ? "" : "group transition-[border-color,background-color,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/55 motion-reduce:transform-none"}`}>
+      <div className="relative aspect-[16/10] overflow-hidden bg-black/30">
+        {isUpcoming ? (
+          <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+        ) : (
+          <Link href={galleryUrl} aria-label={`Open ${event.title} gallery`} className="block h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary">
+            <img src={thumbnailUrl} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none" loading="lazy" />
+          </Link>
+        )}
+        <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3 pointer-events-none">
+          <div className="max-w-[55%]">
+            {series?.logo && <img src={series.logo} alt={series.name} title={series.name} className="h-8 max-w-full object-contain object-left drop-shadow-md" />}
+          </div>
+          <div className="flex flex-col items-end gap-1.5">
+            {isUpcoming && <Badge className="border-0 bg-primary font-bold text-primary-foreground">Upcoming</Badge>}
+            {isCreatorEvent && creator && (
+              <Link href={`/creator/${creator.id}`} className="pointer-events-auto inline-flex items-center gap-1.5 rounded-sm bg-background/90 px-2 py-1 text-xs font-semibold text-foreground shadow-sm transition-colors hover:bg-accent hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <UserIcon className="h-3 w-3" />{creator.username}
               </Link>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <CardContent className="flex flex-grow flex-col p-4 sm:p-5">
+        <div className="mb-2 flex items-start justify-between gap-3">
+          {isUpcoming ? (
+            <h3 className="line-clamp-2 text-lg font-bold leading-snug tracking-wide text-foreground">{event.title}</h3>
+          ) : (
+            <Link href={galleryUrl} className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              <h3 className="line-clamp-2 text-lg font-bold leading-snug tracking-wide text-foreground transition-colors hover:text-primary">{event.title}</h3>
+            </Link>
+          )}
+          {!isUpcoming && <ArrowUpRight aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-foreground/50 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />}
+        </div>
+        <p className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground/75">
+          <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
+          <time dateTime={eventDate?.toISOString()}>
+            {eventDate ? eventDate.toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" }) : "Date not available"}
+          </time>
+        </p>
+        {event.description && <p className="line-clamp-2 text-sm leading-relaxed text-foreground/75">{event.description}</p>}
+      </CardContent>
+
+      {!isUpcoming && (
+        <CardFooter className="flex flex-col gap-2 border-t border-foreground/10 p-4 pt-3 sm:p-5 sm:pt-3">
+          <Button asChild className="min-h-11 w-full bg-primary font-bold text-primary-foreground hover:bg-primary/90">
+            <Link href={galleryUrl}>View gallery <ArrowUpRight className="ml-2 h-4 w-4" /></Link>
+          </Button>
+          {canManageMedia && (
+            <Button asChild variant="outline" className="min-h-10 w-full border-accent/60 text-accent hover:bg-accent/10">
+              <Link href={`${galleryUrl}?tab=media`}><ImagePlus className="mr-2 h-4 w-4" />Manage media</Link>
             </Button>
           )}
         </CardFooter>

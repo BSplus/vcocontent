@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useLocation, Link } from "wouter";
+import { useState, useCallback } from "react";
+import { useSearch, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { MediaItem } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -9,11 +9,16 @@ import { AdvancedSearch } from "@/components/advanced-search";
 import MainNavigation from "@/components/main-navigation";
 
 export default function SearchResults() {
-  const [location] = useLocation();
+  const search = useSearch();
   const [filteredMediaItems, setFilteredMediaItems] = useState<MediaItem[]>([]);
+  const [activeQuery, setActiveQuery] = useState("");
+  const handleResults = useCallback((results: MediaItem[], query: string) => {
+    setFilteredMediaItems(results);
+    setActiveQuery(query);
+  }, []);
 
   // Get search parameters from URL
-  const params = new URLSearchParams(location.split('?')[1]);
+  const params = new URLSearchParams(search);
   const initialQuery = params.get('q') || '';
   const initialType = (params.get('type') || 'all') as 'all' | 'image' | 'video';
 
@@ -22,13 +27,6 @@ export default function SearchResults() {
     queryKey: ["/api/media"],
     staleTime: 30000, // Cache for 30 seconds
   });
-
-  // Set initial filtered items if we have a search query
-  useEffect(() => {
-    if (mediaItems.length > 0 && initialQuery) {
-      setFilteredMediaItems(mediaItems);
-    }
-  }, [mediaItems, initialQuery]);
 
   if (isLoading) {
     return (
@@ -49,7 +47,7 @@ export default function SearchResults() {
             Back to Home
           </Link>
         </Button>
-        <h1 className="text-4xl font-bold">Media Search</h1>
+        <h1 className="text-2xl md:text-4xl font-bold">Media Search</h1>
         {initialQuery && (
           <p className="text-muted-foreground mt-2">
             Search results for: "{initialQuery}"
@@ -59,19 +57,19 @@ export default function SearchResults() {
         <div className="mt-8">
           <AdvancedSearch
             items={mediaItems}
-            onSearchResults={setFilteredMediaItems}
+            onSearchResults={handleResults}
             className="mb-8"
             initialQuery={initialQuery}
             initialType={initialType}
           />
 
+          <p className="text-sm text-foreground/75 mb-5" role="status" aria-live="polite">
+            {activeQuery.trim() ? `${filteredMediaItems.length} matching media items` : "Search by caption, photographer or tag."}
+          </p>
           {!filteredMediaItems.length ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground text-lg">
-                {initialQuery ? 
-                  "No matching media found." : 
-                  "Use the search above to find media items."
-                }
+            <div className="rounded-lg border border-border bg-card text-center py-12 px-4">
+              <p className="text-foreground/80 text-lg">
+                {activeQuery.trim() ? "No matching media. Try another search term or change the filters." : "Enter a search term above to find media."}
               </p>
             </div>
           ) : (
