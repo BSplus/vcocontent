@@ -10,7 +10,7 @@ import { log } from "./vite";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { generateTagsForImage, generateTagsForVideo, categorizeContent } from "./utils/ai-tagger";
-import { mediaUpload, uploadMedia, readMediaStream, getMediaContentType } from "./media-storage";
+import { mediaUpload, uploadMedia, deleteStoredMedia, readMediaStream, getMediaContentType } from "./media-storage";
 import { z } from "zod";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
@@ -440,6 +440,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       mediaUpload.single("file")(req, res, async (uploadError) => {
         if (uploadError) return res.status(400).json({ error: uploadError.message });
         if (!req.file) return res.status(400).json({ error: "A file is required" });
+        let saved: Awaited<ReturnType<typeof uploadMedia>> | undefined;
         try {
           const metadata = z.object({
             type: z.enum(["image", "video"]),
@@ -447,7 +448,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             photographer: z.string().max(150).optional(),
             tags: z.string().max(1500).optional(),
           }).parse(req.body);
-          const saved = await uploadMedia(req.file, metadata.type);
+          const tags = metadata.tags ? JSON.parse(metadata.tags) : [];
+          if (!Array.isArray(tags) || !tags.every(tag => typeof tag === "string" && tag.length <= 100)) {
+            throw new Error("Invalid tags");
+          }
+          saved = await uploadMedia(req.file, metadata.type);
           const item = await storage.createMediaItem(insertMediaItemSchema.parse({
             eventId,
             type: saved.mediaType,
@@ -455,19 +460,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             thumbnail: saved.thumbnail,
             caption: metadata.caption || "",
             photographer: metadata.photographer || "",
-            tags: metadata.tags
-              ? (() => {
-                  const parsed = JSON.parse(metadata.tags);
-                  if (!Array.isArray(parsed) || !parsed.every(tag => typeof tag === "string" && tag.length <= 100)) {
-                    throw new Error("Invalid tags");
-                  }
-                  return parsed.slice(0, 30);
-                })()
-              : [],
+            tags: tags.slice(0, 30),
             isPremium: false,
           }));
           res.status(201).json(item);
         } catch (error) {
+          if (saved) {
+            try {
+              await deleteStoredMedia(saved);
+            } catch (cleanupError) {
+              console.error("Failed to remove objects for rejected upload:", cleanupError);
+            }
+          }
           console.error("Media upload failed:", error);
           res.status(error instanceof z.ZodError ? 400 : 502).json({
             error: error instanceof z.ZodError ? "Invalid upload details" : "Could not store media",

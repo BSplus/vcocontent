@@ -41,7 +41,8 @@ mkdirSync(TEMP_UPLOAD_DIR, { recursive: true });
 /**
  * Multipart parser for the eventual POST /api/events/:eventId/media/upload
  * route. Files are written to a temporary disk path (not held in RAM) and
- * always removed by uploadMedia after they are persisted or rejected.
+ * removed by uploadMedia after persistence or rejection, or by the route
+ * when metadata validation fails before uploadMedia is called.
  */
 export const mediaUpload: Multer = multer({
   storage: multer.diskStorage({
@@ -117,6 +118,12 @@ async function validateFileSignature(file: Express.Multer.File, type: MediaType)
     if (!validFormats.has(metadata.format)) {
       throw new Error("The uploaded file is not a supported image");
     }
+    const mimeByFormat: Record<string, string> = {
+      jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp",
+    };
+    if (mimeByFormat[metadata.format] !== file.mimetype) {
+      throw new Error("The uploaded image does not match its MIME type");
+    }
     return;
   }
 
@@ -132,9 +139,30 @@ async function validateFileSignature(file: Express.Multer.File, type: MediaType)
   }
   const isIsoMedia = header.toString("ascii", 4, 8) === "ftyp";
   const isWebm = header.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
-  if (!isIsoMedia && !(file.mimetype === "video/webm" && isWebm)) {
+  const isQuicktime = isIsoMedia && header.toString("ascii", 8, 12) === "qt  ";
+  if (!((file.mimetype === "video/mp4" && isIsoMedia && !isQuicktime)
+      || (file.mimetype === "video/quicktime" && isQuicktime)
+      || (file.mimetype === "video/webm" && isWebm))) {
     throw new Error("The uploaded file is not a supported video");
   }
+}
+
+export async function deleteStoredMedia(saved: StoredMedia): Promise<void> {
+  await deleteStorageKeys(saved.storageKey, saved.thumbnailKey);
+}
+
+async function deleteStorageKeys(...keys: string[]): Promise<void> {
+  const errors: unknown[] = [];
+  for (const key of keys) {
+    assertStoredKey(key);
+    try {
+      const result = await getStorageClient().delete(key, { ignoreNotFound: true });
+      checkUploadResult(result, key);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length) throw new AggregateError(errors, "Could not remove rejected media objects");
 }
 
 async function uploadFromFilename(objectName: string, filename: string): Promise<void> {
@@ -156,6 +184,8 @@ export async function uploadMedia(
   type?: MediaType,
 ): Promise<StoredMedia> {
   const tempPaths = new Set<string>([file.path]);
+  let storageKey: string | undefined;
+  let thumbnailKey: string | undefined;
   try {
     const actualType = detectMediaType(file);
     if (type && type !== actualType) {
@@ -179,14 +209,14 @@ export async function uploadMedia(
     };
     const extension = extensionByMime[file.mimetype];
     const id = randomUUID();
-    const storageKey = `media-${id}.${extension}`;
-    const thumbnailKey = `thumb-${id}.webp`;
-
-    await uploadFromFilename(storageKey, file.path);
+    storageKey = `media-${id}.${extension}`;
+    thumbnailKey = `thumb-${id}.webp`;
 
     if (mediaType === "image") {
       const thumbnailPath = path.join(TEMP_UPLOAD_DIR, `${randomUUID()}.webp`);
       tempPaths.add(thumbnailPath);
+      // Decoding the entire image before writing either object rejects
+      // truncated files that still have a readable metadata header.
       await sharp(file.path, {
         limitInputPixels: MAX_IMAGE_PIXELS,
         failOn: "error",
@@ -195,8 +225,10 @@ export async function uploadMedia(
         .resize({ width: 640, height: 640, fit: "inside", withoutEnlargement: true })
         .webp({ quality: 78 })
         .toFile(thumbnailPath);
+      await uploadFromFilename(storageKey, file.path);
       await uploadFromFilename(thumbnailKey, thumbnailPath);
     } else {
+      await uploadFromFilename(storageKey, file.path);
       // There is no video-frame extractor in this app yet. Save a small,
       // generic poster rather than falsely presenting an analyzed frame.
       const poster = Buffer.from(
@@ -219,6 +251,15 @@ export async function uploadMedia(
       mimeType: file.mimetype,
       size: file.size,
     };
+  } catch (error) {
+    if (storageKey && thumbnailKey) {
+      try {
+        await deleteStorageKeys(storageKey, thumbnailKey);
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "Upload failed and object cleanup failed");
+      }
+    }
+    throw error;
   } finally {
     await Promise.all(Array.from(tempPaths).map((tempPath) => unlink(tempPath).catch(() => undefined)));
   }

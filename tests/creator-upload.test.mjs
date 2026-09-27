@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { Client } from "@replit/object-storage";
 import sharp from "sharp";
@@ -10,6 +13,26 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5000";
 // The route validates the MP4 container signature; it does not transcode videos.
 const video = Buffer.from("000000186674797069736f6d0000020069736f6d6d703431", "hex");
 const objectKey = /^\/api\/media\/files\/((?:media|thumb)-[0-9a-f-]{36}\.(?:jpg|png|gif|webp|mp4|mov|webm))$/;
+const uploadDir = path.join(tmpdir(), "vco-media-uploads");
+
+async function storageKeys(objects) {
+  const keys = [];
+  for (const prefix of ["media-", "thumb-"]) {
+    const result = await objects.list({ prefix });
+    assert.equal(result.ok, true, `Cannot inspect ${prefix} storage objects: ${String(result.error)}`);
+    keys.push(...result.value.map(item => item.name));
+  }
+  return new Set(keys);
+}
+
+async function temporaryFiles() {
+  try {
+    return new Set(await readdir(uploadDir));
+  } catch (error) {
+    if (error.code === "ENOENT") return new Set();
+    throw error;
+  }
+}
 
 function client() {
   let cookie = "";
@@ -143,6 +166,37 @@ test("creator image/video uploads, delivery and ownership", async () => {
     assert.equal((await pool.query("SELECT title FROM events WHERE id = $1 AND creator_id = $2", [
       eventId, accounts[0].id,
     ])).rows[0]?.title, `Upload smoke ${suffix}`);
+
+    const beforeKeys = await storageKeys(objects);
+    const beforeTemp = await temporaryFiles();
+    const beforeRows = await pool.query("SELECT id FROM media_items WHERE event_id = $1", [eventId]);
+    for (const [label, bytes, filename, mime, type, status] of [
+      ["corrupt image", Buffer.from("not a PNG"), "broken.png", "image/png", "image", 502],
+      ["truncated image", image.subarray(0, 40), "truncated.png", "image/png", "image", 502],
+      ["corrupt video", Buffer.from("not an MP4"), "broken.mp4", "video/mp4", "video", 502],
+      ["wrong image MIME", image, "wrong.jpg", "image/jpeg", "image", 502],
+      ["wrong video MIME", video, "wrong.webm", "video/webm", "video", 502],
+      ["wrong selected type", image, "wrong.png", "image/png", "video", 502],
+      ["unsupported MIME", image, "wrong.txt", "text/plain", "image", 400],
+    ]) {
+      const response = await owner(`/api/events/${eventId}/media/upload`, {
+        method: "POST",
+        body: multipart(bytes, filename, mime, type),
+      });
+      const result = await json(response, status);
+      assert.ok(result.error, `${label}: expected an error response`);
+      const rows = await pool.query("SELECT id FROM media_items WHERE event_id = $1", [eventId]);
+      assert.deepEqual(rows.rows.map(row => row.id).sort(), beforeRows.rows.map(row => row.id).sort(),
+        `${label}: rejected upload created a media record`);
+    }
+    // Other tests or creators can upload concurrently to this bucket. Newly
+    // created keys belonging to committed records are not rejected-upload leaks.
+    const newKeys = [...await storageKeys(objects)].filter(key => !beforeKeys.has(key));
+    const allUrls = await pool.query("SELECT url, thumbnail FROM media_items");
+    const referenced = new Set(allUrls.rows.flatMap(row => [row.url, row.thumbnail]));
+    assert.deepEqual(newKeys.filter(key => !referenced.has(`/api/media/files/${key}`)), [],
+      "Rejected upload left an unreferenced storage object");
+    assert.deepEqual(await temporaryFiles(), beforeTemp, "Rejected upload left a temporary file");
   } finally {
     const cleanupErrors = [];
     // Save the keys before deleting metadata. Restrict every query to IDs made
