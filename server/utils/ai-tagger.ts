@@ -7,6 +7,10 @@ const allowedTags = new Set([
   "Dry Track", "GT Car", "Formula Car", "Prototype", "Vintage",
 ]);
 
+export function parseTagResponse(text: string): string[] {
+  return Array.from(new Set(text.split(',').map(tag => tag.trim()).filter(tag => allowedTags.has(tag))));
+}
+
 function getOpenAIClient(): OpenAI | null {
   if (!process.env.OPENAI_API_KEY) {
     return null;
@@ -48,13 +52,10 @@ export async function generateTagsForImage(imageUrl: string): Promise<string[]> 
     });
 
     const tagsText = response.choices[0]?.message?.content || '';
-    const tags = tagsText
-      .split(',')
-      .map(tag => tag.trim())
-      .filter(tag => allowedTags.has(tag));
-    return tags;
+    return parseTagResponse(tagsText);
   } catch (error) {
-    console.error('OpenAI API error:', error);
+    // Provider errors can contain request metadata. Never log or return them to clients.
+    console.error('AI tagging provider request failed');
     throw new Error('AI tagging failed');
   }
 }

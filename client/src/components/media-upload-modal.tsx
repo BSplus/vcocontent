@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { InsertMediaItem, MediaItem, insertMediaItemSchema } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Upload, X, Info } from "lucide-react";
 
 interface MediaUploadModalProps {
@@ -44,6 +43,7 @@ interface FileUpload {
   status: 'pending' | 'uploading' | 'success' | 'error';
   error?: string;
   aiWarning?: string;
+  aiTags?: string[];
 }
 
 export default function MediaUploadModal({
@@ -268,17 +268,20 @@ export default function MediaUploadModal({
           // If auto-tagging is enabled, analyze the uploaded media
           if (autoTagEnabled && mediaResponse && mediaResponse.id) {
             try {
-              console.log(`Auto-tagging media item ${mediaResponse.id}`);
-              const tagResponse = await apiRequest("POST", `/api/media/${mediaResponse.id}/analyze`, {});
+              const tagResponse = await fetch(`/api/media/${mediaResponse.id}/analyze`, {
+                method: "POST",
+                credentials: "include",
+              });
+              const result = await tagResponse.json();
               if (!tagResponse.ok) {
-                const details = await tagResponse.text();
-                upload.aiWarning = `AI tagging was unavailable: ${details || tagResponse.statusText}`;
+                upload.aiWarning = `KI-Analyse fehlgeschlagen: ${typeof result.error === "string" ? result.error : `HTTP ${tagResponse.status}`}`;
+              } else if (result.success === true && Array.isArray(result.generatedTags) && result.generatedTags.length > 0 && result.generatedTags.every((tag: unknown) => typeof tag === "string")) {
+                upload.aiTags = result.generatedTags;
               } else {
-                console.log("Auto-tagging completed");
+                upload.aiWarning = "KI-Analyse lieferte keine gültigen Tags.";
               }
             } catch (tagError) {
-              console.error("Error during auto-tagging:", tagError);
-              upload.aiWarning = `AI tagging failed: ${tagError instanceof Error ? tagError.message : "Unknown error"}`;
+              upload.aiWarning = "KI-Analyse nicht erreichbar. Das Bild wurde trotzdem gespeichert.";
             }
           }
 
@@ -297,19 +300,15 @@ export default function MediaUploadModal({
       const successfulCount = pendingUploads.filter(upload => upload.status === "success").length;
       const failedCount = pendingUploads.length - successfulCount;
       const aiWarningCount = pendingUploads.filter(upload => upload.aiWarning).length;
+      const aiSuccessCount = pendingUploads.filter(upload => upload.aiTags?.length).length;
       const aiWarningDetails = pendingUploads.find(upload => upload.aiWarning)?.aiWarning;
       toast({
         title: failedCount || aiWarningCount ? "Upload completed with notices" : "Success",
-        description: `${successfulCount} file${successfulCount === 1 ? "" : "s"} uploaded${failedCount ? `; ${failedCount} failed` : ""}${aiWarningCount ? `; AI tagging unavailable for ${aiWarningCount}: ${aiWarningDetails}` : ""}.`,
+        description: `${successfulCount} file${successfulCount === 1 ? "" : "s"} uploaded${failedCount ? `; ${failedCount} failed` : ""}${aiSuccessCount ? `; KI-Tags für ${aiSuccessCount} erstellt` : ""}${aiWarningCount ? `; AI tagging unavailable for ${aiWarningCount}: ${aiWarningDetails}` : ""}.`,
         variant: failedCount ? "destructive" : undefined,
       });
 
-      setUploads(current => current.filter(upload => upload.status !== "success"));
-      if (successfulCount && !failedCount) {
-        onOpenChange(false);
-        form.reset();
-        setTagsInput("");
-      }
+      // Keep successful files visible so creators can inspect the generated tags.
     } catch (error) {
       console.error('Bulk upload error:', error);
       toast({
@@ -413,6 +412,14 @@ export default function MediaUploadModal({
                       {upload.aiWarning && (
                         <p className="text-sm text-amber-600 mt-1">{upload.aiWarning}</p>
                       )}
+                      {upload.aiTags && (
+                        <p className="text-sm text-green-700 mt-1" role="status">
+                          KI-Tags erstellt: {upload.aiTags.join(", ")}
+                        </p>
+                      )}
+                      {upload.status === 'success' && !upload.aiTags && !upload.aiWarning && (
+                        <p className="text-sm text-green-700 mt-1">Upload abgeschlossen</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -500,7 +507,7 @@ export default function MediaUploadModal({
             </Button>
             <Button
               type="submit"
-              disabled={uploading || uploads.length === 0}
+              disabled={uploading || !uploads.some(upload => upload.status === "pending")}
               className="bg-primary text-black hover:bg-primary/90"
             >
               {uploading ? (
@@ -509,7 +516,7 @@ export default function MediaUploadModal({
                   Uploading...
                 </>
               ) : (
-                `Upload ${uploads.length} ${uploads.length === 1 ? 'File' : 'Files'}`
+                `Upload ${uploads.filter(upload => upload.status === "pending").length} ${uploads.filter(upload => upload.status === "pending").length === 1 ? 'File' : 'Files'}`
               )}
             </Button>
           </div>

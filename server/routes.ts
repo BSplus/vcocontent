@@ -504,21 +504,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(422).json({ error: "Video tagging requires a real video frame; no frame is available yet" });
       }
 
-      console.log(`Beginning AI analysis for media ${mediaId} of type ${mediaItem.type}`);
-
-      // Generate tags based on media type
-      let generatedTags: string[] = [];
-      if (mediaItem.type === "image") {
-        generatedTags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
-      } else if (mediaItem.type === "video") {
-        generatedTags = await generateTagsForVideo(mediaItem.url, mediaItem.thumbnail);
-      }
+      const generatedTags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
 
       if (generatedTags.length === 0) {
         return res.status(422).json({ error: "No matching tags were found" });
       }
-
-      console.log(`Generated ${generatedTags.length} tags for media ${mediaId}:`, generatedTags);
 
       // Combine with existing tags if present
       const existingTags = Array.isArray(mediaItem.tags) ? mediaItem.tags : [];
@@ -526,8 +516,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Attempt to categorize the content
       const category = await categorizeContent(combinedTags);
-      console.log(`Categorized media ${mediaId} as: ${category}`);
-
       // Update the media item with new tags and category
       await storage.updateMediaItem(mediaId, {
         tags: combinedTags,
@@ -537,11 +525,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         success: true,
         tags: combinedTags,
+        generatedTags,
         category
       });
     } catch (error) {
-      console.error('Error analyzing media:', error);
-      res.status(502).json({ error: error instanceof Error ? error.message : "AI analysis failed" });
+      console.error('AI media analysis failed');
+      res.status(502).json({ error: "AI analysis failed. Please try again later." });
     }
   });
 
@@ -780,65 +769,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error creating event:', error);
       res.status(400).json({ error: "Failed to create event" });
-    }
-  });
-
-  // AI tagging endpoints
-  app.post("/api/media/:id/analyze", requireCreator, async (req, res) => {
-    try {
-      if (!process.env.OPENAI_API_KEY) {
-        return res.status(500).json({ error: "OpenAI API key not configured" });
-      }
-
-      const mediaId = parseInt(req.params.id);
-      const mediaItem = await storage.getMediaItem(mediaId);
-
-      if (!mediaItem) {
-        return res.status(404).json({ error: "Media item not found" });
-      }
-
-      log(`Processing AI analysis request for media ID: ${mediaId}`, 'ai-analysis');
-
-      // Generate tags based on media type
-      let tags: string[] = [];
-      if (mediaItem.type === 'image') {
-        tags = await generateTagsForImage(mediaItem.url);
-      } else if (mediaItem.type === 'video') {
-        // For videos, use the thumbnail URL for tag generation
-        tags = await generateTagsForVideo(mediaItem.url, mediaItem.thumbnail || mediaItem.url);
-      }
-
-      // If tags were successfully generated
-      if (tags.length > 0) {
-        // Categorize the content
-        const category = await categorizeContent(tags);
-
-        // Update the media item with the generated tags and category
-        const updatedMediaItem = await storage.updateMediaItem(mediaId, {
-          tags,
-          category
-        });
-
-        log(`AI analysis completed for media ID: ${mediaId}, tags: ${tags.join(', ')}, category: ${category}`, 'ai-analysis');
-        
-        res.json({
-          success: true,
-          tags,
-          category,
-          mediaItem: updatedMediaItem
-        });
-      } else {
-        res.status(422).json({ 
-          error: "Failed to generate tags for this media",
-          mediaItem 
-        });
-      }
-    } catch (error) {
-      console.error('Error in AI analysis:', error);
-      res.status(500).json({ 
-        error: "AI analysis failed", 
-        details: error instanceof Error ? error.message : "Unknown error" 
-      });
     }
   });
 
