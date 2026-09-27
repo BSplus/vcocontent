@@ -9,9 +9,9 @@ import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } fr
 import { log } from "./vite";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { generateTagsForImage, generateTagsForVideo, categorizeContent } from "./utils/ai-tagger";
 import { mediaUpload, uploadMedia, deleteStoredMedia, readMediaStream, getMediaContentType } from "./media-storage";
 import { z } from "zod";
+import { generateTagsForImage, generateTagsForVideo, categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 const canManageEvent = (user: Express.User | undefined, creatorId: number | null) =>
@@ -503,7 +503,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!canManageEvent(req.user, event?.creatorId ?? null)) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "AI tagging is not configured" });
+      if (!isAITaggingConfigured()) return res.status(503).json({ error: "AI tagging is not configured" });
       if (mediaItem.type === "video") {
         return res.status(422).json({ error: "Video tagging requires a real video frame; no frame is available yet" });
       }
@@ -779,8 +779,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Batch analyze endpoint for multiple media items
   app.post("/api/media/batch-analyze", requireCreator, async (req, res) => {
     try {
-      if (!process.env.OPENAI_API_KEY) {
-        return res.status(500).json({ error: "OpenAI API key not configured" });
+      if (!isAITaggingConfigured()) {
+        return res.status(503).json({ error: "AI tagging is not configured" });
       }
 
       const { mediaIds } = req.body;
@@ -844,10 +844,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             errors.push({ id: mediaId, error: "Failed to generate tags" });
           }
         } catch (error) {
-          console.error(`Error analyzing media ID ${id}:`, error);
+          console.error("AI batch analysis failed");
           errors.push({ 
-            id, 
-            error: error instanceof Error ? error.message : "Unknown error" 
+            id,
+            error: "AI analysis failed. Please try again later."
           });
         }
       }

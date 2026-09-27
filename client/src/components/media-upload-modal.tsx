@@ -274,7 +274,9 @@ export default function MediaUploadModal({
               });
               const result = await tagResponse.json();
               if (!tagResponse.ok) {
-                upload.aiWarning = `KI-Analyse fehlgeschlagen: ${typeof result.error === "string" ? result.error : `HTTP ${tagResponse.status}`}`;
+                 upload.aiWarning = tagResponse.status === 503
+                   ? "KI-Analyse ist derzeit nicht eingerichtet. Das Bild wurde trotzdem gespeichert."
+                   : "KI-Analyse fehlgeschlagen. Das Bild wurde trotzdem gespeichert. Bitte später erneut versuchen.";
               } else if (result.success === true && Array.isArray(result.generatedTags) && result.generatedTags.length > 0 && result.generatedTags.every((tag: unknown) => typeof tag === "string")) {
                 upload.aiTags = result.generatedTags;
               } else {
