@@ -15,13 +15,15 @@ import {
   SheetTrigger 
 } from '@/components/ui/sheet';
 import { Checkbox } from '@/components/ui/checkbox';
+import { SearchField, MediaTypeFilter, serializeSearchParams } from '@/lib/search-params';
 
 interface AdvancedSearchProps {
   items: MediaItem[];
   onSearchResults: (results: MediaItem[], query: string) => void;
   className?: string;
   initialQuery?: string;
-  initialType?: 'all' | 'image' | 'video';
+  initialType?: MediaTypeFilter;
+  initialFields?: SearchField[];
 }
 
 export function AdvancedSearch({ 
@@ -29,13 +31,14 @@ export function AdvancedSearch({
   onSearchResults, 
   className,
   initialQuery = '',
-  initialType = 'all'
+  initialType = 'all',
+  initialFields = ['caption', 'photographer', 'tags']
 }: AdvancedSearchProps) {
   const [, setLocation] = useLocation();
   const [filters, setFilters] = useState({
-    includeCaption: true,
-    includePhotographer: true,
-    includeTags: true,
+    includeCaption: initialFields.includes('caption'),
+    includePhotographer: initialFields.includes('photographer'),
+    includeTags: initialFields.includes('tags'),
     mediaType: initialType,
   });
 
@@ -63,16 +66,7 @@ export function AdvancedSearch({
     distance: 100,
   }), [searchKeys]);
 
-  const { searchQuery, setSearchQuery, results } = useSearch(items, searchOptions);
-
-  // Initialize search query from URL if provided
-  useEffect(() => {
-    setSearchQuery(initialQuery);
-  }, [initialQuery, setSearchQuery]);
-
-  useEffect(() => {
-    setFilters(prev => prev.mediaType === initialType ? prev : { ...prev, mediaType: initialType });
-  }, [initialType]);
+  const { searchQuery, setSearchQuery, results } = useSearch(items, searchOptions, initialQuery);
 
   // Update results whenever search parameters change
   useEffect(() => {
@@ -89,12 +83,14 @@ export function AdvancedSearch({
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const searchParams = new URLSearchParams();
-    if (searchQuery) searchParams.set('q', searchQuery);
-    if (filters.mediaType !== 'all') searchParams.set('type', filters.mediaType);
+    const fields: SearchField[] = [];
+    if (filters.includeCaption) fields.push('caption');
+    if (filters.includePhotographer) fields.push('photographer');
+    if (filters.includeTags) fields.push('tags');
+    const searchParams = serializeSearchParams(searchQuery, { mediaType: filters.mediaType, fields });
 
     // Navigate to search results page with parameters
-    setLocation(`/search?${searchParams.toString()}`);
+    setLocation(searchParams ? `/search?${searchParams}` : '/search');
   };
 
   return (

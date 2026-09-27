@@ -7,6 +7,7 @@ import { Loader2, ArrowLeft } from "lucide-react";
 import MediaGrid from "@/components/media-grid";
 import { AdvancedSearch } from "@/components/advanced-search";
 import MainNavigation from "@/components/main-navigation";
+import { parseSearchParams } from "@/lib/search-params";
 
 export default function SearchResults() {
   const search = useSearch();
@@ -18,9 +19,7 @@ export default function SearchResults() {
   }, []);
 
   // Get search parameters from URL
-  const params = new URLSearchParams(search);
-  const initialQuery = params.get('q') || '';
-  const initialType = (params.get('type') || 'all') as 'all' | 'image' | 'video';
+  const { query: initialQuery, filters } = parseSearchParams(search);
 
   // Fetch all media items
   const { data: mediaItems = [], isLoading } = useQuery<MediaItem[]>({
@@ -56,11 +55,13 @@ export default function SearchResults() {
 
         <div className="mt-8">
           <AdvancedSearch
+            key={search}
             items={mediaItems}
             onSearchResults={handleResults}
             className="mb-8"
             initialQuery={initialQuery}
-            initialType={initialType}
+            initialType={filters.mediaType}
+            initialFields={filters.fields}
           />
 
           <p className="text-sm text-foreground/75 mb-5" role="status" aria-live="polite">

@@ -28,9 +28,10 @@ const DEFAULT_OPTIONS = {
 
 export function useSearch<T extends SearchableItem>(
   items: T[],
-  options: UseSearchOptions<T>
+  options: UseSearchOptions<T>,
+  initialQuery = ''
 ) {
-  const [searchQuery, setSearchQueryState] = useState('');
+  const [searchQuery, setSearchQueryState] = useState(initialQuery);
   const [results, setResults] = useState<T[]>([]);
   const [fuse, setFuse] = useState<Fuse<T> | null>(null);
 
@@ -74,6 +75,11 @@ export function useSearch<T extends SearchableItem>(
       setResults(items);
     }
   }, [fuse, items]);
+
+  // Re-run the current query when the index or media list changes.
+  useEffect(() => {
+    performSearch(searchQuery);
+  }, [performSearch]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
