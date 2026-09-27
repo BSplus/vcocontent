@@ -1,5 +1,5 @@
 import { useAuth } from "@/hooks/use-auth";
-import { useLocation } from "wouter";
+import { returnAfterAuth } from "@/lib/auth-return";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -36,7 +36,6 @@ type LoginFormData = z.infer<typeof loginSchema>;
 type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
-  const [_, setLocation] = useLocation();
   const { user, loginMutation, registerMutation } = useAuth();
   const { toast } = useToast();
 
@@ -55,16 +54,14 @@ export default function AuthPage() {
     }
   });
 
-  // Improved redirect logic with full page reload to ensure cookies are set
+  // Reload after authentication so the destination reads the established session.
   useEffect(() => {
     let redirectTimeout: NodeJS.Timeout;
     
     if (user) {
-      console.log('User detected in auth page, redirecting to home', user);
-      // Use a full page reload to ensure session cookies are properly set
+      const destination = returnAfterAuth(new URLSearchParams(window.location.search).get("next"), user);
       redirectTimeout = setTimeout(() => {
-        console.log('Executing full page reload to home');
-        window.location.href = "/";
+        window.location.replace(destination);
       }, 100);
     }
     

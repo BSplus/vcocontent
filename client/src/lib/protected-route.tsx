@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { Redirect, Route } from "wouter";
+import { authRedirectForCurrentPage } from "./auth-return";
 
 type ProtectedRouteProps = {
   path: string;
@@ -40,7 +41,7 @@ export function ProtectedRoute({
         
         if (!user) {
           console.log(`Redirecting from ${path} to /auth - No user found`);
-          return <Redirect to="/auth" />;
+          return <Redirect to={authRedirectForCurrentPage()} />;
         }
         
         if (requireAdmin && !user.isAdmin) {

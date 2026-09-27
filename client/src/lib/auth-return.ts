@@ -1,0 +1,29 @@
+import type { User } from "@shared/schema";
+
+const protectedPaths = new Set([
+  "/admin/dashboard",
+  "/admin/users",
+  "/creator/dashboard",
+  "/creator/apply",
+]);
+
+export function authRedirectForCurrentPage(): string {
+  const next = window.location.pathname + window.location.search + window.location.hash;
+  return `/auth?${new URLSearchParams({ next }).toString()}`;
+}
+
+export function returnAfterAuth(next: string | null, user: User): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//") ||
+      /[\\\u0000-\u001f\u007f]/.test(next)) return "/";
+
+  try {
+    const url = new URL(next, window.location.origin);
+    if (url.origin !== window.location.origin || !protectedPaths.has(url.pathname)) return "/";
+    if (url.pathname.startsWith("/admin/") && !user.isAdmin) return "/";
+    if (url.pathname === "/creator/dashboard" &&
+        !(user.isCreator || user.isAdmin || user.creatorStatus === "approved")) return "/";
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return "/";
+  }
+}
