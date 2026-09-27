@@ -15,7 +15,7 @@ export function ProtectedRoute({
   requireAdmin,
   requireCreator,
 }: ProtectedRouteProps) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, error } = useAuth();
 
   console.log(`ProtectedRoute (${path}) - Auth State:`, { user, isLoading, requireAdmin, requireCreator });
 
@@ -26,6 +26,14 @@ export function ProtectedRoute({
           return (
             <div className="flex items-center justify-center min-h-screen">
               <Loader2 className="h-8 w-8 animate-spin text-border" />
+            </div>
+          );
+        }
+        if (error) {
+          return (
+            <div role="alert" className="min-h-screen flex flex-col items-center justify-center gap-4">
+              <p>Die Anmeldung konnte nicht geprüft werden. Bitte versuche es erneut.</p>
+              <button className="underline" onClick={() => window.location.reload()}>Seite neu laden</button>
             </div>
           );
         }

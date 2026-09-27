@@ -20,7 +20,7 @@ export default function AdminUsers() {
   const queryClient = useQueryClient();
 
   // Load all users
-  const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
+  const { data: users = [], isLoading: usersLoading, error: usersError } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
     staleTime: 0,
   });
@@ -64,6 +64,12 @@ export default function AdminUsers() {
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
+  }
+  if (usersError) {
+    return <div role="alert" className="min-h-screen flex flex-col items-center justify-center gap-4">
+      <p>Die Nutzerverwaltung konnte nicht geladen werden.</p>
+      <Button onClick={() => window.location.reload()}>Seite neu laden</Button>
+    </div>;
   }
 
   return (

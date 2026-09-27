@@ -1,4 +1,5 @@
 - [Session table constraint](session-table-constraint.md) — connect-pg-simple can collide with an existing session primary-key name when asked to create a second table.
-- [Post-merge dependencies](clean-install-firewall.md) — verify clean installs separately; live Vite caches can race with npm ci during merge setup.
+- [Post-merge dependencies](clean-install-firewall.md) — verify clean installs separately; live Vite caches can race with package setup during merges.
 - [Historical media indexes](historical-media-indexes.md) — old Base64 payloads exceed PostgreSQL index-entry limits; keep object-path indexes partial.
 - [Live-server test freshness](live-server-test-freshness.md) — integration tests may hit an older preview process after merges; restart it before interpreting failures.
+- [Development dependency rebuild](dev-dependency-rebuild.md) — stop Vite during merge-time installs; a later restart alone cannot prevent transient missing chunks.

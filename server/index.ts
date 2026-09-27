@@ -89,23 +89,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Global error handler middleware
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  log(`Request failed for ${req.method} ${req.path}`, "error");
-
-  res.status(500).json({
-    error: app.get("env") === "development" ? err.message : "Internal server error",
-    stack: app.get("env") === "development" ? err.stack : undefined
-  });
-});
-
 // Global Error Handlers
 process.on('uncaughtException', (err) => {
-  log("Uncaught exception", "error");
+  console.error("Uncaught exception:", err);
+  process.exit(1);
 });
 
 process.on('unhandledRejection', (reason) => {
-  log(`Unhandled rejection: ${reason instanceof Error ? reason.message : "Unknown error"}`, "error");
+  console.error("Unhandled rejection:", reason);
 });
 
 (async () => {
@@ -116,6 +107,14 @@ process.on('unhandledRejection', (reason) => {
   } else {
     serveStatic(app);
   }
+
+  app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+    console.error(`Request failed for ${req.method} ${req.path}:`, err);
+    if (res.headersSent) return next(err);
+    res.status(500).json({
+      error: app.get("env") === "development" ? err.message : "Internal server error",
+    });
+  });
 
   const startServer = async (port: number): Promise<void> => {
     try {
@@ -147,4 +146,7 @@ process.on('unhandledRejection', (reason) => {
     throw new Error("PORT must be an integer between 1 and 65535");
   }
   await startServer(port);
-})();
+})().catch((error) => {
+  console.error("Failed to initialize server:", error);
+  process.exit(1);
+});

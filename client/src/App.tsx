@@ -82,13 +82,13 @@ function Router() {
       <Route path="/archive-events" component={ArchiveEvents} />
       <Route path="/events/:id" component={EventGallery} />
       <Route path="/creator-events" component={CreatorEvents} />
-      <Route path="/creator/:id" component={CreatorProfile} />
       <Route path="/imprint" component={Imprint} />
       <Route path="/credits" component={CreditsPage} />
       <ProtectedRoute path="/admin/dashboard" component={AdminDashboard} requireAdmin />
       <ProtectedRoute path="/admin/users" component={AdminUsers} requireAdmin />
       <ProtectedRoute path="/creator/dashboard" component={CreatorDashboard} requireCreator />
       <ProtectedRoute path="/creator/apply" component={CreatorApplication} />
+      <Route path="/creator/:id" component={CreatorProfile} />
       <Route path="/" component={HomePage} />
       <Route component={NotFound} />
     </Switch>

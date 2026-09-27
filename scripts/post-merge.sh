@@ -6,6 +6,8 @@ cd "$(dirname "$0")/.."
 # Install from the merged lockfile without deleting node_modules: the running
 # Vite workflow writes its cache there until workflow reconciliation restarts it.
 # Reject package/lock mismatches instead of silently changing the merged lock.
+touch .post-merge-installing
+# Leave the marker on failure: a partially installed tree must not be served.
 lock_before="$(sha256sum package-lock.json | cut -d' ' -f1)"
 npm install --no-audit --no-fund
 lock_after="$(sha256sum package-lock.json | cut -d' ' -f1)"
@@ -17,3 +19,4 @@ fi
 # Database changes are deliberately not pushed automatically.
 npm run check
 npm run build
+rm .post-merge-installing

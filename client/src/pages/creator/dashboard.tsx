@@ -145,13 +145,13 @@ export default function CreatorDashboard() {
   };
 
   // Load creator's events
-  const { data: events = [], isLoading: eventsLoading } = useQuery<Event[]>({
+  const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
     queryKey: ["/api/creator/events"],
     staleTime: 0,
   });
 
   // Load all media items to calculate stats
-  const { data: mediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
+  const { data: mediaItems = [], isLoading: mediaLoading, error: mediaError } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
     staleTime: 0,
   });
@@ -184,6 +184,12 @@ export default function CreatorDashboard() {
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
+  }
+  if (eventsError || mediaError) {
+    return <div role="alert" className="min-h-screen flex flex-col items-center justify-center gap-4">
+      <p>Die Creator-Daten konnten nicht geladen werden.</p>
+      <Button onClick={() => window.location.reload()}>Seite neu laden</Button>
+    </div>;
   }
 
   return (
