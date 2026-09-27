@@ -22,18 +22,18 @@ export function ProtectedRoute({
   return (
     <Route path={path}>
       {() => {
-        if (isLoading) {
-          return (
-            <div className="flex items-center justify-center min-h-screen">
-              <Loader2 className="h-8 w-8 animate-spin text-border" />
-            </div>
-          );
-        }
         if (error) {
           return (
             <div role="alert" className="min-h-screen flex flex-col items-center justify-center gap-4">
               <p>Die Anmeldung konnte nicht geprüft werden. Bitte versuche es erneut.</p>
-              <button className="underline" onClick={() => window.location.reload()}>Seite neu laden</button>
+              <button className="underline" onClick={() => window.location.reload()}>Erneut versuchen</button>
+            </div>
+          );
+        }
+        if (isLoading) {
+          return (
+            <div className="flex items-center justify-center min-h-screen">
+              <Loader2 className="h-8 w-8 animate-spin text-border" />
             </div>
           );
         }

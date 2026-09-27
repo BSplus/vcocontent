@@ -27,7 +27,7 @@ async function fetchWithRetry(
     return res;
   } catch (error) {
     // Network errors
-    if (retries > 0) {
+    if (retries > 0 && !options.signal?.aborted) {
       console.log(`Network error. Retrying in ${delay}ms... (${retries} retries left)`, error);
       await new Promise(resolve => setTimeout(resolve, delay));
       return fetchWithRetry(url, options, retries - 1, delay * 1.5);
@@ -64,18 +64,20 @@ export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
-  async ({ queryKey }) => {
+  async ({ queryKey, signal }) => {
     console.log('Making query request:', { queryKey });
 
     const options: RequestInit = {
       credentials: "include",  // Always include credentials
+      // A stalled API call must resolve to an error instead of holding a route spinner forever.
+      signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
       headers: {
         "Accept": "application/json"
       }
     };
 
     // Use the same retry logic as apiRequest
-    const res = await fetchWithRetry(queryKey[0] as string, options);
+    const res = await fetchWithRetry(queryKey[0] as string, options, 1);
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       console.log('Received 401, returning null as configured');

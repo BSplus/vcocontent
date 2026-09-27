@@ -45,19 +45,19 @@ export default function AdminDashboard() {
   const queryClient = useQueryClient();
 
   // Load events with better error handling
-  const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
+  const { data: events = [], isLoading: eventsLoading, error: eventsError, refetch: retryEvents } = useQuery<Event[]>({
     queryKey: ["/api/events"],
     staleTime: 0,
     retry: 1, // Only retry once on failure 
   });
 
   // Load media items for statistics
-  const { data: mediaItems = [], isLoading: mediaLoading, error: mediaError } = useQuery<MediaItem[]>({
+  const { data: mediaItems = [], isLoading: mediaLoading, error: mediaError, refetch: retryMedia } = useQuery<MediaItem[]>({
     queryKey: ["/api/media"],
     staleTime: 0,
     retry: 1, // Only retry once on failure
   });
-  const { data: usage } = useQuery<{
+  const { data: usage, error: usageError, refetch: retryUsage } = useQuery<{
     total: { bytes: string; count: string; legacy: string; legacyTextBytes: string };
     byEvent: { eventId: number; title: string; bytes: string; count: string; legacy: string }[];
     byCreator: { creatorId: number; bytes: string; count: string }[];
@@ -138,18 +138,18 @@ export default function AdminDashboard() {
   const vcoEvents = sortedEvents.filter(event => !event.creatorId);
   const creatorEvents = sortedEvents.filter(event => event.creatorId);
 
+  if (eventsError || mediaError) {
+    return <div role="alert" className="min-h-screen flex flex-col items-center justify-center gap-4">
+      <p>Die Dashboard-Daten konnten nicht geladen werden.</p>
+      <Button onClick={() => { if (eventsError) void retryEvents(); if (mediaError) void retryMedia(); }}>Erneut versuchen</Button>
+    </div>;
+  }
   if (eventsLoading || mediaLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
-  }
-  if (eventsError || mediaError) {
-    return <div role="alert" className="min-h-screen flex flex-col items-center justify-center gap-4">
-      <p>Die Dashboard-Daten konnten nicht geladen werden.</p>
-      <Button onClick={() => window.location.reload()}>Seite neu laden</Button>
-    </div>;
   }
 
   // Function to switch to the media tab
@@ -177,6 +177,12 @@ export default function AdminDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {usageError && (
+          <div role="alert" className="mb-4 flex items-center gap-3">
+            <p>Die Speicherübersicht konnte nicht geladen werden.</p>
+            <Button variant="outline" onClick={() => void retryUsage()}>Erneut versuchen</Button>
+          </div>
+        )}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="events">Events</TabsTrigger>

@@ -70,7 +70,8 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
       if (event.sessionId !== sessionId) return;
       if (event.method === "Network.responseReceived") {
         const { response } = event.params;
-        if (response.status >= 400 && !response.url.endsWith("/api/user")) {
+        if (response.status >= 400 &&
+            !(response.status === 401 && response.url.endsWith("/api/user"))) {
           failures.push(`${response.status} ${response.url}`);
         }
       }
@@ -87,14 +88,12 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
       if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
       return result.result.value;
     };
-    async function visit(path, expected) {
-      failures.length = 0;
-      await instance.send("Page.navigate", { url: new URL(path, base).href }, sessionId);
-      const deadline = Date.now() + 15000;
+    async function waitForPage(path, expected, { allowFailures = false } = {}) {
+      const deadline = Date.now() + 25000;
       let state;
       while (Date.now() < deadline) {
         try {
-          state = await evaluate("document.body && ({path:location.pathname, text:document.body.innerText, modules:[...document.scripts].map(s=>s.src)})");
+          state = await evaluate("document.body && ({path:location.pathname, text:document.body.innerText, modules:[...document.scripts].map(s=>s.src), spinner:!!document.querySelector('.min-h-screen .animate-spin'), alert:!!document.querySelector('[role=alert]')})");
         } catch (error) {
           // A navigation can invalidate the execution context between CDP calls.
           if (!/context|document|Uncaught/.test(String(error))) throw error;
@@ -106,8 +105,34 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
       }
       assert.equal(state.path, expected.path, `${path}: ${state.text.slice(0, 300)}`);
       assert.match(state.text, new RegExp(expected.text), `${path}: page stuck loading`);
+      assert.equal(state.spinner, false, `${path}: loading indicator still visible`);
       assert.ok(state.modules.some(url => url.includes("/src/main.tsx")), "Vite entry script missing");
-      assert.deepEqual(failures, [], `${path}: asset/API/browser errors`);
+      await delay(300); // Include requests started just after the first paint.
+      if (!allowFailures) assert.deepEqual(failures, [], `${path}: asset/API/browser errors`);
+      return state;
+    }
+    async function visit(path, expected, options) {
+      failures.length = 0;
+      await instance.send("Page.navigate", { url: new URL(path, base).href }, sessionId);
+      return waitForPage(path, expected, options);
+    }
+    async function failApi(path) {
+      const listener = event => {
+        if (event.sessionId === sessionId && event.method === "Fetch.requestPaused") {
+          void instance.send("Fetch.fulfillRequest", {
+            requestId: event.params.requestId,
+            responseCode: 500,
+            responseHeaders: [{ name: "content-type", value: "application/json" }],
+            body: Buffer.from('{"error":"Test failure"}').toString("base64"),
+          }, sessionId);
+        }
+      };
+      instance.listeners.add(listener);
+      await instance.send("Fetch.enable", { patterns: [{ urlPattern: `*${path}`, requestStage: "Request" }] }, sessionId);
+      return async () => {
+        await instance.send("Fetch.disable", {}, sessionId);
+        instance.listeners.delete(listener);
+      };
     }
     await visit("/", { path: "/", text: "VCO" });
     await visit("/auth", { path: "/auth", text: "Login" });
@@ -148,6 +173,13 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
         name: "vco.sid", value: cookie.split("=").slice(1).join("="),
         url: base,
       }, sessionId);
+      if (role === "admin") {
+        await visit("/", { path: "/", text: "VCO" });
+        failures.length = 0;
+        assert.equal(await evaluate("!!document.querySelector('a[href=\"/admin/dashboard\"]')"), true, "Admin menu link missing");
+        await evaluate("document.querySelector('a[href=\"/admin/dashboard\"]').click()");
+        await waitForPage("/admin/dashboard", { path: "/admin/dashboard", text: "ADMIN DASHBOARD" });
+      }
       await visit("/admin/dashboard", role === "admin"
         ? { path: "/admin/dashboard", text: "ADMIN DASHBOARD" }
         : { path: "/", text: "VCO" });
@@ -170,6 +202,29 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
         await delay(100);
       }
       assert.equal(navigation?.includes("Creator dashboard"), role !== "user", `${role}: creator dashboard navigation`);
+      if (role === "admin") {
+        let restore = await failApi("/api/events");
+        try {
+          const state = await visit("/admin/dashboard",
+            { path: "/admin/dashboard", text: "Die Dashboard-Daten konnten nicht geladen werden" },
+            { allowFailures: true });
+          assert.equal(state.alert, true);
+        } finally { await restore(); }
+        failures.length = 0;
+        await evaluate("document.querySelector('[role=alert] button').click()");
+        await waitForPage("/admin/dashboard", { path: "/admin/dashboard", text: "ADMIN DASHBOARD" });
+
+        restore = await failApi("/api/user");
+        try {
+          const state = await visit("/admin/dashboard",
+            { path: "/admin/dashboard", text: "Die Anmeldung konnte nicht geprüft werden" },
+            { allowFailures: true });
+          assert.equal(state.alert, true);
+        } finally { await restore(); }
+        failures.length = 0;
+        await evaluate("document.querySelector('[role=alert] button').click()");
+        await waitForPage("/admin/dashboard", { path: "/admin/dashboard", text: "ADMIN DASHBOARD" });
+      }
       await instance.send("Network.deleteCookies", { name: "vco.sid", url: base }, sessionId);
     }
   } finally {

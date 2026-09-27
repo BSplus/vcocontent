@@ -39,7 +39,23 @@ test("development server stops during install and starts fresh afterward", { tim
   async function serving() {
     try {
       const response = await fetch(base, { signal: AbortSignal.timeout(1000) });
-      return response.status === 200 && (await response.text()).includes("/src/main.tsx");
+      if (response.status !== 200 || !(await response.text()).includes("/src/main.tsx")) return false;
+      const entry = await fetch(new URL("/src/main.tsx", base), { signal: AbortSignal.timeout(1000) });
+      if (!entry.ok || !entry.headers.get("content-type")?.includes("javascript")) return false;
+      const entrySource = await entry.text();
+      const dependency = entrySource.match(/"(\/@fs\/[^"]+react-dom_client\.js\?[^"]+)"/)?.[1];
+      if (!dependency) return false;
+      const css = await fetch(new URL("/src/index.css", base), { signal: AbortSignal.timeout(1000) });
+      if (!css.ok) return false;
+      const font = (await css.text()).match(/(\/@fs\/[^"']+orbitron-latin-700-normal\.woff2)/)?.[1];
+      if (!font) return false;
+      const [moduleResponse, fontResponse] = await Promise.all([
+        fetch(new URL(dependency, base), { signal: AbortSignal.timeout(1000) }),
+        fetch(new URL(font, base), { signal: AbortSignal.timeout(1000) }),
+      ]);
+      return moduleResponse.ok && fontResponse.ok &&
+        moduleResponse.headers.get("content-type")?.includes("javascript") &&
+        fontResponse.headers.get("content-type")?.includes("font");
     } catch { return false; }
   }
   try {
