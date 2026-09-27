@@ -114,8 +114,12 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
     for (const path of ["/admin/dashboard", "/admin/users", "/creator/dashboard"]) {
       await visit(path, { path: "/auth", text: "Login" });
     }
+    for (const path of ["/api/admin/users", "/api/creator/events"]) {
+      const response = await fetch(new URL(path, base));
+      assert.equal(response.status, 401, `${path}: anonymous access`);
+    }
 
-    for (const role of ["user", "creator", "admin"]) {
+    for (const role of ["user", "creator", "approved", "admin"]) {
       const username = `page_smoke_${role}_${randomUUID().slice(0, 10)}`;
       const password = `${randomUUID()}Ab!`;
       const registered = await fetch(new URL("/api/register", base), {
@@ -125,9 +129,13 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
       assert.equal(registered.status, 201);
       const account = await registered.json();
       accounts.push(account.id);
-      if (role !== "user") {
-        const column = role === "admin" ? "is_admin" : "is_creator";
-        await pool.query(`UPDATE users SET ${column} = true${role === "creator" ? ", creator_status = 'approved'" : ""} WHERE id = $1`, [account.id]);
+      if (role === "admin") {
+        await pool.query("UPDATE users SET is_admin = true WHERE id = $1", [account.id]);
+      } else if (role === "creator" || role === "approved") {
+        await pool.query(
+          "UPDATE users SET is_creator = $2, creator_status = 'approved' WHERE id = $1",
+          [account.id, role === "creator"],
+        );
       }
       const login = await fetch(new URL("/api/login", base), {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -146,13 +154,22 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
       await visit("/admin/users", role === "admin"
         ? { path: "/admin/users", text: "USER MANAGEMENT" }
         : { path: "/", text: "VCO" });
-      await visit("/creator/dashboard", role === "creator"
+      await visit("/creator/dashboard", role !== "user"
         ? { path: "/creator/dashboard", text: "CREATOR DASHBOARD" }
         : { path: "/creator/apply", text: "BECOME A VCO CREATOR" });
       const adminApi = await fetch(new URL("/api/admin/users", base), { headers: { Cookie: cookie } });
       assert.equal(adminApi.status, role === "admin" ? 200 : 403);
       const creatorApi = await fetch(new URL("/api/creator/events", base), { headers: { Cookie: cookie } });
       assert.equal(creatorApi.status, role === "user" ? 403 : 200);
+      await visit("/", { path: "/", text: "VCO" });
+      const navigationDeadline = Date.now() + 5000;
+      let navigation;
+      while (Date.now() < navigationDeadline) {
+        navigation = await evaluate("document.querySelector('nav[aria-label=\"Main navigation\"]')?.textContent");
+        if (navigation?.includes("Creator dashboard") === (role !== "user")) break;
+        await delay(100);
+      }
+      assert.equal(navigation?.includes("Creator dashboard"), role !== "user", `${role}: creator dashboard navigation`);
       await instance.send("Network.deleteCookies", { name: "vco.sid", url: base }, sessionId);
     }
   } finally {

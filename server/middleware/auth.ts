@@ -21,7 +21,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-// Middleware to check if user is a creator
+// Creator areas also allow admins and users with approved creator status.
 export function requireCreator(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
     return res.status(401).json({ error: "Authentication required" });

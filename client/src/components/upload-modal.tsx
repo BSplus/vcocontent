@@ -108,7 +108,8 @@ export default function UploadModal({
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertEvent) => {
-      const endpoint = user?.isCreator ? "/api/creator/events" : "/api/events";
+      const isCreator = user?.isCreator || user?.creatorStatus === "approved";
+      const endpoint = isCreator ? "/api/creator/events" : "/api/events";
       const res = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -119,7 +120,7 @@ export default function UploadModal({
           ...data,
           date: new Date(data.date),
           isPremium: false,
-          creatorId: user?.isCreator ? user.id : undefined,
+          creatorId: isCreator ? user?.id : undefined,
         }),
       });
 
