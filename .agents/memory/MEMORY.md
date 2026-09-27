@@ -1,4 +1,4 @@
 - [Session table constraint](session-table-constraint.md) — connect-pg-simple can collide with an existing session primary-key name when asked to create a second table.
-- [Clean-install firewall](clean-install-firewall.md) — test locked clean installs after merges; a previously cached dependency can hide a security-policy block.
+- [Post-merge dependencies](clean-install-firewall.md) — verify clean installs separately; live Vite caches can race with npm ci during merge setup.
 - [Historical media indexes](historical-media-indexes.md) — old Base64 payloads exceed PostgreSQL index-entry limits; keep object-path indexes partial.
 - [Live-server test freshness](live-server-test-freshness.md) — integration tests may hit an older preview process after merges; restart it before interpreting failures.
