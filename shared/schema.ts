@@ -1,5 +1,6 @@
-import { pgTable, text, serial, integer, timestamp, boolean, decimal } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, decimal, bigint, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+import { sql } from "drizzle-orm";
 import { z } from "zod";
 
 export const users = pgTable("users", {
@@ -56,6 +57,29 @@ export const mediaItems = pgTable("media_items", {
   downloadCount: integer("download_count").notNull().default(0),
   isPremium: boolean("is_premium").notNull().default(false),
   creditCost: integer("credit_cost").default(1),
+  storedBytes: bigint("stored_bytes", { mode: "number" }),
+  objectCount: integer("object_count"),
+}, (table) => [
+  index("media_event_page_idx").on(table.eventId, table.id),
+  index("media_url_idx").on(table.url).where(sql`${table.url} like '/api/media/files/%'`),
+  index("media_thumbnail_idx").on(table.thumbnail).where(sql`${table.thumbnail} like '/api/media/files/%'`),
+  index("media_popular_idx").on(table.downloadCount),
+]);
+
+export const mediaReservations = pgTable("media_reservations", {
+  id: text("id").primaryKey(),
+  eventId: integer("event_id").notNull(),
+  creatorId: integer("creator_id"),
+  reservedBytes: bigint("reserved_bytes", { mode: "number" }).notNull(),
+  storageKey: text("storage_key").notNull(),
+  thumbnailKey: text("thumbnail_key").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const mediaCleanup = pgTable("media_cleanup", {
+  key: text("key").primaryKey(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastError: text("last_error"),
 });
 
 // Insert schemas with validation

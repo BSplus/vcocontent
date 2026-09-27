@@ -40,6 +40,7 @@ export default function AdminDashboard() {
   const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
   const [activeMediaEventId, setActiveMediaEventId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("events");
+  const [mediaPage, setMediaPage] = useState(1);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -55,6 +56,18 @@ export default function AdminDashboard() {
     queryKey: ["/api/media"],
     staleTime: 0,
     retry: 1, // Only retry once on failure
+  });
+  const { data: usage } = useQuery<{
+    total: { bytes: string; count: string; legacy: string; legacyTextBytes: string };
+    byEvent: { eventId: number; title: string; bytes: string; count: string; legacy: string }[];
+    byCreator: { creatorId: number; bytes: string; count: string }[];
+    cleanupCount: string;
+    policy: { eventBytes: number; creatorBytes: number; eventCount: number; creatorCount: number };
+    warningFraction: number;
+  }>({ queryKey: ["/api/admin/media-usage"] });
+  const { data: eventMediaItems = [] } = useQuery<MediaItem[]>({
+    queryKey: [`/api/events/${activeMediaEventId}/media?page=${mediaPage}`],
+    enabled: !!activeMediaEventId,
   });
   
   // Log any errors for debugging
@@ -322,6 +335,34 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="media" className="mt-6">
+            {usage && (
+              <Card className="mb-6">
+                <CardContent className="pt-5 space-y-3">
+                  <h3 className="font-semibold">Storage usage</h3>
+                  <p>{Number(usage.total.bytes).toLocaleString()} bytes in {usage.total.count} items;
+                    {" "}{usage.total.legacy} older items have unknown object sizes (about {Number(usage.total.legacyTextBytes).toLocaleString()} bytes of database text).
+                    {" "}{usage.cleanupCount} objects await cleanup.</p>
+                  <p className="text-sm text-muted-foreground">Warning at {usage.warningFraction * 100}% of budget. Unmeasured older media is not included in byte totals.</p>
+                  {usage.byCreator.map(row => (
+                    <p key={row.creatorId} className={Number(row.bytes) >= usage.policy.creatorBytes * usage.warningFraction || Number(row.count) >= usage.policy.creatorCount * usage.warningFraction ? "text-amber-600" : ""}>
+                      Creator {row.creatorId}: {(Number(row.bytes) / 1048576).toFixed(1)} / {(usage.policy.creatorBytes / 1048576).toFixed(0)} MiB, {row.count} / {usage.policy.creatorCount} items
+                    </p>
+                  ))}
+                  <div className="max-h-48 overflow-y-auto">
+                    {usage.byEvent.map(row => (
+                      <p key={row.eventId} className={Number(row.bytes) >= usage.policy.eventBytes * usage.warningFraction || Number(row.count) >= usage.policy.eventCount * usage.warningFraction ? "text-amber-600" : ""}>
+                        {row.title}: {(Number(row.bytes) / 1048576).toFixed(1)} / {(usage.policy.eventBytes / 1048576).toFixed(0)} MiB, {row.count} / {usage.policy.eventCount} items{Number(row.legacy) ? ` (${row.legacy} unmeasured)` : ""}
+                      </p>
+                    ))}
+                  </div>
+                  <Button variant="outline" onClick={async () => {
+                    const response = await fetch("/api/admin/media-cleanup", { method: "POST", credentials: "include" });
+                    if (!response.ok) { toast({ title: "Cleanup failed", variant: "destructive" }); return; }
+                    queryClient.invalidateQueries({ queryKey: ["/api/admin/media-usage"] });
+                  }}>Retry object cleanup</Button>
+                </CardContent>
+              </Card>
+            )}
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-bold">Media Management</h2>
               <div className="flex gap-2">
@@ -331,6 +372,7 @@ export default function AdminDashboard() {
                     const id = parseInt(e.target.value);
                     if (!isNaN(id)) {
                       setActiveMediaEventId(id);
+                      setMediaPage(1);
                     } else {
                       setActiveMediaEventId(null);
                     }
@@ -369,7 +411,6 @@ export default function AdminDashboard() {
               <>
                 {/* Display media items for selected event */}
                 {(() => {
-                  const eventMediaItems = mediaItemsArray.filter(item => item.eventId === activeMediaEventId);
                   const event = eventsArray.find(e => e.id === activeMediaEventId);
                   
                   if (eventMediaItems.length === 0) {
@@ -437,6 +478,11 @@ export default function AdminDashboard() {
                             </CardContent>
                           </Card>
                         ))}
+                      </div>
+                      <div className="flex justify-center gap-3 mt-4">
+                        <Button variant="outline" disabled={mediaPage === 1} onClick={() => setMediaPage(mediaPage - 1)}>Previous</Button>
+                        <span className="self-center">Page {mediaPage}</span>
+                        <Button variant="outline" disabled={eventMediaItems.length < 48} onClick={() => setMediaPage(mediaPage + 1)}>Next</Button>
                       </div>
                     </div>
                   );

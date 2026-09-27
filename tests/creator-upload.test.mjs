@@ -203,8 +203,15 @@ test("creator image/video uploads, delivery and ownership", async () => {
       await json(await anonymous(media.url), 401);
       const original = await owner(media.url);
       assert.equal(original.status, 200);
-      assert.equal(original.headers.get("content-type"), mime);
-      assert.deepEqual(Buffer.from(await original.arrayBuffer()), bytes);
+      const delivered = Buffer.from(await original.arrayBuffer());
+      if (type === "image") {
+        assert.equal(original.headers.get("content-type"), "image/webp");
+        assert.equal((await sharp(delivered).metadata()).format, "webp");
+        assert.ok(delivered.length <= 4 * 1024 * 1024);
+      } else {
+        assert.equal(original.headers.get("content-type"), mime);
+        assert.deepEqual(delivered, bytes);
+      }
     }
 
     const listing = await json(await anonymous(`/api/events/${eventId}/media`), 200);
@@ -212,6 +219,11 @@ test("creator image/video uploads, delivery and ownership", async () => {
       new Set(listing.map((item) => item.id)),
       new Set(uploaded.map((item) => item.id)),
     );
+    const featured = await json(await anonymous(`/api/media/top/creator/${accounts[0].id}`), 200);
+    const imageCard = featured.find(item => item.id === uploaded.find(item => item.type === "image").id);
+    assert.ok(imageCard, "new creator image should appear in featured media");
+    assert.equal((await anonymous(imageCard.thumbnail)).status, 200);
+    assert.equal((await anonymous(imageCard.url)).status, 401);
 
     // A different approved creator cannot upload into, modify or delete this event,
     // nor delete its media. Verify the records still exist after those attempts.
@@ -277,12 +289,16 @@ test("creator image/video uploads, delivery and ownership", async () => {
       assert.equal(restored.url, media.url);
       assert.equal(restored.thumbnail, media.thumbnail);
       await json(await anonymous(media.url), 401);
-      const bytes = media.type === "image" ? image : video;
-      const mime = media.type === "image" ? "image/png" : "video/mp4";
       const original = await owner(media.url);
       assert.equal(original.status, 200);
-      assert.equal(original.headers.get("content-type"), mime);
-      assert.deepEqual(Buffer.from(await original.arrayBuffer()), bytes);
+      const delivered = Buffer.from(await original.arrayBuffer());
+      if (media.type === "image") {
+        assert.equal(original.headers.get("content-type"), "image/webp");
+        assert.equal((await sharp(delivered).metadata()).format, "webp");
+      } else {
+        assert.equal(original.headers.get("content-type"), "video/mp4");
+        assert.deepEqual(delivered, video);
+      }
       const thumbnail = await anonymous(media.thumbnail);
       assert.equal(thumbnail.status, 200);
       assert.match(thumbnail.headers.get("content-type") ?? "", /^image\/webp/);

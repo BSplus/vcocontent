@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ export default function EventGallery() {
   const [, params] = useRoute<{ id: string }>("/events/:id");
   const eventId = parseInt(params?.id || "0");
   const { user } = useAuth();
+  const [page, setPage] = useState(1);
 
   // Fetch event data
   const { data: event, isLoading: eventLoading } = useQuery<Event>({
@@ -32,7 +34,7 @@ export default function EventGallery() {
     isLoading: mediaLoading,
     refetch: refetchMedia
   } = useQuery<MediaItem[]>({
-    queryKey: [`/api/events/${eventId}/media`],
+    queryKey: [`/api/events/${eventId}/media?page=${page}`],
     enabled: Boolean(eventId && eventId > 0),
   });
 
@@ -106,17 +108,24 @@ export default function EventGallery() {
 
       <main className="container mx-auto px-4 py-8">
         <div className="mb-6">
-          <h2 className="text-xl md:text-2xl font-semibold">Media <span className="text-foreground/70">({mediaItems.length})</span></h2>
+          <h2 className="text-xl md:text-2xl font-semibold">Media <span className="text-foreground/70">(Page {page})</span></h2>
           <p className="text-sm text-foreground/75 mt-2">Open a photo or video, use the arrow keys to browse, and choose an available download.</p>
         </div>
-        {!mediaItems.length ? (
+        {!mediaItems.length && page === 1 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg">
               Noch keine Medien für dieses Event verfügbar.
             </p>
           </div>
         ) : (
-          <MediaGrid items={mediaItems} onDelete={handleMediaDelete} />
+          <>
+            <MediaGrid items={mediaItems} onDelete={handleMediaDelete} />
+            <div className="flex justify-center gap-3 mt-8">
+              <Button variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</Button>
+              <span className="self-center">Page {page}</span>
+              <Button variant="outline" disabled={mediaItems.length < 48} onClick={() => setPage(page + 1)}>Next</Button>
+            </div>
+          </>
         )}
       </main>
       <Footer />

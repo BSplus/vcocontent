@@ -201,7 +201,7 @@ export default function HomePage() {
               {topShotsLoading ? <div className="grid grid-cols-1 gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="aspect-video animate-pulse rounded-md bg-card/70" />)}</div> : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   {topShots.slice(0, 3).map((shot) => <button key={shot.id} type="button" onClick={() => setSelectedMedia(shot)} className="group relative aspect-video overflow-hidden rounded-md border border-foreground/15 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                    <img src={shot.url} alt={shot.caption || "Featured racing photograph"} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none" loading="lazy" />
+                    <img src={shot.thumbnail} alt={shot.caption || "Featured racing photograph"} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none" loading="lazy" />
                     <span className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
                     <span className="absolute bottom-0 left-0 right-0 flex items-end justify-between gap-3 p-4">
                       <span className="line-clamp-2 text-sm font-semibold text-white">{shot.caption || "Open featured image"}</span>

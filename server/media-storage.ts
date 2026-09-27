@@ -7,11 +7,9 @@ import { unlink } from "fs/promises";
 import multer, { type Multer } from "multer";
 import sharp from "sharp";
 import { Client } from "@replit/object-storage";
+import { mediaPolicy, MediaLimitError } from "./media-policy";
 
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const TEMP_UPLOAD_DIR = path.join(tmpdir(), "vco-media-uploads");
-const MAX_IMAGE_PIXELS = 40_000_000;
 
 export type MediaType = "image" | "video";
 
@@ -27,6 +25,8 @@ export interface StoredMedia {
   mediaType: MediaType;
   mimeType: string;
   size: number;
+  storedBytes: number;
+  objectCount: number;
 }
 
 let storageClient: Client | undefined;
@@ -41,8 +41,7 @@ mkdirSync(TEMP_UPLOAD_DIR, { recursive: true });
 /**
  * Multipart parser for the eventual POST /api/events/:eventId/media/upload
  * route. Files are written to a temporary disk path (not held in RAM) and
- * removed by uploadMedia after persistence or rejection, or by the route
- * when metadata validation fails before uploadMedia is called.
+ * always removed by uploadMedia after they are persisted or rejected.
  */
 export const mediaUpload: Multer = multer({
   storage: multer.diskStorage({
@@ -50,7 +49,7 @@ export const mediaUpload: Multer = multer({
     filename: (_req, _file, callback) => callback(null, randomUUID()),
   }),
   limits: {
-    fileSize: MAX_VIDEO_BYTES,
+    fileSize: Math.max(mediaPolicy.videoBytes, mediaPolicy.imageBytes),
     files: 1,
     fields: 10,
     parts: 12,
@@ -108,7 +107,7 @@ async function validateFileSignature(file: Express.Multer.File, type: MediaType)
 
   if (type === "image") {
     const metadata = await sharp(file.path, {
-      limitInputPixels: MAX_IMAGE_PIXELS,
+      limitInputPixels: mediaPolicy.maxPixels,
       failOn: "error",
     }).metadata();
     if (!metadata.width || !metadata.height || !metadata.format) {
@@ -118,12 +117,11 @@ async function validateFileSignature(file: Express.Multer.File, type: MediaType)
     if (!validFormats.has(metadata.format)) {
       throw new Error("The uploaded file is not a supported image");
     }
-    const mimeByFormat: Record<string, string> = {
-      jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp",
-    };
-    if (mimeByFormat[metadata.format] !== file.mimetype) {
-      throw new Error("The uploaded image does not match its MIME type");
+    if (metadata.width * metadata.height > mediaPolicy.maxPixels) {
+      throw new MediaLimitError(`Image exceeds ${mediaPolicy.maxPixels / 1_000_000} megapixels`);
     }
+    const mimeFormat = file.mimetype === "image/jpeg" ? "jpeg" : file.mimetype.split("/")[1];
+    if (mimeFormat !== metadata.format) throw new Error("Image content does not match its file type");
     return;
   }
 
@@ -147,24 +145,6 @@ async function validateFileSignature(file: Express.Multer.File, type: MediaType)
   }
 }
 
-export async function deleteStoredMedia(saved: StoredMedia): Promise<void> {
-  await deleteStorageKeys(saved.storageKey, saved.thumbnailKey);
-}
-
-async function deleteStorageKeys(...keys: string[]): Promise<void> {
-  const errors: unknown[] = [];
-  for (const key of keys) {
-    assertStoredKey(key);
-    try {
-      const result = await getStorageClient().delete(key, { ignoreNotFound: true });
-      checkUploadResult(result, key);
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  if (errors.length) throw new AggregateError(errors, "Could not remove rejected media objects");
-}
-
 async function uploadFromFilename(objectName: string, filename: string): Promise<void> {
   const result = await getStorageClient().uploadFromFilename(
     objectName,
@@ -182,50 +162,55 @@ async function uploadFromFilename(objectName: string, filename: string): Promise
 export async function uploadMedia(
   file: Express.Multer.File,
   type?: MediaType,
+  keys?: { storageKey: string; thumbnailKey: string },
 ): Promise<StoredMedia> {
   const tempPaths = new Set<string>([file.path]);
-  let storageKey: string | undefined;
-  let thumbnailKey: string | undefined;
+  let generatedKeys: { storageKey: string; thumbnailKey: string } | undefined;
   try {
     const actualType = detectMediaType(file);
     if (type && type !== actualType) {
       throw new Error("The uploaded file does not match the selected media type");
     }
     const mediaType = type ?? actualType;
-    const maxBytes = mediaType === "image" ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
+    const maxBytes = mediaType === "image" ? mediaPolicy.imageBytes : mediaPolicy.videoBytes;
     if (!file.size || file.size > maxBytes) {
-      throw new Error(`File size must be between 1 byte and ${Math.floor(maxBytes / (1024 * 1024))} MB`);
+      throw new MediaLimitError(`File must be between 1 byte and ${Math.floor(maxBytes / (1024 * 1024))} MiB`);
     }
     await validateFileSignature(file, mediaType);
 
-    const extensionByMime: Record<string, string> = {
-      "image/jpeg": "jpg",
-      "image/png": "png",
-      "image/gif": "gif",
-      "image/webp": "webp",
-      "video/mp4": "mp4",
-      "video/quicktime": "mov",
-      "video/webm": "webm",
-    };
-    const extension = extensionByMime[file.mimetype];
-    const id = randomUUID();
-    storageKey = `media-${id}.${extension}`;
-    thumbnailKey = `thumb-${id}.webp`;
+    const { storageKey, thumbnailKey } = keys ?? createMediaKeys(file.mimetype);
+    if (!keys) generatedKeys = { storageKey, thumbnailKey };
+    let storedBytes = file.size;
+    let thumbnailBytes = 0;
 
     if (mediaType === "image") {
+      const displayPath = path.join(TEMP_UPLOAD_DIR, `${randomUUID()}.webp`);
+      tempPaths.add(displayPath);
+      // Never persist the input as a second "original": paid originals require
+      // an explicit product decision before this free-only upload path changes.
+      let display = Buffer.alloc(0);
+      for (const quality of [86, 76, 64, 52, 40]) {
+        display = await sharp(file.path, { limitInputPixels: mediaPolicy.maxPixels, failOn: "error" })
+          .rotate().resize({ width: mediaPolicy.displayEdge, height: mediaPolicy.displayEdge, fit: "inside", withoutEnlargement: true })
+          .webp({ quality, effort: 4 }).toBuffer();
+        if (display.length <= 4 * 1024 * 1024) break;
+      }
+      if (!display.length || display.length > 4 * 1024 * 1024) throw new MediaLimitError("Image cannot fit the 4 MiB display budget");
+      const { writeFile } = await import("fs/promises");
+      await writeFile(displayPath, display);
+      storedBytes = display.length;
       const thumbnailPath = path.join(TEMP_UPLOAD_DIR, `${randomUUID()}.webp`);
       tempPaths.add(thumbnailPath);
-      // Decoding the entire image before writing either object rejects
-      // truncated files that still have a readable metadata header.
-      await sharp(file.path, {
-        limitInputPixels: MAX_IMAGE_PIXELS,
-        failOn: "error",
-      })
-        .rotate()
-        .resize({ width: 640, height: 640, fit: "inside", withoutEnlargement: true })
-        .webp({ quality: 78 })
-        .toFile(thumbnailPath);
-      await uploadFromFilename(storageKey, file.path);
+      let thumb = Buffer.alloc(0);
+      for (const quality of [76, 62, 48, 36, 24]) {
+        thumb = await sharp(display).resize({ width: mediaPolicy.thumbnailEdge, height: mediaPolicy.thumbnailEdge, fit: "inside", withoutEnlargement: true })
+          .webp({ quality, effort: 5 }).toBuffer();
+        if (thumb.length < 100 * 1024) break;
+      }
+      if (!thumb.length || thumb.length >= 100 * 1024) throw new MediaLimitError("Thumbnail cannot fit the 100 KiB budget");
+      await writeFile(thumbnailPath, thumb);
+      thumbnailBytes = thumb.length;
+      await uploadFromFilename(storageKey, displayPath);
       await uploadFromFilename(thumbnailKey, thumbnailPath);
     } else {
       await uploadFromFilename(storageKey, file.path);
@@ -234,9 +219,11 @@ export async function uploadMedia(
       const poster = Buffer.from(
         '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><rect width="640" height="360" fill="#111827"/><circle cx="320" cy="180" r="48" fill="#1f2937" stroke="#9ca3af" stroke-width="3"/><path d="M307 151v58l45-29z" fill="#e5e7eb"/><text x="320" y="265" fill="#d1d5db" font-family="sans-serif" font-size="20" text-anchor="middle">Video</text></svg>',
       );
+      const posterBytes = await sharp(poster).webp().toBuffer();
+      thumbnailBytes = posterBytes.length;
       const posterResult = await getStorageClient().uploadFromBytes(
         thumbnailKey,
-        await sharp(poster).webp().toBuffer(),
+        posterBytes,
         { compress: false },
       );
       checkUploadResult(posterResult, "video poster");
@@ -248,21 +235,47 @@ export async function uploadMedia(
       storageKey,
       thumbnailKey,
       mediaType,
-      mimeType: file.mimetype,
+      mimeType: mediaType === "image" ? "image/webp" : file.mimetype,
       size: file.size,
+      storedBytes: storedBytes + thumbnailBytes,
+      objectCount: 2,
     };
   } catch (error) {
-    if (storageKey && thumbnailKey) {
-      try {
-        await deleteStorageKeys(storageKey, thumbnailKey);
-      } catch (cleanupError) {
-        throw new AggregateError([error, cleanupError], "Upload failed and object cleanup failed");
-      }
+    // Callers passing reserved keys use the durable cleanup queue. Direct
+    // callers retain immediate cleanup semantics on partial object uploads.
+    if (generatedKeys) {
+      const results = await Promise.allSettled([
+        deleteMediaObject(generatedKeys.storageKey),
+        deleteMediaObject(generatedKeys.thumbnailKey),
+      ]);
+      const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+      if (failures.length) throw new AggregateError([error, ...failures.map(result => result.reason)], "Upload failed and object cleanup failed");
     }
     throw error;
   } finally {
     await Promise.all(Array.from(tempPaths).map((tempPath) => unlink(tempPath).catch(() => undefined)));
   }
+}
+
+export function createMediaKeys(mime: string): { storageKey: string; thumbnailKey: string } {
+  const extension: Record<string, string> = {
+    "image/jpeg": "webp", "image/png": "webp", "image/gif": "webp", "image/webp": "webp",
+    "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm",
+  };
+  if (!extension[mime]) throw new Error("Unsupported media type");
+  const id = randomUUID();
+  return { storageKey: `media-${id}.${extension[mime]}`, thumbnailKey: `thumb-${id}.webp` };
+}
+
+export async function deleteMediaObject(key: string): Promise<void> {
+  assertStoredKey(key);
+  const result = await getStorageClient().delete(key, { ignoreNotFound: true });
+  checkUploadResult(result, `deletion of ${key}`);
+}
+
+/** Compatibility helper for callers holding a completed upload. */
+export async function deleteStoredMedia(saved: StoredMedia): Promise<void> {
+  await Promise.all([deleteMediaObject(saved.storageKey), deleteMediaObject(saved.thumbnailKey)]);
 }
 
 /**

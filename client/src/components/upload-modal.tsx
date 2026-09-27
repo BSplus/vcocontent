@@ -90,7 +90,7 @@ export default function UploadModal({
       if (file.size > MAX_FILE_SIZE) {
         toast({
           title: "Error",
-          description: `File size too large. Maximum size is 10MB.`,
+          description: `Event thumbnail too large. Maximum size is 1 MiB.`,
           variant: "destructive",
         });
         return;

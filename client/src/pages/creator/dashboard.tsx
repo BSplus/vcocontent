@@ -155,6 +155,12 @@ export default function CreatorDashboard() {
     queryKey: ["/api/media"],
     staleTime: 0,
   });
+  const [mediaPage, setMediaPage] = useState(1);
+  useEffect(() => setMediaPage(1), [selectedEventId]);
+  const { data: eventMediaItems = [] } = useQuery<MediaItem[]>({
+    queryKey: [`/api/events/${selectedEventId}/media?page=${mediaPage}`],
+    enabled: !!selectedEventId,
+  });
 
   const getEventStats = (eventId: number) => {
     const eventMedia = mediaItems.filter((item) => item.eventId === eventId);
@@ -351,7 +357,6 @@ export default function CreatorDashboard() {
               <>
                 {/* Display media items for selected event */}
                 {(() => {
-                  const eventMediaItems = mediaItems.filter(item => item.eventId === selectedEventId);
                   const event = events.find(e => e.id === selectedEventId);
                   
                   if (eventMediaItems.length === 0) {
@@ -409,6 +414,11 @@ export default function CreatorDashboard() {
                             </CardContent>
                           </Card>
                         ))}
+                      </div>
+                      <div className="flex justify-center gap-3 mt-4">
+                        <Button variant="outline" disabled={mediaPage === 1} onClick={() => setMediaPage(mediaPage - 1)}>Previous</Button>
+                        <span className="self-center">Page {mediaPage}</span>
+                        <Button variant="outline" disabled={eventMediaItems.length < 48} onClick={() => setMediaPage(mediaPage + 1)}>Next</Button>
                       </div>
                     </div>
                   );

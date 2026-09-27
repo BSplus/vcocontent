@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useSearch, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { MediaItem } from "@shared/schema";
@@ -13,6 +13,7 @@ export default function SearchResults() {
   const search = useSearch();
   const [filteredMediaItems, setFilteredMediaItems] = useState<MediaItem[]>([]);
   const [activeQuery, setActiveQuery] = useState("");
+  const [page, setPage] = useState(1);
   const handleResults = useCallback((results: MediaItem[], query: string) => {
     setFilteredMediaItems(results);
     setActiveQuery(query);
@@ -20,10 +21,11 @@ export default function SearchResults() {
 
   // Get search parameters from URL
   const { query: initialQuery, filters } = parseSearchParams(search);
+  useEffect(() => setPage(1), [search]);
 
-  // Fetch all media items
+  // Search is filtered in PostgreSQL before pagination, not in an unbounded list.
   const { data: mediaItems = [], isLoading } = useQuery<MediaItem[]>({
-    queryKey: ["/api/media"],
+    queryKey: [`/api/media?page=${page}&q=${encodeURIComponent(initialQuery)}&type=${filters.mediaType}&fields=${filters.fields.join(",")}`],
     staleTime: 30000, // Cache for 30 seconds
   });
 
@@ -76,6 +78,11 @@ export default function SearchResults() {
           ) : (
             <MediaGrid items={filteredMediaItems} />
           )}
+          <div className="flex justify-center gap-3 mt-8">
+            <Button variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</Button>
+            <span className="self-center">Page {page}</span>
+            <Button variant="outline" disabled={mediaItems.length < 48} onClick={() => setPage(page + 1)}>Next</Button>
+          </div>
         </div>
       </div>
     </div>

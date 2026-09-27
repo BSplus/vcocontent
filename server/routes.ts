@@ -9,11 +9,19 @@ import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } fr
 import { log } from "./vite";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { mediaUpload, uploadMedia, deleteStoredMedia, readMediaStream, getMediaContentType } from "./media-storage";
-import { z } from "zod";
 import { generateTagsForImage, generateTagsForVideo, categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
+import { mediaUpload, uploadMedia, createMediaKeys, readMediaStream, getMediaContentType } from "./media-storage";
+import { mediaPolicy, MediaLimitError } from "./media-policy";
+import { randomUUID } from "crypto";
+import sharp from "sharp";
+import { z } from "zod";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
+function mediaPage(value: unknown): number | null {
+  if (value === undefined) return 1;
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n > 0 && n <= 100000 ? n : null;
+}
 const canManageEvent = (user: Express.User | undefined, creatorId: number | null) =>
   !!user && (user.isAdmin || (user.isCreator && creatorId === user.id));
 const publicMedia = <T extends { isPremium: boolean; url: string; thumbnail: string }>(item: T): T => ({
@@ -43,6 +51,10 @@ async function analysisImageInput(url: string): Promise<string> {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth already set up in index.ts
+  const cleanupTimer = setInterval(() => {
+    void storage.cleanupObjects().catch(error => console.error("Media reconciliation failed:", error));
+  }, 15 * 60 * 1000);
+  cleanupTimer.unref();
 
   // Serve static files from the attached_assets directory
   app.use('/attached_assets', express.static(path.join(process.cwd(), 'attached_assets')));
@@ -154,7 +166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('Routes: Delete result:', result);
 
       if (!result.success) {
-        return res.status(404).json(result);
+        return res.status(result.message === "Event not found" ? 404 : result.message === "Invalid event ID provided" ? 400 : 500).json(result);
       }
 
       res.json(result);
@@ -256,26 +268,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Use JSON parser for all other routes
   app.use(express.json());
+  app.get("/api/media/policy", (_req, res) => res.json({
+    imageBytes: mediaPolicy.imageBytes,
+    videoBytes: mediaPolicy.videoBytes,
+    maxPixels: mediaPolicy.maxPixels,
+    displayEdge: mediaPolicy.displayEdge,
+    thumbnailEdge: mediaPolicy.thumbnailEdge,
+    zipCount: mediaPolicy.zipCount,
+    zipBytes: mediaPolicy.zipBytes,
+  }));
 
   // Get top shots
   app.get("/api/media/top-shots", async (req, res) => {
     try {
-      const media = await storage.getAllMediaItems();
-      const eventsByCreator = new Set((await storage.getEvents()).filter(event => event.creatorId).map(event => event.id));
-      console.log('Fetching top shots, total media items:', media.length);
-
-      const premiumEvents = new Set((await storage.getEvents()).filter(event => event.isPremium).map(event => event.id));
-      const topShots = media
-        .filter(item => item.type === "image" && !item.isPremium && !eventsByCreator.has(item.eventId ?? -1) && !premiumEvents.has(item.eventId ?? -1))
-        .sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
-        .slice(0, 3);
-
-      console.log('Top shots selected:', topShots.map(shot => ({
-        id: shot.id,
-        downloads: shot.downloadCount,
-        type: shot.type
-      })));
-
+      const topShots = (await storage.topMedia(30, null)).filter(item => item.type === "image").slice(0, 3);
       res.json(topShots.map(publicMedia));
     } catch (error) {
       console.error('Error fetching top shots:', error);
@@ -286,36 +292,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get popular creator content
   app.get("/api/media/creator-top", async (req, res) => {
     try {
-      const media = await storage.getAllMediaItems();
-      const events = await storage.getEvents();
-      console.log('Fetching popular creator content, total media items:', media.length);
-
-      // Get all media items from creator events
-      const creatorMedia = media.filter(item => {
-        // If media is associated with an event, check if that event has a creator
-        if (item.eventId) {
-          // Find the event that contains this media item
-          const event = events.find(e => e.id === item.eventId);
-          if (event && event.creatorId) return true;
-        }
-        
-        return false;
-      });
-      
-      console.log('Found creator media items:', creatorMedia.length);
-
-      const topCreatorMedia = creatorMedia
-        .filter(item => !item.isPremium && !events.some(event => event.id === item.eventId && event.isPremium))
-        .sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
-        .slice(0, 3);
-
-      console.log('Top creator content selected:', topCreatorMedia.map(item => ({
-        id: item.id,
-        downloads: item.downloadCount,
-        type: item.type,
-        isPremium: item.isPremium
-      })));
-
+      const topCreatorMedia = await storage.topMedia(3);
       res.json(topCreatorMedia.map(publicMedia));
     } catch (error) {
       console.error('Error fetching popular creator content:', error);
@@ -331,26 +308,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid creator ID" });
       }
       
-      const media = await storage.getAllMediaItems();
-      const events = await storage.getEvents();
-      
-      // Get all media items from this specific creator's events
-      const creatorMedia = media.filter(item => {
-        // If media item has this creator's ID directly
-        // If media is associated with an event created by this creator
-        if (item.eventId) {
-          const event = events.find(e => e.id === item.eventId);
-          if (event && event.creatorId === creatorId) return true;
-        }
-        
-        return false;
-      });
-      
-      // Sort by download count, views, or other popularity metrics
-      const topCreatorMedia = creatorMedia
-        .filter(item => !item.isPremium && !events.some(event => event.id === item.eventId && event.isPremium))
-        .sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
-        .slice(0, 8); // Return more items for the creator profile page
+      const topCreatorMedia = await storage.topMedia(8, creatorId);
       
       res.json(topCreatorMedia.map(publicMedia));
     } catch (error) {
@@ -375,10 +333,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get event media
   app.get("/api/events/:id/media", async (req, res) => {
     try {
+      const page = mediaPage(req.query.page);
+      if (!page) return res.status(400).json({ error: "Invalid page" });
       const event = await storage.getEvent(parseInt(req.params.id));
       if (!event) return res.status(404).json({ error: "Event not found" });
       if (event.isPremium) return res.json([]);
-      const media = await storage.getMediaItems(parseInt(req.params.id));
+      const media = await storage.getMediaItems(parseInt(req.params.id), page);
       res.json(media.map(publicMedia));
     } catch (error) {
       console.error('Error fetching event media:', error);
@@ -389,12 +349,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all media (different behavior based on auth status)
   app.get("/api/media", async (req, res) => {
     try {
-      const allMedia = await storage.getAllMediaItems();
-      const premiumEvents = new Set((await storage.getEvents()).filter(event => event.isPremium).map(event => event.id));
-      return res.json(allMedia.filter(item => !premiumEvents.has(item.eventId ?? -1)).map(publicMedia));
+      const page = mediaPage(req.query.page);
+      if (!page) return res.status(400).json({ error: "Invalid page" });
+      const search = req.query.q;
+      const type = req.query.type;
+      const fields = req.query.fields;
+      if (search !== undefined && (typeof search !== "string" || search.length > 100))
+        return res.status(400).json({ error: "Search must be under 100 characters" });
+      if (type !== undefined && type !== "all" && type !== "image" && type !== "video")
+        return res.status(400).json({ error: "Invalid media type" });
+      if (fields !== undefined && (typeof fields !== "string" || fields.length > 32 ||
+          fields.split(",").some(field => !["caption", "photographer", "tags"].includes(field))))
+        return res.status(400).json({ error: "Invalid search fields" });
+      return res.json((await storage.listPublicMedia(page, 48, search || "",
+        type === "image" || type === "video" ? type : undefined,
+        fields === undefined ? undefined : fields === "" ? [] : fields.split(",") as ("caption" | "photographer" | "tags")[])).map(publicMedia));
     } catch (error) {
       console.error('Error fetching all media:', error);
       res.status(500).json({ error: "Failed to fetch media" });
+    }
+  });
+
+  // Historical Base64 records stay in PostgreSQL until a separately approved
+  // migration. Stream them on demand instead of embedding megabytes in lists.
+  app.get("/api/media/legacy/:id/:variant", async (req, res) => {
+    const id = Number(req.params.id);
+    const variant = req.params.variant;
+    if (!Number.isSafeInteger(id) || id < 1 || !["file", "thumbnail"].includes(variant))
+      return res.status(404).end();
+    try {
+      const record = await storage.getMediaItem(id);
+      if (!record) return res.status(404).end();
+      if (variant === "file") {
+        const event = record.eventId ? await storage.getEvent(record.eventId) : undefined;
+        if (!req.isAuthenticated() || record.isPremium || event?.isPremium)
+          return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Original not available" });
+      }
+      const dataUrl = variant === "file" ? record.url : record.thumbnail;
+      const match = /^data:(image\/(?:jpeg|png|gif|webp)|video\/(?:mp4|webm|quicktime));base64,([A-Za-z0-9+/=\r\n]+)$/.exec(dataUrl);
+      if (!match) return res.status(404).end();
+      let body = Buffer.from(match[2], "base64");
+      if (body.length > 100 * 1024 * 1024) return res.status(413).end();
+      if (variant === "thumbnail") {
+        if (!match[1].startsWith("image/")) return res.status(404).end();
+        body = await sharp(body, { limitInputPixels: mediaPolicy.maxPixels })
+          .rotate().resize({ width: mediaPolicy.thumbnailEdge, height: mediaPolicy.thumbnailEdge,
+            fit: "inside", withoutEnlargement: true })
+          .webp({ quality: 72 }).toBuffer();
+      }
+      res.setHeader("Content-Type", variant === "thumbnail" ? "image/webp" : match[1]);
+      res.setHeader("Cache-Control", variant === "file" ? "private, no-store" : "public, max-age=3600");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      return res.send(body);
+    } catch (error) {
+      console.error("Legacy media delivery failed:", error);
+      return res.status(500).json({ error: "Media unavailable" });
     }
   });
 
@@ -405,12 +414,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).end();
     }
     try {
-      const storedUrl = `/api/media/files/${key}`;
-      const record = (await storage.getAllMediaItems()).find(item =>
-        item.url === storedUrl || item.thumbnail === storedUrl);
+      const record = await storage.findMediaByKey(key);
       if (!record) return res.status(404).end();
       const event = record.eventId ? await storage.getEvent(record.eventId) : undefined;
-      const isOriginal = record.url === storedUrl;
+      const isOriginal = record.url === `/api/media/files/${key}`;
       if (isOriginal && (!req.isAuthenticated() || record.isPremium || event?.isPremium)) {
         return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Original not available" });
       }
@@ -438,9 +445,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!canManageEvent(req.user, event.creatorId)) return res.status(403).json({ error: "Forbidden" });
       if (event.isPremium) return res.status(403).json({ error: BETA_NOTICE });
       mediaUpload.single("file")(req, res, async (uploadError) => {
-        if (uploadError) return res.status(400).json({ error: uploadError.message });
+        if (uploadError) return res.status(400).json({ error: uploadError.code === "LIMIT_FILE_SIZE" ? `Video limit is ${mediaPolicy.videoBytes / 1048576} MiB; image limit is ${mediaPolicy.imageBytes / 1048576} MiB` : uploadError.message });
         if (!req.file) return res.status(400).json({ error: "A file is required" });
-        let saved: Awaited<ReturnType<typeof uploadMedia>> | undefined;
+        let reservationId: string | undefined;
         try {
           const metadata = z.object({
             type: z.enum(["image", "video"]),
@@ -448,33 +455,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
             photographer: z.string().max(150).optional(),
             tags: z.string().max(1500).optional(),
           }).parse(req.body);
-          const tags = metadata.tags ? JSON.parse(metadata.tags) : [];
-          if (!Array.isArray(tags) || !tags.every(tag => typeof tag === "string" && tag.length <= 100)) {
-            throw new Error("Invalid tags");
-          }
-          saved = await uploadMedia(req.file, metadata.type);
-          const item = await storage.createMediaItem(insertMediaItemSchema.parse({
+          if (req.file.size > (metadata.type === "image" ? mediaPolicy.imageBytes : mediaPolicy.videoBytes))
+            throw new MediaLimitError(`${metadata.type === "image" ? "Image" : "Video"} exceeds the ${metadata.type === "image" ? mediaPolicy.imageBytes / 1048576 : mediaPolicy.videoBytes / 1048576} MiB limit`);
+          const keys = createMediaKeys(req.file.mimetype);
+          reservationId = randomUUID();
+          await storage.reserveMedia(reservationId, eventId, event.creatorId, metadata.type === "image" ? 4 * 1048576 + 100 * 1024 : req.file.size + 100 * 1024, keys.storageKey, keys.thumbnailKey);
+          const saved = await uploadMedia(req.file, metadata.type, keys);
+          const item = await storage.finishMedia(reservationId, insertMediaItemSchema.parse({
             eventId,
             type: saved.mediaType,
             url: saved.url,
             thumbnail: saved.thumbnail,
+            storedBytes: saved.storedBytes,
+            objectCount: saved.objectCount,
             caption: metadata.caption || "",
             photographer: metadata.photographer || "",
-            tags: tags.slice(0, 30),
+            tags: metadata.tags
+              ? (() => {
+                  const parsed = JSON.parse(metadata.tags);
+                  if (!Array.isArray(parsed) || !parsed.every(tag => typeof tag === "string" && tag.length <= 100)) {
+                    throw new Error("Invalid tags");
+                  }
+                  return parsed.slice(0, 30);
+                })()
+              : [],
             isPremium: false,
           }));
           res.status(201).json(item);
         } catch (error) {
-          if (saved) {
-            try {
-              await deleteStoredMedia(saved);
-            } catch (cleanupError) {
-              console.error("Failed to remove objects for rejected upload:", cleanupError);
-            }
-          }
           console.error("Media upload failed:", error);
-          res.status(error instanceof z.ZodError ? 400 : 502).json({
-            error: error instanceof z.ZodError ? "Invalid upload details" : "Could not store media",
+          if (reservationId) await storage.abandonMedia(reservationId).catch(cleanupError => console.error("Upload cleanup pending:", cleanupError));
+          res.status(error instanceof MediaLimitError ? 413 : error instanceof z.ZodError ? 400 : 502).json({
+            error: error instanceof MediaLimitError ? error.message : error instanceof z.ZodError ? "Invalid upload details" : "Could not store media",
           });
         } finally {
           const { unlink } = await import("fs/promises");
@@ -508,11 +520,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(422).json({ error: "Video tagging requires a real video frame; no frame is available yet" });
       }
 
-      const generatedTags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
+      console.log(`Beginning AI analysis for media ${mediaId} of type ${mediaItem.type}`);
+
+      // Generate tags based on media type
+      let generatedTags: string[] = [];
+      if (mediaItem.type === "image") {
+        generatedTags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
+      } else if (mediaItem.type === "video") {
+        generatedTags = await generateTagsForVideo(mediaItem.url, mediaItem.thumbnail);
+      }
 
       if (generatedTags.length === 0) {
         return res.status(422).json({ error: "No matching tags were found" });
       }
+
+      console.log(`Generated ${generatedTags.length} tags for media ${mediaId}:`, generatedTags);
 
       // Combine with existing tags if present
       const existingTags = Array.isArray(mediaItem.tags) ? mediaItem.tags : [];
@@ -520,6 +542,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Attempt to categorize the content
       const category = await categorizeContent(combinedTags);
+      console.log(`Categorized media ${mediaId} as: ${category}`);
+
       // Update the media item with new tags and category
       await storage.updateMediaItem(mediaId, {
         tags: combinedTags,
@@ -529,17 +553,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         success: true,
         tags: combinedTags,
-        generatedTags,
         category
       });
     } catch (error) {
-      console.error('AI media analysis failed');
-      res.status(502).json({ error: "AI analysis failed. Please try again later." });
+      console.error('Error analyzing media:', error);
+      res.status(502).json({ error: error instanceof Error ? error.message : "AI analysis failed" });
     }
   });
 
   app.post("/api/media", requireCreator, (_req, res) => {
     res.status(410).json({ error: "Use the multipart event media upload endpoint" });
+  });
+
+  app.get("/api/admin/media-usage", requireAdmin, async (_req, res) => {
+    try { res.json(await storage.mediaUsage()); }
+    catch (error) { console.error("Media usage failed:", error); res.status(500).json({ error: "Could not load media usage" }); }
+  });
+  app.post("/api/admin/media-cleanup", requireAdmin, async (_req, res) => {
+    try { await storage.cleanupObjects(); res.json(await storage.mediaUsage()); }
+    catch (error) { console.error("Media cleanup failed:", error); res.status(500).json({ error: "Could not reconcile media objects" }); }
   });
 
   // Delete media item
@@ -789,8 +821,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No media IDs provided" });
       }
 
-      log(`Processing batch AI analysis for ${mediaIds.length} media items`, 'batch-analysis');
-
       const results = [];
       const errors = [];
 
@@ -814,20 +844,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
-          // Generate tags based on media type
-          let tags: string[] = [];
-          if (mediaItem.type === 'image') {
-            tags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
-          } else if (mediaItem.type === 'video') {
-            tags = await generateTagsForVideo(mediaItem.url, mediaItem.thumbnail || mediaItem.url);
-          }
+          const generatedTags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
 
-          if (tags.length > 0) {
+          if (generatedTags.length > 0) {
+            const tags = Array.from(new Set([...(mediaItem.tags || []), ...generatedTags]));
             // Categorize the content
             const category = await categorizeContent(tags);
 
             // Update the media item with the generated tags and category
-            const updatedMediaItem = await storage.updateMediaItem(mediaId, {
+            await storage.updateMediaItem(mediaId, {
               tags,
               category
             });
@@ -839,15 +864,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               category
             });
 
-            log(`AI analysis completed for media ID: ${mediaId}`, 'batch-analysis');
           } else {
             errors.push({ id: mediaId, error: "Failed to generate tags" });
           }
         } catch (error) {
-          console.error("AI batch analysis failed");
+          console.error(`Error analyzing media ID ${id}`);
           errors.push({ 
             id,
-            error: "AI analysis failed. Please try again later."
+            error: "AI analysis failed for this media"
           });
         }
       }
@@ -860,11 +884,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         errors: errors.length > 0 ? errors : undefined
       });
     } catch (error) {
-      console.error('Error in batch AI analysis:', error);
-      res.status(500).json({ 
-        error: "Batch AI analysis failed", 
-        details: error instanceof Error ? error.message : "Unknown error" 
-      });
+      console.error('Error in batch AI analysis');
+      res.status(502).json({ error: "Batch AI analysis failed" });
     }
   });
 

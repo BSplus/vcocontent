@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import JSZip from 'jszip';
 import {
   Dialog,
@@ -29,6 +28,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { InsertMediaItem, MediaItem, insertMediaItemSchema } from "@shared/schema";
 import { Loader2, Upload, X, Info } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -46,6 +46,7 @@ interface FileUpload {
   aiTags?: string[];
 }
 
+const IMAGE_LIMIT = 5 * 1024 * 1024;
 export default function MediaUploadModal({
   open,
   onOpenChange,
@@ -53,6 +54,11 @@ export default function MediaUploadModal({
 }: MediaUploadModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: limits } = useQuery<{ imageBytes: number; videoBytes: number; maxPixels: number; zipCount: number; zipBytes: number }>({
+    queryKey: ["/api/media/policy"],
+  });
+  const imageLimit = limits?.imageBytes ?? IMAGE_LIMIT;
+  const videoLimit = limits?.videoBytes ?? VIDEO_LIMIT;
   const [uploads, setUploads] = useState<FileUpload[]>([]);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -82,13 +88,12 @@ export default function MediaUploadModal({
       'video/mp4',
       'video/quicktime',
       'video/webm',
-      'video/ogg'
     ];
     return validTypes.includes(file.type);
   }
 
   function isValidImageType(file: File): boolean {
-    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/zip'];
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/zip'];
     return validTypes.includes(file.type) || file.name.toLowerCase().endsWith('.zip');
   }
 
@@ -102,23 +107,30 @@ export default function MediaUploadModal({
 
   const handleZipFile = async (zipFile: File) => {
     try {
+      if (zipFile.size > ZIP_LIMIT) throw new Error("ZIP exceeds 100 MiB");
       const zip = new JSZip();
       const contents = await zip.loadAsync(zipFile);
       const imageFiles: FileUpload[] = [];
+      const entries = Object.entries(contents.files).filter(([filename, file]) =>
+        !file.dir && ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(filename.toLowerCase().split('.').pop() || ''));
+      if (entries.length > ZIP_COUNT || uploads.length + entries.length > ZIP_COUNT)
+        throw new Error(`ZIP selection exceeds ${ZIP_COUNT} images`);
+      let unpacked = 0;
 
-      for (const [filename, file] of Object.entries(contents.files)) {
-        // Skip directories
-        if (file.dir) continue;
-
-        // Check file extension
+      for (const [filename, file] of entries) {
         const ext = filename.toLowerCase().split('.').pop();
-        if (!['jpg', 'jpeg', 'png', 'gif'].includes(ext || '')) continue;
-
+        // JSZip exposes the declared uncompressed size; reject bombs before
+        // allocating a Blob. Also check the actual expanded size afterwards.
+        const declared = (file as any)._data?.uncompressedSize;
+        if (!Number.isSafeInteger(declared) || declared < 1 || declared > imageLimit || unpacked + declared > ZIP_LIMIT)
+          throw new Error(`ZIP exceeds the ${imageLimit / 1048576} MiB/image or 100 MiB expanded limit`);
+        unpacked += declared;
         const blob = await file.async('blob');
+        if (blob.size > imageLimit || blob.size !== declared) throw new Error(`ZIP image exceeds ${imageLimit / 1048576} MiB`);
         const imageFile = new File([blob], filename, {
           type: ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
             ext === 'png' ? 'image/png' :
-              'image/gif'
+              ext === 'webp' ? 'image/webp' : 'image/gif'
         });
 
         const preview = await processImageFile(imageFile);
@@ -133,7 +145,7 @@ export default function MediaUploadModal({
       if (imageFiles.length === 0) {
         toast({
           title: "No valid images",
-          description: "The ZIP file doesn't contain any valid images (JPG, PNG, or GIF).",
+          description: "The ZIP file doesn't contain supported images.",
           variant: "destructive",
         });
         return;
@@ -148,7 +160,7 @@ export default function MediaUploadModal({
       console.error('Failed to process ZIP file:', error);
       toast({
         title: "Error",
-        description: "Failed to process ZIP file. Please ensure it contains valid images.",
+        description: error instanceof Error ? error.message : "Failed to process ZIP file.",
         variant: "destructive",
       });
     }
@@ -156,12 +168,16 @@ export default function MediaUploadModal({
 
   const handleFilesChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
-    const maxSize = form.getValues("type") === "video" ? 200 * 1024 * 1024 : 10 * 1024 * 1024;
+    const maxSize = form.getValues("type") === "video" ? videoLimit : imageLimit;
     const newUploads: FileUpload[] = [];
 
     for (const file of files) {
       // Handle ZIP files
       if (file.type === 'application/zip' || file.name.toLowerCase().endsWith('.zip')) {
+        if (mediaType !== "image") {
+          toast({ title: "ZIP contains images only", variant: "destructive" });
+          continue;
+        }
         await handleZipFile(file);
         continue;
       }
@@ -174,7 +190,7 @@ export default function MediaUploadModal({
       if (!isValid) {
         toast({
           title: "Error",
-          description: `Invalid file type: ${file.name}. Please upload ${form.getValues("type") === "video" ? "MP4 or MOV" : "JPG, PNG, or GIF"} files only.`,
+          description: `Invalid file type: ${file.name}. Use ${form.getValues("type") === "video" ? "MP4, MOV or WebM" : "JPG, PNG, GIF or WebP"}.`,
           variant: "destructive",
         });
         continue;
@@ -182,7 +198,7 @@ export default function MediaUploadModal({
 
       if (file.size > maxSize) {
         const sizeInMB = (file.size / (1024 * 1024)).toFixed(1);
-        const limit = form.getValues("type") === "video" ? "200MB" : "10MB";
+        const limit = `${maxSize / 1048576} MiB`;
         toast({
           title: "Error",
           description: `File ${file.name} is too large. Maximum size is ${limit}. File size: ${sizeInMB}MB`,
@@ -229,7 +245,7 @@ export default function MediaUploadModal({
         let message = responseText || `Upload failed (${res.status})`;
         try {
           const error = JSON.parse(responseText);
-          message = error.message || message;
+          message = error.error || error.message || message;
         } catch {
           // Preserve the server's plain-text error message.
         }
@@ -238,7 +254,9 @@ export default function MediaUploadModal({
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/media`] });
+      queryClient.invalidateQueries({ predicate: query =>
+        String(query.queryKey[0]).startsWith(`/api/events/${eventId}/media`) });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/media-usage"] });
     },
   });
 
@@ -346,7 +364,7 @@ export default function MediaUploadModal({
             <div className="flex items-center justify-between">
               <Label htmlFor="type">Type</Label>
               <span className="text-xs text-muted-foreground">
-                Maximum file size: {form.getValues("type") === "video" ? "200MB" : "10MB"}
+                 Maximum file size: {mediaType === "video" ? `${videoLimit / 1048576} MiB` : `${imageLimit / 1048576} MiB · ${((limits?.maxPixels ?? 40000000) / 1000000).toFixed(0)} MP`}
               </span>
             </div>
             <Select
@@ -372,7 +390,7 @@ export default function MediaUploadModal({
             type="file"
             ref={mediaInputRef}
             className="hidden"
-            accept={form.getValues("type") === "image" ? "image/*,.zip" : ".mp4,.mov"}
+             accept={mediaType === "image" ? ".jpg,.jpeg,.png,.gif,.webp,.zip" : ".mp4,.mov,.webm"}
             onChange={handleFilesChange}
             multiple
           />
@@ -435,7 +453,7 @@ export default function MediaUploadModal({
                   <Upload className="h-8 w-8" />
                   <p>Click or drag files here to upload</p>
                   <p className="text-sm text-muted-foreground">
-                    {form.getValues("type") === "video" ? "MP4 or MOV" : "JPG, PNG, GIF, or ZIP"}
+                     {mediaType === "video" ? `MP4, MOV or WebM · ${videoLimit / 1048576} MiB` : `JPG, PNG, GIF, WebP or ZIP · ${imageLimit / 1048576} MiB/image; ZIP 100 images / 100 MiB`}
                   </p>
                 </div>
               </div>
@@ -527,3 +545,9 @@ export default function MediaUploadModal({
     </Dialog>
   );
 }
+
+const ZIP_LIMIT = 100 * 1024 * 1024;
+
+const VIDEO_LIMIT = 50 * 1024 * 1024;
+
+const ZIP_COUNT = 100;
