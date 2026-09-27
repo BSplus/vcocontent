@@ -24,6 +24,8 @@ oder Creator-Auszahlungen; die betreffenden Server-Endpunkte sind gesperrt.
    Als Fremdnutzer Lösch-/Änderungs-/Analyseanfragen und den Abruf privater
    Originale prüfen. Videos erfordern zum Abspielen aktuell eine Anmeldung;
    ohne Video-Transcoding ist nur ein generisches Poster öffentlich sichtbar.
+   Vor dem öffentlichen Start mindestens ein aktuelles Event mit echten Inhalten
+   anlegen; die vorhandenen älteren Testevents füllen die Startseite nicht.
 5. Ohne `OPENAI_API_KEY` bleibt die KI-Verschlagwortung optional und liefert eine
    sichtbare Nichtverfügbarkeitsmeldung. Mit konfiguriertem Schlüssel eine
    **Bild**-Analyse gegen das tatsächlich verfügbare Modell testen. Für Videos
