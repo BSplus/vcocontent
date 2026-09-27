@@ -77,11 +77,17 @@ export default function EditMediaModal({
   // AI analysis mutation
   const analysisMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/media/${mediaItem.id}/analyze`, {});
+      const res = await fetch(`/api/media/${mediaItem.id}/analyze`, { method: "POST", credentials: "include" });
+      if (!res.ok) {
+        if (res.status === 503) throw new Error("KI-Analyse ist noch nicht eingerichtet.");
+        if (res.status === 502) throw new Error("KI-Anbieteraufruf fehlgeschlagen. Bitte später erneut versuchen.");
+        if (res.status === 422) throw new Error("Für dieses Medium wurden keine passenden Bild-Tags gefunden oder es ist kein Bild.");
+        throw new Error("KI-Analyse konnte nicht durchgeführt werden.");
+      }
       return res.json();
     },
     onSuccess: (data) => {
-      setAiTags(data.tags || []);
+      setAiTags(data.generatedTags || []);
       setCategory(data.category || null);
       
       // Update the form with the new tags
@@ -107,6 +113,8 @@ export default function EditMediaModal({
     setIsAnalyzing(true);
     try {
       await analysisMutation.mutateAsync();
+    } catch {
+      // The mutation displays the safe status message above.
     } finally {
       setIsAnalyzing(false);
     }

@@ -293,8 +293,10 @@ export default function MediaUploadModal({
               const result = await tagResponse.json();
               if (!tagResponse.ok) {
                  upload.aiWarning = tagResponse.status === 503
-                   ? "KI-Analyse ist derzeit nicht eingerichtet. Das Bild wurde trotzdem gespeichert."
-                   : "KI-Analyse fehlgeschlagen. Das Bild wurde trotzdem gespeichert. Bitte später erneut versuchen.";
+                    ? "KI-Analyse ist noch nicht eingerichtet. Das Bild wurde trotzdem gespeichert."
+                    : tagResponse.status === 502
+                      ? "KI-Anbieteraufruf fehlgeschlagen. Das Bild wurde trotzdem gespeichert. Bitte später erneut versuchen."
+                      : "KI-Analyse konnte nicht durchgeführt werden. Das Bild wurde trotzdem gespeichert.";
               } else if (result.success === true && Array.isArray(result.generatedTags) && result.generatedTags.length > 0 && result.generatedTags.every((tag: unknown) => typeof tag === "string")) {
                 upload.aiTags = result.generatedTags;
               } else {

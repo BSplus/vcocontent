@@ -9,7 +9,7 @@ import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } fr
 import { log } from "./vite";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { generateTagsForImage, generateTagsForVideo, categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
+import { generateTagsForImage, categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
 import { mediaUpload, uploadMedia, createMediaKeys, readMediaStream, getMediaContentType } from "./media-storage";
 import { analysisImageInput } from "./image-analysis";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
@@ -539,13 +539,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`Beginning AI analysis for media ${mediaId} of type ${mediaItem.type}`);
 
-      // Generate tags based on media type
-      let generatedTags: string[] = [];
-      if (mediaItem.type === "image") {
-        generatedTags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
-      } else if (mediaItem.type === "video") {
-        generatedTags = await generateTagsForVideo(mediaItem.url, mediaItem.thumbnail);
-      }
+      const generatedTags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
 
       if (generatedTags.length === 0) {
         return res.status(422).json({ error: "No matching tags were found" });
@@ -570,11 +564,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         success: true,
         tags: combinedTags,
+        generatedTags,
         category
       });
     } catch (error) {
-      console.error('Error analyzing media:', error);
-      res.status(502).json({ error: error instanceof Error ? error.message : "AI analysis failed" });
+      console.error('Media analysis failed');
+      res.status(502).json({ error: "KI-Analyse fehlgeschlagen. Bitte später erneut versuchen." });
     }
   });
 

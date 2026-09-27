@@ -8,3 +8,4 @@
 - [Browser route checks](browser-route-checks.md) — unrelated API failures can arrive after navigation; keep route assertions separate from data-loading checks.
 - [Preview process ownership](preview-process-ownership.md) — a workflow restart may leave an earlier listener; verify the process actually owning the preview port.
 - [Vite module interception](vite-module-interception.md) — browser mocks for Vite entry modules need URL patterns that include cache-busting query strings.
+- [Managed OpenAI testing](openai-managed-testing.md) — the OpenAI SDK captures default fetch at import time; inject transport to mock requests later.

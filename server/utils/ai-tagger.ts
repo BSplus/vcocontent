@@ -12,28 +12,22 @@ export function parseTagResponse(text: string): string[] {
 }
 
 export function isAITaggingConfigured(): boolean {
-  return Boolean(
-    (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL && process.env.AI_INTEGRATIONS_OPENAI_API_KEY)
-    || process.env.OPENAI_API_KEY
-  );
+  return Boolean(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL && process.env.AI_INTEGRATIONS_OPENAI_API_KEY);
 }
 
 function getOpenAIClient(): OpenAI | null {
   const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
   const managedKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   if (baseURL && managedKey) {
-    return new OpenAI({ baseURL, apiKey: managedKey });
+    return new OpenAI({ baseURL, apiKey: managedKey, fetch: globalThis.fetch });
   }
-  return process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+  return null;
 }
 
 export async function generateTagsForImage(imageUrl: string): Promise<string[]> {
+  const openai = getOpenAIClient();
+  if (!openai) throw new Error('AI tagging is not configured');
   try {
-    const openai = getOpenAIClient();
-    if (!openai) {
-      throw new Error('AI tagging is not configured');
-    }
-
     const response = await openai.chat.completions.create({
       model: TAG_MODEL,
       messages: [

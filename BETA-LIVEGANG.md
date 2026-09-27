@@ -26,10 +26,24 @@ oder Creator-Auszahlungen; die betreffenden Server-Endpunkte sind gesperrt.
    ohne Video-Transcoding ist nur ein generisches Poster öffentlich sichtbar.
    Vor dem öffentlichen Start mindestens ein aktuelles Event mit echten Inhalten
    anlegen; die vorhandenen älteren Testevents füllen die Startseite nicht.
-5. Ohne `OPENAI_API_KEY` bleibt die KI-Verschlagwortung optional und liefert eine
-   sichtbare Nichtverfügbarkeitsmeldung. Mit konfiguriertem Schlüssel eine
-   **Bild**-Analyse gegen das tatsächlich verfügbare Modell testen. Für Videos
-   gibt es derzeit keine verlässliche Frame-Extraktion, daher keine KI-Analyse.
+5. KI-Verschlagwortung nutzt ausschließlich **Replit AI Integrations / OpenAI**
+   (Replit-managed), nicht einen selbst beschafften OpenAI-Schlüssel. Replit
+   muss die Integration für **diese bestehende App** im Project Editor per
+   Freigabe aktivieren; eine Workspace-Freigabe allein stellt dem App-Server
+   noch keinen Zugang bereit. Gemäß Replit-Dokumentation müssen
+   `AI_INTEGRATIONS_OPENAI_BASE_URL` und `AI_INTEGRATIONS_OPENAI_API_KEY`
+   beide zur Laufzeit vorhanden sein, in Entwicklung **und separat** in der
+   veröffentlichten Umgebung. Nicht manuell Werte raten, kopieren oder im
+   Chat teilen. Fehlt ein Wert, liefert die Analyse 503; Anbieterfehler
+   liefern 502. Stand der Prüfung: beide Werte fehlen in Entwicklung und
+   Veröffentlichung; der laufende Entwicklungsprozess sieht sie ebenfalls
+   nicht. Daher ist **weder ein echter Bildaufruf noch die Produktion
+   bestätigt**. Sobald Replit die Managed-Integration für die App
+   bereitstellt, Server neu starten, mit einem eigenen Creator-Bild
+   Einzelanalyse (inklusive gespeicherter Tags und UI-Rückmeldung) und
+   Sammelanalyse testen. Nach Veröffentlichung separat mit einem Creator-Bild
+   in Produktion wiederholen; vorher nicht als betriebsbereit deklarieren.
+   Für Videos gibt es keine verlässliche Frame-Extraktion und keine KI-Analyse.
 6. Bezahlseiten und Endpunkte vor Freigabe als nicht verfügbar kontrollieren.
    Bezahlfunktionen nur in einem separaten Vorhaben mit Testzahlungen,
    Webhook-Signaturprüfung, idempotenter Gutschrift und geschützten Downloads
