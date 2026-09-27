@@ -25,18 +25,11 @@ export function log(message: string, source = "express") {
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
     middlewareMode: true,
-    hmr: { 
+    hmr: {
       server,
-      timeout: 180000, // Erhöht den Timeout auf 3 Minuten
-      protocol: 'ws',
-      host: '0.0.0.0',
-      port: 5173,
-      clientPort: 5173,
-      path: '/hmr/',
-      reconnect: true,
-      overlay: true
+      path: '/hmr',
     },
-    allowedHosts: true,
+    allowedHosts: true as const,
   };
 
   const vite = await createViteServer({

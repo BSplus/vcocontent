@@ -123,7 +123,7 @@ export function SearchInput({ items, value, onChange, onSearch, className }: Sea
                       <span className="font-medium">{item.caption || 'Untitled'}</span>
                       {item.type === 'video' && <span className="text-xs bg-primary/20 px-1.5 py-0.5 rounded">Video</span>}
                     </div>
-                    {(item.photographer || item.tags?.length > 0) && (
+                    {(item.photographer || (item.tags?.length ?? 0) > 0) && (
                       <span className="text-xs text-muted-foreground">
                         {[
                           item.photographer && `📸 ${item.photographer}`,

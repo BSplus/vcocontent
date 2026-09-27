@@ -3,18 +3,23 @@ import { users, events, mediaItems, series as seriesTable } from "@shared/schema
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import session from "express-session";
-import memorystore from "memorystore";
-import { log } from "./vite";
+import connectPgSimple from "connect-pg-simple";
+
+type SafeUser = Omit<User, "password">;
+type NewUser = Pick<InsertUser, "username" | "email" | "password"> &
+  Partial<Pick<InsertUser, "bio" | "profileImage">> & {
+    requestCreator?: boolean;
+  };
 
 interface IStorage {
   sessionStore: session.Store;
 
   // User management
-  getUsers(): Promise<User[]>;
-  getUser(id: number): Promise<User | undefined>;
-  getAllUsers(): Promise<User[]>;
+  getUsers(): Promise<SafeUser[]>;
+  getUser(id: number): Promise<SafeUser | undefined>;
+  getAllUsers(): Promise<SafeUser[]>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser & { isAdmin?: boolean }): Promise<User>;
+  createUser(user: NewUser): Promise<SafeUser>;
 
   // Event management
   getEvents(): Promise<Event[]>;
@@ -38,50 +43,50 @@ interface IStorage {
   deleteMediaItem(id: number): Promise<void>;
 
   // Creator management
-  updateUserCreatorStatus(userId: number, status: 'pending' | 'approved' | 'rejected'): Promise<User>;
+  updateUserCreatorStatus(userId: number, status: 'pending' | 'approved' | 'rejected'): Promise<SafeUser>;
   getEventsByCreator(creatorId: number): Promise<Event[]>;
-  updateUserCredits(userId: number, credits: number): Promise<User>;
+  updateUserCredits(userId: number, credits: number): Promise<SafeUser>;
 
   // Premium content management
   getCreatorEarnings(creatorId: number): Promise<{ totalCredits: number }>;
 }
 
-const MemoryStore = memorystore(session);
-
 class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000, // Prune expired entries every 24h
-      max: 1000, // Maximum number of sessions to store
-      dispose: (key: string, value: any) => {
-        log(`Session disposed: ${key}`, 'auth');
-      },
-      stale: false, // Don't return stale data
-      ttl: 86400000 // 24 hours max age
+    const PostgresSessionStore = connectPgSimple(session);
+    this.sessionStore = new PostgresSessionStore({
+      conString: process.env.DATABASE_URL,
+      // Reuse the existing connect-pg-simple table; create it on a fresh
+      // production database. A second custom table would collide with the
+      // package's fixed "session_pkey" constraint name.
+      tableName: "session",
+      createTableIfMissing: true,
+      pruneSessionInterval: 15 * 60,
     });
-
-    // Log when the session store is initialized
-    log('Session store initialized with MemoryStore', 'auth');
   }
 
   // User management methods
-  async getUsers(): Promise<User[]> {
-    return await db.select().from(users);
+  async getUsers(): Promise<SafeUser[]> {
+    const result = await db.select().from(users);
+    return result.map(({ password, ...user }) => user);
   }
 
-  async getUser(id: number): Promise<User | undefined> {
+  async getUser(id: number): Promise<SafeUser | undefined> {
     const result = await db
       .select()
       .from(users)
       .where(eq(users.id, id))
       .limit(1);
-    return result[0];
+    if (!result[0]) return undefined;
+    const { password, ...user } = result[0];
+    return user;
   }
 
-  async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users);
+  async getAllUsers(): Promise<SafeUser[]> {
+    const result = await db.select().from(users);
+    return result.map(({ password, ...user }) => user);
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
@@ -93,35 +98,28 @@ class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async createUser(user: InsertUser & { isAdmin?: boolean }): Promise<User> {
-    console.log('Creating new user:', {
-      username: user.username,
-      isAdmin: user.isAdmin || false,
-      isCreator: false // Always false for new users
-    });
-
+  async createUser(user: NewUser): Promise<SafeUser> {
+    // Explicitly select registration fields; role, balance, and status are
+    // controlled by the server, never by request-body mass assignment.
     const result = await db.insert(users).values({
-      ...user,
-      isAdmin: user.isAdmin || false,
-      isCreator: false, // Explicitly set isCreator to false for new users
-      creatorStatus: 'pending' // Set initial creator status
+      username: user.username,
+      email: user.email,
+      password: user.password,
+      bio: user.bio ?? null,
+      profileImage: user.profileImage ?? null,
+      isAdmin: false,
+      isCreator: false,
+      creatorStatus: user.requestCreator ? "pending" : "none",
+      credits: "0",
     }).returning();
 
-    console.log('Created user:', result[0]);
-    return result[0];
+    const { password, ...safeUser } = result[0];
+    return safeUser;
   }
 
   // Event management methods
   async getEvents(): Promise<Event[]> {
-    console.log('Storage: Attempting to fetch events');
-    try {
-      const result = await db.select().from(events);
-      console.log('Storage: Successfully fetched events:', result);
-      return result;
-    } catch (error) {
-      console.error('Storage: Error fetching events:', error);
-      throw error;
-    }
+    return await db.select().from(events);
   }
 
   async getEvent(id: number): Promise<Event | undefined> {
@@ -153,7 +151,6 @@ class DatabaseStorage implements IStorage {
   }
 
   async deleteEvent(id: number): Promise<{ success: boolean; message: string }> {
-    console.log('Storage: Attempting to delete event:', id);
     try {
       if (isNaN(id) || id <= 0) {
         return {
@@ -170,7 +167,6 @@ class DatabaseStorage implements IStorage {
         .limit(1);
 
       if (eventExists.length === 0) {
-        console.log('Storage: Event not found:', id);
         return {
           success: false,
           message: "Event not found"
@@ -180,18 +176,15 @@ class DatabaseStorage implements IStorage {
       // Begin transaction for atomicity
       // First delete all media items associated with this event
       await db.delete(mediaItems).where(eq(mediaItems.eventId, id));
-      console.log('Storage: Deleted associated media items for event:', id);
 
       // Then delete the event itself
-      const result = await db.delete(events).where(eq(events.id, id)).returning();
-      console.log('Storage: Successfully deleted event:', id, 'Result:', result);
+      await db.delete(events).where(eq(events.id, id)).returning();
 
       return {
         success: true,
         message: "Event and associated media items deleted successfully"
       };
     } catch (error) {
-      console.error('Storage: Error deleting event:', error);
       return {
         success: false,
         message: error instanceof Error ? error.message : "Failed to delete event"
@@ -287,8 +280,7 @@ class DatabaseStorage implements IStorage {
     await db.delete(mediaItems).where(eq(mediaItems.id, id));
   }
 
-  async updateUserCreatorStatus(userId: number, status: 'pending' | 'approved' | 'rejected'): Promise<User> {
-    console.log('Storage: Updating user creator status:', userId, status);
+  async updateUserCreatorStatus(userId: number, status: 'pending' | 'approved' | 'rejected'): Promise<SafeUser> {
     const result = await db
       .update(users)
       .set({
@@ -302,20 +294,18 @@ class DatabaseStorage implements IStorage {
       throw new Error("User not found");
     }
 
-    console.log('Storage: Updated user:', result[0]);
-    return result[0];
+    const { password, ...safeUser } = result[0];
+    return safeUser;
   }
 
   async getEventsByCreator(creatorId: number): Promise<Event[]> {
-    console.log('Storage: Fetching events for creator:', creatorId);
     return await db
       .select()
       .from(events)
       .where(eq(events.creatorId, creatorId));
   }
 
-  async updateUserCredits(userId: number, credits: number): Promise<User> {
-    console.log('Storage: Updating user credits:', userId, credits);
+  async updateUserCredits(userId: number, credits: number): Promise<SafeUser> {
     const result = await db
       .update(users)
       .set({ credits: credits.toString() })
@@ -326,11 +316,11 @@ class DatabaseStorage implements IStorage {
       throw new Error("User not found");
     }
 
-    return result[0];
+    const { password, ...safeUser } = result[0];
+    return safeUser;
   }
 
   async getCreatorEarnings(creatorId: number): Promise<{ totalCredits: number }> {
-    console.log('Storage: Calculating earnings for creator:', creatorId);
     // For now, just return placeholder data
     // TODO: Implement actual earnings calculation based on downloaded content
     return { totalCredits: 0 };

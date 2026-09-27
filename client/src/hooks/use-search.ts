@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import Fuse from 'fuse.js';
 import { MediaItem } from '@shared/schema';
 
-export type SearchableItem = MediaItem | any;
+export type SearchableItem = MediaItem;
 
-interface UseSearchOptions {
+interface UseSearchOptions<T> {
   includeScore?: boolean;
   shouldSort?: boolean;
   threshold?: number;
@@ -14,10 +14,11 @@ interface UseSearchOptions {
   keys: {
     name: string;
     weight: number;
+    getFn?: (item: T) => string;
   }[];
 }
 
-const DEFAULT_OPTIONS: Partial<UseSearchOptions> = {
+const DEFAULT_OPTIONS = {
   includeScore: true,
   shouldSort: true,
   threshold: 0.3,
@@ -27,17 +28,14 @@ const DEFAULT_OPTIONS: Partial<UseSearchOptions> = {
 
 export function useSearch<T extends SearchableItem>(
   items: T[],
-  searchQuery: string,
-  options: UseSearchOptions
+  options: UseSearchOptions<T>
 ) {
-  const [internalSearchQuery, setInternalSearchQuery] = useState(searchQuery);
+  const [searchQuery, setSearchQueryState] = useState('');
   const [results, setResults] = useState<T[]>([]);
   const [fuse, setFuse] = useState<Fuse<T> | null>(null);
 
   // Initialize Fuse instance with optimized settings
   useEffect(() => {
-    if (!items.length) return;
-
     const fuseOptions = {
       ...DEFAULT_OPTIONS,
       ...options,
@@ -46,22 +44,14 @@ export function useSearch<T extends SearchableItem>(
       useExtendedSearch: true,
       findAllMatches: true,
       includeMatches: true,
-      sortFn: (a: Fuse.FuseResult<T>, b: Fuse.FuseResult<T>) => {
-        // Custom sorting: prioritize exact matches, then by score
-        const aExact = a.matches?.some(match => match.value === searchQuery);
-        const bExact = b.matches?.some(match => match.value === searchQuery);
-        if (aExact && !bExact) return -1;
-        if (!aExact && bExact) return 1;
-        return (a.score || 1) - (b.score || 1);
-      }
     };
 
     setFuse(new Fuse(items, fuseOptions));
-  }, [items, options, searchQuery]);
+  }, [items, options]);
 
   // Perform search with improved matching
   const performSearch = useCallback((query: string) => {
-    setSearchQuery(query);
+    setSearchQueryState(query);
 
     if (!query.trim() || !fuse) {
       setResults(items);
@@ -75,7 +65,7 @@ export function useSearch<T extends SearchableItem>(
 
       // Extract and deduplicate items
       const uniqueResults = Array.from(
-        new Map(searchResults.map(result => [result.item.id, result.item]))
+       new Map(searchResults.map(result => [result.item.id, result.item]))
       ).map(([, item]) => item);
 
       setResults(uniqueResults);
@@ -85,12 +75,18 @@ export function useSearch<T extends SearchableItem>(
     }
   }, [fuse, items]);
 
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setResults(items);
+    }
+  }, [items, searchQuery]);
+
   return {
     searchQuery,
     setSearchQuery: performSearch,
     results,
     resetSearch: useCallback(() => {
-      setSearchQuery('');
+      setSearchQueryState('');
       setResults(items);
     }, [items])
   };

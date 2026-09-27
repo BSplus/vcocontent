@@ -1,80 +1,47 @@
-import sharp from 'sharp';
-
 interface ProcessedImage {
-  original: Buffer;
-  optimized: Buffer;
-  thumbnail: Buffer;
-  webp: Buffer;
+  original: Blob;
+  optimized: Blob;
+  thumbnail: Blob;
+  webp: Blob;
   width: number;
   height: number;
   format: string;
 }
 
-export async function processImage(imageBuffer: Buffer): Promise<ProcessedImage> {
+export async function processImage(image: Blob): Promise<ProcessedImage> {
+  const bitmap = await createImageBitmap(image);
   try {
-    // Get image metadata
-    const metadata = await sharp(imageBuffer).metadata();
-    const originalWidth = metadata.width || 0;
-    const originalHeight = metadata.height || 0;
+    const scale = Math.min(1, 1920 / bitmap.width);
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const optimizedCanvas = document.createElement('canvas');
+    optimizedCanvas.width = width;
+    optimizedCanvas.height = height;
+    const optimizedContext = optimizedCanvas.getContext('2d');
+    if (!optimizedContext) throw new Error('Unable to process this image in your browser.');
+    optimizedContext.drawImage(bitmap, 0, 0, width, height);
 
-    // Calculate dimensions while maintaining aspect ratio
-    const MAX_WIDTH = 1920;
-    const MAX_THUMBNAIL_WIDTH = 400;
-    
-    let resizeWidth = originalWidth;
-    let resizeHeight = originalHeight;
-    
-    if (originalWidth > MAX_WIDTH) {
-      resizeWidth = MAX_WIDTH;
-      resizeHeight = Math.round((originalHeight * MAX_WIDTH) / originalWidth);
-    }
+    const thumbnailScale = Math.min(1, 400 / bitmap.width);
+    const thumbnailCanvas = document.createElement('canvas');
+    thumbnailCanvas.width = Math.max(1, Math.round(bitmap.width * thumbnailScale));
+    thumbnailCanvas.height = Math.max(1, Math.round(bitmap.height * thumbnailScale));
+    const thumbnailContext = thumbnailCanvas.getContext('2d');
+    if (!thumbnailContext) throw new Error('Unable to create an image thumbnail in your browser.');
+    thumbnailContext.drawImage(bitmap, 0, 0, thumbnailCanvas.width, thumbnailCanvas.height);
 
-    // Process original image
-    const optimized = await sharp(imageBuffer)
-      .resize(resizeWidth, resizeHeight, {
-        fit: 'inside',
-        withoutEnlargement: true
-      })
-      .jpeg({
-        quality: 80,
-        progressive: true
-      })
-      .toBuffer();
+    const toBlob = (canvas: HTMLCanvasElement, type: string, quality: number) =>
+      new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Image conversion failed.')), type, quality);
+      });
+    const [optimized, thumbnail, webp] = await Promise.all([
+      toBlob(optimizedCanvas, 'image/jpeg', 0.8),
+      toBlob(thumbnailCanvas, 'image/jpeg', 0.7),
+      toBlob(optimizedCanvas, 'image/webp', 0.8),
+    ]);
 
-    // Create WebP version
-    const webp = await sharp(imageBuffer)
-      .resize(resizeWidth, resizeHeight, {
-        fit: 'inside',
-        withoutEnlargement: true
-      })
-      .webp({
-        quality: 80
-      })
-      .toBuffer();
-
-    // Generate thumbnail
-    const thumbnail = await sharp(imageBuffer)
-      .resize(MAX_THUMBNAIL_WIDTH, undefined, {
-        fit: 'inside',
-        withoutEnlargement: true
-      })
-      .jpeg({
-        quality: 70
-      })
-      .toBuffer();
-
-    return {
-      original: imageBuffer,
-      optimized,
-      thumbnail,
-      webp,
-      width: resizeWidth,
-      height: resizeHeight,
-      format: metadata.format || 'jpeg'
-    };
-  } catch (error) {
-    console.error('Image processing error:', error);
-    throw new Error('Failed to process image');
+    return { original: image, optimized, thumbnail, webp, width, height, format: 'jpeg' };
+  } finally {
+    bitmap.close();
   }
 }
 
@@ -82,9 +49,11 @@ export function isImageFile(file: File): boolean {
   return file.type.startsWith('image/');
 }
 
-export function getImageDimensions(buffer: Buffer): Promise<{ width: number; height: number }> {
-  return sharp(buffer).metadata().then(metadata => ({
-    width: metadata.width || 0,
-    height: metadata.height || 0
-  }));
+export async function getImageDimensions(image: Blob): Promise<{ width: number; height: number }> {
+  const bitmap = await createImageBitmap(image);
+  try {
+    return { width: bitmap.width, height: bitmap.height };
+  } finally {
+    bitmap.close();
+  }
 }

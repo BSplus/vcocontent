@@ -46,15 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refetchOnReconnect: true
   });
 
-  // Debug logging
-  useEffect(() => {
-    console.log('Auth state changed:', {
-      user,
-      error,
-      isLoading
-    });
-  }, [user, error, isLoading]);
-
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {
       try {

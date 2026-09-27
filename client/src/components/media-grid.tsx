@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -47,9 +47,6 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
   const [hoveredItem, setHoveredItem] = useState<MediaItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [videoStills, setVideoStills] = useState<{ [key: number]: string[] }>({});
-  const [currentStillIndex, setCurrentStillIndex] = useState<{ [key: number]: number }>({});
-  const stillIntervalRef = useRef<{ [key: number]: NodeJS.Timeout }>({});
 
   // Navigation functions
   const navigateNext = () => {
@@ -125,124 +122,36 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
     },
   });
 
-  const generateVideoStills = async (video: HTMLVideoElement, itemId: number) => {
-    const stills: string[] = [];
-    const duration = video.duration;
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-
-    if (!context) return;
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    // Generate 5 stills at different timestamps
-    for (let i = 0; i < 5; i++) {
-      video.currentTime = (duration * (i + 1)) / 6;
-      await new Promise(resolve => {
-        video.onseeked = resolve;
-      });
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      stills.push(canvas.toDataURL('image/jpeg'));
-    }
-
-    setVideoStills(prev => ({ ...prev, [itemId]: stills }));
-  };
-
-  // Handle video hover
-  useEffect(() => {
-    if (hoveredItem?.type === 'video' && !videoStills[hoveredItem.id]) {
-      const video = document.createElement('video');
-      video.src = hoveredItem.url;
-      video.onloadedmetadata = () => generateVideoStills(video, hoveredItem.id);
-    }
-
-    if (hoveredItem?.type === 'video' && videoStills[hoveredItem.id]) {
-      // Start cycling through stills
-      setCurrentStillIndex(prev => ({ ...prev, [hoveredItem.id]: 0 }));
-      stillIntervalRef.current[hoveredItem.id] = setInterval(() => {
-        setCurrentStillIndex(prev => ({
-          ...prev,
-          [hoveredItem.id]: (prev[hoveredItem.id] + 1) % videoStills[hoveredItem.id].length
-        }));
-      }, 1000);
-    }
-
-    return () => {
-      if (hoveredItem?.id && stillIntervalRef.current[hoveredItem.id]) {
-        clearInterval(stillIntervalRef.current[hoveredItem.id]);
-      }
-    };
-  }, [hoveredItem]);
-
-  const compressImage = async (url: string, quality: number = 0.3): Promise<string> => {
-    // Create a temporary image to load the original
-    const img = new Image();
-    img.crossOrigin = "anonymous"; // Handle CORS
-
-    return new Promise((resolve, reject) => {
-      img.onload = () => {
-        // Create a canvas element
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-
-        // Calculate new dimensions (reduce size for low quality)
-        let width = img.width;
-        let height = img.height;
-
-        // For low quality, reduce dimensions by 50%
-        if (quality <= 0.3) {
-          width = Math.floor(width * 0.5);
-          height = Math.floor(height * 0.5);
-        }
-
-        // Set canvas dimensions to match the image
-        canvas.width = width;
-        canvas.height = height;
-
-        // Draw the image onto the canvas with reduced dimensions
-        ctx?.drawImage(img, 0, 0, width, height);
-
-        // Convert to compressed data URL
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressedDataUrl);
-      };
-
-      img.onerror = () => reject(new Error('Failed to load image'));
-      img.src = url;
-    });
-  };
-
-  const handleDownload = async (url: string, quality: 'high' | 'low', type: 'image' | 'video', mediaId: number) => {
+  const handleDownload = async (item: MediaItem, quality: 'high' | 'low') => {
     try {
-      let downloadUrl = url;
-      let filename = url.split('/').pop() || 'download';
-
-      if (type === 'image' && quality === 'low') {
-        // Compress image for low quality download
-        downloadUrl = await compressImage(url, 0.3);
-      }
-
-      let response = await fetch(downloadUrl);
-      let blob = await response.blob();
-
-      // Check file size for low quality
-      if (quality === 'low' && blob.size > 1024 * 1024) {
-        // If still over 1MB, compress more aggressively
-        if (type === 'image') {
-          downloadUrl = await compressImage(url, 0.1);
-          response = await fetch(downloadUrl);
-          blob = await response.blob();
-        }
-      }
-
-      // Track download
-      await fetch(`/api/media/${mediaId}/download`, {
+      const authorization = await fetch(`/api/media/${item.id}/download`, {
         method: 'POST',
         credentials: 'include',
       });
+      if (!authorization.ok) {
+        const message = await authorization.text();
+        throw new Error(message || `Download authorization failed (${authorization.status})`);
+      }
 
-      const extension = type === 'video' ? '.mp4' : '.jpg';
+      const contentType = authorization.headers.get('content-type') || '';
+      let blob: Blob;
+      let filename = `media-${item.id}`;
+      if (contentType.includes('application/json')) {
+        const result = await authorization.json();
+        if (typeof result.url !== 'string' || !result.url) {
+          throw new Error('The server did not provide an authorized media download URL.');
+        }
+        filename = result.url.split('/').pop() || filename;
+        const downloadUrl = quality === 'low' ? item.thumbnail : result.url;
+        const response = await fetch(downloadUrl, { credentials: 'include' });
+        if (!response.ok) throw new Error(`Media download failed (${response.status})`);
+        blob = await response.blob();
+      } else {
+        // Some authorized endpoints stream the media directly instead of returning a URL.
+        blob = await authorization.blob();
+      }
+
+      const extension = item.type === 'video' ? '.mp4' : '.jpg';
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = `${filename}-${quality}${extension}`;
@@ -252,6 +161,11 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
       URL.revokeObjectURL(link.href); // Clean up
     } catch (error) {
       console.error('Download failed:', error);
+      toast({
+        title: "Download failed",
+        description: error instanceof Error ? error.message : "Unable to download this media item.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -323,13 +237,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
             transition={{ duration: 0.2 }}
           >
             <img
-              src={
-                item.type === 'video' &&
-                hoveredItem?.id === item.id &&
-                videoStills[item.id]?.[currentStillIndex[item.id]]
-                  ? videoStills[item.id][currentStillIndex[item.id]]
-                  : item.thumbnail
-              }
+              src={item.thumbnail}
               alt={item.caption || "Media item"}
               className="absolute inset-0 w-full h-full object-contain"
             />
@@ -397,13 +305,13 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                     <DropdownMenuContent>
                       <DropdownMenuItem onClick={(e) => {
                         e.stopPropagation();
-                        handleDownload(item.url, 'high', item.type as 'video' | 'image', item.id);
+                        handleDownload(item, 'high');
                       }}>
                         Download High-Res
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={(e) => {
                         e.stopPropagation();
-                        handleDownload(item.thumbnail, 'low', item.type as 'video' | 'image', item.id);
+                        handleDownload(item, 'low');
                       }}>
                         Download Low-Res
                       </DropdownMenuItem>
@@ -458,19 +366,20 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
           </DialogHeader>
 
           <div className="relative aspect-video bg-black/20">
-            {selectedItem?.type === "video" ? (
-              <video
-                src={selectedItem.url}
-                controls
-                className="absolute inset-0 w-full h-full object-contain"
-              />
-            ) : (
-              <img
-                src={selectedItem?.url}
-                alt={selectedItem?.caption || "Media preview"}
-                className="absolute inset-0 w-full h-full object-contain"
-              />
-            )}
+            {selectedItem?.type === "video" && user && selectedItem.url
+              ? <video
+                  key={selectedItem.id}
+                  src={selectedItem.url}
+                  poster={selectedItem.thumbnail}
+                  controls
+                  preload="none"
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+              : <img
+                  src={selectedItem?.thumbnail}
+                  alt={selectedItem?.caption || "Media preview"}
+                  className="absolute inset-0 w-full h-full object-contain"
+                />}
 
             {/* Navigation buttons */}
             <div className="absolute inset-0 flex items-center justify-between p-2">
@@ -544,12 +453,12 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
                     <DropdownMenuItem onClick={() =>
-                      selectedItem && handleDownload(selectedItem.url, 'high', selectedItem.type as 'video' | 'image', selectedItem.id)
+                      selectedItem && handleDownload(selectedItem, 'high')
                     }>
                       Download High-Res
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() =>
-                      selectedItem && handleDownload(selectedItem.thumbnail, 'low', selectedItem.type as 'video' | 'image', selectedItem.id)
+                      selectedItem && handleDownload(selectedItem, 'low')
                     }>
                       Download Low-Res
                     </DropdownMenuItem>

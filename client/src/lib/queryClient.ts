@@ -41,7 +41,6 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  console.log(`Making ${method} request to ${url}`, { data });
 
   const options: RequestInit = {
     method,
@@ -85,7 +84,6 @@ export const getQueryFn: <T>(options: {
 
     await throwIfResNotOk(res);
     const data = await res.json();
-    console.log('Query response:', { queryKey, data });
     return data;
   };
 

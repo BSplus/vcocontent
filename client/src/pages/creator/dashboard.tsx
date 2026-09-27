@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Event, MediaItem, InsertEvent } from "@shared/schema";
 import { 
-  ArrowLeft, Loader2, Plus, Image as ImageIcon, Film, CreditCard, 
+  ArrowLeft, Loader2, Plus, Image as ImageIcon, Film, 
   Edit, Eye, Trash2, PenLine
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -24,13 +24,11 @@ export default function CreatorDashboard() {
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const [selectedMediaItem, setSelectedMediaItem] = useState<MediaItem | null>(null);
   const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"events" | "media" | "earnings">("events");
+  const [activeTab, setActiveTab] = useState<"events" | "media" | "analytics">("events");
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     date: new Date().toISOString().split('T')[0],
-    isPremium: false,
-    creditCost: 1
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuth();
@@ -46,8 +44,6 @@ export default function CreatorDashboard() {
           title: event.title,
           description: event.description || "",
           date: new Date(event.date).toISOString().split('T')[0],
-          isPremium: event.isPremium || false,
-          creditCost: event.creditCost || 1
         });
       }
     } else {
@@ -56,8 +52,6 @@ export default function CreatorDashboard() {
         title: "",
         description: "",
         date: new Date().toISOString().split('T')[0],
-        isPremium: false,
-        creditCost: 1
       });
     }
   }, [selectedEventId, uploadModalOpen]);
@@ -131,9 +125,8 @@ export default function CreatorDashboard() {
     const eventData = {
       title: formData.title,
       description: formData.description,
-      date: formData.date, // Date as ISO string
-      isPremium: formData.isPremium,
-      creditCost: formData.creditCost
+      date: formData.date,
+      isPremium: false,
     } as any; // Using any to avoid TypeScript errors
     
     try {
@@ -163,12 +156,6 @@ export default function CreatorDashboard() {
     staleTime: 0,
   });
 
-  // Load creator earnings
-  const { data: earnings = { totalCredits: 0, totalDownloads: 0 }, isLoading: earningsLoading } = useQuery<{ totalCredits: number, totalDownloads: number }>({
-    queryKey: ["/api/creator/earnings"],
-    staleTime: 0,
-  });
-
   const getEventStats = (eventId: number) => {
     const eventMedia = mediaItems.filter((item) => item.eventId === eventId);
     const photos = eventMedia.filter((item) => item.type === "image");
@@ -177,14 +164,7 @@ export default function CreatorDashboard() {
     return {
       photos: photos.length,
       videos: videos.length,
-      premiumCount: eventMedia.filter(item => item.isPremium).length,
       totalDownloads: eventMedia.reduce((sum, item) => sum + (item.downloadCount || 0), 0),
-      totalEarnings: eventMedia.reduce((sum, item) => {
-        if (item.isPremium && item.downloadCount && item.creditCost) {
-          return sum + (item.downloadCount * item.creditCost * 0.7); // Creators get 70% of credits
-        }
-        return sum;
-      }, 0)
     };
   };
 
@@ -192,7 +172,7 @@ export default function CreatorDashboard() {
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
-  if (eventsLoading || mediaLoading || earningsLoading) {
+  if (eventsLoading || mediaLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -219,11 +199,11 @@ export default function CreatorDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="events" onValueChange={(value) => setActiveTab(value as "events" | "media" | "earnings")}>
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "events" | "media" | "analytics")}>
           <TabsList>
             <TabsTrigger value="events">My Events</TabsTrigger>
             <TabsTrigger value="media">My Media</TabsTrigger>
-            <TabsTrigger value="earnings">Earnings & Analytics</TabsTrigger>
+            <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
@@ -277,14 +257,7 @@ export default function CreatorDashboard() {
                               {stats.videos} Videos
                             </Badge>
                             <Badge variant="outline" className="flex gap-2 items-center">
-                              {stats.premiumCount} Premium Items
-                            </Badge>
-                            <Badge variant="outline" className="flex gap-2 items-center">
                               {stats.totalDownloads} Downloads
-                            </Badge>
-                            <Badge variant="outline" className="flex gap-2 items-center">
-                              <CreditCard className="h-3 w-3" />
-                              {stats.totalEarnings} Credits Earned
                             </Badge>
                           </div>
 
@@ -422,11 +395,6 @@ export default function CreatorDashboard() {
                                   <PenLine className="h-4 w-4 mr-1" /> Edit
                                 </Button>
                               </div>
-                              {item.isPremium && (
-                                <Badge className="absolute top-2 right-2 bg-primary text-black">
-                                  Premium
-                                </Badge>
-                              )}
                             </div>
                             <CardContent className="p-3">
                               <p className="text-sm truncate">{item.caption || "No caption"}</p>
@@ -449,27 +417,12 @@ export default function CreatorDashboard() {
             )}
           </TabsContent>
 
-          <TabsContent value="earnings" className="mt-6">
+          <TabsContent value="analytics" className="mt-6">
             <div className="grid gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Total Earnings</CardTitle>
-                  <CardDescription>Your earnings from premium content</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-4xl font-bold">
-                    {earnings.totalCredits} Credits
-                  </div>
-                  <p className="text-muted-foreground mt-2">
-                    From {earnings.totalDownloads} premium downloads
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
                   <CardTitle>Event Performance</CardTitle>
-                  <CardDescription>Analytics for your events</CardDescription>
+                  <CardDescription>Media downloads during the public beta</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
@@ -484,7 +437,6 @@ export default function CreatorDashboard() {
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="font-medium">{stats.totalEarnings} Credits</p>
                             <p className="text-sm text-muted-foreground">
                               {stats.totalDownloads} Downloads
                             </p>
@@ -549,36 +501,6 @@ export default function CreatorDashboard() {
               className="w-full border rounded p-2"
             />
           </div>
-          
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="isPremium"
-              checked={formData.isPremium}
-              onChange={(e) => setFormData({...formData, isPremium: e.target.checked})}
-              className="rounded"
-            />
-            <label htmlFor="isPremium" className="text-sm font-medium">
-              Premium Event (paid)
-            </label>
-          </div>
-          
-          {formData.isPremium && (
-            <div>
-              <label htmlFor="creditCost" className="block text-sm font-medium mb-1">
-                Cost (Credits)
-              </label>
-              <input
-                type="number"
-                id="creditCost"
-                value={formData.creditCost}
-                onChange={(e) => setFormData({...formData, creditCost: parseInt(e.target.value) || 1})}
-                min="1"
-                max="100"
-                className="w-full border rounded p-2"
-              />
-            </div>
-          )}
           
           <div className="flex justify-end gap-2 pt-4">
             <button 

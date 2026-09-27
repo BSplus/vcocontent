@@ -68,7 +68,7 @@ export default function CreatorApplicationPage() {
               <h3>Creator Benefits</h3>
               <ul>
                 <li>Share your sim racing content with a dedicated audience</li>
-                <li>Earn credits through premium content</li>
+                <li>Share your photos and videos with the sim racing community</li>
                 <li>Build your personal brand in the sim racing community</li>
                 <li>Access advanced analytics and insights</li>
               </ul>

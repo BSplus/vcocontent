@@ -47,18 +47,7 @@ export default function ArchiveEventsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {archiveEvents.map((event) => (
-                  <EventCard 
-                    key={event.id} 
-                    event={{
-                      ...event,
-                      date: new Date(event.date).toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })
-                    }} 
-                  />
+                  <EventCard key={event.id} event={event} />
                 ))}
             </div>
           )}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -14,43 +14,37 @@ export default function CreatorProfile() {
   const { toast } = useToast();
   
   // Fetch creator information
-  const { data: creator, isLoading: creatorLoading } = useQuery<{username: string, id: number, isCreator: boolean, bio: string | null, profileImage: string | null}>({
+  const { data: creator, isLoading: creatorLoading, error: creatorError } = useQuery<{username: string, id: number, isCreator: boolean, bio: string | null, profileImage: string | null}>({
     queryKey: [`/api/users/${creatorId}`],
     enabled: Boolean(creatorId && creatorId > 0),
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: `Failed to load creator info: ${error.message}`,
-        variant: "destructive",
-      });
-    },
   });
 
   // Fetch all creator events
-  const { data: creatorEvents = [], isLoading: eventsLoading } = useQuery<Event[]>({
+  const { data: creatorEvents = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
     queryKey: [`/api/events/creator/${creatorId}`],
     enabled: Boolean(creatorId && creatorId > 0),
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: `Failed to load creator events: ${error.message}`,
-        variant: "destructive",
-      });
-    },
   });
 
   // Fetch top media items from this creator
-  const { data: topMediaItems = [], isLoading: mediaLoading } = useQuery<MediaItem[]>({
+  const { data: topMediaItems = [], isLoading: mediaLoading, error: mediaError } = useQuery<MediaItem[]>({
     queryKey: [`/api/media/top/creator/${creatorId}`],
     enabled: Boolean(creatorId && creatorId > 0),
-    onError: (error) => {
+  });
+
+  useEffect(() => {
+    const failures = [
+      creatorError && `Failed to load creator info: ${creatorError.message}`,
+      eventsError && `Failed to load creator events: ${eventsError.message}`,
+      mediaError && `Failed to load top media: ${mediaError.message}`,
+    ].filter((description): description is string => Boolean(description));
+    failures.forEach(description => {
       toast({
         title: "Error",
-        description: `Failed to load top media: ${error.message}`,
+        description,
         variant: "destructive",
       });
-    },
-  });
+    });
+  }, [creatorError, eventsError, mediaError, toast]);
 
   const isLoading = creatorLoading || eventsLoading || mediaLoading;
 

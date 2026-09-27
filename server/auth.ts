@@ -11,8 +11,13 @@ import { log } from "./vite";
 // Extend Express User type for TypeScript
 declare global {
   namespace Express {
-    interface User extends SelectUser {}
+    interface User extends Omit<SelectUser, "password"> {}
   }
+}
+
+function toSafeUser(user: SelectUser): Express.User {
+  const { password, ...safeUser } = user;
+  return safeUser;
 }
 
 // Helper function for async encryption
@@ -29,11 +34,13 @@ async function hashPassword(password: string) {
 async function comparePasswords(supplied: string, stored: string) {
   try {
     const [hashed, salt] = stored.split(".");
+    if (!hashed || !salt) return false;
     const hashedBuf = Buffer.from(hashed, "hex");
     const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+    if (hashedBuf.length !== suppliedBuf.length) return false;
     return timingSafeEqual(hashedBuf, suppliedBuf);
   } catch (error) {
-    log('Password comparison error:', error?.toString() || 'Unknown error');
+    log("Password comparison failed", "auth");
     return false;
   }
 }
@@ -42,25 +49,18 @@ async function comparePasswords(supplied: string, stored: string) {
 export function setupAuth(app: Express) {
   log('Setting up authentication', 'auth');
 
-  // We don't initialize session here since it's already initialized in index.ts
-  // Just initialize passport
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Passport user serialization
-  passport.serializeUser((user: Express.User, done) => {
-    log(`Serializing user: ${user.id}`, 'auth');
-    done(null, user.id);
-  });
+  passport.serializeUser((user: Express.User, done) => done(null, user.id));
 
   passport.deserializeUser(async (id: number, done) => {
     try {
       const user = await storage.getUser(id);
-      log(`Deserialized user ${id}: ${user ? 'success' : 'not found'}`, 'auth');
       done(null, user);
     } catch (error) {
-      log(`Deserialization error for user ${id}: ${error}`, 'auth');
-      done(null, false); // Instead of passing error, return false to prevent middleware crash
+      log("Session user lookup failed", "auth");
+      done(error);
     }
   });
 
@@ -73,178 +73,147 @@ export function setupAuth(app: Express) {
       passReqToCallback: false
     }, async (username: string, password: string, done) => {
       try {
-        log(`Login attempt for user: ${username}`, 'auth');
         const user = await storage.getUserByUsername(username);
 
         if (!user) {
-          log(`Login failed: User ${username} not found`, 'auth');
           return done(null, false, { message: 'Invalid username or password' });
         }
 
         const isValid = await comparePasswords(password, user.password);
-        log(`Login ${isValid ? 'successful' : 'failed'} for user: ${username}`, 'auth');
-
-        return done(null, isValid ? user : false, 
-          isValid ? undefined : { message: 'Invalid username or password' }
-        );
+        return done(null, isValid ? toSafeUser(user) : false,
+          isValid ? undefined : { message: 'Invalid username or password' });
       } catch (error) {
-        log(`Login error for ${username}: ${error}`, 'auth');
+        log("Login failed due to an internal error", "auth");
         return done(null, false, { message: 'An internal error has occurred.' });
       }
     }),
   );
 
-  // Add detailed request logging middleware for debugging
-  app.use((req, res, next) => {
-    if (req.path.startsWith('/api')) {
-      log(`Auth state for ${req.method} ${req.path}:`, 'auth');
-      log(`- isAuthenticated: ${req.isAuthenticated?.()}`, 'auth');
-      log(`- Session ID: ${req.sessionID}`, 'auth');
-      log(`- Session Cookie: ${req.headers.cookie}`, 'auth');
-      log(`- User: ${req.user ? `ID: ${req.user.id}, Admin: ${req.user.isAdmin}, Creator: ${req.user.isCreator}` : 'Not logged in'}`, 'auth');
-      if (req.session) {
-        console.log('Session data:', req.session);
-      }
-    }
-    next();
-  });
-
-  // Login endpoint with enhanced error handling
   app.post("/api/login", (req, res, next) => {
-    if (!req.body.username || !req.body.password) {
+    if (
+      typeof req.body?.username !== "string" ||
+      typeof req.body?.password !== "string" ||
+      req.body.username.length > 256 ||
+      req.body.password.length > 1024
+    ) {
       return res.status(400).json({ error: "Username and password are required" });
     }
 
-    console.log('Login request received:', {
-      username: req.body.username,
-      headers: req.headers,
-      sessionID: req.sessionID
-    });
-    log(`Login request for user: ${req.body.username}`, 'auth');
-
     passport.authenticate("local", (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
       if (err) {
-        log(`Login error: ${err}`, 'auth');
+        log("Login session initialization failed", "auth");
         return res.status(500).json({ error: "An error has occurred" });
       }
 
       if (!user) {
-        log('Login failed: Invalid credentials', 'auth');
         return res.status(401).json({ error: info?.message || "Invalid username or password" });
       }
 
       req.login(user, (err) => {
         if (err) {
-          log(`Login session error: ${err}`, 'auth');
+          log("Login session initialization failed", "auth");
           return res.status(500).json({ error: "An error has occurred" });
         }
         
-        // Explicitly save the session before sending response
         req.session.save((saveErr) => {
           if (saveErr) {
-            log(`Session save error: ${saveErr}`, 'auth');
+            log("Login session could not be saved", "auth");
             return res.status(500).json({ error: "Failed to save session" });
           }
           
-          log(`Login successful for user: ${user.username}`, 'auth');
-          console.log('Session after login:', {
-            sessionID: req.sessionID,
-            user: user.username,
-            cookie: req.session?.cookie
-          });
           res.json(user);
         });
       });
     })(req, res, next);
   });
 
-  // User info endpoint
   app.get("/api/user", (req, res) => {
-    console.log('User info request:', {
-      isAuthenticated: req.isAuthenticated?.(),
-      sessionID: req.sessionID,
-      headers: req.headers,
-      user: req.user
-    });
-    log(`User info request - Session ID: ${req.sessionID}`, 'auth');
-
     if (!req.isAuthenticated?.()) {
-      log('User info request: Not authenticated', 'auth');
       return res.status(401).json({ error: "Not logged in" });
     }
-    log(`User info request successful for: ${req.user.username}`, 'auth');
     res.json(req.user);
   });
 
-  // Logout endpoint
   app.post("/api/logout", (req, res) => {
-    const username = req.user?.username;
     req.logout((err) => {
       if (err) {
-        log(`Logout error for user ${username}: ${err}`, 'auth');
+        log("Logout failed", "auth");
         return res.status(500).json({ error: "An error has occurred" });
       }
-      log(`Logout successful for user: ${username}`, 'auth');
-      res.sendStatus(200);
+      req.session.destroy((destroyError) => {
+        if (destroyError) {
+          log("Logout session cleanup failed", "auth");
+          return res.status(500).json({ error: "An error has occurred" });
+        }
+        res.clearCookie("vco.sid", { path: "/" });
+        res.sendStatus(200);
+      });
     });
   });
 
-  // Registration endpoint
   app.post("/api/register", async (req, res, next) => {
     try {
-      if (!req.body.username || !req.body.password) {
-        return res.status(400).json({ error: "Username and password are required" });
+      const body = req.body;
+      if (
+        !body ||
+        typeof body !== "object" ||
+        Array.isArray(body) ||
+        (body.requestCreator !== undefined && typeof body.requestCreator !== "boolean")
+      ) {
+        return res.status(400).json({ error: "Invalid registration data" });
       }
 
-      console.log('Registration request received:', {
-        username: req.body.username,
-        sessionID: req.sessionID
+      // Validate and explicitly whitelist user-editable fields. Ignore client
+      // attempts to set roles, credits, or moderation state.
+      const parsedUser = insertUserSchema.safeParse({
+        username: body.username,
+        email: body.email,
+        password: body.password,
+        bio: body.bio,
+        profileImage: body.profileImage,
       });
-      log(`Registration request for username: ${req.body.username}`, 'auth');
+      if (!parsedUser.success) {
+        return res.status(400).json({
+          error: "Invalid registration data",
+          details: parsedUser.error.flatten().fieldErrors,
+        });
+      }
 
-      // Check if username already exists
-      const existingUser = await storage.getUserByUsername(req.body.username);
+      const { username, email, password, bio, profileImage } = parsedUser.data;
+      const existingUser = await storage.getUserByUsername(username);
       if (existingUser) {
-        log(`Registration failed: Username ${req.body.username} already exists`, 'auth');
         return res.status(400).json({ error: "Username already exists" });
       }
 
-      // Hash the password
-      const hashedPassword = await hashPassword(req.body.password);
+      const hashedPassword = await hashPassword(password);
 
-      // Create the user with proper creator status based on registration type
-      const isCreatorRequest = req.body.requestCreator === true;
+      const isCreatorRequest = body.requestCreator === true;
       const user = await storage.createUser({
-        ...req.body,
+        username,
+        email,
+        ...(bio !== undefined ? { bio } : {}),
+        ...(profileImage !== undefined ? { profileImage } : {}),
         password: hashedPassword,
-        isAdmin: false,
-        isCreator: false,
-        creatorStatus: isCreatorRequest ? 'pending' : 'none',
-        credits: 0
+        requestCreator: isCreatorRequest,
       });
 
-      log(`User registered successfully: ${user.username}`, 'auth');
-
-      // Log the user in automatically
       req.login(user, (err) => {
         if (err) {
-          log(`Auto-login after registration failed: ${err}`, 'auth');
+          log("Registration login initialization failed", "auth");
           return next(err);
         }
         
-        // Explicitly save the session before sending response
         req.session.save((saveErr) => {
           if (saveErr) {
-            log(`Session save error after registration: ${saveErr}`, 'auth');
+            log("Registration session could not be saved", "auth");
             return res.status(500).json({ error: "Failed to save session" });
           }
           
-          log(`Auto-login after registration successful for: ${user.username}`, 'auth');
           res.status(201).json(user);
         });
       });
     } catch (error) {
-      log(`Registration error: ${error}`, 'auth');
+      log("Registration failed due to an internal error", "auth");
       res.status(500).json({ error: "An error occurred during registration" });
     }
   });

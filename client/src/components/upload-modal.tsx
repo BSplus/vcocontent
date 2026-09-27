@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -42,6 +41,7 @@ export default function UploadModal({
   const { user } = useAuth();
   const isEditing = eventId !== null;
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const [validationSummary, setValidationSummary] = useState<string[]>([]);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
 
   const { data: eventData } = useQuery<Event>({
@@ -63,8 +63,6 @@ export default function UploadModal({
       coverImage: "/attached_assets/%2389_3.png",
       customThumbnail: undefined,
       seriesId: undefined,
-      isPremium: false,
-      creditCost: 1,
     },
   });
 
@@ -77,8 +75,6 @@ export default function UploadModal({
         coverImage: eventData.coverImage || "",
         customThumbnail: eventData.customThumbnail || undefined,
         seriesId: eventData.seriesId || undefined,
-        isPremium: eventData.isPremium || false,
-        creditCost: eventData.creditCost || 1,
       });
 
       if (eventData.customThumbnail) {
@@ -90,7 +86,7 @@ export default function UploadModal({
   const handleThumbnailChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      const MAX_FILE_SIZE = 1024 * 1024; // Event thumbnails are small metadata; media uses multipart.
       if (file.size > MAX_FILE_SIZE) {
         toast({
           title: "Error",
@@ -122,6 +118,7 @@ export default function UploadModal({
         body: JSON.stringify({
           ...data,
           date: new Date(data.date),
+          isPremium: false,
           creatorId: user?.isCreator ? user.id : undefined,
         }),
       });
@@ -170,8 +167,7 @@ export default function UploadModal({
           coverImage: formData.coverImage,
           customThumbnail: thumbnailPreview,
           seriesId: formData.seriesId,
-          isPremium: formData.isPremium,
-          creditCost: formData.creditCost,
+          isPremium: false,
         }),
       });
 
@@ -204,6 +200,7 @@ export default function UploadModal({
 
   const onSubmit = async (data: InsertEvent) => {
     try {
+      setValidationSummary([]);
       if (isEditing && eventId) {
         await updateMutation.mutateAsync(eventId);
       } else {
@@ -217,6 +214,13 @@ export default function UploadModal({
         variant: "destructive",
       });
     }
+  };
+
+  const onInvalid = (errors: typeof form.formState.errors) => {
+    const messages = Object.values(errors)
+      .map((error) => error?.message)
+      .filter((message): message is string => typeof message === "string");
+    setValidationSummary(messages.length ? messages : ["Please correct the highlighted fields."]);
   };
 
   useEffect(() => {
@@ -234,7 +238,15 @@ export default function UploadModal({
             {isEditing ? "Edit Event" : "Create New Event"}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-4">
+          {validationSummary.length > 0 && (
+            <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              <p className="font-medium">Please check the event details:</p>
+              <ul className="mt-1 list-disc pl-5">
+                {validationSummary.map((message, index) => <li key={`${message}-${index}`}>{message}</li>)}
+              </ul>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="title">Title</Label>
             <Input
@@ -290,44 +302,6 @@ export default function UploadModal({
             </Select>
           </div>
           
-          {/* Premium Settings */}
-          <div className="space-y-4 border p-4 rounded-md">
-            <div className="flex items-center space-x-2">
-              <Checkbox 
-                id="isPremium"
-                checked={form.watch("isPremium")}
-                onCheckedChange={(checked: boolean | "indeterminate") => {
-                  form.setValue("isPremium", checked === true);
-                }}
-              />
-              <Label htmlFor="isPremium" className="font-medium">Premium-Inhalte aktivieren</Label>
-            </div>
-            
-            {form.watch("isPremium") && (
-              <div className="space-y-2 pl-6">
-                <Label htmlFor="creditCost">Credit-Kosten pro Download</Label>
-                <Input
-                  id="creditCost"
-                  type="number"
-                  min="1"
-                  {...form.register("creditCost", { 
-                    valueAsNumber: true,
-                    validate: {
-                      minValue: (value) => (value && value >= 1) || "Mindestens 1 Credit erforderlich"
-                    }
-                  })}
-                  className="touch-auto w-24"
-                />
-                {form.formState.errors.creditCost && (
-                  <p className="text-sm text-red-500">{form.formState.errors.creditCost.message}</p>
-                )}
-                <p className="text-sm text-muted-foreground">
-                  Benutzer müssen diese Anzahl an Credits ausgeben, um Medien aus diesem Event herunterzuladen.
-                </p>
-              </div>
-            )}
-          </div>
-
           <div className="space-y-2">
             <Label>Event Thumbnail</Label>
             <Input

@@ -89,8 +89,8 @@ export const insertEventSchema = createInsertSchema(events).extend({
 export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   eventId: z.number(),
   type: z.enum(["image", "video"]),
-  url: z.string().url("Invalid media URL"),
-  thumbnail: z.string().url("Invalid thumbnail URL"),
+  url: z.union([z.string().url(), z.string().regex(/^\/api\/media\/files\/media-[0-9a-f-]{36}\.(jpg|png|gif|webp|mp4|mov|webm)$/)]),
+  thumbnail: z.union([z.string().url(), z.string().regex(/^\/api\/media\/files\/thumb-[0-9a-f-]{36}\.webp$/)]),
   caption: z.string().max(200, "Caption cannot exceed 200 characters").optional(),
   photographer: z.string().optional(),
   tags: z.array(z.string()),

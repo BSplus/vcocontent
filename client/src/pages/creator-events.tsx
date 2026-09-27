@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Event } from "@shared/schema";
 import EventCard from "@/components/event-card";
-import { SearchInput } from "@/components/search-input";
 import { useSearch } from "@/hooks/use-search";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Loader2, Calendar, CalendarSearch, ArrowLeft } from "lucide-react";
 
 export default function CreatorEventsPage() {
@@ -14,16 +14,19 @@ export default function CreatorEventsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   
   // Fetch all events
-  const { data: allEvents = [], isLoading } = useQuery<Event[]>({
+  const { data: allEvents = [], isLoading, error } = useQuery<Event[]>({
     queryKey: ["/api/events"],
-    onError: (error) => {
+  });
+
+  useEffect(() => {
+    if (error) {
       toast({
         title: "Error",
         description: `Failed to load events: ${error.message}`,
         variant: "destructive",
       });
-    },
-  });
+    }
+  }, [error, toast]);
   
   // Filter to only include creator events
   const creatorEvents = allEvents.filter(event => event.creatorId !== null);
@@ -73,10 +76,10 @@ export default function CreatorEventsPage() {
       <h1 className="text-3xl font-bold mb-8 text-center">Creator Events</h1>
       
       <div className="max-w-lg mx-auto mb-8">
-        <SearchInput
-          items={creatorEvents}
+        <Input
+          placeholder="Search creator events..."
           value={searchQuery}
-          onChange={setSearchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
           className="w-full"
         />
       </div>

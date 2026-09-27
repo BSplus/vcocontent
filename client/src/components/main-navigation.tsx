@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, Settings, Users, CreditCard, User as UserIcon } from "lucide-react";
+import { Loader2, Search, Settings, Users, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function MainNavigation() {
@@ -78,16 +78,6 @@ export default function MainNavigation() {
             <Button asChild className="bg-primary text-black hover:bg-primary/90">
               <Link href="/creator/apply">BECOME A CREATOR</Link>
             </Button>
-          )}
-
-          {/* Show credits and purchase button for logged-in users */}
-          {user && (
-            <div className="flex items-center gap-4">
-              <Link href="/credits" className="flex items-center gap-2 text-sm font-medium text-foreground/80 hover:text-primary transition-colors">
-                <CreditCard className="h-4 w-4" />
-                <span>Credits: {user.credits || 0}</span>
-              </Link>
-            </div>
           )}
 
           {/* Show logout button when logged in */}

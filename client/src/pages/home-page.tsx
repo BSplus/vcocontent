@@ -18,10 +18,7 @@ export default function HomePage() {
   // Events loading with improved error handling
   const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
     queryKey: ["/api/events"],
-    retry: 3,
-    onError: (error) => {
-      console.error('Failed to fetch events:', error);
-    }
+    retry: 3
   });
 
   // Series loading
@@ -106,18 +103,32 @@ export default function HomePage() {
     );
   }
 
-  const handleDownload = async (url: string, quality: 'high' | 'low', mediaId: number) => {
+  const handleDownload = async (item: MediaItem, quality: 'high' | 'low') => {
     try {
-      // Track download
-      await fetch(`/api/media/${mediaId}/download`, {
+      const authorization = await fetch(`/api/media/${item.id}/download`, {
         method: 'POST',
         credentials: 'include',
       });
+      if (!authorization.ok) {
+        const message = await authorization.text();
+        throw new Error(message || `Download authorization failed (${authorization.status})`);
+      }
 
-      // Download the file
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const filename = url.split('/').pop() || 'download';
+      let blob: Blob;
+      let filename = `media-${item.id}`;
+      if ((authorization.headers.get('content-type') || '').includes('application/json')) {
+        const result = await authorization.json();
+        if (typeof result.url !== 'string' || !result.url) {
+          throw new Error('The server did not provide an authorized media download URL.');
+        }
+        filename = result.url.split('/').pop() || filename;
+        const downloadUrl = quality === 'low' ? item.thumbnail : result.url;
+        const response = await fetch(downloadUrl, { credentials: 'include' });
+        if (!response.ok) throw new Error(`Media download failed (${response.status})`);
+        blob = await response.blob();
+      } else {
+        blob = await authorization.blob();
+      }
       const extension = '.jpg';
 
       const link = document.createElement('a');
@@ -129,6 +140,7 @@ export default function HomePage() {
       URL.revokeObjectURL(link.href);
     } catch (error) {
       console.error('Download failed:', error);
+      window.alert(error instanceof Error ? error.message : 'Unable to download this media item.');
     }
   };
 
@@ -296,17 +308,11 @@ export default function HomePage() {
                 >
                   <div className="relative aspect-video overflow-hidden rounded-lg bg-black/40 border border-accent/20">
                     <img
-                      src={item.url}
+                      src={item.thumbnail}
                       alt={item.caption || "Creator content"}
                       className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                    
-                    {item.isPremium && (
-                      <div className="absolute top-2 right-2 bg-accent text-black px-2 py-1 rounded text-xs font-bold">
-                        Premium
-                      </div>
-                    )}
                     
                     <div className="absolute bottom-0 left-0 right-0 p-4">
                       {item.caption && (
@@ -409,7 +415,7 @@ export default function HomePage() {
             <div className="space-y-4">
               <div className="relative aspect-video bg-black/20">
                 <img
-                  src={selectedTopShot.url}
+                  src={selectedTopShot.thumbnail}
                   alt={selectedTopShot.caption || "Media preview"}
                   className="absolute inset-0 w-full h-full object-contain"
                 />
@@ -431,10 +437,10 @@ export default function HomePage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
-                    <DropdownMenuItem onClick={() => handleDownload(selectedTopShot.url, 'high', selectedTopShot.id)}>
+                    <DropdownMenuItem onClick={() => handleDownload(selectedTopShot, 'high')}>
                       Download High-Res
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleDownload(selectedTopShot.thumbnail || selectedTopShot.url, 'low', selectedTopShot.id)}>
+                    <DropdownMenuItem onClick={() => handleDownload(selectedTopShot, 'low')}>
                       Download Low-Res
                     </DropdownMenuItem>
                   </DropdownMenuContent>

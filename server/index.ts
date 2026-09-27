@@ -10,107 +10,102 @@ const app = express();
 // Basic Express settings first
 app.set("trust proxy", 1);
 
-// Increase body parser limits to 250MB to accommodate base64 encoded files
-app.use(express.json({ limit: '250mb' }));
-app.use(express.urlencoded({ extended: false, limit: '250mb' }));
+// Small event/series metadata may contain a thumbnail. Media files use the
+// bounded multipart upload route, not JSON or database base64 payloads.
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: false, limit: "64kb" }));
 
-// CORS configuration for development
+// The client and API are served from the same origin. Do not reflect arbitrary
+// origins or enable credentialed cross-origin requests.
 app.use((req, res, next) => {
-  const origin = process.env.NODE_ENV === 'development'
-    ? req.get('origin') || 'http://localhost:5000'
-    : req.get('origin');
+  const origin = req.get("origin");
+  const expectedOrigin = `${req.protocol}://${req.get("host")}`;
 
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (origin && origin !== expectedOrigin) {
+    return res.status(403).json({ error: "Cross-origin requests are not allowed" });
   }
 
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    return res.sendStatus(204);
   }
 
   next();
 });
 
-// Configure and initialize session first
+const isProduction = app.get("env") === "production";
+const sessionSecret = process.env.SESSION_SECRET;
+if (isProduction && !sessionSecret) {
+  throw new Error("SESSION_SECRET must be configured for production");
+}
+
+// Configure and initialize a PostgreSQL-backed session store.
 const sessionSettings: session.SessionOptions = {
-  secret: process.env.SESSION_SECRET || 'dev-secret-key',
-  resave: true, // Changed to true to ensure session is saved on each request
-  saveUninitialized: true, // Changed to true to create session on all requests
+  secret: sessionSecret || (isProduction ? "" : "development-only-session-secret"),
+  resave: false,
+  saveUninitialized: false,
   store: storage.sessionStore,
-  rolling: true, // Reset maxAge on every response
+  rolling: true,
   cookie: {
-    secure: true, // Must be true for SameSite=None to work in Replit
-    sameSite: 'none', // Required for cross-origin requests in Replit proxy environment
+    secure: isProduction,
+    sameSite: "lax",
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    path: '/'
+    maxAge: 24 * 60 * 60 * 1000,
+    path: "/"
   },
-  name: 'vco.sid' // Custom name to avoid conflicts
+  name: "vco.sid"
 };
 
-// Initialize session before any other middleware
 app.use(session(sessionSettings));
 
-// Set up auth (includes passport initialization)
 setupAuth(app);
 
-// CSP configuration - Completely disable in development
+// Keep the development client usable while applying a restrictive production
+// policy. Stripe's hosted payment fields are allowed; payment routes remain
+// unavailable unless explicitly configured.
 app.use((req, res, next) => {
-  // Remove any existing CSP headers
-  res.removeHeader('Content-Security-Policy');
-  res.removeHeader('Content-Security-Policy-Report-Only');
-  
-  // Set a permissive CSP that allows everything for development
-  res.setHeader('Content-Security-Policy', "default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: blob:;");
-  next();
-});
+  const scriptSources = ["'self'", "'unsafe-inline'", "https://js.stripe.com"];
+  if (!isProduction) scriptSources.push("'unsafe-eval'");
+  const frameAncestors = isProduction
+    ? "frame-ancestors 'self'"
+    : "frame-ancestors 'self' https://*.replit.dev https://*.replit.com";
 
-// Enhanced request logging middleware
-app.use((req, res, next) => {
-  // Only log API requests
-  if (req.path.startsWith('/api')) {
-    const details = {
-      method: req.method,
-      path: req.path,
-      cookies: req.headers.cookie,
-      sessionID: req.sessionID,
-      isAuthenticated: req.isAuthenticated?.(),
-      user: req.user ? {
-        id: req.user.id,
-        username: req.user.username,
-        isAdmin: req.user.isAdmin,
-        isCreator: req.user.isCreator
-      } : 'Not logged in'
-    };
-    
-    log(`Request details for ${req.method} ${req.path}`, '');
-    console.log(details); // Using console.log for object output
-  }
+  res.setHeader("Content-Security-Policy", [
+    "default-src 'self'",
+    `script-src ${scriptSources.join(" ")}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' data: blob: https:",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "connect-src 'self' ws: wss: https://api.stripe.com",
+    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    frameAncestors
+  ].join("; "));
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   next();
 });
 
 // Global error handler middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('Global error:', err);
-  log(`Error processing ${req.method} ${req.path}:`, err.toString());
+  log(`Request failed for ${req.method} ${req.path}`, "error");
 
-  // Send detailed error in development
   res.status(500).json({
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error',
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    error: app.get("env") === "development" ? err.message : "Internal server error",
+    stack: app.get("env") === "development" ? err.stack : undefined
   });
 });
 
 // Global Error Handlers
 process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
+  log("Uncaught exception", "error");
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+process.on('unhandledRejection', (reason) => {
+  log(`Unhandled rejection: ${reason instanceof Error ? reason.message : "Unknown error"}`, "error");
 });
 
 (async () => {

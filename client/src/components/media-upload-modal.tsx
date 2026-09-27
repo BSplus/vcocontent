@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { InsertMediaItem, insertMediaItemSchema } from "@shared/schema";
+import { InsertMediaItem, MediaItem, insertMediaItemSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Upload, X, Info } from "lucide-react";
 
@@ -43,6 +43,7 @@ interface FileUpload {
   progress: number;
   status: 'pending' | 'uploading' | 'success' | 'error';
   error?: string;
+  aiWarning?: string;
 }
 
 export default function MediaUploadModal({
@@ -57,6 +58,7 @@ export default function MediaUploadModal({
   const [uploading, setUploading] = useState(false);
   const [autoTagEnabled, setAutoTagEnabled] = useState(true);
   const [tagsInput, setTagsInput] = useState("");
+  const [mediaType, setMediaType] = useState<"image" | "video">("image");
 
   const form = useForm<InsertMediaItem>({
     resolver: zodResolver(insertMediaItemSchema),
@@ -189,7 +191,9 @@ export default function MediaUploadModal({
         continue;
       }
 
-      const preview = await processImageFile(file);
+      const preview = form.getValues("type") === "video"
+        ? URL.createObjectURL(file)
+        : await processImageFile(file);
       newUploads.push({
         file,
         preview,
@@ -202,11 +206,34 @@ export default function MediaUploadModal({
   };
 
   const uploadMutation = useMutation({
-    mutationFn: async (data: InsertMediaItem) => {
-      const res = await apiRequest("POST", "/api/media", data);
+    mutationFn: async ({ upload, tags, caption, photographer }: {
+      upload: FileUpload;
+      tags: string[];
+      caption: string;
+      photographer: string;
+    }): Promise<MediaItem> => {
+      const formData = new FormData();
+      formData.append("file", upload.file);
+      formData.append("type", upload.file.type.startsWith("video/") ? "video" : "image");
+      formData.append("caption", caption);
+      formData.append("photographer", photographer);
+      formData.append("tags", JSON.stringify(tags));
+
+      const res = await fetch(`/api/events/${eventId}/media/upload`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || 'Upload failed');
+        const responseText = await res.text();
+        let message = responseText || `Upload failed (${res.status})`;
+        try {
+          const error = JSON.parse(responseText);
+          message = error.message || message;
+        } catch {
+          // Preserve the server's plain-text error message.
+        }
+        throw new Error(message);
       }
       return res.json();
     },
@@ -231,17 +258,12 @@ export default function MediaUploadModal({
             .map(tag => tag.trim())
             .filter(Boolean);
 
-          const mediaItem: InsertMediaItem = {
-            eventId,
-            type: form.getValues("type"),
-            url: upload.preview,
-            thumbnail: upload.preview,
-            caption: form.getValues("caption"),
-            photographer: form.getValues("photographer"),
+          const mediaResponse = await uploadMutation.mutateAsync({
+            upload,
             tags,
-          };
-
-          const mediaResponse = await uploadMutation.mutateAsync(mediaItem);
+            caption: form.getValues("caption") || "",
+            photographer: form.getValues("photographer") || "",
+          });
           
           // If auto-tagging is enabled, analyze the uploaded media
           if (autoTagEnabled && mediaResponse && mediaResponse.id) {
@@ -249,13 +271,14 @@ export default function MediaUploadModal({
               console.log(`Auto-tagging media item ${mediaResponse.id}`);
               const tagResponse = await apiRequest("POST", `/api/media/${mediaResponse.id}/analyze`, {});
               if (!tagResponse.ok) {
-                console.error("Auto-tagging failed:", await tagResponse.text());
+                const details = await tagResponse.text();
+                upload.aiWarning = `AI tagging was unavailable: ${details || tagResponse.statusText}`;
               } else {
                 console.log("Auto-tagging completed");
               }
             } catch (tagError) {
               console.error("Error during auto-tagging:", tagError);
-              // We don't make the upload fail if tagging fails
+              upload.aiWarning = `AI tagging failed: ${tagError instanceof Error ? tagError.message : "Unknown error"}`;
             }
           }
 
@@ -271,14 +294,22 @@ export default function MediaUploadModal({
         }
       }
 
+      const successfulCount = pendingUploads.filter(upload => upload.status === "success").length;
+      const failedCount = pendingUploads.length - successfulCount;
+      const aiWarningCount = pendingUploads.filter(upload => upload.aiWarning).length;
+      const aiWarningDetails = pendingUploads.find(upload => upload.aiWarning)?.aiWarning;
       toast({
-        title: "Success",
-        description: `Successfully uploaded ${pendingUploads.length} files`,
+        title: failedCount || aiWarningCount ? "Upload completed with notices" : "Success",
+        description: `${successfulCount} file${successfulCount === 1 ? "" : "s"} uploaded${failedCount ? `; ${failedCount} failed` : ""}${aiWarningCount ? `; AI tagging unavailable for ${aiWarningCount}: ${aiWarningDetails}` : ""}.`,
+        variant: failedCount ? "destructive" : undefined,
       });
 
-      onOpenChange(false);
-      form.reset();
-      setUploads([]);
+      setUploads(current => current.filter(upload => upload.status !== "success"));
+      if (successfulCount && !failedCount) {
+        onOpenChange(false);
+        form.reset();
+        setTagsInput("");
+      }
     } catch (error) {
       console.error('Bulk upload error:', error);
       toast({
@@ -319,10 +350,12 @@ export default function MediaUploadModal({
             </div>
             <Select
               onValueChange={(value) => {
-                form.setValue("type", value as "image" | "video");
+                 const type = value as "image" | "video";
+                 setMediaType(type);
+                 form.setValue("type", type);
                 setUploads([]); // Clear uploads when changing type
               }}
-              defaultValue={form.getValues("type")}
+               value={mediaType}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select media type" />
@@ -376,6 +409,9 @@ export default function MediaUploadModal({
                       </div>
                       {upload.status === 'error' && (
                         <p className="text-sm text-destructive mt-1">{upload.error}</p>
+                      )}
+                      {upload.aiWarning && (
+                        <p className="text-sm text-amber-600 mt-1">{upload.aiWarning}</p>
                       )}
                     </div>
                   ))}
@@ -449,6 +485,9 @@ export default function MediaUploadModal({
               </HoverCard>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground">
+            KI-Tagging ist nur verfügbar, wenn der Analyse-Service aktiv ist. Fehler werden pro Datei angezeigt.
+          </p>
 
           <div className="flex justify-end gap-2">
             <Button

@@ -121,7 +121,7 @@ export default function AuthPage() {
           <CardHeader>
             <CardTitle>VCO Media Platform</CardTitle>
             <CardDescription>
-              Access premium sim racing content or become a creator
+              Discover sim racing media or apply to become a creator
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -243,7 +243,7 @@ export default function AuthPage() {
                       <p>Creator benefits:</p>
                       <ul className="list-disc pl-5 mt-1 space-y-1">
                         <li>Upload photos and videos from racing events</li>
-                        <li>Earn credits when users download your premium content</li>
+                        <li>Share your work with the sim racing community</li>
                         <li>Get recognized in the sim racing community</li>
                       </ul>
                       <p className="mt-2 text-muted-foreground text-xs">Your creator application will be reviewed by VCO admins.</p>
@@ -287,8 +287,8 @@ export default function AuthPage() {
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 15h14a2 2 0 1 1 0 4H3"/><path d="M21 12H5a2 2 0 0 0 0 4h16"/></svg>
               </div>
               <div>
-                <h3 className="font-medium">Premium Content</h3>
-                <p className="text-sm text-muted-foreground">Access exclusive high-quality racing content from top events</p>
+                <h3 className="font-medium">Public Beta Access</h3>
+                <p className="text-sm text-muted-foreground">Browse and download racing media during the public beta</p>
               </div>
             </div>
             
@@ -298,7 +298,7 @@ export default function AuthPage() {
               </div>
               <div>
                 <h3 className="font-medium">Creator Opportunities</h3>
-                <p className="text-sm text-muted-foreground">Share your content and earn from premium downloads</p>
+                <p className="text-sm text-muted-foreground">Share your content with the sim racing community</p>
               </div>
             </div>
             

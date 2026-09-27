@@ -5,19 +5,41 @@ import { storage } from "./storage";
 import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, users } from "@shared/schema";
 import express from "express";
 import path from "path";
-import { WebSocketServer, WebSocket } from 'ws';
-import type { IncomingMessage } from "http";
-import { parse as parseCookie } from "cookie";
-import Stripe from "stripe";
 import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
 import { log } from "./vite";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { generateTagsForImage, generateTagsForVideo, categorizeContent } from "./utils/ai-tagger";
+import { mediaUpload, uploadMedia, readMediaStream, getMediaContentType } from "./media-storage";
+import { z } from "zod";
 
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY)
-  : null;
+const BETA_NOTICE = "Paid downloads are not available during the public beta";
+const canManageEvent = (user: Express.User | undefined, creatorId: number | null) =>
+  !!user && (user.isAdmin || (user.isCreator && creatorId === user.id));
+const publicMedia = <T extends { isPremium: boolean; url: string; thumbnail: string }>(item: T): T => ({
+  ...item,
+  url: item.isPremium ? "" : item.url,
+  thumbnail: item.isPremium && item.thumbnail.startsWith("data:")
+    ? "/attached_assets/%2389_3.png"
+    : item.thumbnail,
+});
+
+async function analysisImageInput(url: string): Promise<string> {
+  const key = /^\/api\/media\/files\/(thumb-[0-9a-f-]{36}\.webp)$/.exec(url)?.[1];
+  if (!key) {
+    if (/^https:\/\//.test(url) || /^data:image\/(jpeg|png|webp);base64,/.test(url)) return url;
+    throw new Error("No analyzable image thumbnail");
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of readMediaStream(key)) {
+    const bytes = Buffer.from(chunk);
+    size += bytes.length;
+    if (size > 5 * 1024 * 1024) throw new Error("Thumbnail exceeds analysis limit");
+    chunks.push(bytes);
+  }
+  return `data:image/webp;base64,${Buffer.concat(chunks).toString("base64")}`;
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth already set up in index.ts
@@ -28,17 +50,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Events route - different behavior based on auth status
   app.get("/api/events", async (req, res) => {
     try {
-      // Log authentication state for debugging
-      console.log('GET /api/events - Auth state:', {
-        isAuthenticated: req?.isAuthenticated?.() || false,
-        user: req.user ? {
-          id: req.user.id,
-          username: req.user.username,
-          isAdmin: req.user.isAdmin,
-          isCreator: req.user.isCreator
-        } : 'Not logged in'
-      });
-      
       const events = await storage.getEvents();
       
       // Remove heavy base64 thumbnails from the list to improve performance
@@ -64,19 +75,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      console.log('Creating event for creator:', {
-        userId: req.user.id,
-        isCreator: req.user.isCreator,
-        body: req.body
-      });
-
       const eventData = insertEventSchema.parse({
         ...req.body,
-        creatorId: req.user.id
+        creatorId: req.user.id,
+        isPremium: false,
       });
 
       const event = await storage.createEvent(eventData);
-      console.log('Event created successfully:', event);
       res.status(201).json(event);
     } catch (error) {
       console.error('Error creating creator event:', error);
@@ -90,7 +95,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get creator's events with better error handling
   app.get("/api/creator/events", requireCreator, async (req, res) => {
     try {
-      if (!req.user || !req.user.isCreator) {
+      if (!req.user) {
         return res.status(403).json({ error: "Unauthorized - Creator access required" });
       }
 
@@ -114,11 +119,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Only allow creators to update their own events
-      if (!req.user.isAdmin && event.creatorId !== req.user.id) {
+      if (!canManageEvent(req.user, event.creatorId)) {
         return res.status(403).json({ error: "Unauthorized" });
       }
 
-      const updatedEvent = await storage.updateEvent(eventId, req.body);
+      const { creatorId: _ignoredCreatorId, ...eventChanges } = insertEventSchema.partial().parse(req.body);
+      const updatedEvent = await storage.updateEvent(eventId, {
+        ...eventChanges,
+        isPremium: false,
+      });
       res.json(updatedEvent);
     } catch (error) {
       console.error('Error updating event:', error);
@@ -199,6 +208,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updatedUser = await storage.getUser(userId);
+      if (!updatedUser) return res.status(404).json({ error: "User not found" });
       res.json(updatedUser);
     } catch (error) {
       console.error('Error updating user:', error);
@@ -206,140 +216,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Credit purchase endpoint with better error handling
-  app.post("/api/credits/purchase", requireAuth, async (req, res) => {
-    try {
-      if (!req.user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-
-      const { amount } = req.body;
-      const numericAmount = parseInt(amount);
-
-      console.log('Processing purchase request:', {
-        amount,
-        numericAmount,
-        userId: req.user.id
-      });
-
-      if (!numericAmount || numericAmount < 1) {
-        console.log('Invalid amount provided:', amount);
-        return res.status(400).json({ error: "Invalid amount" });
-      }
-
-      if (!stripe) {
-        return res.status(503).json({ error: "Payment service not configured" });
-      }
-
-      // Create a payment intent with Stripe
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: numericAmount * 100, // Convert to cents
-        currency: "eur",
-        payment_method_types: ['card'],
-        metadata: {
-          userId: req.user.id.toString(),
-          creditAmount: numericAmount.toString()
-        },
-        automatic_payment_methods: {
-          enabled: true,
-          allow_redirects: 'never'
-        },
-        confirmation_method: 'automatic',
-        setup_future_usage: 'off_session'
-      });
-
-      console.log('Payment intent created successfully:', {
-        intentId: paymentIntent.id,
-        status: paymentIntent.status,
-        hasClientSecret: !!paymentIntent.client_secret
-      });
-
-      res.json({
-        clientSecret: paymentIntent.client_secret,
-        intentId: paymentIntent.id
-      });
-    } catch (error) {
-      console.error('Stripe error details:', {
-        error: error instanceof Stripe.errors.StripeError ? {
-          type: error.type,
-          code: error.code,
-          message: error.message,
-          declineCode: error.decline_code
-        } : error
-      });
-
-      res.status(500).json({
-        error: "Failed to create payment intent",
-        details: error instanceof Error ? error.message : "Unknown error occurred"
-      });
-    }
+  // Payments stay entirely disabled until an audited paid release.
+  app.post("/api/credits/purchase", requireAuth, (_req, res) => {
+    res.status(503).json({ error: BETA_NOTICE });
+  });
+  app.post("/api/webhook/stripe", (_req, res) => {
+    res.status(503).json({ error: BETA_NOTICE });
   });
 
-  // Configure raw body parser specifically for Stripe webhook
-  app.post("/api/webhook/stripe", express.raw({ type: 'application/json' }), async (req, res) => {
-    const sig = req.headers['stripe-signature'];
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-    if (!webhookSecret) {
-      console.error('Missing Stripe webhook secret');
-      return res.status(500).json({ error: "Webhook secret not configured" });
-    }
-
-    try {
-      console.log('Processing Stripe webhook:', {
-        signature: sig ? 'present' : 'missing',
-        bodyType: typeof req.body,
-        bodyLength: req.body.length
-      });
-
-      if (!stripe) {
-        return res.status(503).json({ error: "Payment service not configured" });
-      }
-
-      const event = stripe.webhooks.constructEvent(
-        req.body,
-        sig as string,
-        webhookSecret
-      );
-
-      console.log('Webhook event processed:', {
-        type: event.type,
-        object: event.data.object
-      });
-
-      if (event.type === 'payment_intent.succeeded') {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        const userId = parseInt(paymentIntent.metadata.userId);
-        const creditAmount = parseInt(paymentIntent.metadata.creditAmount);
-
-        console.log('Processing successful payment:', {
-          userId,
-          creditAmount
-        });
-
-        // Update user's credits
-        const user = await storage.getUser(userId);
-        if (user) {
-          const currentCredits = parseFloat(user.credits.toString()) || 0;
-          await storage.updateUserCredits(userId, currentCredits + creditAmount);
-          console.log('Credits updated successfully:', {
-            userId,
-            oldCredits: currentCredits,
-            newCredits: currentCredits + creditAmount
-          });
-        }
-      }
-
-      res.json({ received: true });
-    } catch (error) {
-      console.error('Webhook error:', error);
-      res.status(400).json({ 
-        error: error instanceof Error ? error.message : "Unknown webhook error" 
-      });
-    }
-  });
-
-  // Download endpoint with credit check and better error handling
+  // Authorize a free download; the original file route checks again before serving.
   app.post("/api/media/:id/download", requireAuth, async (req, res) => {
     try {
       if (!req.user) {
@@ -353,66 +238,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Media item not found" });
       }
 
-      console.log('Processing download request:', {
-        mediaId,
-        isPremium: mediaItem.isPremium,
-        cost: mediaItem.creditCost
-      });
-
-      // Check if the media is premium and user has enough credits
       if (mediaItem.isPremium) {
-        const user = await storage.getUser(req.user.id);
-        if (!user) {
-          return res.status(401).json({ error: "User not found" });
-        }
-
-        const currentCredits = parseFloat(user.credits.toString()) || 0;
-        const cost = mediaItem.creditCost || 1;
-
-        console.log('Checking user credits:', {
-          userId: user.id,
-          currentCredits,
-          requiredCredits: cost
-        });
-
-        if (currentCredits < cost) {
-          return res.status(402).json({ error: "Insufficient credits" });
-        }
-
-        // Deduct credits and update download count
-        await storage.updateUserCredits(req.user.id, currentCredits - cost);
-
-        // If there's a creator, give them 70% of the credits
-        if (mediaItem.eventId) {
-          const event = await storage.getEvent(mediaItem.eventId);
-          if (event?.creatorId) {
-            const creator = await storage.getUser(event.creatorId);
-            if (creator) {
-              const creatorCredits = parseFloat(creator.credits.toString()) || 0;
-              const creatorShare = cost * 0.7;
-              await storage.updateUserCredits(event.creatorId, creatorCredits + creatorShare);
-
-              console.log('Creator earnings processed:', {
-                creatorId: creator.id,
-                share: creatorShare,
-                newTotal: creatorCredits + creatorShare
-              });
-            }
-          }
-        }
+        return res.status(403).json({ error: BETA_NOTICE });
       }
+      const event = mediaItem.eventId ? await storage.getEvent(mediaItem.eventId) : undefined;
+      if (event?.isPremium) return res.status(403).json({ error: BETA_NOTICE });
 
-      // Update download count
       await storage.updateMediaItem(mediaId, {
-        ...mediaItem,
         downloadCount: (mediaItem.downloadCount || 0) + 1
       });
-
-      console.log('Download processed successfully:', {
-        mediaId,
-        newDownloadCount: (mediaItem.downloadCount || 0) + 1
-      });
-
       res.json({ success: true, url: mediaItem.url });
     } catch (error) {
       console.error('Error processing download:', error);
@@ -427,10 +261,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/media/top-shots", async (req, res) => {
     try {
       const media = await storage.getAllMediaItems();
+      const eventsByCreator = new Set((await storage.getEvents()).filter(event => event.creatorId).map(event => event.id));
       console.log('Fetching top shots, total media items:', media.length);
 
+      const premiumEvents = new Set((await storage.getEvents()).filter(event => event.isPremium).map(event => event.id));
       const topShots = media
-        .filter(item => item.type === "image" && !item.creatorId) // Only VCO official content
+        .filter(item => item.type === "image" && !item.isPremium && !eventsByCreator.has(item.eventId ?? -1) && !premiumEvents.has(item.eventId ?? -1))
         .sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
         .slice(0, 3);
 
@@ -440,7 +276,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type: shot.type
       })));
 
-      res.json(topShots);
+      res.json(topShots.map(publicMedia));
     } catch (error) {
       console.error('Error fetching top shots:', error);
       res.status(500).json({ error: "Failed to fetch top shots" });
@@ -456,8 +292,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all media items from creator events
       const creatorMedia = media.filter(item => {
-        if (item.creatorId) return true;
-        
         // If media is associated with an event, check if that event has a creator
         if (item.eventId) {
           // Find the event that contains this media item
@@ -471,6 +305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('Found creator media items:', creatorMedia.length);
 
       const topCreatorMedia = creatorMedia
+        .filter(item => !item.isPremium && !events.some(event => event.id === item.eventId && event.isPremium))
         .sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
         .slice(0, 3);
 
@@ -481,7 +316,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isPremium: item.isPremium
       })));
 
-      res.json(topCreatorMedia);
+      res.json(topCreatorMedia.map(publicMedia));
     } catch (error) {
       console.error('Error fetching popular creator content:', error);
       res.status(500).json({ error: "Failed to fetch popular creator content" });
@@ -502,8 +337,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all media items from this specific creator's events
       const creatorMedia = media.filter(item => {
         // If media item has this creator's ID directly
-        if (item.creatorId === creatorId) return true;
-        
         // If media is associated with an event created by this creator
         if (item.eventId) {
           const event = events.find(e => e.id === item.eventId);
@@ -515,10 +348,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Sort by download count, views, or other popularity metrics
       const topCreatorMedia = creatorMedia
+        .filter(item => !item.isPremium && !events.some(event => event.id === item.eventId && event.isPremium))
         .sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0))
         .slice(0, 8); // Return more items for the creator profile page
       
-      res.json(topCreatorMedia);
+      res.json(topCreatorMedia.map(publicMedia));
     } catch (error) {
       console.error(`Error fetching creator ${req.params.id} top media:`, error);
       res.status(500).json({ error: "Failed to fetch creator's popular media" });
@@ -541,8 +375,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get event media
   app.get("/api/events/:id/media", async (req, res) => {
     try {
+      const event = await storage.getEvent(parseInt(req.params.id));
+      if (!event) return res.status(404).json({ error: "Event not found" });
+      if (event.isPremium) return res.json([]);
       const media = await storage.getMediaItems(parseInt(req.params.id));
-      res.json(media);
+      res.json(media.map(publicMedia));
     } catch (error) {
       console.error('Error fetching event media:', error);
       res.status(500).json({ error: "Failed to fetch event media" });
@@ -552,38 +389,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all media (different behavior based on auth status)
   app.get("/api/media", async (req, res) => {
     try {
-      // Log all request details for debugging
-      console.log('GET /api/media - Auth state:', {
-        isAuthenticated: req.isAuthenticated?.() || false,
-        user: req.user ? {
-          id: req.user.id,
-          username: req.user.username,
-          isAdmin: req.user.isAdmin,
-          isCreator: req.user.isCreator
-        } : 'Not logged in'
-      });
-      
       const allMedia = await storage.getAllMediaItems();
-      
-      // Admin and creator can access all media
-      if (req.isAuthenticated?.() && req.user && (req.user.isAdmin || req.user.isCreator)) {
-        console.log('Returning all media for admin/creator');
-        return res.json(allMedia);
-      }
-      
-      // Regular users and unauthenticated users can only see public media
-      const publicMedia = allMedia.filter(item => !item.isPremium);
-      console.log(`Returning ${publicMedia.length} public media items`);
-      return res.json(publicMedia);
+      const premiumEvents = new Set((await storage.getEvents()).filter(event => event.isPremium).map(event => event.id));
+      return res.json(allMedia.filter(item => !premiumEvents.has(item.eventId ?? -1)).map(publicMedia));
     } catch (error) {
       console.error('Error fetching all media:', error);
       res.status(500).json({ error: "Failed to fetch media" });
     }
   });
 
+  // Private objects are served only after looking up their owning media record.
+  app.get("/api/media/files/:key", async (req, res) => {
+    const key = req.params.key;
+    if (!/^(media|thumb)-[0-9a-f-]{36}\.(jpg|png|gif|webp|mp4|mov|webm)$/.test(key)) {
+      return res.status(404).end();
+    }
+    try {
+      const storedUrl = `/api/media/files/${key}`;
+      const record = (await storage.getAllMediaItems()).find(item =>
+        item.url === storedUrl || item.thumbnail === storedUrl);
+      if (!record) return res.status(404).end();
+      const event = record.eventId ? await storage.getEvent(record.eventId) : undefined;
+      const isOriginal = record.url === storedUrl;
+      if (isOriginal && (!req.isAuthenticated() || record.isPremium || event?.isPremium)) {
+        return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Original not available" });
+      }
+      res.setHeader("Content-Type", getMediaContentType(key));
+      res.setHeader("Cache-Control", isOriginal ? "private, no-store" : "public, max-age=3600");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      const stream = readMediaStream(key);
+      stream.on("error", () => {
+        if (!res.headersSent) res.status(502).end();
+        else res.destroy();
+      });
+      stream.pipe(res);
+    } catch (error) {
+      console.error("Media delivery failed:", error);
+      if (!res.headersSent) res.status(502).json({ error: "Media is temporarily unavailable" });
+    }
+  });
+
+  app.post("/api/events/:eventId/media/upload", requireCreator, async (req, res, next) => {
+    const eventId = Number(req.params.eventId);
+    if (!Number.isSafeInteger(eventId) || eventId <= 0) return res.status(400).json({ error: "Invalid event ID" });
+    try {
+      const event = await storage.getEvent(eventId);
+      if (!event) return res.status(404).json({ error: "Event not found" });
+      if (!canManageEvent(req.user, event.creatorId)) return res.status(403).json({ error: "Forbidden" });
+      if (event.isPremium) return res.status(403).json({ error: BETA_NOTICE });
+      mediaUpload.single("file")(req, res, async (uploadError) => {
+        if (uploadError) return res.status(400).json({ error: uploadError.message });
+        if (!req.file) return res.status(400).json({ error: "A file is required" });
+        try {
+          const metadata = z.object({
+            type: z.enum(["image", "video"]),
+            caption: z.string().max(200).optional(),
+            photographer: z.string().max(150).optional(),
+            tags: z.string().max(1500).optional(),
+          }).parse(req.body);
+          const saved = await uploadMedia(req.file, metadata.type);
+          const item = await storage.createMediaItem(insertMediaItemSchema.parse({
+            eventId,
+            type: saved.mediaType,
+            url: saved.url,
+            thumbnail: saved.thumbnail,
+            caption: metadata.caption || "",
+            photographer: metadata.photographer || "",
+            tags: metadata.tags
+              ? (() => {
+                  const parsed = JSON.parse(metadata.tags);
+                  if (!Array.isArray(parsed) || !parsed.every(tag => typeof tag === "string" && tag.length <= 100)) {
+                    throw new Error("Invalid tags");
+                  }
+                  return parsed.slice(0, 30);
+                })()
+              : [],
+            isPremium: false,
+          }));
+          res.status(201).json(item);
+        } catch (error) {
+          console.error("Media upload failed:", error);
+          res.status(error instanceof z.ZodError ? 400 : 502).json({
+            error: error instanceof z.ZodError ? "Invalid upload details" : "Could not store media",
+          });
+        } finally {
+          const { unlink } = await import("fs/promises");
+          await unlink(req.file.path).catch(() => undefined);
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // Create media items
   // Auto-tag media using AI
-  app.post("/api/media/:id/analyze", requireAuth, async (req, res) => {
+  app.post("/api/media/:id/analyze", requireCreator, async (req, res) => {
     try {
       const mediaId = parseInt(req.params.id);
       if (isNaN(mediaId)) {
@@ -594,27 +495,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!mediaItem) {
         return res.status(404).json({ error: "Media item not found" });
       }
+      const event = mediaItem.eventId ? await storage.getEvent(mediaItem.eventId) : undefined;
+      if (!canManageEvent(req.user, event?.creatorId ?? null)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "AI tagging is not configured" });
+      if (mediaItem.type === "video") {
+        return res.status(422).json({ error: "Video tagging requires a real video frame; no frame is available yet" });
+      }
 
       console.log(`Beginning AI analysis for media ${mediaId} of type ${mediaItem.type}`);
 
       // Generate tags based on media type
       let generatedTags: string[] = [];
       if (mediaItem.type === "image") {
-        generatedTags = await generateTagsForImage(mediaItem.url);
+        generatedTags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
       } else if (mediaItem.type === "video") {
         generatedTags = await generateTagsForVideo(mediaItem.url, mediaItem.thumbnail);
       }
 
       if (generatedTags.length === 0) {
-        console.log(`No tags were generated for media ${mediaId}`);
-        return res.status(200).json({ message: "No tags were generated" });
+        return res.status(422).json({ error: "No matching tags were found" });
       }
 
       console.log(`Generated ${generatedTags.length} tags for media ${mediaId}:`, generatedTags);
 
       // Combine with existing tags if present
       const existingTags = Array.isArray(mediaItem.tags) ? mediaItem.tags : [];
-      const combinedTags = [...new Set([...existingTags, ...generatedTags])];
+      const combinedTags = Array.from(new Set([...existingTags, ...generatedTags]));
 
       // Attempt to categorize the content
       const category = await categorizeContent(combinedTags);
@@ -633,33 +541,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('Error analyzing media:', error);
-      res.status(500).json({
-        error: "Failed to analyze media",
-        details: error instanceof Error ? error.message : "Unknown error occurred"
-      });
+      res.status(502).json({ error: error instanceof Error ? error.message : "AI analysis failed" });
     }
   });
 
-  app.post("/api/media", requireAuth, async (req, res) => {
-    try {
-      const mediaItems = Array.isArray(req.body) ? req.body : [req.body];
-      const parsedItems = mediaItems.map(item => insertMediaItemSchema.parse(item));
-
-      const createdItems = await Promise.all(
-        parsedItems.map(item => storage.createMediaItem(item))
-      );
-
-      res.status(201).json(createdItems);
-    } catch (error) {
-      console.error('Error creating media items:', error);
-      res.status(400).json({ error: "Failed to create media items", details: error });
-    }
+  app.post("/api/media", requireCreator, (_req, res) => {
+    res.status(410).json({ error: "Use the multipart event media upload endpoint" });
   });
 
   // Delete media item
-  app.delete("/api/media/:id", requireAuth, async (req, res) => {
+  app.delete("/api/media/:id", requireCreator, async (req, res) => {
     try {
-      await storage.deleteMediaItem(parseInt(req.params.id));
+      const media = await storage.getMediaItem(parseInt(req.params.id));
+      if (!media) return res.status(404).json({ error: "Media item not found" });
+      const event = media.eventId ? await storage.getEvent(media.eventId) : undefined;
+      if (!canManageEvent(req.user, event?.creatorId ?? null)) return res.status(403).json({ error: "Forbidden" });
+      await storage.deleteMediaItem(media.id);
       res.status(204).send();
     } catch (error) {
       console.error('Error deleting media:', error);
@@ -693,9 +590,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create series
-  app.post("/api/series", requireAuth, async (req, res) => {
+  app.post("/api/series", requireCreator, async (req, res) => {
     try {
-      const seriesData = insertSeriesSchema.parse(req.body);
+      const seriesData = insertSeriesSchema.parse({
+        ...req.body,
+        creatorId: req.user?.isAdmin ? null : req.user?.id,
+      });
       const series = await storage.createSeries(seriesData);
       res.status(201).json(series);
     } catch (error) {
@@ -705,9 +605,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update series
-  app.put("/api/series/:id", requireAuth, async (req, res) => {
+  app.put("/api/series/:id", requireCreator, async (req, res) => {
     try {
-      const seriesData = insertSeriesSchema.partial().parse(req.body);
+      const seriesRecord = await storage.getSeries(parseInt(req.params.id));
+      if (!seriesRecord || Array.isArray(seriesRecord)) return res.status(404).json({ error: "Series not found" });
+      if (!canManageEvent(req.user, seriesRecord.creatorId)) return res.status(403).json({ error: "Forbidden" });
+      const { creatorId: _ignored, ...seriesData } = insertSeriesSchema.partial().parse(req.body);
       const series = await storage.updateSeries(parseInt(req.params.id), seriesData);
       res.json(series);
     } catch (error) {
@@ -717,19 +620,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete series
-  app.delete("/api/series/:id", requireAuth, async (req, res) => {
+  app.delete("/api/series/:id", requireCreator, async (req, res) => {
     try {
       const seriesId = parseInt(req.params.id);
+      const seriesRecord = await storage.getSeries(seriesId);
+      if (!seriesRecord || Array.isArray(seriesRecord)) return res.status(404).json({ error: "Series not found" });
+      if (!canManageEvent(req.user, seriesRecord.creatorId)) return res.status(403).json({ error: "Forbidden" });
 
       // First, update any events that reference this series to remove the reference
       const events = await storage.getEvents();
       const eventsToUpdate = events.filter(event => event.seriesId === seriesId);
 
-      for (const event of eventsToUpdate) {
-        await storage.updateEvent(event.id, { ...event, seriesId: null });
-      }
-
-      // Then delete the series
+      // Storage clears event references before deleting the series.
       await storage.deleteSeries(seriesId);
       res.status(204).send();
     } catch (error) {
@@ -795,7 +697,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const user = await storage.updateUserCreatorStatus(userId, status);
-      console.log('Successfully updated user status:', user);
       res.json(user);
     } catch (error) {
       console.error('Error updating creator status:', error);
@@ -808,7 +709,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/creator/request", requireAuth, async (req, res) => {
     try {
-      const user = await storage.updateUserCreatorStatus(req.user.id, 'pending');
+      const user = await storage.updateUserCreatorStatus(req.user!.id, 'pending');
       res.json(user);
     } catch (error) {
       console.error('Error requesting creator status:', error);
@@ -818,7 +719,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/creator/events", requireCreator, async (req, res) => {
     try {
-      const events = await storage.getEventsByCreator(req.user.id);
+      const events = await storage.getEventsByCreator(req.user!.id);
       res.json(events);
     } catch (error) {
       console.error('Error fetching creator events:', error);
@@ -844,7 +745,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/creator/earnings", requireCreator, async (req, res) => {
     try {
-      const earnings = await storage.getCreatorEarnings(req.user.id);
+      const earnings = await storage.getCreatorEarnings(req.user!.id);
       res.json(earnings);
     } catch (error) {
       console.error('Error fetching creator earnings:', error);
@@ -856,7 +757,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const eventData = insertEventSchema.parse({
         ...req.body,
-        creatorId: req.user.id
+        creatorId: req.user!.id,
+        isPremium: false,
       });
       console.log('Creating event as creator:', eventData);
       const event = await storage.createEvent(eventData);
@@ -870,9 +772,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/events", requireAuth, async (req, res) => {
+  app.post("/api/events", requireAdmin, async (req, res) => {
     try {
-      const eventData = insertEventSchema.parse(req.body);
+      const eventData = insertEventSchema.parse({ ...req.body, creatorId: null, isPremium: false });
       const event = await storage.createEvent(eventData);
       res.status(201).json(event);
     } catch (error) {
@@ -882,7 +784,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // AI tagging endpoints
-  app.post("/api/media/:id/analyze", requireAuth, async (req, res) => {
+  app.post("/api/media/:id/analyze", requireCreator, async (req, res) => {
     try {
       if (!process.env.OPENAI_API_KEY) {
         return res.status(500).json({ error: "OpenAI API key not configured" });
@@ -941,7 +843,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Batch analyze endpoint for multiple media items
-  app.post("/api/media/batch-analyze", requireAuth, async (req, res) => {
+  app.post("/api/media/batch-analyze", requireCreator, async (req, res) => {
     try {
       if (!process.env.OPENAI_API_KEY) {
         return res.status(500).json({ error: "OpenAI API key not configured" });
@@ -949,7 +851,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { mediaIds } = req.body;
       
-      if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
+      if (!Array.isArray(mediaIds) || mediaIds.length === 0 || mediaIds.length > 25) {
         return res.status(400).json({ error: "No media IDs provided" });
       }
 
@@ -968,11 +870,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             errors.push({ id, error: "Media item not found" });
             continue;
           }
+          const event = mediaItem.eventId ? await storage.getEvent(mediaItem.eventId) : undefined;
+          if (!canManageEvent(req.user, event?.creatorId ?? null)) {
+            errors.push({ id, error: "Forbidden" });
+            continue;
+          }
+          if (mediaItem.type === "video") {
+            errors.push({ id, error: "Video frame analysis is not available" });
+            continue;
+          }
 
           // Generate tags based on media type
           let tags: string[] = [];
           if (mediaItem.type === 'image') {
-            tags = await generateTagsForImage(mediaItem.url);
+            tags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
           } else if (mediaItem.type === 'video') {
             tags = await generateTagsForVideo(mediaItem.url, mediaItem.thumbnail || mediaItem.url);
           }
@@ -1024,70 +935,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
-
-  // WebSocket server configuration section
-  const wss = new WebSocketServer({
-    server: httpServer,
-    path: '/ws',
-    clientTracking: true,
-    // In development environment, we don't verify client for easier debugging
-    verifyClient: async (info: { req: IncomingMessage }, done: (res: boolean, code?: number, message?: string) => void) => {
-      // Always accept connections regardless of authentication state
-      // This prevents WebSocket connection issues during development
-      log('WebSocket: Accepting connection in development mode');
-      done(true);
-    }
-  });
-
-  wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-    log('WebSocket: New connection established');
-
-    ws.on('error', (error) => {
-      console.error('WebSocket error:', error);
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'error',
-          message: 'Connection error occurred'
-        }));
-      }
-    });
-
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        type: 'connection',
-        status: 'connected',
-        message: 'Successfully connected to WebSocket server'
-      }));
-    }
-
-    ws.on('message', (data) => {
-      try {
-        const message = JSON.parse(data.toString());
-        log('WebSocket: Received message type:', message.type);
-
-        switch (message.type) {
-          case 'auth':
-            ws.send(JSON.stringify({ type: 'auth_success' }));
-            break;
-          case 'ping':
-            ws.send(JSON.stringify({ type: 'pong' }));
-            break;
-          default:
-            log('WebSocket: Unhandled message type:', message.type);
-        }
-      } catch (error) {
-        console.error('WebSocket: Error processing message:', error);
-        ws.send(JSON.stringify({
-          type: 'error',
-          message: 'Failed to process message'
-        }));
-      }
-    });
-
-    ws.on('close', () => {
-      log('WebSocket: Client disconnected');
-    });
-  });
 
   return httpServer;
 }

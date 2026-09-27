@@ -4,7 +4,7 @@ import { Redirect, Route } from "wouter";
 
 type ProtectedRouteProps = {
   path: string;
-  component: () => React.JSX.Element;
+  component: React.ComponentType;
   requireAdmin?: boolean;
   requireCreator?: boolean;
 };

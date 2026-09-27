@@ -1,15 +1,9 @@
 import { Request, Response, NextFunction } from "express";
-import { log } from "../vite";
+import { storage } from "../storage";
 
 // Middleware to check if user is authenticated
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  log(`Authentication check for ${req.method} ${req.path}`, 'auth');
-  log(`Session ID: ${req.sessionID}`, 'auth');
-  log(`Is Authenticated: ${req.isAuthenticated()}`, 'auth');
-  log(`User: ${req.user ? JSON.stringify(req.user) : 'Not logged in'}`, 'auth');
-
   if (!req.isAuthenticated()) {
-    log('Authentication failed - user not authenticated', 'auth');
     return res.status(401).json({ error: "Authentication required" });
   }
   next();
@@ -17,16 +11,11 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 // Middleware to check if user is an admin
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  log(`Admin check for ${req.method} ${req.path}`, 'auth');
-  log(`User: ${req.user ? JSON.stringify(req.user) : 'Not logged in'}`, 'auth');
-
   if (!req.isAuthenticated()) {
-    log('Admin access denied - not authenticated', 'auth');
     return res.status(401).json({ error: "Authentication required" });
   }
   
   if (!req.user?.isAdmin) {
-    log('Admin access denied - not an admin', 'auth');
     return res.status(403).json({ error: "Admin access required" });
   }
   next();
@@ -34,22 +23,16 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
 
 // Middleware to check if user is a creator
 export function requireCreator(req: Request, res: Response, next: NextFunction) {
-  log(`Creator check for ${req.method} ${req.path}`, 'auth');
-  log(`User: ${req.user ? JSON.stringify(req.user) : 'Not logged in'}`, 'auth');
-
   if (!req.isAuthenticated()) {
-    log('Creator access denied - not authenticated', 'auth');
     return res.status(401).json({ error: "Authentication required" });
   }
 
   const user = req.user;
   if (!user) {
-    log('Creator access denied - no user object', 'auth');
     return res.status(401).json({ error: "Authentication required" });
   }
 
   if (!user.isCreator && !user.isAdmin && user.creatorStatus !== 'approved') {
-    log('Creator access denied - not a creator or admin', 'auth');
     return res.status(403).json({ error: "Creator access required" });
   }
 
@@ -58,32 +41,42 @@ export function requireCreator(req: Request, res: Response, next: NextFunction) 
 
 // Middleware to check if user owns the resource or is an admin
 export function requireOwnershipOrAdmin(resourceCreatorIdField: string) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    log(`Ownership check for ${req.method} ${req.path}`, 'auth');
-    log(`User: ${req.user ? JSON.stringify(req.user) : 'Not logged in'}`, 'auth');
-    log(`Resource creator field: ${resourceCreatorIdField}`, 'auth');
-
+  return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.isAuthenticated()) {
-      log('Ownership check failed - not authenticated', 'auth');
       return res.status(401).json({ error: "Authentication required" });
     }
 
     // Allow admins to access all resources
-    if (req.user.isAdmin) {
-      log('Ownership check passed - user is admin', 'auth');
+    if (req.user?.isAdmin) {
       return next();
     }
 
-    // For creators, check if they own the resource
-    const resourceCreatorId = req.body[resourceCreatorIdField] || req.params[resourceCreatorIdField];
-    log(`Resource creator ID: ${resourceCreatorId}, User ID: ${req.user.id}`, 'auth');
-
-    if (!resourceCreatorId || req.user.id !== parseInt(resourceCreatorId)) {
-      log('Ownership check failed - user does not own resource', 'auth');
-      return res.status(403).json({ error: "Unauthorized access to resource" });
+    // Event mutations use the persisted event's creatorId. Never trust a
+    // client-supplied creator ID from the request body for authorization.
+    if (resourceCreatorIdField !== "creatorId") {
+      return res.status(500).json({ error: "Unsupported ownership resource" });
     }
 
-    log('Ownership check passed - user owns resource', 'auth');
+    const resourceId = Number(req.params.id);
+    if (!Number.isSafeInteger(resourceId) || resourceId <= 0) {
+      return res.status(400).json({ error: "Invalid resource ID" });
+    }
+
+    try {
+      const event = await storage.getEvent(resourceId);
+      if (!event) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+      if (!req.user || event.creatorId !== req.user.id) {
+        return res.status(403).json({ error: "Unauthorized access to resource" });
+      }
+    } catch (error) {
+      return next(error);
+    }
+
+    if (!req.user) {
+      return res.status(403).json({ error: "Unauthorized access to resource" });
+    }
     next();
   };
 }

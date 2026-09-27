@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -40,7 +40,7 @@ export function AdvancedSearch({
     mediaType: initialType,
   });
 
-  const getSearchKeys = () => {
+  const searchKeys = useMemo(() => {
     const keys = [];
     if (filters.includeCaption) {
       keys.push({ name: 'caption', weight: 2 });
@@ -56,13 +56,15 @@ export function AdvancedSearch({
       });
     }
     return keys;
-  };
+  }, [filters.includeCaption, filters.includePhotographer, filters.includeTags]);
 
-  const { searchQuery, setSearchQuery, results } = useSearch(items, {
-    keys: getSearchKeys(),
+  const searchOptions = useMemo(() => ({
+    keys: searchKeys,
     threshold: 0.3,
     distance: 100,
-  });
+  }), [searchKeys]);
+
+  const { searchQuery, setSearchQuery, results } = useSearch(items, searchOptions);
 
   // Initialize search query from URL if provided
   useEffect(() => {
