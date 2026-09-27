@@ -1,1 +1,2 @@
 - [Session table constraint](session-table-constraint.md) — connect-pg-simple can collide with an existing session primary-key name when asked to create a second table.
+- [Clean-install firewall](clean-install-firewall.md) — test locked clean installs after merges; a previously cached dependency can hide a security-policy block.
