@@ -57,9 +57,6 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
   assert.ok(process.env.DATABASE_URL, "DATABASE_URL is required for disposable role fixtures");
   neonConfig.webSocketConstructor = ws;
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const schema = await pool.query(
-    "SELECT 1 FROM information_schema.columns WHERE table_name = 'media_items' AND column_name = 'stored_bytes'");
-  const mediaSchemaReady = schema.rowCount > 0;
   const instance = await browser();
   const accounts = [];
   try {
@@ -111,9 +108,7 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
       assert.equal(state.spinner, false, `${path}: loading indicator still visible`);
       assert.ok(state.modules.some(url => url.includes("/src/main.tsx")), "Vite entry script missing");
       await delay(300); // Include requests started just after the first paint.
-      const relevantFailures = mediaSchemaReady ? failures : failures.filter(failure =>
-        !/^500 .*\/api\/(?:media(?:\/(?:top-shots|all))?|events\/\d+\/media|admin\/media-usage)$/.test(failure));
-      if (!allowFailures) assert.deepEqual(relevantFailures, [], `${path}: asset/API/browser errors`);
+      if (!allowFailures) assert.deepEqual(failures, [], `${path}: asset/API/browser errors`);
       return state;
     }
     async function visit(path, expected, options) {
@@ -133,7 +128,7 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
         }
       };
       instance.listeners.add(listener);
-      await instance.send("Fetch.enable", { patterns: [{ urlPattern: `*${path}`, requestStage: "Request" }] }, sessionId);
+      await instance.send("Fetch.enable", { patterns: [{ urlPattern: `*${path}*`, requestStage: "Request" }] }, sessionId);
       return async () => {
         await instance.send("Fetch.disable", {}, sessionId);
         instance.listeners.delete(listener);
@@ -206,7 +201,7 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
         path: destination,
         text: role === "admin" ? "USER MANAGEMENT"
           : role === "creator" || role === "approved"
-            ? (mediaSchemaReady ? "CREATOR DASHBOARD" : "Die Creator-Daten konnten nicht geladen werden")
+            ? "CREATOR DASHBOARD"
             : "BECOME A VCO CREATOR",
       });
       if (role === "admin") {
@@ -226,19 +221,23 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
         await visit("/auth?next=%2Fnot-a-protected-page", { path: "/", text: "VCO" });
         await visit("/auth?next=%2Fcreator%2Fdashboard", {
           path: "/creator/dashboard",
-          text: mediaSchemaReady ? "CREATOR DASHBOARD" : "Die Creator-Daten konnten nicht geladen werden",
+          text: "CREATOR DASHBOARD",
         });
+        await visit("/", { path: "/", text: "VCO" });
+        failures.length = 0;
+        assert.equal(await evaluate("!!document.querySelector('a[href=\"/admin/dashboard\"]')"), true, "Admin menu link missing");
+        await evaluate("document.querySelector('a[href=\"/admin/dashboard\"]').click()");
+        await waitForPage("/admin/dashboard", { path: "/admin/dashboard",
+          text: "ADMIN DASHBOARD" });
       }
       await visit("/admin/dashboard", role === "admin"
-        ? { path: "/admin/dashboard", text: mediaSchemaReady
-          ? "ADMIN DASHBOARD" : "Die Dashboard-Daten konnten nicht geladen werden" }
+        ? { path: "/admin/dashboard", text: "ADMIN DASHBOARD" }
         : { path: "/", text: "VCO" });
       await visit("/admin/users", role === "admin"
         ? { path: "/admin/users", text: "USER MANAGEMENT" }
         : { path: "/", text: "VCO" });
       await visit("/creator/dashboard", role !== "user"
-        ? { path: "/creator/dashboard", text: mediaSchemaReady
-          ? "CREATOR DASHBOARD" : "Die Creator-Daten konnten nicht geladen werden" }
+        ? { path: "/creator/dashboard", text: "CREATOR DASHBOARD" }
         : { path: "/creator/apply", text: "BECOME A VCO CREATOR" });
       const adminApi = await fetch(new URL("/api/admin/users", base), { headers: { Cookie: cookie } });
       assert.equal(adminApi.status, role === "admin" ? 200 : 403);
@@ -254,20 +253,23 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
       }
       assert.equal(navigation?.includes("Creator dashboard"), role !== "user", `${role}: creator dashboard navigation`);
       if (role === "admin") {
-        assert.equal(await evaluate("!!document.querySelector('a[href=\"/admin/dashboard\"]')"), true, "Admin menu link missing");
-        failures.length = 0;
-        await evaluate("document.querySelector('a[href=\"/admin/dashboard\"]').click()");
-        await waitForPage("/admin/dashboard", { path: "/admin/dashboard",
-          text: mediaSchemaReady ? "ADMIN DASHBOARD" : "Die Dashboard-Daten konnten nicht geladen werden" });
-      }
-      // Fault-injection recovery needs a healthy dashboard data source first.
-      if (role === "admin" && mediaSchemaReady) {
         let restore = await failApi("/api/events");
         try {
           const state = await visit("/admin/dashboard",
             { path: "/admin/dashboard", text: "Die Dashboard-Daten konnten nicht geladen werden" },
             { allowFailures: true });
           assert.equal(state.alert, true);
+        } finally { await restore(); }
+        failures.length = 0;
+        await evaluate("document.querySelector('[role=alert] button').click()");
+        await waitForPage("/admin/dashboard", { path: "/admin/dashboard", text: "ADMIN DASHBOARD" });
+
+        restore = await failApi("/api/media");
+        try {
+          const state = await visit("/admin/dashboard",
+            { path: "/admin/dashboard", text: "Die Dashboard-Daten konnten nicht geladen werden" },
+            { allowFailures: true });
+          assert.equal(state.alert, true, "Media API failure must offer a retry");
         } finally { await restore(); }
         failures.length = 0;
         await evaluate("document.querySelector('[role=alert] button').click()");
@@ -280,6 +282,21 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
             { allowFailures: true });
           assert.equal(state.alert, true);
         } finally { await restore(); }
+        failures.length = 0;
+        await evaluate("document.querySelector('[role=alert] button').click()");
+        await waitForPage("/admin/dashboard", { path: "/admin/dashboard", text: "ADMIN DASHBOARD" });
+
+        await instance.send("Network.setCacheDisabled", { cacheDisabled: true }, sessionId);
+        restore = await failApi("/src/main.tsx");
+        try {
+          const state = await visit("/admin/dashboard",
+            { path: "/admin/dashboard", text: "Die Anwendung konnte nicht geladen werden" },
+            { allowFailures: true });
+          assert.equal(state.alert, true, "Module failure must offer a retry");
+        } finally {
+          await restore();
+          await instance.send("Network.setCacheDisabled", { cacheDisabled: false }, sessionId);
+        }
         failures.length = 0;
         await evaluate("document.querySelector('[role=alert] button').click()");
         await waitForPage("/admin/dashboard", { path: "/admin/dashboard", text: "ADMIN DASHBOARD" });

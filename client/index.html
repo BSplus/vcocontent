@@ -6,6 +6,27 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // React cannot show its own error boundary if the entry module never loads.
+      function showStartupError() {
+        const root = document.getElementById("root");
+        if (!root || root.hasChildNodes()) return;
+        const message = document.createElement("div");
+        message.setAttribute("role", "alert");
+        message.style.cssText = "min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;font:16px sans-serif";
+        const text = document.createElement("p");
+        text.textContent = "Die Anwendung konnte nicht geladen werden. Bitte versuche es erneut.";
+        const retry = document.createElement("button");
+        retry.textContent = "Erneut versuchen";
+        retry.onclick = () => window.location.reload();
+        message.append(text, retry);
+        root.append(message);
+      }
+      window.addEventListener("error", (event) => {
+        if (event.target instanceof HTMLScriptElement || /module|import/i.test(event.message || "")) showStartupError();
+      }, true);
+      setTimeout(showStartupError, 15000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
