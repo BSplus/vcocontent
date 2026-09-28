@@ -19,6 +19,7 @@ import { z } from "zod";
 import { discover, importStatus, startImport, NextcloudError } from "./nextcloud";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
+const OPENAI_TEST_COOLDOWN_MS = 60_000;
 function mediaPage(value: unknown): number | null {
   if (value === undefined) return 1;
   const n = Number(value);
@@ -35,6 +36,7 @@ const publicMedia = <T extends { isPremium: boolean; url: string; thumbnail: str
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  const openAITestCooldowns = new Map<number, number>();
   // Auth already set up in index.ts
   const cleanupTimer = setInterval(() => {
     void storage.cleanupObjects().catch(error => console.error("Media reconciliation failed:", error));
@@ -166,11 +168,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 
   // Admin routes
-  app.post("/api/admin/openai/test", requireAdmin, async (_req, res) => {
+  app.post("/api/admin/openai/test", requireAdmin, async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!isAITaggingConfigured()) {
       return res.status(503).json({ success: false, error: "Managed OpenAI runtime configuration unavailable" });
     }
+    const now = Date.now();
+    // Expired entries are removed on use, so idle admins do not accumulate indefinitely.
+    openAITestCooldowns.forEach((expiresAt, id) => {
+      if (expiresAt <= now) openAITestCooldowns.delete(id);
+    });
+    const adminId = req.user!.id;
+    const expiresAt = openAITestCooldowns.get(adminId);
+    if (expiresAt !== undefined) {
+      const retryAfterSeconds = Math.ceil((expiresAt - now) / 1000);
+      res.setHeader("Retry-After", String(retryAfterSeconds));
+      return res.status(429).json({
+        success: false,
+        error: "Connection check recently attempted; please retry later",
+        retryAfterSeconds,
+      });
+    }
+    // Reserve the slot before awaiting the provider to reject concurrent requests too.
+    openAITestCooldowns.set(adminId, now + OPENAI_TEST_COOLDOWN_MS);
     try {
       if (await testManagedOpenAI()) return res.json({ success: true, status: "connected" });
     } catch {

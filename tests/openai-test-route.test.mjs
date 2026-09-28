@@ -9,21 +9,25 @@ test("admin OpenAI diagnostic checks authorization, runtime configuration and pr
   const previousKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   const originalFetch = globalThis.fetch;
   const originalError = console.error;
+  const originalNow = Date.now;
+  let now = 1_000_000;
   const logs = [];
   const proxy = "https://managed.example.invalid/v1/chat/completions";
   process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = "https://managed.example.invalid/v1";
   process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "managed-test-key";
 
   let role = "guest";
+  let adminId = 1;
   let calls = 0;
   let upstream = async (_body) => new Response(JSON.stringify({
     id: "test", object: "chat.completion", created: 0, model: "gpt-4.1-mini",
     choices: [{ index: 0, message: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
   }), { status: 200, headers: { "content-type": "application/json" } });
   const app = express();
+  Date.now = () => now;
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.user = role === "guest" ? undefined : { id: 1, isAdmin: role === "admin" };
+    req.user = role === "guest" ? undefined : { id: adminId, isAdmin: role === "admin" };
     req.isAuthenticated = () => role !== "guest";
     next();
   });
@@ -49,7 +53,11 @@ test("admin OpenAI diagnostic checks authorization, runtime configuration and pr
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      return { status: response.status, body: await response.json(), cache: response.headers.get("cache-control") };
+      return {
+        status: response.status, body: await response.json(),
+        cache: response.headers.get("cache-control"),
+        retryAfter: response.headers.get("retry-after"),
+      };
     };
 
     assert.deepEqual((await post({ model: "expensive" })).body, { error: "Authentication required" });
@@ -60,7 +68,8 @@ test("admin OpenAI diagnostic checks authorization, runtime configuration and pr
     role = "admin";
     delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
     assert.deepEqual(await post({ model: "expensive" }), {
-      status: 503, body: { success: false, error: "Managed OpenAI runtime configuration unavailable" }, cache: "no-store",
+      status: 503, body: { success: false, error: "Managed OpenAI runtime configuration unavailable" },
+      cache: "no-store", retryAfter: null,
     });
     assert.equal(calls, 0);
 
@@ -70,27 +79,65 @@ test("admin OpenAI diagnostic checks authorization, runtime configuration and pr
     assert.equal(calls, 0);
     process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = "https://managed.example.invalid/v1";
     assert.deepEqual(await post({ model: "expensive", messages: ["ignored"] }), {
-      status: 200, body: { success: true, status: "connected" }, cache: "no-store",
+      status: 200, body: { success: true, status: "connected" }, cache: "no-store", retryAfter: null,
     });
     assert.equal(calls, 1);
+    const limited = (seconds) => ({
+      status: 429,
+      body: {
+        success: false, error: "Connection check recently attempted; please retry later",
+        retryAfterSeconds: seconds,
+      },
+      cache: "no-store", retryAfter: String(seconds),
+    });
+    assert.deepEqual(await post({}), limited(60));
+    now += 1_001;
+    assert.deepEqual(await post({}), limited(59));
+    assert.equal(calls, 1);
 
+    adminId = 2;
     upstream = async () => new Response(JSON.stringify({ error: { message: "private-provider-details" } }), {
       status: 401, headers: { "content-type": "application/json" },
     });
     assert.deepEqual(await post({}), {
-      status: 502, body: { success: false, error: "Managed OpenAI request failed" }, cache: "no-store",
+      status: 502, body: { success: false, error: "Managed OpenAI request failed" },
+      cache: "no-store", retryAfter: null,
     });
+    assert.equal(calls, 2);
+    assert.deepEqual(await post({}), limited(60));
     assert.equal(calls, 2);
     upstream = async () => new Response(JSON.stringify({
       id: "test", object: "chat.completion", choices: [],
     }), { status: 200, headers: { "content-type": "application/json" } });
+    now += 60_000;
     assert.equal((await post({})).status, 502);
     assert.equal(calls, 3);
+
+    // The slot is taken before the provider responds, not after it finishes.
+    now += 60_000;
+    let release;
+    let started;
+    const providerStarted = new Promise(resolve => { started = resolve; });
+    const providerReleased = new Promise(resolve => { release = resolve; });
+    upstream = async () => {
+      started();
+      await providerReleased;
+      return new Response(JSON.stringify({
+        id: "test", object: "chat.completion", choices: [],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const pending = post({});
+    await providerStarted;
+    assert.deepEqual(await post({}), limited(60));
+    release();
+    assert.equal((await pending).status, 502);
+    assert.equal(calls, 4);
     assert.doesNotMatch(logs.join(" "), /private-provider-details|managed-test-key|managed\.example/);
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     globalThis.fetch = originalFetch;
     console.error = originalError;
+    Date.now = originalNow;
     if (previousBase === undefined) delete process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
     else process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = previousBase;
     if (previousKey === undefined) delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
