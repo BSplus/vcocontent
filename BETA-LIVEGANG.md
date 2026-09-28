@@ -27,19 +27,19 @@ oder Creator-Auszahlungen; die betreffenden Server-Endpunkte sind gesperrt.
    Vor dem öffentlichen Start mindestens ein aktuelles Event mit echten Inhalten
    anlegen; die vorhandenen älteren Testevents füllen die Startseite nicht.
 5. KI-Verschlagwortung nutzt ausschließlich **Replit AI Integrations / OpenAI**
-   (Replit-managed), nicht einen selbst beschafften OpenAI-Schlüssel. Replit
-   muss die Integration für **diese bestehende App** im Project Editor per
-   Freigabe aktivieren; eine Workspace-Freigabe allein stellt dem App-Server
-   noch keinen Zugang bereit. Gemäß Replit-Dokumentation müssen
+   (Replit-managed), nicht einen selbst beschafften OpenAI-Schlüssel. Laut
+   Betreiber ist OpenAI für **diese App und den Workspace bereits aktiviert**;
+   keine erneute Schlüsselfreigabe anfordern. Für die tatsächliche Laufzeit
+   müssen gemäß Replit-Dokumentation
    `AI_INTEGRATIONS_OPENAI_BASE_URL` und `AI_INTEGRATIONS_OPENAI_API_KEY`
    beide zur Laufzeit vorhanden sein, in Entwicklung **und separat** in der
    veröffentlichten Umgebung. Nicht manuell Werte raten, kopieren oder im
    Chat teilen. Fehlt ein Wert, liefert die Analyse 503; Anbieterfehler
-   liefern 502. Stand der Prüfung: beide Werte fehlen in Entwicklung und
-   Veröffentlichung; der laufende Entwicklungsprozess sieht sie ebenfalls
-   nicht. Daher ist **weder ein echter Bildaufruf noch die Produktion
-   bestätigt**. Sobald Replit die Managed-Integration für die App
-   bereitstellt, Server neu starten, mit einem eigenen Creator-Bild
+   liefern 502. Stand der letzten Prüfung: Der Entwicklungsprozess meldet
+   auch nach Neustart, dass die benötigte Laufzeitkonfiguration fehlt.
+   Die Freigabe ist damit nicht bestritten, aber die tatsächliche Bereitstellung
+   an die App und die Produktionslaufzeit sind **noch nicht bestätigt**.
+   Sobald die Laufzeitkonfiguration bereitsteht, mit einem eigenen Creator-Bild
    Einzelanalyse (inklusive gespeicherter Tags und UI-Rückmeldung) und
    Sammelanalyse testen. Nach Veröffentlichung separat mit einem Creator-Bild
    in Produktion wiederholen; vorher nicht als betriebsbereit deklarieren.
