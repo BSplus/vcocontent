@@ -100,10 +100,11 @@ test("multiple links, recursive folders, mixed files and access failures", async
     seen.push({ path: new URL(url).pathname, options });
     const path = new URL(url).pathname;
     const entries = path === "/public.php/dav/files/abc/" ?
-      [["/public.php/dav/files/abc/sub/", true], ["/public.php/dav/files/abc/readme.txt"], ["/public.php/dav/files/abc/one.jpg"]] :
+      [["/public.php/dav/files/abc/sub/", true], ["/public.php/dav/files/abc/readme.txt"], ["/public.php/dav/files/abc/one.jpg"],
+        ["/public.php/dav/files/abc/movie.MP4"]] :
       path === "/public.php/dav/files/abc/sub/" ?
-        [["/public.php/dav/files/abc/sub/two.png"]] :
-        [["/remote.php/dav/files/admin/Other/three.webp"]];
+        [["/public.php/dav/files/abc/sub/two.png"], ["/public.php/dav/files/abc/sub/clip.webm"]] :
+        [["/remote.php/dav/files/admin/Other/three.webp"], ["/remote.php/dav/files/admin/Other/film.mov"]];
     return new Response(dav(path, entries), { status: 207 });
   };
   try {
@@ -111,7 +112,9 @@ test("multiple links, recursive folders, mixed files and access failures", async
       { link: `${base}/s/abc`, password: "private" },
       { link: `${base}/apps/files/files/3?dir=/Other` },
     ]);
-    assert.equal(found.files.length, 3);
+    assert.equal(found.files.length, 6);
+    assert.equal(found.files.filter(file => file.type === "image").length, 3);
+    assert.equal(found.files.filter(file => file.type === "video").length, 3);
     assert.equal(found.skipped, 1);
     assert.equal(seen.length, 3);
     assert.ok(seen.every(entry => entry.options.redirect === "manual" && entry.options.method === "PROPFIND"));
@@ -123,6 +126,129 @@ test("multiple links, recursive folders, mixed files and access failures", async
     globalThis.fetch = async () => new Response(dav("/public.php/dav/files/abc/", [["/remote.php/dav/files/admin/private.jpg"]]), { status: 207 });
     await assert.rejects(() => discover([{ link: `${base}/s/abc` }]), /außerhalb/);
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test("mixed import validates content and size, serves video posters safely, and resumes without duplicates", async () => {
+  const originalFetch = globalThis.fetch;
+  const event = await storage.createEvent({
+    title: "Mixed Nextcloud media", description: "Temporary import test", date: new Date(), isPremium: false,
+  });
+  const jpeg = await sharp({ create: { width: 16, height: 16, channels: 3, background: "red" } }).jpeg().toBuffer();
+  const png = await sharp(jpeg).png().toBuffer();
+  const gif = await sharp(jpeg).gif().toBuffer();
+  const webp = await sharp(jpeg).webp().toBuffer();
+  const mp4 = Buffer.from("00000000667479706d703432", "hex");
+  const mov = Buffer.from("000000006674797071742020", "hex");
+  const webm = Buffer.from("1a45dfa34286810142828104", "hex");
+  const contents = new Map([
+    ["one.jpg", jpeg], ["two.png", png], ["three.gif", gif], ["four.webp", webp],
+    ["five.mp4", mp4], ["six.mov", mov], ["seven.webm", webm],
+    ["wrong.mp4", webm], ["broken.webm", Buffer.from("not webm")],
+    ["bad.jpg", Buffer.from("not an image")], ["mismatch.jpg", png],
+    ["big.mov", mov], ["overflow.mp4", mp4],
+  ]);
+  const directory = "/public.php/dav/files/mixed/";
+  let repaired = false;
+  const getCalls = [];
+  globalThis.fetch = async (url, options) => {
+    if (new URL(url).origin !== base) return originalFetch(url, options);
+    const pathname = new URL(url).pathname;
+    if (options.method === "PROPFIND") {
+      const entries = pathname === directory
+        ? [["one.jpg"], ["two.png"], ["five.mp4"], ["wrong.mp4"], ["bad.jpg"],
+          ["mismatch.jpg"], ["big.mov", false, 51 * 1048576], ["overflow.mp4"], ["unknown.txt"], ["sub/", true]]
+        : [["three.gif"], ["four.webp"], ["six.mov"], ["seven.webm"], ["broken.webm"]];
+      return new Response(dav(pathname, entries.map(([name, directory, size]) =>
+        [pathname + name, directory, size ?? contents.get(name)?.length ?? 12])), { status: 207 });
+    }
+    getCalls.push(pathname);
+    const name = pathname.split("/").pop();
+    const data = repaired && name === "wrong.mp4" ? mp4
+      : repaired && name === "broken.webm" ? webm
+      : repaired && (name === "bad.jpg" || name === "mismatch.jpg") ? jpeg : contents.get(name);
+    return new Response(data, { status: 200, headers: { "Content-Length": String(name === "overflow.mp4" && !repaired ? 51 * 1048576 : data.length) } });
+  };
+  const source = [{ link: `${base}/s/mixed` }];
+  const finish = async () => {
+    for (let i = 0; i < 160; i++) {
+      const result = await importStatus(event.id);
+      if (["partial", "completed", "error"].includes(result.status)) return result;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error("Import did not finish");
+  };
+  try {
+    const preview = await discover(source);
+    assert.equal(preview.files.filter(file => file.type === "image").length, 6);
+    assert.equal(preview.files.filter(file => file.type === "video").length, 6);
+    assert.equal(preview.skipped, 2, "unknown and oversized advertised file are skipped");
+    await startImport(event.id, source);
+    const first = await finish();
+    assert.equal(first.status, "partial", JSON.stringify(first));
+    assert.equal(first.importedImages, 4);
+    assert.equal(first.importedVideos, 3);
+    assert.equal(first.failed, 5);
+    assert.equal(first.skipped, 2);
+    assert.ok(first.warnings <= first.importedImages);
+    assert.ok(first.files.filter(file => file.type === "video").every(file => !file.aiWarning));
+    assert.ok(getCalls.some(p => p.endsWith("overflow.mp4")));
+    assert.ok(!getCalls.some(p => p.endsWith("big.mov") || p.endsWith("unknown.txt")));
+
+    const media = await storage.getMediaItems(event.id);
+    assert.equal(media.length, 7);
+    for (const item of media) {
+      assert.equal(item.type, /\.(mp4|mov|webm)$/i.test(item.caption) ? "video" : "image");
+      assert.match(item.thumbnail, /^\/api\/media\/files\/thumb-.*\.webp$/);
+      assert.match(item.url, new RegExp(`^/api/media/files/media-.*\\.${item.type === "video"
+        ? item.caption.split(".").pop() : "webp"}$`));
+    }
+
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.user = { id: 42, isAdmin: true };
+      req.isAuthenticated = () => req.path === "/api/admin/nextcloud/preview";
+      next();
+    });
+    const server = await registerRoutes(app);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      const address = `http://127.0.0.1:${server.address().port}`;
+      const apiPreview = await originalFetch(`${address}/api/admin/nextcloud/preview`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sources: source }),
+      });
+      assert.equal(apiPreview.status, 200);
+      assert.deepEqual(await apiPreview.json(), { count: 12, images: 6, videos: 6, skipped: 2 });
+      const video = media.find(item => item.type === "video");
+      const poster = await originalFetch(address + video.thumbnail);
+      assert.equal(poster.status, 200);
+      assert.equal(poster.headers.get("content-type"), "image/webp");
+      assert.equal((await sharp(Buffer.from(await poster.arrayBuffer())).metadata()).format, "webp");
+      const denied = await originalFetch(address + video.url);
+      assert.equal(denied.status, 401);
+      const missing = await originalFetch(address + video.url.replace("media-", "thumb-"));
+      assert.equal(missing.status, 404);
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+
+    repaired = true;
+    await startImport(event.id, source);
+    const second = await finish();
+    assert.equal(second.status, "completed", JSON.stringify(second));
+    assert.equal(second.importedImages, 6);
+    assert.equal(second.importedVideos, 6);
+    assert.equal(second.failed, 0);
+    await startImport(event.id, source);
+    assert.equal((await finish()).imported, 12);
+    assert.equal((await storage.getMediaItems(event.id)).length, 12);
+    assert.ok(await storage.getEvent(event.id));
+  } finally {
+    globalThis.fetch = originalFetch;
+    await storage.deleteEvent(event.id);
+  }
 });
 
 test("a failed image does not block the others, and retry does not duplicate saved images or albums", async () => {

@@ -269,7 +269,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/nextcloud/preview", requireAdmin, async (req, res) => {
     try {
       const { files, skipped } = await discover(nextcloudRequest.parse(req.body).sources);
-      res.json({ count: files.length, skipped });
+      res.json({ count: files.length, images: files.filter(file => file.type === "image").length,
+        videos: files.filter(file => file.type === "video").length, skipped });
     } catch (error) {
       res.status(error instanceof z.ZodError || error instanceof NextcloudError ? 400 : 502)
         .json({ error: error instanceof NextcloudError ? error.message : "Nextcloud-Vorschau konnte nicht geladen werden." });

@@ -10,3 +10,4 @@
 - [Vite module interception](vite-module-interception.md) — browser mocks for Vite entry modules need URL patterns that include cache-busting query strings.
 - [Managed OpenAI testing](openai-managed-testing.md) — the OpenAI SDK captures default fetch at import time; inject transport to mock requests later.
 - [Radix tabs in browser checks](radix-tabs-browser-checks.md) — synthetic click alone does not activate Radix tabs; simulate pointer/mouse down or keyboard activation.
+- [Nextcloud media classification](nextcloud-media-classification.md) — import and progress intentionally share extension-based classification; validate downloaded content separately.

@@ -45,7 +45,7 @@ export default function UploadModal({
   const [validationSummary, setValidationSummary] = useState<string[]>([]);
   const [imageSource, setImageSource] = useState<"local" | "nextcloud">("local");
   const [links, setLinks] = useState<{ link: string; password: string }[]>([{ link: "", password: "" }]);
-  const [preview, setPreview] = useState<{ count: number; skipped: number } | null>(null);
+  const [preview, setPreview] = useState<{ count: number; images: number; videos: number; skipped: number } | null>(null);
   const [importEventId, setImportEventId] = useState<number | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const [previewBusy, setPreviewBusy] = useState(false);
@@ -60,8 +60,9 @@ export default function UploadModal({
     queryKey: ["/api/series"],
   });
   const { data: importProgress } = useQuery<{
-    status: string; error?: string; total: number; imported: number; failed: number; skipped: number;
-    warnings: number; files: { name: string; status: string; message?: string; aiWarning?: string }[];
+    status: string; error?: string; total: number; imported: number; importedImages: number; importedVideos: number;
+    failed: number; skipped: number; warnings: number;
+    files: { name: string; type?: "image" | "video"; status: string; message?: string; aiWarning?: string }[];
   }>({
     queryKey: [`/api/admin/events/${importEventId}/nextcloud`],
     enabled: open && !!importEventId,
@@ -392,7 +393,7 @@ export default function UploadModal({
 
           {user?.isAdmin && (
             <div className="space-y-3 rounded-md border p-4">
-              <Label htmlFor="image-source">Bildquelle für das Album</Label>
+               <Label htmlFor="image-source">Medienquelle für das Album</Label>
               <Select value={imageSource} onValueChange={value => { setImageSource(value as "local" | "nextcloud"); setPreview(null); }}>
                 <SelectTrigger id="image-source"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -415,17 +416,17 @@ export default function UploadModal({
                 ))}
                  <div className="flex flex-wrap gap-2">
                   <Button type="button" variant="outline" disabled={links.length >= 10} onClick={() => setLinks([...links, { link: "", password: "" }])}>Weiterer Link</Button>
-                   <Button type="button" variant="outline" disabled={previewBusy || importBusy} onClick={checkLinks}>{previewBusy ? "Prüfe Zugriff..." : "Zugriff und Bilder prüfen"}</Button>
+                    <Button type="button" variant="outline" disabled={previewBusy || importBusy} onClick={checkLinks}>{previewBusy ? "Prüfe Zugriff..." : "Zugriff und Medien prüfen"}</Button>
                 </div>
-                {preview && <p role="status">{preview.count} Bilder gefunden; {preview.skipped} Dateien übersprungen.</p>}
+                 {preview && <p role="status">{preview.images} Bilder und {preview.videos} Videos gefunden; {preview.skipped} Dateien übersprungen.</p>}
                 {importProgress && <div role="status" className="text-sm space-y-1">
-                  <p>Import: {importProgress.status} · {importProgress.imported}/{importProgress.total} Bilder · {importProgress.skipped} übersprungen · {importProgress.failed} Fehler · {importProgress.warnings} KI-Warnungen</p>
+                   <p>Import: {importProgress.status} · {importProgress.imported}/{importProgress.total} Medien ({importProgress.importedImages} Bilder, {importProgress.importedVideos} Videos) · {importProgress.skipped} übersprungen · {importProgress.failed} Fehler · {importProgress.warnings} Bild-KI-Warnungen</p>
                   {importProgress.error && <p className="text-amber-600">{importProgress.error}</p>}
                   <div className="max-h-28 overflow-y-auto">
                     {importProgress.files.filter(file => file.message || file.aiWarning).map((file, index) =>
                       <p key={index}>{file.name}: {file.message || file.aiWarning}</p>)}
                   </div>
-                  <p>Bei Unterbrechung dieselben Links erneut eingeben und den Import erneut starten. Bereits importierte Bilder werden nicht verdoppelt.</p>
+                   <p>Bei Unterbrechung dieselben Links erneut eingeben und den Import erneut starten. Bereits importierte Medien werden nicht verdoppelt.</p>
                 </div>}
               </>}
             </div>

@@ -11,20 +11,28 @@ import { db } from "./db";
 import { nextcloudFiles, nextcloudJobs, insertMediaItemSchema } from "@shared/schema";
 import { storage } from "./storage";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
-import { createMediaKeys, uploadMedia } from "./media-storage";
+import { createMediaKeys, uploadMedia, type MediaType } from "./media-storage";
 import { analysisImageInput } from "./image-analysis";
 import { generateTagsForImage, categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
 
 export class NextcloudError extends Error {}
 export type SourceInput = { link: string; password?: string };
 type Source = { base: URL; root: URL; auth: string };
-type Found = { href: URL; name: string; bytes: number };
+type Found = { href: URL; name: string; bytes: number; type: MediaType; mime: string };
 const MAX_FILES = Math.min(500, mediaPolicy.eventCount);
 const MAX_BYTES = Math.min(500 * 1048576, mediaPolicy.eventBytes);
 const MAX_DIRS = 300;
 const MAX_MS = 10 * 60 * 1000;
 const parser = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, parseTagValue: false });
-const mime: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
+const mime: Record<string, string> = {
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
+  mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm",
+};
+
+function mediaForName(name: string): { type: MediaType; mime: string } | undefined {
+  const contentType = mime[name.toLowerCase().split(".").pop() || ""];
+  return contentType ? { type: contentType.startsWith("image/") ? "image" : "video", mime: contentType } : undefined;
+}
 
 const PUBLIC_INSTANCE = new URL("https://nextcloud.bs-plus.de/");
 
@@ -181,17 +189,18 @@ export async function discover(inputs: SourceInput[]): Promise<{ sources: Source
         if (!prop) { skipped++; continue; }
         if (prop.resourcetype?.collection !== undefined) { queue.push(href); continue; }
         const name = decodeURIComponent(href.pathname.split("/").pop() || "").slice(0, 200);
-        const ext = name.toLowerCase().split(".").pop() || "";
-        if (!mime[ext]) { skipped++; continue; }
+        const media = mediaForName(name);
+        if (!media) { skipped++; continue; }
         const length = Number(prop.getcontentlength);
-        if (!Number.isSafeInteger(length) || length < 1 || length > mediaPolicy.imageBytes) { skipped++; continue; }
+        if (prop.getcontentlength == null || !Number.isSafeInteger(length) || length < 1 ||
+            length > (media.type === "image" ? mediaPolicy.imageBytes : mediaPolicy.videoBytes)) { skipped++; continue; }
         const key = createHash("sha256").update(href.href).digest("hex");
         if (seen.has(key)) continue;
         seen.add(key);
         if (files.length >= MAX_FILES || bytes + length > MAX_BYTES)
-          throw new NextcloudError("Importgrenze erreicht (500 Bilder oder 500 MiB).");
+          throw new NextcloudError(`Importgrenze erreicht (${MAX_FILES} Medien oder ${Math.floor(MAX_BYTES / 1048576)} MiB).`);
         bytes += length;
-        files.push({ href, name, bytes: length });
+        files.push({ href, name, bytes: length, ...media });
       }
     }
   }
@@ -203,11 +212,14 @@ export async function importStatus(eventId: number) {
   const files = await db.select({ name: nextcloudFiles.name, status: nextcloudFiles.status,
     message: nextcloudFiles.message, aiWarning: nextcloudFiles.aiWarning })
     .from(nextcloudFiles).where(eq(nextcloudFiles.eventId, eventId)).orderBy(nextcloudFiles.id).limit(500);
+  const typedFiles = files.map(file => ({ ...file, type: mediaForName(file.name)?.type }));
   return { status: job?.status || "idle", error: job?.error, total: files.length,
     imported: files.filter(f => f.status === "saved").length,
+    importedImages: typedFiles.filter(f => f.status === "saved" && f.type === "image").length,
+    importedVideos: typedFiles.filter(f => f.status === "saved" && f.type === "video").length,
     skipped: (job?.skipped || 0) + files.filter(f => f.status === "skipped").length,
     failed: files.filter(f => f.status === "error").length,
-    warnings: files.filter(f => f.aiWarning).length, files };
+    warnings: files.filter(f => f.aiWarning).length, files: typedFiles };
 }
 
 export async function startImport(eventId: number, inputs: SourceInput[]): Promise<void> {
@@ -254,36 +266,40 @@ async function runImport(eventId: number, sources: Source[], files: Found[]) {
     const tmp = path.join(tmpdir(), `nextcloud-${randomUUID()}`);
     let reservation: string | undefined;
     try {
+       const limit = file.type === "image" ? mediaPolicy.imageBytes : mediaPolicy.videoBytes;
       const response = await request(file.href, source, "GET");
-      if (Number(response.headers.get("content-length")) > mediaPolicy.imageBytes || !response.body)
-        throw new MediaLimitError("Bild überschreitet das Dateilimit.");
+       if (Number(response.headers.get("content-length")) > limit || !response.body)
+         throw new MediaLimitError(`${file.type === "image" ? "Bild" : "Video"} überschreitet das Dateilimit.`);
       let received = 0;
       await pipeline(Readable.fromWeb(response.body as any), new Transform({
         transform(chunk, _enc, cb) {
           received += chunk.length;
           downloaded += chunk.length;
-          cb(received > mediaPolicy.imageBytes || downloaded > MAX_BYTES
-            ? new MediaLimitError("Bild oder gesamter Import überschreitet das Datenlimit.") : null, chunk);
+           cb(received > limit || downloaded > MAX_BYTES
+             ? new MediaLimitError("Medium oder gesamter Import überschreitet das Datenlimit.") : null, chunk);
         },
       }), createWriteStream(tmp));
-      const ext = file.name.toLowerCase().split(".").pop()!;
-      const fileUpload = { path: tmp, size: (await stat(tmp)).size, mimetype: mime[ext] } as Express.Multer.File;
+       const fileUpload = { path: tmp, size: (await stat(tmp)).size, mimetype: file.mime } as Express.Multer.File;
       const keys = createMediaKeys(fileUpload.mimetype);
       reservation = randomUUID();
-      await storage.reserveMedia(reservation, eventId, null, 4 * 1048576 + 100 * 1024, keys.storageKey, keys.thumbnailKey);
-      const saved = await uploadMedia(fileUpload, "image", keys);
+       await storage.reserveMedia(reservation, eventId, null,
+         file.type === "image" ? 4 * 1048576 + 100 * 1024 : fileUpload.size + 100 * 1024,
+         keys.storageKey, keys.thumbnailKey);
+       const saved = await uploadMedia(fileUpload, file.type, keys);
       const item = await storage.finishMedia(reservation, insertMediaItemSchema.parse({
-        eventId, type: "image", url: saved.url, thumbnail: saved.thumbnail, storedBytes: saved.storedBytes,
+         eventId, type: saved.mediaType, url: saved.url, thumbnail: saved.thumbnail, storedBytes: saved.storedBytes,
         objectCount: saved.objectCount, caption: file.name, tags: [], isPremium: false,
       }), record.id);
       reservation = undefined;
-      try {
-        if (!isAITaggingConfigured()) throw new Error("not configured");
-        const tags = await generateTagsForImage(await analysisImageInput(item.thumbnail));
-        if (!tags.length) throw new Error("no matching tags");
-        await storage.updateMediaItem(item.id, { tags, category: await categorizeContent(tags) });
-      } catch {
-        await db.update(nextcloudFiles).set({ aiWarning: "KI-Analyse nicht verfügbar oder fehlgeschlagen; Bild noch nicht analysiert." }).where(eq(nextcloudFiles.id, record.id));
+       if (file.type === "image") {
+         try {
+           if (!isAITaggingConfigured()) throw new Error("not configured");
+           const tags = await generateTagsForImage(await analysisImageInput(item.thumbnail));
+           if (!tags.length) throw new Error("no matching tags");
+           await storage.updateMediaItem(item.id, { tags, category: await categorizeContent(tags) });
+         } catch {
+           await db.update(nextcloudFiles).set({ aiWarning: "KI-Analyse nicht verfügbar oder fehlgeschlagen; Bild noch nicht analysiert." }).where(eq(nextcloudFiles.id, record.id));
+         }
       }
     } catch (error) {
       const [current] = await db.select({ status: nextcloudFiles.status }).from(nextcloudFiles).where(eq(nextcloudFiles.id, record.id));
