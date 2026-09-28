@@ -2,11 +2,10 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Event, MediaItem, User } from "@shared/schema";
 import { 
-  Loader2, Plus, Trash2, Image as ImageIcon, Film, 
-  UserCheck, UserX, Crown, PenLine, Eye, Edit
+  Loader2, Plus, Trash2, PenLine, Eye, Edit
 } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
@@ -31,6 +30,8 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import DashboardEventList from "@/components/dashboard-event-list";
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -42,6 +43,7 @@ export default function AdminDashboard() {
   const [activeMediaEventId, setActiveMediaEventId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("events");
   const [mediaPage, setMediaPage] = useState(1);
+  const [eventSearch, setEventSearch] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -156,6 +158,7 @@ export default function AdminDashboard() {
   // Function to switch to the media tab
   const switchToMediaTab = (eventId: number) => {
     setActiveMediaEventId(eventId);
+    setMediaPage(1);
     setActiveTab("media");
   };
 
@@ -196,7 +199,7 @@ export default function AdminDashboard() {
             <div className="flex flex-wrap justify-between items-center gap-3 mb-8">
               <h2 className="text-2xl font-bold">Events Management</h2>
               <Button
-                onClick={() => setUploadModalOpen(true)}
+                onClick={() => { setSelectedEventId(null); setUploadModalOpen(true); }}
                 className="bg-primary text-black hover:bg-primary/90"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -204,147 +207,23 @@ export default function AdminDashboard() {
               </Button>
             </div>
 
-            {/* VCO Events Section */}
-            <div className="mb-8">
-              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Crown className="h-5 w-5 text-primary" />
-                VCO Events
-              </h3>
-              <div className="grid gap-6">
-                {vcoEvents.map((event) => {
-                  const stats = getEventStats(event.id);
-                  return (
-                    <Card key={event.id} className="bg-black/40 border-primary/20">
-                      <CardHeader>
-                        <CardTitle className="break-words text-xl font-[Orbitron] tracking-wider">
-                          {event.title}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-col gap-4">
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="secondary" className="flex gap-2 items-center">
-                              <ImageIcon className="h-3 w-3" />
-                              {stats.photos} Photos
-                            </Badge>
-                            <Badge variant="secondary" className="flex gap-2 items-center">
-                              <Film className="h-3 w-3" />
-                              {stats.videos} Videos
-                            </Badge>
-                            <Badge variant="outline" className="flex gap-2 items-center">
-                              {stats.totalDownloads} Downloads
-                            </Badge>
-                          </div>
-
-                          <div className="flex flex-wrap justify-between items-center gap-3">
-                            <p className="text-muted-foreground font-[Rajdhani]">
-                              {new Date(event.date).toLocaleDateString()}
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedEventId(event.id);
-                                  setUploadModalOpen(true);
-                                }}
-                              >
-                                <Edit className="h-4 w-4 mr-1" /> Edit Event
-                              </Button>
-                              <Button
-                                variant="secondary"
-                                onClick={() => {
-                                  setSelectedEventId(event.id);
-                                  setMediaUploadModalOpen(true);
-                                }}
-                              >
-                                <Plus className="h-4 w-4 mr-1" /> Upload Media
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => switchToMediaTab(event.id)}
-                              >
-                                <Eye className="h-4 w-4 mr-1" /> Manage Media
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                aria-label={`Delete event ${event.title}`}
-                                onClick={() => setEventToDelete(event)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-1" /> Delete Event
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Creator Events Section */}
-            <div className="mt-12">
-              <h3 className="text-xl font-semibold mb-4">
-                Creator Events
-              </h3>
-              <div className="grid gap-6">
-                {creatorEvents.map((event) => {
-                  const stats = getEventStats(event.id);
-                  return (
-                    <Card key={event.id} className="bg-black/40 border-primary/20">
-                      <CardHeader>
-                        <CardTitle className="break-words text-xl font-[Orbitron] tracking-wider">
-                          {event.title}
-                        </CardTitle>
-                        <CardDescription>
-                          Creator Event
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-col gap-4">
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="secondary" className="flex gap-2 items-center">
-                              <ImageIcon className="h-3 w-3" />
-                              {stats.photos} Photos
-                            </Badge>
-                            <Badge variant="secondary" className="flex gap-2 items-center">
-                              <Film className="h-3 w-3" />
-                              {stats.videos} Videos
-                            </Badge>
-                            <Badge variant="outline" className="flex gap-2 items-center">
-                              {stats.premiumCount} Premium Items
-                            </Badge>
-                            <Badge variant="outline" className="flex gap-2 items-center">
-                              {stats.totalDownloads} Downloads
-                            </Badge>
-                          </div>
-
-                          <div className="flex flex-wrap justify-between items-center gap-3">
-                            <p className="text-muted-foreground font-[Rajdhani]">
-                              {new Date(event.date).toLocaleDateString()}
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                variant="outline"
-                                onClick={() => switchToMediaTab(event.id)}
-                              >
-                                <Eye className="h-4 w-4 mr-1" /> Manage Media
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                aria-label={`Delete event ${event.title}`}
-                                onClick={() => setEventToDelete(event)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-1" /> Delete Event
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
+            <label htmlFor="admin-event-search" className="mb-2 block text-sm font-medium">Search events by title</label>
+            <Input id="admin-event-search" type="search" value={eventSearch} onChange={e => setEventSearch(e.target.value)} placeholder="Search events..." className="mb-6 max-w-md" />
+            <div className="space-y-8">
+              <DashboardEventList title="VCO Events" events={vcoEvents} mediaItems={mediaItemsArray} search={eventSearch} emptyMessage="No VCO events created yet." actions={event => (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => { setSelectedEventId(event.id); setUploadModalOpen(true); }}><Edit className="mr-1 h-4 w-4" />Edit Event</Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setSelectedEventId(event.id); setMediaUploadModalOpen(true); }}><Plus className="mr-1 h-4 w-4" />Upload Media</Button>
+                  <Button size="sm" variant="outline" onClick={() => switchToMediaTab(event.id)}><Eye className="mr-1 h-4 w-4" />Manage Media</Button>
+                  <Button size="sm" variant="destructive" aria-label={`Delete event ${event.title}`} onClick={() => setEventToDelete(event)}><Trash2 className="mr-1 h-4 w-4" />Delete Event</Button>
+                </>
+              )} />
+              <DashboardEventList title="Creator Events" events={creatorEvents} mediaItems={mediaItemsArray} search={eventSearch} emptyMessage="No creator events yet." showPremium actions={event => (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => switchToMediaTab(event.id)}><Eye className="mr-1 h-4 w-4" />Manage Media</Button>
+                  <Button size="sm" variant="destructive" aria-label={`Delete event ${event.title}`} onClick={() => setEventToDelete(event)}><Trash2 className="mr-1 h-4 w-4" />Delete Event</Button>
+                </>
+              )} />
             </div>
           </TabsContent>
 

@@ -4,15 +4,15 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Event, MediaItem } from "@shared/schema";
 import { 
-  ArrowLeft, Loader2, Plus, Image as ImageIcon, Film, 
-  Edit, Eye, Trash2, PenLine
+  ArrowLeft, Loader2, Plus, Edit, Eye, PenLine
 } from "lucide-react";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
 import EditMediaModal from "@/components/edit-media-modal";
+import DashboardEventList from "@/components/dashboard-event-list";
 
 export default function CreatorDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -21,6 +21,7 @@ export default function CreatorDashboard() {
   const [selectedMediaItem, setSelectedMediaItem] = useState<MediaItem | null>(null);
   const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"events" | "media" | "analytics">("events");
+  const [eventSearch, setEventSearch] = useState("");
 
   // Load creator's events
   const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
@@ -97,7 +98,7 @@ export default function CreatorDashboard() {
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
-            <div className="flex justify-between items-center mb-8">
+             <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
               <h2 className="text-2xl font-bold">My Events</h2>
               <Button
                 onClick={() => {
@@ -111,7 +112,7 @@ export default function CreatorDashboard() {
               </Button>
             </div>
 
-            {!sortedEvents.length ? (
+             {!sortedEvents.length ? (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <p className="text-muted-foreground mb-4">
@@ -122,74 +123,19 @@ export default function CreatorDashboard() {
                   </Button>
                 </CardContent>
               </Card>
-            ) : (
-              <div className="grid gap-6">
-                {sortedEvents.map((event) => {
-                  const stats = getEventStats(event.id);
-                  return (
-                    <Card key={event.id} className="bg-black/40 border-primary/20">
-                      <CardHeader>
-                        <CardTitle className="text-xl font-[Orbitron] tracking-wider">
-                          {event.title}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-col gap-4">
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="secondary" className="flex gap-2 items-center">
-                              <ImageIcon className="h-3 w-3" />
-                              {stats.photos} Photos
-                            </Badge>
-                            <Badge variant="secondary" className="flex gap-2 items-center">
-                              <Film className="h-3 w-3" />
-                              {stats.videos} Videos
-                            </Badge>
-                            <Badge variant="outline" className="flex gap-2 items-center">
-                              {stats.totalDownloads} Downloads
-                            </Badge>
-                          </div>
-
-                          <div className="flex justify-between items-center">
-                            <p className="text-muted-foreground font-[Rajdhani]">
-                              {new Date(event.date).toLocaleDateString()}
-                            </p>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedEventId(event.id);
-                                  setUploadModalOpen(true);
-                                }}
-                              >
-                                <Edit className="h-4 w-4 mr-1" /> Edit Event
-                              </Button>
-                              <Button
-                                variant="secondary"
-                                onClick={() => {
-                                  setSelectedEventId(event.id);
-                                  setMediaUploadModalOpen(true);
-                                }}
-                              >
-                                <Plus className="h-4 w-4 mr-1" /> Upload Media
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedEventId(event.id);
-                                  setActiveTab("media");
-                                }}
-                              >
-                                <Eye className="h-4 w-4 mr-1" /> Manage Media
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
+             ) : (
+               <>
+                 <label htmlFor="creator-event-search" className="mb-2 block text-sm font-medium">Search events by title</label>
+                 <Input id="creator-event-search" type="search" value={eventSearch} onChange={e => setEventSearch(e.target.value)} placeholder="Search events..." className="mb-6 max-w-md" />
+                 <DashboardEventList title="My Events" events={sortedEvents} mediaItems={mediaItems} search={eventSearch} emptyMessage="No events created yet." actions={event => (
+                   <>
+                     <Button size="sm" variant="outline" onClick={() => { setSelectedEventId(event.id); setUploadModalOpen(true); }}><Edit className="mr-1 h-4 w-4" />Edit Event</Button>
+                     <Button size="sm" variant="secondary" onClick={() => { setSelectedEventId(event.id); setMediaUploadModalOpen(true); }}><Plus className="mr-1 h-4 w-4" />Upload Media</Button>
+                     <Button size="sm" variant="outline" onClick={() => { setSelectedEventId(event.id); setActiveTab("media"); }}><Eye className="mr-1 h-4 w-4" />Manage Media</Button>
+                   </>
+                 )} />
+               </>
+             )}
           </TabsContent>
 
           <TabsContent value="media" className="mt-6">
