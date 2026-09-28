@@ -95,16 +95,20 @@ keine vorhandenen Medien migrieren oder löschen.
 
 ### Nextcloud-Bildimport für Admins
 
-Nach der Migration `0002-nextcloud-import.sql` die Umgebungsvariable
-`NEXTCLOUD_BASE_URL` auf die HTTPS-Basisadresse **einer** vertrauenswürdigen
-Nextcloud-Instanz setzen (z. B. `https://cloud.example.org`, bei Installation
-im Unterpfad `https://cloud.example.org/nextcloud`). Nur Links dieser Instanz
-werden angenommen. Für interne Ordnerlinks zusätzlich `NEXTCLOUD_USERNAME`
-und das separate **App-Passwort** `NEXTCLOUD_APP_PASSWORD` als serverseitige
-Secrets einrichten. Das Konto braucht Lesezugriff auf die Ordner; reguläre
-Kontopasswörter nicht verwenden. Öffentliche Links `/s/TOKEN` brauchen keine
-Konto-Konfiguration; ein Freigabepasswort kann der Admin pro Link im Dialog
-eingeben. Die Zugangsdaten werden nicht in Importtabellen gespeichert. Nach
+Nach der Migration `0002-nextcloud-import.sql` sind öffentliche Freigaben
+von **`https://nextcloud.bs-plus.de/s/TOKEN`** ohne `NEXTCLOUD_BASE_URL` und
+ohne Nextcloud-Konto nutzbar. Andere Instanzen werden nur angenommen, wenn
+`NEXTCLOUD_BASE_URL` explizit auf deren HTTPS-Basisadresse gesetzt ist
+(z. B. `https://cloud.example.org`, bei Installation im Unterpfad
+`https://cloud.example.org/nextcloud`). Für interne Ordnerlinks muss diese
+Variable zur Instanz passen; zusätzlich `NEXTCLOUD_USERNAME` und das separate
+**App-Passwort** `NEXTCLOUD_APP_PASSWORD` als serverseitige Secrets einrichten.
+Das Konto braucht Lesezugriff auf die Ordner; reguläre Kontopasswörter nicht
+verwenden. Öffentliche Links `/s/TOKEN` auf der bekannten oder explizit
+konfigurierten Instanz brauchen keine Konto-Konfiguration; ein Freigabepasswort
+kann der Admin pro Link im Dialog eingeben. Bei fehlgeschlagenem Zugriff
+erscheint vor der Albumanlage ein Zugriffs- oder Netzwerkfehler. Die
+Zugangsdaten werden nicht in Importtabellen gespeichert. Nach
 einem Serverneustart oder Abbruch trägt der Admin dieselben Links (und
 gegebenenfalls Freigabepasswörter) erneut im Event-Dialog ein und startet
 den Import dort erneut. Bereits gespeicherte Dateien werden nicht verdoppelt.

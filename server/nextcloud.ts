@@ -17,7 +17,7 @@ import { generateTagsForImage, categorizeContent, isAITaggingConfigured } from "
 
 export class NextcloudError extends Error {}
 export type SourceInput = { link: string; password?: string };
-type Source = { root: URL; auth: string };
+type Source = { base: URL; root: URL; auth: string };
 type Found = { href: URL; name: string; bytes: number };
 const MAX_FILES = Math.min(500, mediaPolicy.eventCount);
 const MAX_BYTES = Math.min(500 * 1048576, mediaPolicy.eventBytes);
@@ -26,9 +26,11 @@ const MAX_MS = 10 * 60 * 1000;
 const parser = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, parseTagValue: false });
 const mime: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
 
-function instance(): URL {
+const PUBLIC_INSTANCE = new URL("https://nextcloud.bs-plus.de/");
+
+function instance(): URL | undefined {
   const value = process.env.NEXTCLOUD_BASE_URL;
-  if (!value) throw new NextcloudError("Nextcloud ist noch nicht vom Betreiber eingerichtet.");
+  if (!value) return undefined;
   let url: URL;
   try { url = new URL(value); } catch { throw new NextcloudError("Nextcloud-Konfiguration ist ungültig."); }
   if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !url.hostname)
@@ -51,13 +53,21 @@ function safePath(url: URL, base: URL): void {
 }
 
 export function resolveSource(input: SourceInput): Source {
-  const base = instance();
   if (input.link.length > 2048 || (input.password?.length ?? 0) > 256)
     throw new NextcloudError("Nextcloud-Link oder Freigabepasswort ist zu lang.");
   let link: URL;
   try { link = new URL(input.link); } catch { throw new NextcloudError("Bitte einen gültigen Nextcloud-Ordnerlink angeben."); }
-  if (link.protocol !== "https:" || link.origin !== base.origin || link.username || link.password || link.hash)
-    throw new NextcloudError("Nur HTTPS-Ordnerlinks der eingerichteten Nextcloud-Instanz sind erlaubt.");
+  if (link.protocol !== "https:" || link.username || link.password || link.hash)
+    throw new NextcloudError("Nur sichere HTTPS-Ordnerlinks ohne Zugangsdaten im Link sind erlaubt.");
+  // The operator's public instance is trusted independently of account configuration.
+  // Other hosts are accepted only when explicitly configured as the operator's instance.
+  const configuredBase = instance();
+  const base = link.origin === PUBLIC_INSTANCE.origin &&
+    (!configuredBase || configuredBase.origin !== link.origin ||
+      !link.pathname.startsWith(prefix(configuredBase) + "/"))
+    ? PUBLIC_INSTANCE : configuredBase;
+  if (!base || link.origin !== base.origin)
+    throw new NextcloudError("Diese Nextcloud-Instanz wird nicht unterstützt.");
   safePath(link, base);
   const relative = link.pathname.slice(prefix(base).length);
   const share = /^\/(?:index\.php\/)?s\/([A-Za-z0-9_-]+)\/?$/.exec(relative);
@@ -70,8 +80,10 @@ export function resolveSource(input: SourceInput): Source {
       throw new NextcloudError("Ungültiger Unterordner.");
     const root = new URL(`${prefix(base)}/public.php/dav/files/${share[1]}/${parts.map(encodeURIComponent).join("/")}${parts.length ? "/" : ""}`, base);
     safePath(root, base);
-    return { root, auth: "Basic " + Buffer.from(`${share[1]}:${input.password || ""}`).toString("base64") };
+    return { base, root, auth: "Basic " + Buffer.from(`${share[1]}:${input.password || ""}`).toString("base64") };
   }
+  if (!configuredBase || configuredBase.origin !== link.origin || prefix(configuredBase) !== prefix(base))
+    throw new NextcloudError("Interner Nextcloud-Zugang ist noch nicht eingerichtet.");
   const username = process.env.NEXTCLOUD_USERNAME;
   const password = process.env.NEXTCLOUD_APP_PASSWORD;
   if (!username || !password || /[/\\]/.test(username))
@@ -96,20 +108,26 @@ export function resolveSource(input: SourceInput): Source {
   });
   const root = new URL(`${prefix(base)}/remote.php/dav/files/${encodeURIComponent(username)}/${parts.join("/")}${parts.length ? "/" : ""}`, base);
   safePath(root, base);
-  return { root, auth: "Basic " + Buffer.from(`${username}:${password}`).toString("base64") };
+  return { base, root, auth: "Basic " + Buffer.from(`${username}:${password}`).toString("base64") };
 }
 
 async function request(url: URL, source: Source, method: string, signal?: AbortSignal): Promise<Response> {
-  const base = instance();
-  safePath(url, base);
+  safePath(url, source.base);
   // Every DAV href must stay beneath its selected folder, including encoded segments.
   if (url.pathname !== source.root.pathname && !url.pathname.startsWith(source.root.pathname.replace(/\/$/, "") + "/"))
     throw new NextcloudError("Datei liegt außerhalb des ausgewählten Ordners.");
-  const response = await fetch(url, {
-    method, redirect: "manual", signal: signal ?? AbortSignal.timeout(20000),
-    headers: { Authorization: source.auth, ...(method === "PROPFIND" ? { Depth: "1", "Content-Type": "application/xml" } : {}) },
-    ...(method === "PROPFIND" ? { body: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/></d:prop></d:propfind>' } : {}),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method, redirect: "manual", signal: signal ?? AbortSignal.timeout(20000),
+      headers: { Authorization: source.auth, ...(method === "PROPFIND" ? { Depth: "1", "Content-Type": "application/xml" } : {}) },
+      ...(method === "PROPFIND" ? { body: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/></d:prop></d:propfind>' } : {}),
+    });
+  } catch {
+    throw new NextcloudError("Nextcloud-Freigabe ist derzeit nicht erreichbar. Netzwerkverbindung prüfen.");
+  }
+  if (response.status >= 300 && response.status < 400)
+    throw new NextcloudError("Nextcloud hat auf eine andere Adresse umgeleitet; die Freigabe kann nicht sicher abgerufen werden.");
   if (response.status === 401 || response.status === 403) throw new NextcloudError("Kein Zugriff auf den Nextcloud-Ordner. Freigabepasswort oder Konto prüfen.");
   if (response.status === 404) throw new NextcloudError("Nextcloud-Ordner nicht gefunden.");
   if (!response.ok) throw new NextcloudError(`Nextcloud-Abruf fehlgeschlagen (HTTP ${response.status}).`);
@@ -153,7 +171,7 @@ export async function discover(inputs: SourceInput[]): Promise<{ sources: Source
       for (const row of Array.isArray(rows) ? rows : [rows]) {
         if (typeof row.href !== "string") continue;
         const href = new URL(row.href, folder.origin);
-        safePath(href, instance());
+        safePath(href, source.base);
         if (href.pathname !== source.root.pathname && !href.pathname.startsWith(source.root.pathname.replace(/\/$/, "") + "/"))
           throw new NextcloudError("Nextcloud-Antwort verweist außerhalb des Ordners.");
         if (href.search || href.hash) throw new NextcloudError("Ungültiger Dateilink in Nextcloud-Antwort.");

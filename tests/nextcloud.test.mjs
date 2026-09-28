@@ -10,6 +10,7 @@ import { registerRoutes } from "../server/routes.ts";
 import { eventCreateRoute } from "../client/src/lib/event-create-route.ts";
 
 const base = "https://cloud.example.invalid";
+const publicBase = "https://nextcloud.bs-plus.de";
 const previous = {
   base: process.env.NEXTCLOUD_BASE_URL,
   user: process.env.NEXTCLOUD_USERNAME,
@@ -47,6 +48,51 @@ test("public password, internal account and unsupported target validation", () =
   assert.throws(() => resolveSource({ link: `${base}/remote.php/dav/files/another/Events` }));
 });
 
+test("operator public shares work without an account, but internal and foreign links do not", async () => {
+  delete process.env.NEXTCLOUD_BASE_URL;
+  delete process.env.NEXTCLOUD_USERNAME;
+  delete process.env.NEXTCLOUD_APP_PASSWORD;
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url: new URL(url), options });
+    return new Response(dav("/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/",
+      [["/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/photo.jpg"]]), { status: 207 });
+  };
+  try {
+    const link = `${publicBase}/s/TEST_ONLY_NOT_A_REAL_SHARE`;
+    const found = await discover([{ link, password: "album-password" }]);
+    assert.equal(found.files.length, 1);
+    assert.equal(calls[0].url.href, `${publicBase}/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/`);
+    assert.equal(calls[0].options.redirect, "manual");
+    assert.equal(Buffer.from(calls[0].options.headers.Authorization.slice(6), "base64").toString(),
+      "TEST_ONLY_NOT_A_REAL_SHARE:album-password");
+    assert.throws(() => resolveSource({ link: `${publicBase}/apps/files/files/12?dir=/Album` }), /Interner Nextcloud-Zugang/);
+    assert.throws(() => resolveSource({ link: `${publicBase}/remote.php/dav/files/admin/Album` }), /Interner Nextcloud-Zugang/);
+    assert.throws(() => resolveSource({ link: "https://other.example/s/abc" }), /nicht unterstützt/);
+    assert.throws(() => resolveSource({ link: "http://nextcloud.bs-plus.de/s/abc" }), /HTTPS/);
+    assert.throws(() => resolveSource({ link: "https://nextcloud.bs-plus.de:444/s/abc" }), /nicht unterstützt/);
+    assert.throws(() => resolveSource({ link: "https://nextcloud.bs-plus.de.evil.example/s/abc" }), /nicht unterstützt/);
+    assert.equal(calls.length, 1, "invalid links must be rejected before any network request");
+    globalThis.fetch = async () => new Response("", { status: 401 });
+    await assert.rejects(() => discover([{ link, password: "wrong" }]), /Kein Zugriff/);
+    globalThis.fetch = async () => new Response("", { status: 404 });
+    await assert.rejects(() => discover([{ link }]), /nicht gefunden/);
+    globalThis.fetch = async () => { throw new TypeError("network failure"); };
+    await assert.rejects(() => discover([{ link }]), /nicht erreichbar/);
+    globalThis.fetch = async () => new Response("", { status: 302, headers: { Location: "http://127.0.0.1/" } });
+    await assert.rejects(() => discover([{ link }]), /umgeleitet/);
+    globalThis.fetch = async () => new Response(dav("/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/",
+      [["https://other.example/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/photo.jpg"]]), { status: 207 });
+    await assert.rejects(() => discover([{ link }]), /unsicherer Nextcloud-Pfad/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.NEXTCLOUD_BASE_URL = base;
+    process.env.NEXTCLOUD_USERNAME = "admin";
+    process.env.NEXTCLOUD_APP_PASSWORD = "test-app-password";
+  }
+});
+
 test("multiple links, recursive folders, mixed files and access failures", async () => {
   const originalFetch = globalThis.fetch;
   const seen = [];
@@ -73,7 +119,7 @@ test("multiple links, recursive folders, mixed files and access failures", async
     globalThis.fetch = async () => new Response("", { status: 401 });
     await assert.rejects(() => discover([{ link: `${base}/s/abc`, password: "bad" }]), /Kein Zugriff/);
     globalThis.fetch = async () => new Response("", { status: 302, headers: { Location: "http://127.0.0.1/" } });
-    await assert.rejects(() => discover([{ link: `${base}/s/abc` }]), /HTTP 302/);
+    await assert.rejects(() => discover([{ link: `${base}/s/abc` }]), /umgeleitet/);
     globalThis.fetch = async () => new Response(dav("/public.php/dav/files/abc/", [["/remote.php/dav/files/admin/private.jpg"]]), { status: 207 });
     await assert.rejects(() => discover([{ link: `${base}/s/abc` }]), /außerhalb/);
   } finally { globalThis.fetch = originalFetch; }
@@ -125,7 +171,10 @@ test("a failed image does not block the others, and retry does not duplicate sav
   }
 });
 
-test("a dual-role admin creates an admin album and can start its Nextcloud import", async () => {
+test("admin can preview and import an operator public share without Nextcloud configuration", async () => {
+  delete process.env.NEXTCLOUD_BASE_URL;
+  delete process.env.NEXTCLOUD_USERNAME;
+  delete process.env.NEXTCLOUD_APP_PASSWORD;
   const route = eventCreateRoute({ id: 42, isAdmin: true, isCreator: true }, "nextcloud");
   assert.deepEqual(route, { endpoint: "/api/events" });
   assert.equal(eventCreateRoute({ id: 42, isCreator: true }, "local").endpoint, "/api/creator/events");
@@ -144,11 +193,24 @@ test("a dual-role admin creates an admin album and can start its Nextcloud impor
   const address = `http://127.0.0.1:${server.address().port}`;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, options) => {
-    if (new URL(url).origin !== base) return originalFetch(url, options);
+    if (new URL(url).origin !== publicBase) return originalFetch(url, options);
     return new Response(dav("/public.php/dav/files/abc/", []), { status: 207 });
   };
   let eventId;
   try {
+    const invalid = await originalFetch(`${address}/api/admin/nextcloud/preview`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sources: [{ link: `${publicBase}/apps/files/files/12?dir=/Album` }] }),
+    });
+    assert.equal(invalid.status, 400);
+    assert.match((await invalid.json()).error, /Interner Nextcloud-Zugang/);
+    const preview = await originalFetch(`${address}/api/admin/nextcloud/preview`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sources: [{ link: `${publicBase}/s/abc`, password: "private" }] }),
+    });
+    const previewBody = await preview.json();
+    assert.equal(preview.status, 200, JSON.stringify(previewBody));
+    assert.equal(previewBody.count, 0);
     const created = await originalFetch(address + route.endpoint, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "Dual-role admin import", description: "Temporary test",
@@ -160,7 +222,7 @@ test("a dual-role admin creates an admin album and can start its Nextcloud impor
     assert.equal(event.creatorId, null);
     const started = await originalFetch(`${address}/api/admin/events/${eventId}/nextcloud`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sources: [{ link: `${base}/s/abc` }] }),
+      body: JSON.stringify({ sources: [{ link: `${publicBase}/s/abc`, password: "private" }] }),
     });
     assert.equal(started.status, 202, await started.text());
     for (let attempt = 0; attempt < 20; attempt++) {
@@ -170,6 +232,9 @@ test("a dual-role admin creates an admin album and can start its Nextcloud impor
     assert.equal((await importStatus(eventId)).status, "completed");
   } finally {
     globalThis.fetch = originalFetch;
+    process.env.NEXTCLOUD_BASE_URL = base;
+    process.env.NEXTCLOUD_USERNAME = "admin";
+    process.env.NEXTCLOUD_APP_PASSWORD = "test-app-password";
     if (eventId) await storage.deleteEvent(eventId);
     await new Promise(resolve => server.close(resolve));
   }

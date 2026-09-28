@@ -48,6 +48,7 @@ export default function UploadModal({
   const [preview, setPreview] = useState<{ count: number; skipped: number } | null>(null);
   const [importEventId, setImportEventId] = useState<number | null>(null);
   const [importBusy, setImportBusy] = useState(false);
+  const [previewBusy, setPreviewBusy] = useState(false);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
 
   const { data: eventData } = useQuery<Event>({
@@ -77,11 +78,14 @@ export default function UploadModal({
   };
   const checkLinks = async () => {
     setPreview(null);
+    setPreviewBusy(true);
     try {
       const result = await nextcloudPost("/api/admin/nextcloud/preview", { sources: sources() });
       setPreview(result);
     } catch (error) {
       toast({ title: "Nextcloud-Zugriff fehlgeschlagen", description: (error as Error).message, variant: "destructive" });
+    } finally {
+      setPreviewBusy(false);
     }
   };
 
@@ -240,6 +244,9 @@ export default function UploadModal({
       setValidationSummary([]);
       if (imageSource === "nextcloud") {
         setImportBusy(true);
+        // Recheck the current inputs before creating an album, even if the preview
+        // was for an older link or the share has since become unavailable.
+        await nextcloudPost("/api/admin/nextcloud/preview", { sources: sources() });
         const id = importEventId || (isEditing ? eventId : null);
         const event = id ? null : await createMutation.mutateAsync(data);
         const targetId = id || event.id;
@@ -394,11 +401,11 @@ export default function UploadModal({
                 </SelectContent>
               </Select>
               {imageSource === "nextcloud" && <>
-                <p className="text-sm text-muted-foreground">Alle Links und Unterordner werden in dieses eine Album importiert. Für interne Links muss der Betreiber den Nextcloud-Zugang einrichten.</p>
+                 <p className="text-sm text-muted-foreground">Öffentliche Ordnerlinks von nextcloud.bs-plus.de funktionieren ohne Nextcloud-Konto. Ein Freigabepasswort kann unten eingegeben werden. Für interne Links muss der Betreiber die Instanz und den Nextcloud-Zugang einrichten. Alle Links und Unterordner werden in dieses eine Album importiert.</p>
                 {links.map((entry, i) => (
                   <div className="space-y-2 border-b pb-3" key={i}>
                     <Label htmlFor={`nc-link-${i}`}>Ordnerlink {i + 1}</Label>
-                    <Input id={`nc-link-${i}`} type="url" value={entry.link} placeholder="https://cloud.example/s/..."
+                     <Input id={`nc-link-${i}`} type="url" value={entry.link} placeholder="https://nextcloud.bs-plus.de/s/..."
                       onChange={e => { const next = [...links]; next[i] = { ...entry, link: e.target.value }; setLinks(next); setPreview(null); }} />
                     <Input aria-label={`Freigabepasswort für Link ${i + 1}`} type="password" autoComplete="off"
                       placeholder="Freigabepasswort (falls erforderlich)" value={entry.password}
@@ -408,7 +415,7 @@ export default function UploadModal({
                 ))}
                  <div className="flex flex-wrap gap-2">
                   <Button type="button" variant="outline" disabled={links.length >= 10} onClick={() => setLinks([...links, { link: "", password: "" }])}>Weiterer Link</Button>
-                  <Button type="button" variant="outline" onClick={checkLinks}>Zugriff und Bilder prüfen</Button>
+                   <Button type="button" variant="outline" disabled={previewBusy || importBusy} onClick={checkLinks}>{previewBusy ? "Prüfe Zugriff..." : "Zugriff und Bilder prüfen"}</Button>
                 </div>
                 {preview && <p role="status">{preview.count} Bilder gefunden; {preview.skipped} Dateien übersprungen.</p>}
                 {importProgress && <div role="status" className="text-sm space-y-1">
@@ -435,7 +442,7 @@ export default function UploadModal({
             </Button>
             <Button
               type="submit"
-              disabled={createMutation.isPending || updateMutation.isPending || importBusy || (imageSource === "nextcloud" && !preview)}
+               disabled={createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (imageSource === "nextcloud" && !preview)}
               className="bg-primary text-black hover:bg-primary/90"
             >
               {createMutation.isPending || updateMutation.isPending || importBusy ? (
