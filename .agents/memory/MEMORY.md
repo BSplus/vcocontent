@@ -13,3 +13,5 @@
 - [Nextcloud media classification](nextcloud-media-classification.md) — import and progress intentionally share extension-based classification; validate downloaded content separately.
 - [Admin diagnostic cooldown](admin-diagnostic-cooldown.md) — the inexpensive per-admin OpenAI probe limit is process-local; scale-out needs shared coordination.
 - [Express wildcard SEO paths](express-wildcard-seo-paths.md) — fallback middleware sees a mount-relative path; use the original URL to render route-specific metadata.
+- [Entry-list PDF layout](entry-list-pdf-layout.md) — searchable table PDFs can produce hundreds of false rows when flattened; check real documents as well as synthetic fixtures.
+- [Python tooling in Node projects](python-tooling-node-projects.md) — installing a Python inspection package may generate Python scaffolding and alter Replit Nix config.

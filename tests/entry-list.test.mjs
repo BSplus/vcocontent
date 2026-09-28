@@ -14,12 +14,12 @@ function completionResponse(rows, model = "gpt-4.1-mini") {
   }), { status: 200, headers: { "content-type": "application/json" } });
 }
 
-function makePdf(text = "") {
+function makePdf(text = "", mediaBox = "0 0 360 100") {
   const stream = text.startsWith("RAW:") ? text.slice(4) : text ? `BT /F1 12 Tf 10 60 Td (${text}) Tj ET` : "";
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 360 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [${mediaBox}] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>`,
     `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
   ];
@@ -100,6 +100,26 @@ test("positioned PDF table columns yield complete editable entries without visio
   assert.deepEqual(result.rows, [{
     number: "007", team: "Apex Racing", car: "GT3", drivers: "Ada One", issues: [],
   }]);
+});
+
+test("multi-line driver names in a position-based PDF table stay with their numbered entry", async () => {
+  const cells = [
+    ["CAR NO.", 47, 473], ["DRIVERS", 163, 473], ["TEAM", 386, 473],
+    ["CAR TYPE", 597, 473], ["TIRE", 723, 473],
+    ["1", 55, 443], ["Diogo Pinto", 106, 453], ["Enzo Bonito", 106, 443],
+    ["BMW M Racing", 275, 448], ["BMW M Hybrid V8", 578, 448], ["Michelin", 715, 448],
+    ["3", 55, 410], ["Loic Rabier", 106, 419], ["Marcus Hamilton", 106, 409],
+    ["Mivano", 275, 414], ["Acura ARX-06 GTP", 576, 414], ["Michelin", 715, 414],
+    ["Page 1 of 1", 725, 22],
+  ];
+  const stream = cells.map(([value, x, y]) =>
+    `BT /F1 10 Tf ${x} ${y} Td (${value}) Tj ET`).join("\n");
+  const result = await parseEntryFile(makePdf("RAW:" + stream, "0 0 792 612"), "application/pdf", "entry-list.pdf");
+  assert.deepEqual(result.rows, [
+    { number: "1", team: "BMW M Racing", car: "BMW M Hybrid V8", drivers: "Diogo Pinto, Enzo Bonito", issues: [] },
+    { number: "3", team: "Mivano", car: "Acura ARX-06 GTP", drivers: "Loic Rabier, Marcus Hamilton", issues: [] },
+  ]);
+  assert.deepEqual(result.issues, []);
 });
 
 test("screenshot extraction uses one bounded managed OpenAI vision request and validates rows", async () => {

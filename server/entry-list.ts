@@ -52,7 +52,7 @@ const fields: EntryField[] = ["number", "team", "car", "drivers"];
 const aliases: Record<EntryField, string[]> = {
   number: ["number", "no", "num", "car number", "car no", "start number", "start no", "startnummer", "#"],
   team: ["team", "entrant", "constructor", "entry"],
-  car: ["car", "vehicle", "model", "class car"],
+  car: ["car", "car type", "vehicle", "model", "class car"],
   drivers: ["drivers", "driver", "pilot", "pilots", "racer", "racing driver"],
 };
 
@@ -301,7 +301,77 @@ async function normalizeScreenshot(buffer: Buffer): Promise<{ bytes: Buffer; mim
   }
 }
 
-async function getPdfText(buffer: Buffer): Promise<{ text: string; pages: number }> {
+type PositionedText = { str: string; transform: number[]; width: number };
+
+function parsePositionedPdfPage(items: PositionedText[], pageHeight: number): EditableEntryRow[] {
+  const text = items.filter(item => item.str.trim() && item.transform.length >= 6).map(item => ({
+    value: item.str.trim(), x: item.transform[4], y: item.transform[5], width: item.width || 0,
+  }));
+  const headers = fields.map(field => text.find(item => aliases[field].includes(normalizeHeader(item.value).trim())));
+  if (headers.some(header => !header) ||
+      headers.some(header => Math.abs(header!.y - headers[0]!.y) > 3)) return [];
+  const headerY = headers[0]!.y;
+  const columns: Array<{ field: EntryField | "tire"; x: number }> = fields.map((field, index) => ({ field, x: headers[index]!.x }))
+    .sort((a, b) => a.x - b.x);
+  const tire = text.find(item => normalizeHeader(item.value).trim() === "tire" && Math.abs(item.y - headerY) <= 3);
+  if (tire) columns.push({ field: "tire", x: tire.x });
+  columns.sort((a, b) => a.x - b.x);
+  // PDF headers are centered, but cell values often begin just left of their
+  // column's visual center. Leave a little room for that alignment.
+  const boundaries = columns.slice(1).map((column, index) => (column.x + columns[index].x) / 2 - 8);
+  const columnFor = (x: number) => {
+    const index = boundaries.findIndex(boundary => x < boundary);
+    return columns[index < 0 ? columns.length - 1 : index]?.field;
+  };
+  const body = text.filter(item => item.y < headerY - 6 && item.y > pageHeight * 0.08);
+  const anchors = body.filter(item => columnFor(item.x) === "number" && /^\d{1,4}$/.test(item.value))
+    .sort((a, b) => b.y - a.y);
+  if (!anchors.length) return [];
+  const cells = anchors.map(anchor => ({
+    number: anchor.value,
+    team: [] as typeof text,
+    car: [] as typeof text,
+    drivers: [] as typeof text,
+  }));
+  for (const item of body) {
+    const field = columnFor(item.x);
+    if (!field || field === "number" || field === "tire") continue;
+    let closest = -1;
+    let distance = 18;
+    for (let index = 0; index < anchors.length; index++) {
+      const offset = Math.abs(item.y - anchors[index].y);
+      if (offset < distance) { distance = offset; closest = index; }
+    }
+    if (closest >= 0) cells[closest][field].push(item);
+  }
+  return cells.map(cell => {
+    const row = emptyRow();
+    row.number = cell.number;
+    for (const field of ["team", "car", "drivers"] as const) {
+      const lines = new Map<number, typeof text>();
+      for (const item of cell[field]) {
+        const y = Math.round(item.y);
+        const parts = lines.get(y) || [];
+        parts.push(item);
+        lines.set(y, parts);
+      }
+      const value = Array.from(lines.entries()).sort((a, b) => b[0] - a[0])
+        .map(([, parts]) => parts.sort((a, b) => a.x - b.x)
+          .reduce((joined, part, index) => {
+            if (!index) return part.value;
+            const previous = parts[index - 1];
+            return joined + (part.x - previous.x - previous.width > 1 ? " " : "") + part.value;
+          }, ""))
+        .join(field === "drivers" ? ", " : " ");
+      row[field] = value.slice(0, ENTRY_LIST_LIMITS.cellCharacters);
+      if (!row[field]) row.issues.push(`Missing ${field} value.`);
+      if (value.length > ENTRY_LIST_LIMITS.cellCharacters) row.issues.push(`${field} was shortened to 500 characters.`);
+    }
+    return row;
+  });
+}
+
+async function getPdfText(buffer: Buffer): Promise<{ text: string; pages: number; positionedRows: EditableEntryRow[] }> {
   try {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
     const document = await pdfjs.getDocument({
@@ -312,9 +382,17 @@ async function getPdfText(buffer: Buffer): Promise<{ text: string; pages: number
     }).promise;
     const pageCount = document.numPages;
     const lines: string[] = [];
+    const positionedRows: EditableEntryRow[] = [];
     for (let pageNumber = 1; pageNumber <= Math.min(pageCount, ENTRY_LIST_LIMITS.pages); pageNumber++) {
       const page = await document.getPage(pageNumber);
       const content = await page.getTextContent();
+      if (positionedRows.length < ENTRY_LIST_LIMITS.rows) {
+        positionedRows.push(...parsePositionedPdfPage(
+          content.items.filter((item): item is typeof item & PositionedText =>
+            "str" in item && "transform" in item && "width" in item) as PositionedText[],
+          page.view[3] - page.view[1],
+        ).slice(0, ENTRY_LIST_LIMITS.rows - positionedRows.length));
+      }
       const grouped = new Map<number, Array<{ x: number; width: number; text: string }>>();
       for (const item of content.items) {
         if (!("str" in item) || !item.str.trim()) continue;
@@ -342,7 +420,7 @@ async function getPdfText(buffer: Buffer): Promise<{ text: string; pages: number
       if (lines.join("\n").length > 300_000) break;
     }
     await document.destroy();
-    return { text: lines.join("\n"), pages: pageCount };
+    return { text: lines.join("\n"), pages: pageCount, positionedRows };
   } catch {
     throw new Error("The PDF is invalid, encrypted, or could not be read.");
   }
@@ -407,6 +485,15 @@ export async function parseEntryFile(buffer: Buffer, mime: string, name: string)
   }
 
   const extracted = await getPdfText(buffer);
+  if (extracted.positionedRows.length) {
+    const issues = extracted.positionedRows.flatMap((row, index) =>
+      row.issues.length ? [`Entry ${index + 1}: ${row.issues.join(" ")}`] : []);
+    if (extracted.pages > ENTRY_LIST_LIMITS.pages) issues.push(`Only the first ${ENTRY_LIST_LIMITS.pages} PDF pages were inspected.`);
+    const declared = /Total Entries:\s*(\d+)/i.exec(extracted.text)?.[1];
+    if (declared && Number(declared) !== extracted.positionedRows.length && extracted.pages <= ENTRY_LIST_LIMITS.pages)
+      issues.push(`The PDF states ${declared} entries, but ${extracted.positionedRows.length} were found. Review the preview before saving.`);
+    return flagAmbiguousNumbers({ rows: extracted.positionedRows, issues });
+  }
   const textResult = extracted.text.trim() ? parseTable(extracted.text) : { rows: [], issues: [] };
   if (textResult.rows.some(row => /^\d{1,4}$/.test(row.number) && row.team && row.car && row.drivers)) {
     if (extracted.pages > ENTRY_LIST_LIMITS.pages) textResult.issues.push(`Only the first ${ENTRY_LIST_LIMITS.pages} PDF pages were inspected.`);
