@@ -171,6 +171,9 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
     }
 
     for (const role of ["user", "creator", "approved", "admin"]) {
+      // A late request from the previous page can set a fresh session cookie
+      // after logout; isolate each disposable role before checking its boundary.
+      await instance.send("Network.clearBrowserCookies", {}, sessionId);
       const before = await instance.send("Network.getCookies", { urls: [base] }, sessionId);
       assert.ok(!before.cookies.some(cookie => cookie.name === "vco.sid"), `${role}: previous browser session persisted`);
       const username = `page_smoke_${role}_${randomUUID().slice(0, 10)}`;
@@ -253,6 +256,112 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
       }
       assert.equal(navigation?.includes("Creator dashboard"), role !== "user", `${role}: creator dashboard navigation`);
       if (role === "admin") {
+        // Exercise both responsive admin layouts with disposable user/event fixtures.
+        const fixture = await fetch(new URL("/api/events", base), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Cookie: cookie },
+          body: JSON.stringify({ title: `Mobile admin ${randomUUID().slice(0, 8)}`, date: new Date().toISOString(), description: "Viewport fixture" }),
+        });
+        assert.equal(fixture.status, 201, "create disposable admin event");
+        const event = await fixture.json();
+        try {
+          await pool.query(
+            "INSERT INTO media_items (event_id, type, url, thumbnail, caption) VALUES ($1, 'image', $2, $2, 'Mobile edit fixture')",
+            [event.id, "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="],
+          );
+          await instance.send("Emulation.setDeviceMetricsOverride", {
+            width: 360, height: 640, deviceScaleFactor: 1, mobile: true,
+          }, sessionId);
+          const noOverflow = async context => {
+            const metrics = await evaluate("({width:document.documentElement.clientWidth, scroll:document.documentElement.scrollWidth})");
+            assert.ok(metrics.scroll <= metrics.width + 1, `${context}: horizontal overflow ${JSON.stringify(metrics)}`);
+          };
+          await visit("/admin/users", { path: "/admin/users", text: "USER MANAGEMENT" });
+          await noOverflow("mobile users");
+          assert.equal(await evaluate("!!document.querySelector('section[aria-label^=\"User \"] dl')"), true);
+          assert.equal(await evaluate("getComputedStyle(document.querySelector('table').parentElement.parentElement).display"), "none");
+          assert.equal(await evaluate("!!document.querySelector('section[aria-label^=\"User \"] button')"), true, "mobile role action missing");
+          const fixtureUser = accounts[0];
+          const username = (await (await fetch(new URL("/api/admin/users", base), { headers: { Cookie: cookie } })).json())
+            .find(user => user.id === fixtureUser).username;
+          await evaluate(`document.querySelector('section[aria-label=${JSON.stringify(`User ${username}`)}] button:last-child').click()`);
+          const roleDeadline = Date.now() + 5000;
+          while (Date.now() < roleDeadline) {
+            if ((await pool.query("SELECT is_creator FROM users WHERE id = $1", [fixtureUser])).rows[0]?.is_creator) break;
+            await delay(100);
+          }
+          assert.equal((await pool.query("SELECT is_creator FROM users WHERE id = $1", [fixtureUser])).rows[0]?.is_creator, true, "mobile role action did not apply");
+          await evaluate("document.querySelector('button[aria-label=\"Open navigation\"]').click()");
+          assert.equal(await evaluate("!!document.querySelector('nav[aria-label=\"Mobile navigation\"] a[href=\"/admin/dashboard\"]')"), true);
+          await evaluate("document.querySelector('nav[aria-label=\"Mobile navigation\"] a[href=\"/admin/dashboard\"]').click()");
+          await waitForPage("/admin/dashboard", { path: "/admin/dashboard", text: "ADMIN DASHBOARD" });
+          await noOverflow("mobile dashboard");
+          await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Create VCO Event')).click()");
+          assert.equal(await evaluate("!!document.querySelector('[role=dialog] input[type=date]')"), true);
+          assert.equal(await evaluate("!!document.querySelector('[role=dialog] #image-source')"), true);
+          assert.equal(await evaluate("!!document.querySelector('[role=dialog] button')"), true);
+          assert.equal(await evaluate("(() => {const d=document.querySelector('[role=dialog]'); return d.scrollHeight>d.clientHeight && d.getBoundingClientRect().bottom<=innerHeight})()"), true, "event form should scroll inside viewport");
+          await evaluate("document.querySelector('#image-source').focus(); document.querySelector('#image-source').dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true}))");
+          for (let i = 0; i < 20 && !await evaluate("!!document.querySelector('[role=option]')"); i++)
+            await delay(100);
+          assert.equal(await evaluate("[...document.querySelectorAll('[role=option]')].some(o=>o.textContent.includes('Nextcloud'))"), true, "Nextcloud selection inaccessible");
+          await evaluate("[...document.querySelectorAll('[role=option]')].find(o=>o.textContent.includes('Nextcloud')).click()");
+          assert.equal(await evaluate("!!document.querySelector('[role=dialog] input[type=url]')"), true, "Nextcloud link field missing");
+          assert.equal(await evaluate("!!document.querySelector('[role=dialog] input[type=password]')"), true, "Nextcloud password field missing");
+          await noOverflow("mobile Nextcloud dialog");
+          await evaluate("document.querySelector('[role=dialog] button:has(svg.lucide-x)').click()");
+          for (let i = 0; i < 20 && await evaluate("!!document.querySelector('[role=dialog]')"); i++)
+            await delay(100);
+          await evaluate("[...document.querySelectorAll('[role=tab]')].find(t=>t.textContent.includes('Media Management')).dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0}))");
+          for (let i = 0; i < 20 && !await evaluate("!!document.querySelector('select[aria-label=\"Select event for media management\"]')"); i++)
+            await delay(100);
+          assert.equal(await evaluate("!!document.querySelector('select[aria-label=\"Select event for media management\"]')"), true,
+            `media tab missing: ${JSON.stringify(await evaluate("({tabs:[...document.querySelectorAll('[role=tab]')].map(t=>[t.textContent,t.getAttribute('data-state')]),dialog:!!document.querySelector('[role=dialog]'),panels:[...document.querySelectorAll('[role=tabpanel]')].map(p=>[p.getAttribute('data-state'),p.textContent.slice(0,60)])})"))}`);
+          await noOverflow("mobile media tab");
+          await evaluate(`(() => {const s=document.querySelector('select[aria-label="Select event for media management"]'); s.value=${JSON.stringify(String(event.id))}; s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+          for (let i = 0; i < 20 && !await evaluate("document.body.innerText.includes('Mobile edit fixture')"); i++)
+            await delay(100);
+          assert.equal(await evaluate("document.body.innerText.includes('Mobile edit fixture')"), true);
+          assert.equal(await evaluate("[...document.querySelectorAll('button')].some(b=>b.textContent==='Previous') && [...document.querySelectorAll('button')].some(b=>b.textContent==='Next')"), true, "media pagination missing");
+          await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Edit Media')).click()");
+          assert.equal(await evaluate("!!document.querySelector('[role=dialog] input#tags')"), true);
+          assert.equal(await evaluate("document.querySelector('[role=dialog]').getBoundingClientRect().bottom<=innerHeight"), true);
+          await evaluate("document.querySelector('[role=dialog] button:has(svg.lucide-x)').click()");
+          for (let i = 0; i < 20 && await evaluate("!!document.querySelector('[role=dialog]')"); i++)
+            await delay(100);
+          await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Upload Media')).click()");
+          assert.equal(await evaluate("!!document.querySelector('[role=dialog] button[type=button]')"), true, "upload file picker inaccessible");
+          assert.equal(await evaluate("document.querySelector('[role=dialog]').getBoundingClientRect().bottom<=innerHeight"), true);
+          await evaluate("document.querySelector('[role=dialog] button:has(svg.lucide-x)').click()");
+          await evaluate("[...document.querySelectorAll('[role=tab]')].find(t=>t.textContent.includes('Race Series')).dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0}))");
+          await noOverflow("mobile series tab");
+          await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Add Series')).click()");
+          assert.equal(await evaluate("!!document.querySelector('input[aria-label=\"Series logo\"]')"), true);
+          await noOverflow("mobile series form");
+          await instance.send("Emulation.setDeviceMetricsOverride", {
+            width: 1280, height: 800, deviceScaleFactor: 1, mobile: false,
+          }, sessionId);
+          await visit("/admin/users", { path: "/admin/users", text: "USER MANAGEMENT" });
+          await noOverflow("desktop users");
+          assert.notEqual(await evaluate("getComputedStyle(document.querySelector('table').parentElement.parentElement).display"), "none");
+          assert.equal(await evaluate("!!document.querySelector('table button')"), true, "desktop role action missing");
+          await visit("/admin/dashboard", { path: "/admin/dashboard", text: "ADMIN DASHBOARD" });
+          await noOverflow("desktop dashboard");
+          await evaluate("[...document.querySelectorAll('[role=tab]')].find(t=>t.textContent.includes('Race Series')).dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0}))");
+          for (let i = 0; i < 20 && !await evaluate("document.body.innerText.includes('RACE SERIES MANAGEMENT')"); i++)
+            await delay(100);
+          assert.equal(await evaluate("document.body.innerText.includes('RACE SERIES MANAGEMENT')"), true);
+          await evaluate("[...document.querySelectorAll('[role=tab]')].find(t=>t.textContent==='Events').dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0}))");
+          await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Create VCO Event')).click()");
+          assert.equal(await evaluate("!!document.querySelector('[role=dialog] input#title')"), true, "desktop event dialog missing");
+          await evaluate("document.querySelector('[role=dialog] button:has(svg.lucide-x)').click()");
+        } finally {
+          await instance.send("Emulation.clearDeviceMetricsOverride", {}, sessionId);
+          const removed = await fetch(new URL(`/api/events/${event.id}`, base), {
+            method: "DELETE", headers: { Cookie: cookie },
+          });
+          assert.ok(removed.ok, "remove disposable event");
+        }
         let restore = await failApi("/api/events");
         try {
           const state = await visit("/admin/dashboard",

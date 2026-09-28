@@ -140,7 +140,7 @@ export default function EditMediaModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit Media</DialogTitle>
         </DialogHeader>
@@ -180,7 +180,7 @@ export default function EditMediaModal({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+             <div className="flex flex-wrap items-center justify-between gap-2">
               <Label htmlFor="tags">Tags (comma-separated)</Label>
               <Button
                 type="button"
@@ -235,7 +235,7 @@ export default function EditMediaModal({
             )}
           </div>
 
-          <div className="flex justify-end gap-2">
+           <div className="flex flex-wrap justify-end gap-2">
             <Button
               type="button"
               variant="outline"

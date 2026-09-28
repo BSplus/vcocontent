@@ -286,7 +286,7 @@ export default function UploadModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl sm:max-h-[90vh] max-h-[100vh] overflow-y-auto">
+       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "Edit Event" : "Create New Event"}
@@ -365,7 +365,7 @@ export default function UploadModal({
               accept="image/*"
               onChange={handleThumbnailChange}
             />
-            <div className="relative h-40 border rounded-lg overflow-hidden bg-black/20 group">
+             <div className="relative h-40 border rounded-lg overflow-hidden bg-black/20">
               {thumbnailPreview ? (
                 <img
                   src={thumbnailPreview}
@@ -377,18 +377,10 @@ export default function UploadModal({
                   <ImageIcon className="h-8 w-8" />
                 </div>
               )}
-              <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="bg-transparent border-primary/20"
-                  onClick={() => thumbnailInputRef.current?.click()}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Choose Thumbnail
-                </Button>
-              </div>
             </div>
+             <Button type="button" variant="outline" onClick={() => thumbnailInputRef.current?.click()}>
+               <Upload className="h-4 w-4 mr-2" /> Choose Thumbnail
+             </Button>
           </div>
 
           {user?.isAdmin && (
@@ -414,7 +406,7 @@ export default function UploadModal({
                     {links.length > 1 && <Button type="button" variant="ghost" onClick={() => { setLinks(links.filter((_, index) => index !== i)); setPreview(null); }}>Link entfernen</Button>}
                   </div>
                 ))}
-                <div className="flex gap-2">
+                 <div className="flex flex-wrap gap-2">
                   <Button type="button" variant="outline" disabled={links.length >= 10} onClick={() => setLinks([...links, { link: "", password: "" }])}>Weiterer Link</Button>
                   <Button type="button" variant="outline" onClick={checkLinks}>Zugriff und Bilder prüfen</Button>
                 </div>
@@ -432,7 +424,7 @@ export default function UploadModal({
             </div>
           )}
 
-          <div className="flex justify-end gap-2">
+           <div className="flex flex-wrap justify-end gap-2">
             <Button
               type="button"
               variant="outline"

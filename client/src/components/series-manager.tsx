@@ -147,7 +147,7 @@ export default function SeriesManager() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-3">
         <h2 className="text-2xl font-bold">Race Series Management</h2>
         <Button 
           onClick={() => setEditingSeries({ name: '', logo: '', description: '' } as Series)}
@@ -168,7 +168,8 @@ export default function SeriesManager() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Input
+                 <Input
+                   aria-label="Series name"
                   placeholder="Series Name"
                   value={editingSeries.name}
                   onChange={(e) => setEditingSeries({ ...editingSeries, name: e.target.value })}
@@ -182,9 +183,11 @@ export default function SeriesManager() {
                 />
               </div>
               <div>
-                <Input
+                 <Input
+                   aria-label="Series logo"
                   type="file"
                   accept=".png"
+                   className="max-w-full"
                   onChange={handleLogoChange}
                 />
                 <p className="text-sm text-muted-foreground mt-1">
@@ -200,7 +203,7 @@ export default function SeriesManager() {
                   />
                 </div>
               )}
-              <div className="flex gap-2 pt-4">
+               <div className="flex flex-wrap gap-2 pt-4">
                 <Button
                   type="submit"
                   disabled={createSeriesMutation.isPending || updateSeriesMutation.isPending}
@@ -226,44 +229,44 @@ export default function SeriesManager() {
       <div className="grid gap-4">
         {series?.map((s) => (
           <Card key={s.id} className="bg-black/40 border-primary/20">
-            <CardContent className="flex items-center justify-between py-6">
-              <div className="flex items-center gap-4">
+             <CardContent className="flex flex-wrap items-center justify-between gap-4 py-6">
+               <div className="flex min-w-0 items-center gap-4">
                 {s.logo ? (
                   <img
                     src={s.logo}
                     alt={s.name}
-                    className="h-8 object-contain"
+                     className="h-8 w-8 shrink-0 object-contain"
                   />
                 ) : (
-                  <div className="h-8 w-8 bg-primary/20 rounded flex items-center justify-center">
+                   <div className="h-8 w-8 shrink-0 bg-primary/20 rounded flex items-center justify-center">
                     <Trophy className="h-4 w-4 text-primary" />
                   </div>
                 )}
-                <div>
-                  <h3 className="font-semibold">{s.name}</h3>
+                 <div className="min-w-0">
+                   <h3 className="break-words font-semibold">{s.name}</h3>
                   {s.description && (
-                    <p className="text-sm text-muted-foreground">{s.description}</p>
+                     <p className="break-words text-sm text-muted-foreground">{s.description}</p>
                   )}
                 </div>
               </div>
-              <div className="flex gap-2">
+               <div className="flex shrink-0 gap-2">
                 <Button
                   variant="ghost"
-                  size="icon"
+                   aria-label={`Edit series ${s.name}`}
                   onClick={() => setEditingSeries(s)}
                 >
-                  <Pencil className="h-4 w-4" />
+                   <Pencil className="mr-1 h-4 w-4" /> Edit
                 </Button>
                 <Button
                   variant="ghost"
-                  size="icon"
+                   aria-label={`Delete series ${s.name}`}
                   onClick={() => {
                     if (confirm('Are you sure you want to delete this series?')) {
                       deleteSeriesMutation.mutate(s.id);
                     }
                   }}
                 >
-                  <Trash className="h-4 w-4" />
+                   <Trash className="mr-1 h-4 w-4" /> Delete
                 </Button>
               </div>
             </CardContent>

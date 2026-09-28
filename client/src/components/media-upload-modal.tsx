@@ -357,13 +357,13 @@ export default function MediaUploadModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl sm:max-h-[90vh] max-h-[100vh] overflow-y-auto">
+       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Upload Media</DialogTitle>
         </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); handleBulkUpload(); }} className="space-y-4">
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+             <div className="flex flex-wrap items-center justify-between gap-1">
               <Label htmlFor="type">Type</Label>
               <span className="text-xs text-muted-foreground">
                  Maximum file size: {mediaType === "video" ? `${videoLimit / 1048576} MiB` : `${imageLimit / 1048576} MiB · ${((limits?.maxPixels ?? 40000000) / 1000000).toFixed(0)} MP`}
@@ -401,7 +401,7 @@ export default function MediaUploadModal({
             <Label>Media Files</Label>
             {uploads.length > 0 ? (
               <div className="max-h-[400px] overflow-y-auto pr-2">
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
                   {uploads.map((upload, index) => (
                     <div key={index} className="relative">
                       <div className="relative aspect-square rounded-lg overflow-hidden bg-black/20">
@@ -415,6 +415,7 @@ export default function MediaUploadModal({
                           variant="destructive"
                           size="icon"
                           className="absolute top-2 right-2"
+                           aria-label={`Remove ${upload.file.name}`}
                           onClick={() => removeUpload(index)}
                         >
                           <X className="h-4 w-4" />
@@ -447,9 +448,9 @@ export default function MediaUploadModal({
                 </div>
               </div>
             ) : (
-              <div
-                onClick={() => mediaInputRef.current?.click()}
-                className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+               <button type="button"
+                 onClick={() => mediaInputRef.current?.click()}
+                 className="w-full border-2 border-dashed rounded-lg p-4 sm:p-8 text-center cursor-pointer hover:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary transition-colors"
               >
                 <div className="flex flex-col items-center gap-2">
                   <Upload className="h-8 w-8" />
@@ -458,8 +459,13 @@ export default function MediaUploadModal({
                      {mediaType === "video" ? `MP4, MOV or WebM · ${videoLimit / 1048576} MiB` : `JPG, PNG, GIF, WebP or ZIP · ${imageLimit / 1048576} MiB/image; ZIP 100 images / 100 MiB`}
                   </p>
                 </div>
-              </div>
+               </button>
             )}
+             {uploads.length > 0 && (
+               <Button type="button" variant="outline" onClick={() => mediaInputRef.current?.click()}>
+                 <Upload className="mr-2 h-4 w-4" /> Add more files
+               </Button>
+             )}
           </div>
 
           <div className="space-y-2">
@@ -491,7 +497,7 @@ export default function MediaUploadModal({
             />
           </div>
 
-          <div className="flex items-center space-x-2">
+           <div className="flex flex-wrap items-center gap-2">
             <Switch 
               id="auto-tag" 
               checked={autoTagEnabled}
@@ -500,7 +506,7 @@ export default function MediaUploadModal({
             <Label htmlFor="auto-tag" className="text-sm font-medium">
               Automatisch Sim-Racing Tags generieren
             </Label>
-            <div className="ml-2">
+             <div>
               <HoverCard>
                 <HoverCardTrigger asChild>
                   <Info className="h-4 w-4 cursor-help text-muted-foreground" />
@@ -518,7 +524,7 @@ export default function MediaUploadModal({
             KI-Tagging ist nur verfügbar, wenn der Analyse-Service aktiv ist. Fehler werden pro Datei angezeigt.
           </p>
 
-          <div className="flex justify-end gap-2">
+           <div className="flex flex-wrap justify-end gap-2">
             <Button
               type="button"
               variant="outline"

@@ -13,6 +13,7 @@ import MediaUploadModal from "@/components/media-upload-modal";
 import EditMediaModal from "@/components/edit-media-modal";
 import { useToast } from "@/hooks/use-toast";
 import SeriesManager from "@/components/series-manager";
+import MainNavigation from "@/components/main-navigation";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -160,12 +161,13 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      <MainNavigation />
       <header className="border-b border-primary/20">
         <div className="container mx-auto px-4 py-6">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             ADMIN DASHBOARD
           </h1>
-          <div className="flex gap-2 mt-4">
+          <div className="flex flex-wrap gap-2 mt-4">
             <Button asChild variant="outline">
               <Link href="/">Back to Home</Link>
             </Button>
@@ -178,20 +180,20 @@ export default function AdminDashboard() {
 
       <main className="container mx-auto px-4 py-8">
         {usageError && (
-          <div role="alert" className="mb-4 flex items-center gap-3">
+          <div role="alert" className="mb-4 flex flex-wrap items-center gap-3">
             <p>Die Speicherübersicht konnte nicht geladen werden.</p>
             <Button variant="outline" onClick={() => void retryUsage()}>Erneut versuchen</Button>
           </div>
         )}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
+          <TabsList className="grid h-auto w-full grid-cols-1 gap-1 sm:inline-flex sm:w-auto sm:grid-cols-none">
             <TabsTrigger value="events">Events</TabsTrigger>
             <TabsTrigger value="media">Media Management</TabsTrigger>
             <TabsTrigger value="series">Race Series</TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
-            <div className="flex justify-between items-center mb-8">
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-8">
               <h2 className="text-2xl font-bold">Events Management</h2>
               <Button
                 onClick={() => setUploadModalOpen(true)}
@@ -214,7 +216,7 @@ export default function AdminDashboard() {
                   return (
                     <Card key={event.id} className="bg-black/40 border-primary/20">
                       <CardHeader>
-                        <CardTitle className="text-xl font-[Orbitron] tracking-wider">
+                        <CardTitle className="break-words text-xl font-[Orbitron] tracking-wider">
                           {event.title}
                         </CardTitle>
                       </CardHeader>
@@ -234,11 +236,11 @@ export default function AdminDashboard() {
                             </Badge>
                           </div>
 
-                          <div className="flex justify-between items-center">
+                          <div className="flex flex-wrap justify-between items-center gap-3">
                             <p className="text-muted-foreground font-[Rajdhani]">
                               {new Date(event.date).toLocaleDateString()}
                             </p>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                               <Button
                                 variant="outline"
                                 onClick={() => {
@@ -265,10 +267,10 @@ export default function AdminDashboard() {
                               </Button>
                               <Button
                                 variant="destructive"
-                                size="icon"
+                                aria-label={`Delete event ${event.title}`}
                                 onClick={() => setEventToDelete(event)}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4 mr-1" /> Delete Event
                               </Button>
                             </div>
                           </div>
@@ -291,7 +293,7 @@ export default function AdminDashboard() {
                   return (
                     <Card key={event.id} className="bg-black/40 border-primary/20">
                       <CardHeader>
-                        <CardTitle className="text-xl font-[Orbitron] tracking-wider">
+                        <CardTitle className="break-words text-xl font-[Orbitron] tracking-wider">
                           {event.title}
                         </CardTitle>
                         <CardDescription>
@@ -317,11 +319,11 @@ export default function AdminDashboard() {
                             </Badge>
                           </div>
 
-                          <div className="flex justify-between items-center">
+                          <div className="flex flex-wrap justify-between items-center gap-3">
                             <p className="text-muted-foreground font-[Rajdhani]">
                               {new Date(event.date).toLocaleDateString()}
                             </p>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                               <Button
                                 variant="outline"
                                 onClick={() => switchToMediaTab(event.id)}
@@ -330,10 +332,10 @@ export default function AdminDashboard() {
                               </Button>
                               <Button
                                 variant="destructive"
-                                size="icon"
+                                aria-label={`Delete event ${event.title}`}
                                 onClick={() => setEventToDelete(event)}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4 mr-1" /> Delete Event
                               </Button>
                             </div>
                           </div>
@@ -349,7 +351,7 @@ export default function AdminDashboard() {
           <TabsContent value="media" className="mt-6">
             {usage && (
               <Card className="mb-6">
-                <CardContent className="pt-5 space-y-3">
+                <CardContent className="pt-5 space-y-3 break-words">
                   <h3 className="font-semibold">Storage usage</h3>
                   <p>{Number(usage.total.bytes).toLocaleString()} bytes in {usage.total.count} items;
                     {" "}{usage.total.legacy} older items have unknown object sizes (about {Number(usage.total.legacyTextBytes).toLocaleString()} bytes of database text).
@@ -375,11 +377,12 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             )}
-            <div className="flex justify-between items-center mb-8">
+             <div className="flex flex-wrap justify-between items-center gap-3 mb-8">
               <h2 className="text-2xl font-bold">Media Management</h2>
-              <div className="flex gap-2">
+               <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                 <select 
-                  className="border rounded p-2 bg-background text-foreground"
+                   aria-label="Select event for media management"
+                   className="min-w-0 w-full max-w-full border rounded p-2 bg-background text-foreground sm:w-56"
                   onChange={(e) => {
                     const id = parseInt(e.target.value);
                     if (!isNaN(id)) {
@@ -447,30 +450,18 @@ export default function AdminDashboard() {
                   
                   return (
                     <div>
-                      <h3 className="text-lg font-semibold mb-4">
+                       <h3 className="text-lg font-semibold mb-4 break-words">
                         Media for: {event?.title}
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {eventMediaItems.map((item) => (
-                          <Card key={item.id} className="overflow-hidden group">
+                           <Card key={item.id} className="min-w-0 overflow-hidden">
                             <div className="aspect-video relative">
                               <img 
                                 src={item.thumbnail} 
                                 alt={item.caption || "Media thumbnail"} 
                                 className="object-cover w-full h-full"
                               />
-                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                <Button 
-                                  size="sm" 
-                                  variant="outline"
-                                  onClick={() => {
-                                    setSelectedMediaItem(item);
-                                    setEditMediaModalOpen(true);
-                                  }}
-                                >
-                                  <PenLine className="h-4 w-4 mr-1" /> Edit
-                                </Button>
-                              </div>
                               {item.isPremium && (
                                 <Badge className="absolute top-2 right-2 bg-primary text-black">
                                   Premium
@@ -479,6 +470,17 @@ export default function AdminDashboard() {
                             </div>
                             <CardContent className="p-3">
                               <p className="text-sm truncate">{item.caption || "No caption"}</p>
+                               <Button
+                                 size="sm"
+                                 variant="outline"
+                                 className="mt-2"
+                                 onClick={() => {
+                                   setSelectedMediaItem(item);
+                                   setEditMediaModalOpen(true);
+                                 }}
+                               >
+                                 <PenLine className="h-4 w-4 mr-1" /> Edit Media
+                               </Button>
                               <div className="flex justify-between items-center mt-2">
                                 <p className="text-xs text-muted-foreground">
                                   {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
@@ -491,7 +493,7 @@ export default function AdminDashboard() {
                           </Card>
                         ))}
                       </div>
-                      <div className="flex justify-center gap-3 mt-4">
+                       <div className="flex flex-wrap justify-center gap-3 mt-4">
                         <Button variant="outline" disabled={mediaPage === 1} onClick={() => setMediaPage(mediaPage - 1)}>Previous</Button>
                         <span className="self-center">Page {mediaPage}</span>
                         <Button variant="outline" disabled={eventMediaItems.length < 48} onClick={() => setMediaPage(mediaPage + 1)}>Next</Button>
@@ -535,7 +537,7 @@ export default function AdminDashboard() {
         open={!!eventToDelete}
         onOpenChange={(open) => !open && setEventToDelete(null)}
       >
-        <AlertDialogContent>
+         <AlertDialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Event</AlertDialogTitle>
             <AlertDialogDescription>
@@ -553,7 +555,7 @@ export default function AdminDashboard() {
               }}
               className="bg-destructive hover:bg-destructive/90"
             >
-              Delete
+               Delete Event
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
