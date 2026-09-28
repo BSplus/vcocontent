@@ -41,7 +41,7 @@ interface IStorage {
   // Event management
   getEvents(): Promise<Event[]>;
   getEvent(id: number): Promise<Event | undefined>;
-  createEvent(event: InsertEvent): Promise<Event>;
+  createEvent(event: InsertEvent, entries?: EntryRow[]): Promise<Event>;
   updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event>;
   deleteEvent(id: number): Promise<{ success: boolean; message: string }>;
 
@@ -162,9 +162,16 @@ class DatabaseStorage implements IStorage {
     });
   }
 
-  async createEvent(event: InsertEvent): Promise<Event> {
-    const result = await db.insert(events).values(event).returning();
-    return result[0];
+  async createEvent(event: InsertEvent, entries?: EntryRow[]): Promise<Event> {
+    if (!entries?.length) {
+      const result = await db.insert(events).values(event).returning();
+      return result[0];
+    }
+    return db.transaction(async tx => {
+      const [created] = await tx.insert(events).values(event).returning();
+      await tx.insert(eventEntries).values(entries.map(row => ({ ...row, eventId: created.id })));
+      return created;
+    });
   }
 
   async updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event> {

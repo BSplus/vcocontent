@@ -35,10 +35,11 @@ async function responseError(response: Response, fallback: string) {
 }
 
 interface EntryListEditorProps {
-  eventId: number;
+  eventId: number | null;
+  onDraftChange?: (draft: { rows: EventEntryRow[] | null; blocked: boolean }) => void;
 }
 
-export default function EntryListEditor({ eventId }: EntryListEditorProps) {
+export default function EntryListEditor({ eventId, onDraftChange }: EntryListEditorProps) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<EventEntryRow[]>([]);
@@ -52,6 +53,10 @@ export default function EntryListEditor({ eventId }: EntryListEditorProps) {
   const [issues, setIssues] = useState<string[]>([]);
 
   useEffect(() => {
+    if (eventId === null) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -82,6 +87,16 @@ export default function EntryListEditor({ eventId }: EntryListEditorProps) {
     return () => { cancelled = true; };
   }, [eventId]);
 
+  useEffect(() => {
+    if (eventId !== null) return;
+    onDraftChange?.({
+      rows: confirmed && !previewing && !error && rows.length
+        ? rows.map(({ number, team, car, drivers }) => ({ number, team, car, drivers }))
+        : null,
+      blocked: previewing || !!error || (rows.length > 0 && !confirmed) || (previewMode && !rows.length),
+    });
+  }, [eventId, rows, confirmed, previewing, error, previewMode, onDraftChange]);
+
   const changeRow = (index: number, field: keyof Pick<EventEntryRow, "number" | "team" | "car" | "drivers">, value: string) => {
     setRows(current => current.map((row, rowIndex) =>
       rowIndex === index ? { ...row, [field]: value } : row
@@ -97,7 +112,7 @@ export default function EntryListEditor({ eventId }: EntryListEditorProps) {
     setError(null);
     setConfirmed(false);
     try {
-      const response = await fetch(`/api/events/${eventId}/entries/preview`, {
+      const response = await fetch(eventId === null ? "/api/events/entries/preview" : `/api/events/${eventId}/entries/preview`, {
         method: "POST",
         credentials: "include",
         body: formData,
@@ -148,7 +163,9 @@ export default function EntryListEditor({ eventId }: EntryListEditorProps) {
       <div>
         <h3 id="entry-list-heading" className="font-semibold">Entry list</h3>
         <p className="text-sm text-muted-foreground">
-          Upload a list to preview it, make corrections, then explicitly confirm before replacing the saved list.
+          {eventId === null
+            ? "Optional: upload a list now, review the rows, then confirm them before creating the event."
+            : "Upload a list to preview it, make corrections, then explicitly confirm before replacing the saved list."}
         </p>
       </div>
 
@@ -241,12 +258,29 @@ export default function EntryListEditor({ eventId }: EntryListEditorProps) {
               onChange={event => setConfirmed(event.target.checked)}
               className="mt-1"
             />
-            <span>I reviewed these rows and confirm replacing the event’s saved entry list.</span>
+            <span>{eventId === null
+              ? "I reviewed these rows and confirm adding them when the event is created."
+              : "I reviewed these rows and confirm replacing the event’s saved entry list."}</span>
           </label>
-          <Button type="button" disabled={!confirmed || saving || loading || previewing || loadFailed} onClick={() => void saveRows()}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Confirm and save entry list
-          </Button>
+          {eventId === null ? (
+            <>
+              {confirmed && rows.length > 0 && !error && <p role="status" className="text-sm text-green-700 dark:text-green-400">Entry list ready to save with the event.</p>}
+              {(rows.length > 0 || previewMode || error) && (
+                <Button type="button" variant="ghost" disabled={previewing} onClick={() => {
+                  setRows([]);
+                  setIssues([]);
+                  setError(null);
+                  setPreviewMode(false);
+                  setConfirmed(false);
+                }}>Discard entry list</Button>
+              )}
+            </>
+          ) : (
+            <Button type="button" disabled={!confirmed || saving || loading || previewing || loadFailed} onClick={() => void saveRows()}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirm and save entry list
+            </Button>
+          )}
         </>
       )}
     </section>

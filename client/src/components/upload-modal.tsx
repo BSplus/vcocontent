@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,7 +24,7 @@ import { Event, InsertEvent, insertEventSchema, Series } from "@shared/schema";
 import { Loader2, Upload, Image as ImageIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { eventCreateRoute } from "@/lib/event-create-route";
-import EntryListEditor from "@/components/entry-list-editor";
+import EntryListEditor, { type EventEntryRow } from "@/components/entry-list-editor";
 
 interface UploadModalProps {
   open: boolean;
@@ -49,6 +49,8 @@ export default function UploadModal({
   const [preview, setPreview] = useState<{ count: number; images: number; videos: number; skipped: number } | null>(null);
   const [importEventId, setImportEventId] = useState<number | null>(null);
   const [createdEventId, setCreatedEventId] = useState<number | null>(null);
+  const [entryDraft, setEntryDraft] = useState<{ rows: EventEntryRow[] | null; blocked: boolean }>({ rows: null, blocked: false });
+  const onEntryDraftChange = useCallback((draft: { rows: EventEntryRow[] | null; blocked: boolean }) => setEntryDraft(draft), []);
   const [importBusy, setImportBusy] = useState(false);
   const [previewBusy, setPreviewBusy] = useState(false);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
@@ -168,12 +170,13 @@ export default function UploadModal({
           date: new Date(data.date),
           isPremium: false,
           creatorId,
+          ...(entryDraft.rows ? { entryRows: entryDraft.rows } : {}),
         }),
       });
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.message || "Failed to create event");
+        throw new Error(error.error || error.message || "Failed to create event");
       }
 
       return res.json();
@@ -184,7 +187,7 @@ export default function UploadModal({
       setCreatedEventId(event.id);
       toast({
         title: "Success",
-        description: "Event created. You can now add its entry list before closing.",
+        description: "Event created" + (entryDraft.rows ? " with its entry list." : ". You can add an entry list before closing."),
       });
     },
     onError: (error: Error) => {
@@ -249,6 +252,10 @@ export default function UploadModal({
   const onSubmit = async (data: InsertEvent) => {
     try {
       setValidationSummary([]);
+      if (!isEditing && !createdEventId && entryDraft.blocked) {
+        setValidationSummary(["Review and confirm the entry list, or discard it before creating the event."]);
+        return;
+      }
       if (imageSource === "nextcloud") {
         setImportBusy(true);
         // Recheck the current inputs before creating an album, even if the preview
@@ -293,6 +300,7 @@ export default function UploadModal({
       setThumbnailPreview(null);
       setImportEventId(null);
       setCreatedEventId(null);
+      setEntryDraft({ rows: null, blocked: false });
       setPreview(null);
       setLinks([{ link: "", password: "" }]);
       setImageSource("local");
@@ -361,11 +369,6 @@ export default function UploadModal({
               <Input id="track" {...form.register("track" as any)} className="touch-auto" />
             </div>
           </div>
-          {!isEditing && !createdEventId && (
-            <p className="text-sm text-muted-foreground">
-              Create the event first; then you can add or import its entry list here.
-            </p>
-          )}
 
           <div className="space-y-2">
             <Label htmlFor="series">Race Series (Optional)</Label>
@@ -387,7 +390,7 @@ export default function UploadModal({
             </Select>
           </div>
 
-          {(isEditing && eventId !== null || createdEventId !== null) && <EntryListEditor eventId={(eventId ?? createdEventId)!} />}
+          <EntryListEditor eventId={eventId ?? createdEventId} onDraftChange={onEntryDraftChange} />
           
           <div className="space-y-2">
             <Label>Event Thumbnail</Label>
@@ -469,7 +472,7 @@ export default function UploadModal({
              <Button
               type={createdEventId && !isEditing && imageSource !== "nextcloud" ? "button" : "submit"}
               onClick={createdEventId && !isEditing && imageSource !== "nextcloud" ? () => onOpenChange(false) : undefined}
-               disabled={createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (imageSource === "nextcloud" && !preview && !createdEventId)}
+               disabled={createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (!isEditing && !createdEventId && entryDraft.blocked) || (imageSource === "nextcloud" && !preview && !createdEventId)}
               className="bg-primary text-black hover:bg-primary/90"
             >
                {createdEventId && !isEditing && imageSource !== "nextcloud" && !importBusy ? "Fertig" : createMutation.isPending || updateMutation.isPending || importBusy ? (

@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, entryRowSchema, users } from "@shared/schema";
+import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, entryRowSchema, users, type EntryRow } from "@shared/schema";
 import express from "express";
 import path from "path";
 import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
@@ -25,6 +25,13 @@ import { downloadAccess } from "./download-access";
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
 const entryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1048576, files: 1, fields: 0, parts: 1 } }).single("file");
+function creationEntries(body: Record<string, unknown>): EntryRow[] | undefined {
+  if (body.entryRows === undefined) return undefined;
+  const result = z.array(entryRowSchema).min(1).max(500).safeParse(body.entryRows);
+  if (!result.success) throw new Error("Entry List: Bitte alle Einträge prüfen und unvollständige Zeilen korrigieren.");
+  if (entryConflicts(result.data).length) throw new Error("Entry List: Doppelte oder mehrdeutige Startnummern (auch mit führenden Nullen).");
+  return result.data;
+}
 const OPENAI_TEST_COOLDOWN_MS = 60_000;
 function mediaPage(value: unknown): number | null {
   if (value === undefined) return 1;
@@ -88,12 +95,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isPremium: false,
       });
 
-      const event = await storage.createEvent(eventData);
+      const event = await storage.createEvent(eventData, creationEntries(req.body));
       res.status(201).json(event);
     } catch (error) {
       console.error('Error creating creator event:', error);
       res.status(400).json({ 
-        error: "Failed to create event",
+        error: error instanceof Error && error.message.startsWith("Entry List:") ? error.message : "Failed to create event",
         details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
@@ -712,22 +719,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(error instanceof z.ZodError ? 400 : 500).json({ error: error instanceof z.ZodError ? "Unvollständige Entry-Zeilen. Bitte Nummer, Team, Fahrzeug und Fahrer prüfen." : "Entry List konnte nicht gespeichert werden." });
     }
   });
+  const previewEntryFile = (req: express.Request, res: express.Response) => {
+    entryUpload(req, res, async error => {
+      if (error) return res.status(413).json({ error: "Entry List zu groß oder ungültig (maximal 8 MiB)." });
+      if (!req.file) return res.status(400).json({ error: "Bitte eine Datei auswählen." });
+      try {
+        res.json(await parseEntryFile(req.file.buffer, req.file.mimetype, req.file.originalname));
+      } catch (failure) {
+        const message = failure instanceof Error ? failure.message : "";
+        res.status(/not configured|unavailable|failed/i.test(message) ? 503 : 400)
+          .json({ error: /not configured|unavailable|failed/i.test(message) ? "Texterkennung nicht verfügbar. Einträge können weiterhin manuell erfasst werden." : message.slice(0, 200) || "Datei konnte nicht gelesen werden." });
+      }
+    });
+  };
+  app.post("/api/events/entries/preview", requireCreator, previewEntryFile);
   app.post("/api/events/:id/entries/preview", requireCreator, async (req, res) => {
     try {
       const event = await managedEntryEvent(req, res);
       if (!event) return;
-      entryUpload(req, res, async error => {
-        if (error) return res.status(413).json({ error: "Entry List zu groß oder ungültig (maximal 8 MiB)." });
-        if (!req.file) return res.status(400).json({ error: "Bitte eine Datei auswählen." });
-        try {
-          const result = await parseEntryFile(req.file.buffer, req.file.mimetype, req.file.originalname);
-          res.json(result);
-        } catch (failure) {
-          const message = failure instanceof Error ? failure.message : "";
-          res.status(/not configured|unavailable|failed/i.test(message) ? 503 : 400)
-            .json({ error: /not configured|unavailable|failed/i.test(message) ? "Texterkennung nicht verfügbar. Einträge können weiterhin manuell erfasst werden." : message.slice(0, 200) || "Datei konnte nicht gelesen werden." });
-        }
-      });
+      previewEntryFile(req, res);
     } catch { res.status(500).json({ error: "Entry-List-Vorschau fehlgeschlagen." }); }
   });
 
@@ -956,7 +966,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isPremium: false,
       });
       console.log('Creating event as creator:', eventData);
-      const event = await storage.createEvent(eventData);
+      const event = await storage.createEvent(eventData, creationEntries(req.body));
       res.status(201).json(event);
     } catch (error) {
       console.error('Error creating event as creator:', error);
@@ -969,13 +979,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/events", requireAdmin, async (req, res) => {
     try {
-      const { creatorId: _ignored, ...details } = req.body;
+      const { creatorId: _ignored, entryRows: _entryRows, ...details } = req.body;
       const eventData = insertEventSchema.parse({ ...details, isPremium: false });
-      const event = await storage.createEvent(eventData);
+      const event = await storage.createEvent(eventData, creationEntries(req.body));
       res.status(201).json(event);
     } catch (error) {
       console.error('Error creating event:', error);
-      res.status(400).json({ error: "Failed to create event" });
+      res.status(400).json({ error: error instanceof Error && error.message.startsWith("Entry List:") ? error.message : "Failed to create event" });
     }
   });
 

@@ -168,6 +168,23 @@ test("creator image/video uploads, delivery and ownership", async () => {
       assert.equal(result.rowCount, 1);
     }
 
+    const csv = new FormData();
+    csv.set("file", new Blob(["Number,Team,Car,Drivers\n007,Team One,Porsche,A. Driver\n"], { type: "text/csv" }), "entries.csv");
+    await json(await anonymous("/api/events/entries/preview", { method: "POST", body: csv }), 401);
+    const draft = await json(await owner("/api/events/entries/preview", { method: "POST", body: csv }), 200);
+    assert.deepEqual(draft.rows.map(({ number, team, car, drivers }) => ({ number, team, car, drivers })), [
+      { number: "007", team: "Team One", car: "Porsche", drivers: "A. Driver" },
+    ]);
+    const invalidTitle = `Invalid entries ${suffix}`;
+    await json(await owner("/api/creator/events", {
+      method: "POST", json: true,
+      body: {
+        title: invalidTitle, description: "No event must be created", date: new Date().toISOString(),
+        entryRows: [draft.rows[0], { ...draft.rows[0], number: "7" }],
+      },
+    }), 400);
+    assert.equal((await pool.query("SELECT id FROM events WHERE title = $1", [invalidTitle])).rowCount, 0);
+
     const event = await json(await owner("/api/creator/events", {
       method: "POST",
       json: true,
@@ -175,10 +192,14 @@ test("creator image/video uploads, delivery and ownership", async () => {
         title: `Upload smoke ${suffix}`,
         description: "Disposable creator upload test",
         date: new Date().toISOString(),
+        entryRows: draft.rows,
       },
     }), 201);
     eventId = event.id;
     assert.equal(event.creatorId, accounts[0].id);
+    assert.deepEqual(await json(await owner(`/api/events/${eventId}/entries`), 200), [
+      { number: "007", team: "Team One", car: "Porsche", drivers: "A. Driver" },
+    ]);
 
     const details = await json(await owner(`/api/events/${eventId}`, {
       method: "PUT", json: true, body: { round: "Round 3", track: "Hockenheim" },
@@ -187,8 +208,6 @@ test("creator image/video uploads, delivery and ownership", async () => {
     assert.equal(details.track, "Hockenheim");
     await json(await outsider(`/api/events/${eventId}/entries`), 403);
     await json(await anonymous(`/api/events/${eventId}/entries`), 401);
-    const csv = new FormData();
-    csv.set("file", new Blob(["Number,Team,Car,Drivers\n007,Team One,Porsche,A. Driver\n"], { type: "text/csv" }), "entries.csv");
     const entryPreview = await json(await owner(`/api/events/${eventId}/entries/preview`, { method: "POST", body: csv }), 200);
     assert.equal(entryPreview.rows[0].number, "007");
     await json(await outsider(`/api/events/${eventId}/entries/preview`, { method: "POST", body: csv }), 403);
