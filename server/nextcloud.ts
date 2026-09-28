@@ -288,6 +288,7 @@ async function runImport(eventId: number, sources: Source[], files: Found[]) {
        const saved = await uploadMedia(fileUpload, file.type, keys);
       const item = await storage.finishMedia(reservation, insertMediaItemSchema.parse({
          eventId, type: saved.mediaType, url: saved.url, thumbnail: saved.thumbnail, storedBytes: saved.storedBytes,
+          highBytes: saved.highBytes, lowBytes: saved.lowBytes,
         objectCount: saved.objectCount, caption: file.name, tags: [], isPremium: false,
       }), record.id);
       reservation = undefined;

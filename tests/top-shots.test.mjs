@@ -202,5 +202,6 @@ test("top shots cards and preview keep portrait media contained and gate video p
   assert.match(source, /<video key=\{selectedMedia\.id\}.*controls.*max-h-\[65dvh\]/);
   assert.match(source, /selectedMedia\.type === "video" && !user.*Sign in to play/);
   assert.match(source, /selectedMedia\.thumbnail \|\| selectedMedia\.url.*max-h-\[65dvh\].*object-contain/);
-  assert.match(source, /Download \{selectedMedia\.type === "video" \? "poster image"/);
+  assert.match(source, /selectedMedia\.type === "image" && <DropdownMenuItem.*downloadOptionLabel\(selectedMedia, "low"\)/);
+  assert.match(source, /downloadOptionLabel\(selectedMedia, "high"\)/);
 });

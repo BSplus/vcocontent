@@ -8,14 +8,14 @@ function positiveInt(name: string, fallback: number): number {
 }
 
 export const mediaPolicy = {
-  imageBytes: positiveInt("MEDIA_IMAGE_MIB", 5) * mib,
+  imageBytes: positiveInt("MEDIA_IMAGE_MIB", 32) * mib,
   videoBytes: positiveInt("MEDIA_VIDEO_MIB", 50) * mib,
   eventBytes: positiveInt("MEDIA_EVENT_MIB", 2048) * mib,
   creatorBytes: positiveInt("MEDIA_CREATOR_MIB", 10240) * mib,
   eventCount: positiveInt("MEDIA_EVENT_COUNT", 1000),
   creatorCount: positiveInt("MEDIA_CREATOR_COUNT", 5000),
   maxPixels: positiveInt("MEDIA_IMAGE_MEGAPIXELS", 40) * 1_000_000,
-  displayEdge: positiveInt("MEDIA_DISPLAY_EDGE", 2560),
+  displayEdge: Math.min(positiveInt("MEDIA_DISPLAY_EDGE", 2560), 2560),
   thumbnailEdge: positiveInt("MEDIA_THUMB_EDGE", 640),
   zipCount: 100,
   zipBytes: 100 * mib,

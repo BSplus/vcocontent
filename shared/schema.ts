@@ -77,6 +77,8 @@ export const mediaItems = pgTable("media_items", {
   isPremium: boolean("is_premium").notNull().default(false),
   creditCost: integer("credit_cost").default(1),
   storedBytes: bigint("stored_bytes", { mode: "number" }),
+  highBytes: bigint("high_bytes", { mode: "number" }),
+  lowBytes: bigint("low_bytes", { mode: "number" }),
   objectCount: integer("object_count"),
 }, (table) => [
   index("media_event_page_idx").on(table.eventId, table.id),

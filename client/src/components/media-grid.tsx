@@ -30,6 +30,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ShareMenu } from "./share-menu";
+import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
+import { Link } from "wouter";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -132,41 +134,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
 
   const handleDownload = async (item: MediaItem, quality: 'high' | 'low') => {
     try {
-      const authorization = await fetch(`/api/media/${item.id}/download`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!authorization.ok) {
-        const message = await authorization.text();
-        throw new Error(message || `Download authorization failed (${authorization.status})`);
-      }
-
-      const contentType = authorization.headers.get('content-type') || '';
-      let blob: Blob;
-      let filename = `media-${item.id}`;
-      if (contentType.includes('application/json')) {
-        const result = await authorization.json();
-        if (typeof result.url !== 'string' || !result.url) {
-          throw new Error('The server did not provide an authorized media download URL.');
-        }
-        filename = result.url.split('/').pop() || filename;
-        const downloadUrl = quality === 'low' ? item.thumbnail : result.url;
-        const response = await fetch(downloadUrl, { credentials: 'include' });
-        if (!response.ok) throw new Error(`Media download failed (${response.status})`);
-        blob = await response.blob();
-      } else {
-        // Some authorized endpoints stream the media directly instead of returning a URL.
-        blob = await authorization.blob();
-      }
-
-      const extension = item.type === 'video' ? '.mp4' : '.jpg';
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `${filename}-${quality}${extension}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href); // Clean up
+      await downloadMedia(item, quality);
     } catch (error) {
       console.error('Download failed:', error);
       toast({
@@ -262,11 +230,12 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               {item.photographer && <p className="text-sm text-foreground/75">By {item.photographer}</p>}
               <div className="flex flex-wrap items-center gap-2 pt-2">
                 <Button variant="outline" size="sm" className="min-h-11" onClick={(event) => openItem(item, index, event.currentTarget)}>View</Button>
+                <Link href={`/media/${item.id}`} className="rounded border border-border px-3 py-2 text-sm underline">Details</Link>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="min-h-11" aria-label={`Download ${item.caption || 'media'}`}><Download className="h-4 w-4" /> Download</Button></DropdownMenuTrigger>
                   <DropdownMenuContent>
-                    <DropdownMenuItem onSelect={() => handleDownload(item, 'high')}>High resolution</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => handleDownload(item, 'low')}>Low resolution</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => handleDownload(item, 'high')}>{downloadOptionLabel(item, "high")}{!user && " · Sign in required"}</DropdownMenuItem>
+                    {item.type === "image" && <DropdownMenuItem onSelect={() => handleDownload(item, 'low')}>{downloadOptionLabel(item, "low")}</DropdownMenuItem>}
                   </DropdownMenuContent>
                 </DropdownMenu>
                 {user?.isAdmin && <><Button variant="outline" size="icon" className="h-11 w-11" aria-label="Edit media" onClick={() => setEditItem(item)}><Pencil /></Button><Button variant="outline" size="icon" className="h-11 w-11" aria-label="Delete media" onClick={() => handleSingleDelete(item)}><Trash2 /></Button></>}
@@ -373,7 +342,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   </Button>
                 )}
                 <ShareMenu 
-                  url={window.location.href}
+                  url={`${window.location.origin}/media/${selectedItem?.id}`}
                   title={selectedItem?.caption || 'Media item'}
                   description={selectedItem?.photographer ? `Photo by ${selectedItem.photographer}` : undefined}
                 />
@@ -388,13 +357,13 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                     <DropdownMenuItem onClick={() =>
                       selectedItem && handleDownload(selectedItem, 'high')
                     }>
-                      Download High-Res
+                      {selectedItem && downloadOptionLabel(selectedItem, "high")}{!user && " · Sign in required"}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() =>
+                    {selectedItem?.type === "image" && <DropdownMenuItem onClick={() =>
                       selectedItem && handleDownload(selectedItem, 'low')
                     }>
-                      Download Low-Res
-                    </DropdownMenuItem>
+                      {downloadOptionLabel(selectedItem, "low")}
+                    </DropdownMenuItem>}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>

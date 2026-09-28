@@ -40,6 +40,21 @@ test("historical Base64 media is lazy-loaded and private originals remain protec
     assert.ok((await preview.arrayBuffer()).byteLength < 100 * 1024);
     const original = await fetch(`${base}${listed[0].url}`);
     assert.equal(original.status, 401);
+    const creatorDetail = await fetch(`${base}/api/media/${item.id}`);
+    assert.equal(creatorDetail.status, 200);
+    const creatorJson = await creatorDetail.text();
+    assert.ok(!creatorJson.includes("data:image/"), "Single media API exposed legacy bytes");
+    assert.equal(JSON.parse(creatorJson).url, `/api/media/legacy/${item.id}/file`);
+    const officialDetail = await fetch(`${base}/api/media/${publicItem.id}`);
+    assert.equal(officialDetail.status, 200);
+    const officialJson = await officialDetail.text();
+    assert.ok(!officialJson.includes("data:image/"), "Official media API exposed legacy bytes");
+    assert.equal(JSON.parse(officialJson).thumbnail, `/api/media/legacy/${publicItem.id}/thumbnail`);
+    assert.equal((await fetch(`${base}/api/media/${publicItem.id}/download?quality=high`, { method: "POST" })).status, 401);
+    assert.equal((await fetch(`${base}/api/media/${item.id}/download?quality=low`, { method: "POST" })).status, 401);
+    const lowResponse = await fetch(`${base}/api/media/${publicItem.id}/download?quality=low`, { method: "POST" });
+    assert.equal(lowResponse.status, 200);
+    assert.equal((await lowResponse.json()).url, `/api/media/legacy/${publicItem.id}/thumbnail`);
     for (const [endpoint, expectedId] of [
       ["/api/media/top-shots", publicItem.id],
       ["/api/media/creator-top", item.id],

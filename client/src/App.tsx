@@ -11,6 +11,7 @@ import AdminDashboard from "@/pages/admin/dashboard";
 import AdminUsers from "@/pages/admin/users";
 import CreatorDashboard from "@/pages/creator/dashboard";
 import EventGallery from "@/pages/event-gallery";
+import MediaDetail from "@/pages/media-detail";
 import SearchResults from "@/pages/search-results";
 import CurrentEvents from "@/pages/current-events";
 import UpcomingEvents from "@/pages/upcoming-events";
@@ -81,6 +82,7 @@ function Router() {
       <Route path="/upcoming-events" component={UpcomingEvents} />
       <Route path="/archive-events" component={ArchiveEvents} />
       <Route path="/events/:id" component={EventGallery} />
+      <Route path="/media/:id" component={MediaDetail} />
       <Route path="/creator-events" component={CreatorEvents} />
       <Route path="/imprint" component={Imprint} />
       <Route path="/credits" component={CreditsPage} />

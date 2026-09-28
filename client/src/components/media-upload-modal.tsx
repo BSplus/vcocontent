@@ -46,7 +46,7 @@ interface FileUpload {
   aiTags?: string[];
 }
 
-const IMAGE_LIMIT = 5 * 1024 * 1024;
+const IMAGE_LIMIT = 32 * 1024 * 1024;
 export default function MediaUploadModal({
   open,
   onOpenChange,

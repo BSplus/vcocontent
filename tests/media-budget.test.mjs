@@ -57,7 +57,7 @@ test("parallel event reservations enforce byte limits and pages remain bounded",
 });
 
 test("limits have conservative defaults", () => {
-  assert.equal(mediaPolicy.imageBytes, 5 * 1048576);
+  assert.equal(mediaPolicy.imageBytes, 32 * 1048576);
   assert.equal(mediaPolicy.videoBytes, 50 * 1048576);
   assert.equal(mediaPolicy.maxPixels, 40_000_000);
 });

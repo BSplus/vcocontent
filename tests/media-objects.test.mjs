@@ -41,6 +41,8 @@ test("stored images have exactly two bounded private objects", async () => {
     const display = await read(keys.storageKey);
     const thumb = await read(keys.thumbnailKey);
     assert.equal(saved.storedBytes, display.length + thumb.length);
+    assert.equal(saved.highBytes, display.length);
+    assert.equal(saved.lowBytes, thumb.length);
     assert.ok(display.length <= 4 * 1048576);
     assert.ok(thumb.length < 100 * 1024);
     assert.ok((await sharp(display).metadata()).width <= 2560);

@@ -13,7 +13,7 @@ import MainNavigation from "@/components/main-navigation";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
-import { topShotDownloadName } from "@/lib/top-shot-download";
+import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
 
 export default function HomePage() {
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
@@ -47,29 +47,7 @@ export default function HomePage() {
 
   const handleDownload = async (item: MediaItem, quality: "high" | "low") => {
     try {
-      const authorization = await fetch(`/api/media/${item.id}/download`, { method: "POST", credentials: "include" });
-      if (!authorization.ok) {
-        throw new Error(authorization.status === 401 ? "Sign in to download this media." : `Download unavailable (${authorization.status}).`);
-      }
-      let blob: Blob;
-      let downloadUrl = item.url;
-      if ((authorization.headers.get("content-type") || "").includes("application/json")) {
-        const result = await authorization.json();
-        if (typeof result.url !== "string" || !result.url) throw new Error("The server did not provide an authorized media download URL.");
-        downloadUrl = quality === "low" ? item.thumbnail : result.url;
-        const response = await fetch(downloadUrl, { credentials: "include" });
-        if (!response.ok) throw new Error(`Media download failed (${response.status})`);
-        blob = await response.blob();
-      } else {
-        blob = await authorization.blob();
-      }
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = topShotDownloadName(item, quality, downloadUrl, blob.type);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
+      await downloadMedia(item, quality);
     } catch (error) {
       console.error("Download failed:", error);
       window.alert(error instanceof Error ? error.message : "Unable to download this media item.");
@@ -265,8 +243,8 @@ export default function HomePage() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild><Button variant="outline"><Download className="mr-2 h-4 w-4" />Download</Button></DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "high")}>Download {selectedMedia.type === "video" ? "video" : "high-res photo"}</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "low")}>Download {selectedMedia.type === "video" ? "poster image" : "low-res photo"}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "high")}>{downloadOptionLabel(selectedMedia, "high")}{!user && " · Sign in required"}</DropdownMenuItem>
+                  {selectedMedia.type === "image" && <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "low")}>{downloadOptionLabel(selectedMedia, "low")}</DropdownMenuItem>}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

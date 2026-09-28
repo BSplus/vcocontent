@@ -8,6 +8,7 @@ const __dirname = dirname(__filename);
 import { type Server } from "http";
 import viteConfig from "../vite.config";
 import { nanoid } from "nanoid";
+import { seoHtml } from "./seo";
 
 const viteLogger = createLogger();
 
@@ -69,7 +70,8 @@ export async function setupVite(app: Express, server: Server) {
         `src="/src/main.tsx?v=${nanoid()}"`,
       );
       const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
+      const result = await seoHtml(req, page);
+      res.status(result.status).set({ "Content-Type": "text/html" }).end(result.html);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
       next(e);
@@ -89,7 +91,13 @@ export function serveStatic(app: Express) {
   app.use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
+  app.use("*", async (req, res, next) => {
+    try {
+      const html = await fs.promises.readFile(path.resolve(distPath, "index.html"), "utf-8");
+      const result = await seoHtml(req, html);
+      res.status(result.status).type("html").send(result.html);
+    } catch (error) {
+      next(error);
+    }
   });
 }

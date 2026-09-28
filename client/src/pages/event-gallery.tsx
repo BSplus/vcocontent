@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,9 @@ export default function EventGallery() {
     queryKey: [`/api/events/${eventId}`],
     enabled: Boolean(eventId && eventId > 0),
   });
+  useEffect(() => {
+    document.title = event ? `${event.title} | VCO Media Database` : "VCO Media Database";
+  }, [event]);
   
   // Fetch creator data if this is a creator event
   const { data: creator } = useQuery<{username: string, id: number, isCreator: boolean}>({

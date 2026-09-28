@@ -20,6 +20,7 @@ import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { z } from "zod";
 import { discover, importStatus, startImport, NextcloudError } from "./nextcloud";
+import { downloadAccess } from "./download-access";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -32,12 +33,13 @@ function mediaPage(value: unknown): number | null {
 }
 const canManageEvent = (user: Express.User | undefined, creatorId: number | null) =>
   !!user && (user.isAdmin || (user.isCreator && creatorId === user.id));
-const publicMedia = <T extends { isPremium: boolean; url: string; thumbnail: string }>(item: T): T => ({
+const publicMedia = <T extends { id: number; isPremium: boolean; url: string; thumbnail: string }>(item: T): T => ({
   ...item,
-  url: item.isPremium ? "" : item.url,
+  url: item.isPremium ? "" : item.url.startsWith("data:")
+    ? `/api/media/legacy/${item.id}/file` : item.url,
   thumbnail: item.isPremium && item.thumbnail.startsWith("data:")
     ? "/attached_assets/%2389_3.png"
-    : item.thumbnail,
+    : item.thumbnail.startsWith("data:") ? `/api/media/legacy/${item.id}/thumbnail` : item.thumbnail,
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -260,30 +262,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(503).json({ error: BETA_NOTICE });
   });
 
-  // Authorize a free download; the original file route checks again before serving.
-  app.post("/api/media/:id/download", requireAuth, async (req, res) => {
+  // Low-resolution VCO images are public. High resolution and creator downloads
+  // require a session; the file route separately enforces private originals.
+  app.post("/api/media/:id/download", async (req, res) => {
     try {
-      if (!req.user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-
-      const mediaId = parseInt(req.params.id);
+      const mediaId = Number(req.params.id);
+      if (!Number.isSafeInteger(mediaId) || mediaId < 1) return res.status(400).json({ error: "Invalid media ID" });
+      const quality = req.query.quality === undefined ? "high" : req.query.quality;
+      if (quality !== "high" && quality !== "low") return res.status(400).json({ error: "Invalid download quality" });
       const mediaItem = await storage.getMediaItem(mediaId);
 
       if (!mediaItem) {
         return res.status(404).json({ error: "Media item not found" });
       }
 
-      if (mediaItem.isPremium) {
-        return res.status(403).json({ error: BETA_NOTICE });
-      }
       const event = mediaItem.eventId ? await storage.getEvent(mediaItem.eventId) : undefined;
-      if (event?.isPremium) return res.status(403).json({ error: BETA_NOTICE });
+      if (!event) return res.status(404).json({ error: "Event not found" });
+      const access = downloadAccess(mediaItem, event, quality, req.isAuthenticated());
+      if (access !== 200) return res.status(access).json({
+        error: access === 403 ? BETA_NOTICE : access === 400
+          ? "Low resolution is available for images only" : "Sign in to download this media",
+      });
 
       await storage.updateMediaItem(mediaId, {
         downloadCount: (mediaItem.downloadCount || 0) + 1
       });
-      res.json({ success: true, url: mediaItem.url });
+      const normalized = publicMedia(mediaItem);
+      res.json({ success: true, url: quality === "low" ? normalized.thumbnail : normalized.url });
     } catch (error) {
       console.error('Error processing download:', error);
       res.status(500).json({ error: "Failed to process download" });
@@ -374,6 +379,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   // Get single event
+  app.get("/api/media/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Invalid media ID" });
+    try {
+      const item = await storage.getMediaItem(id);
+      const event = item?.eventId ? await storage.getEvent(item.eventId) : undefined;
+      if (!item || !event || item.isPremium || event.isPremium) return res.status(404).json({ error: "Media not found" });
+      res.json(publicMedia(item));
+    } catch (error) {
+      console.error("Failed to fetch media:", error);
+      res.status(500).json({ error: "Failed to fetch media" });
+    }
+  });
   app.get("/api/events/:id", async (req, res) => {
     try {
       const event = await storage.getEvent(parseInt(req.params.id));
@@ -524,6 +542,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             url: saved.url,
             thumbnail: saved.thumbnail,
             storedBytes: saved.storedBytes,
+            highBytes: saved.highBytes,
+            lowBytes: saved.lowBytes,
             objectCount: saved.objectCount,
             caption: metadata.caption || "",
             photographer: metadata.photographer || "",

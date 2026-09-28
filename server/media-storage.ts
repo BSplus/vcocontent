@@ -26,6 +26,8 @@ export interface StoredMedia {
   mimeType: string;
   size: number;
   storedBytes: number;
+  highBytes: number;
+  lowBytes: number;
   objectCount: number;
 }
 
@@ -238,6 +240,8 @@ export async function uploadMedia(
       mimeType: mediaType === "image" ? "image/webp" : file.mimetype,
       size: file.size,
       storedBytes: storedBytes + thumbnailBytes,
+      highBytes: storedBytes,
+      lowBytes: thumbnailBytes,
       objectCount: 2,
     };
   } catch (error) {

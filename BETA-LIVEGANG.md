@@ -16,6 +16,10 @@ oder Creator-Auszahlungen; die betreffenden Server-Endpunkte sind gesperrt.
    bei Bedarf angelegt. Produktionsdatenbank und App-Storage-Zuordnung vor dem
    Freigeben im Publishing-Dialog prüfen. Testdaten müssen nicht übernommen werden.
 3. `npm run check`, `npm run build` und bei laufender Vorschau `npm test` ausführen.
+   Die additive Migration `migrations/0004-media-variant-sizes.sql` vor der
+   Veröffentlichung anwenden. Sie speichert die getrennten Dateigrößen für
+   neue Uploads; historische Medien ohne verifizierte Größen zeigen
+   „size unavailable“ statt einer geschätzten Zahl.
    Die Publishing-Konfiguration baut die App und startet `npm run start` mit
    `NODE_ENV=production`; nicht den Entwicklungsserver veröffentlichen.
 4. In der Vorschau und nach der Veröffentlichung testen: Registrierung, Login,
@@ -58,6 +62,16 @@ oder Creator-Auszahlungen; die betreffenden Server-Endpunkte sind gesperrt.
    Bezahlfunktionen nur in einem separaten Vorhaben mit Testzahlungen,
    Webhook-Signaturprüfung, idempotenter Gutschrift und geschützten Downloads
    aktivieren. Erst nach allen Prüfungen eigenständig veröffentlichen.
+7. Nach dem Publishing die tatsächliche HTTPS-Adresse der neuen öffentlichen
+   Seite als `PUBLIC_SITE_URL` (nur Origin, ohne Pfad) konfigurieren und App
+   neu starten. Erst dann liefern `/robots.txt`, `/sitemap.xml` und öffentliche
+   Event- und Bildseiten indexierbare Canonical-URLs. Ohne diese Einstellung
+   wird bewusst `noindex`/`Disallow: /` ausgegeben, statt eine Entwicklungs-
+   oder fremde Host-Adresse als Produktions-URL zu veröffentlichen. Bildseiten
+   (`/media/:id`) verwenden die Caption als Titel und sind aus Event-Galerien
+   verlinkt; alte URLs der bisherigen Seite werden nicht automatisch umgeleitet.
+   Eine spätere Domainübernahme braucht gesonderte Weiterleitungen für
+   tatsächlich übernommene Galerien.
 
 ## Bekannte Grenzen
 
@@ -71,17 +85,20 @@ oder Creator-Auszahlungen; die betreffenden Server-Endpunkte sind gesperrt.
 
 ## Medienbudget und Kostenplanung (Stand September 2026)
 
-Neue Uploads: Bild bis 5 MiB und 40 Megapixel, Video bis 50 MiB. Bilder werden
+ Neue Uploads: Bild bis 32 MiB und 40 Megapixel, Video bis 50 MiB. Bilder werden
 serverseitig auf eine WebP-Darstellung mit höchstens 2560 px langer Kante
-(hartes Limit 4 MiB, Ziel 2–4 MiB) und eine WebP-Vorschau mit höchstens 640 px
-(unter 100 KiB) reduziert. Das eingereichte Bild wird **nicht** als drittes
-Objekt gespeichert. Bei Bildern mit Transparenz und animierten GIFs kann die
+ (hartes Limit 4 MiB, Ziel 2–4 MiB) als High-Res-Version und eine
+ Low-Res-WebP-Datei mit höchstens 640 px (unter 100 KiB) reduziert. Das
+ eingereichte Original wird **nicht** als drittes Objekt gespeichert. Die
+ Download-Optionen zeigen die gemessene Größe beider gespeicherten Versionen
+ in MB; für Altmedien ohne solche Messwerte wird keine Größe erfunden.
+ Bei Bildern mit Transparenz und animierten GIFs kann die
 Darstellung anders aussehen; vor einem Verkauf unveränderter Originaldateien
 muss ausdrücklich entschieden werden, ob und wie Originale separat gespeichert
 werden. Solange Bezahlmedien gesperrt sind, akzeptiert der neue Uploadpfad keine
 Premium-Events. Videos bleiben ohne Transcoding und haben ein kleines generisches
 WebP-Poster. ZIP wird nur im Browser entpackt: maximal 100 Bilder, 100 MiB
-entpackt, 5 MiB pro Bild; das Server-Uploadlimit gilt danach für **jede** Datei.
+ entpackt, 32 MiB pro Bild; das Server-Uploadlimit gilt danach für **jede** Datei.
 
 Die Standardbudgets betragen 2 GiB/1000 Medien pro Event sowie 10 GiB/5000
 Medien pro Creator; 80 % markieren eine Warnschwelle. Über die positiven
@@ -126,7 +143,7 @@ Interne Links werden als `/apps/files/files/ID?dir=/Ordner` oder als
 `/remote.php/dav/files/BENUTZER/Ordner` unterstützt; andere Ansichtslinks
 werden bewusst abgewiesen. Es gibt keine laufende Synchronisierung. Ein
 Import läuft mit maximal 10 Links, 300 Unterordnern, 500 Bildern,
-500 MiB übertragenen Bilddaten, 5 MiB je Bild, 60 Sekunden Vorschau und
+ 500 MiB übertragenen Bilddaten, 32 MiB je Bild, 60 Sekunden Vorschau und
 10 Minuten Verarbeitung; die normalen Album-Speicherbudgets gelten zusätzlich.
 
 Bestandsmessung der Entwicklungsdatenbank bei Einführung: 72 Medienzeilen,
