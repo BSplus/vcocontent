@@ -39,6 +39,16 @@ oder Creator-Auszahlungen; die betreffenden Server-Endpunkte sind gesperrt.
    auch nach Neustart, dass die benötigte Laufzeitkonfiguration fehlt.
    Die Freigabe ist damit nicht bestritten, aber die tatsächliche Bereitstellung
    an die App und die Produktionslaufzeit sind **noch nicht bestätigt**.
+    Ein angemeldeter Admin kann mit `POST /api/admin/openai/test` (gleiche
+    Session/Origin wie die App, kein Request-Body nötig) eine kurze Textanfrage
+    über den serverseitigen Replit-managed-Zugang auslösen. `200` mit
+    `{"success":true,"status":"connected"}` bestätigt erst nach erfolgreicher
+    Antwort die Verbindung **dieser Laufzeit**; `503` bedeutet fehlende
+    Laufzeitkonfiguration und `502` eine fehlgeschlagene Anbieteranfrage.
+    Der Test verändert keine Medien oder Datenbankdaten und prüft weder
+    Bildanalyse noch die separate Produktionsumgebung. Ein echter Erfolg
+    bleibt davon abhängig, dass die Laufzeitfreigabe tatsächlich im
+    App-Server bereitsteht (separates Vorhaben zur Laufzeitbereitstellung).
    Sobald die Laufzeitkonfiguration bereitsteht, mit einem eigenen Creator-Bild
    Einzelanalyse (inklusive gespeicherter Tags und UI-Rückmeldung) und
    Sammelanalyse testen. Nach Veröffentlichung separat mit einem Creator-Bild

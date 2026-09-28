@@ -24,6 +24,19 @@ function getOpenAIClient(): OpenAI | null {
   return null;
 }
 
+// A fixed, low-cost probe. Do not return provider content or accept caller input.
+export async function testManagedOpenAI(): Promise<boolean> {
+  const openai = getOpenAIClient();
+  if (!openai) return false;
+  const response = await openai.chat.completions.create({
+    model: TAG_MODEL,
+    messages: [{ role: "user", content: "Reply with OK." }],
+    max_tokens: 8,
+  }, { timeout: 10000, maxRetries: 0 });
+  return response.choices.some(choice =>
+    choice.finish_reason === "stop" && Boolean(choice.message?.content?.trim()));
+}
+
 export async function generateTagsForImage(imageUrl: string): Promise<string[]> {
   const openai = getOpenAIClient();
   if (!openai) throw new Error('AI tagging is not configured');

@@ -9,7 +9,7 @@ import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } fr
 import { log } from "./vite";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { generateTagsForImage, categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
+import { generateTagsForImage, categorizeContent, isAITaggingConfigured, testManagedOpenAI } from "./utils/ai-tagger";
 import { mediaUpload, uploadMedia, createMediaKeys, readMediaStream, getMediaContentType } from "./media-storage";
 import { analysisImageInput } from "./image-analysis";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
@@ -166,6 +166,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 
   // Admin routes
+  app.post("/api/admin/openai/test", requireAdmin, async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isAITaggingConfigured()) {
+      return res.status(503).json({ success: false, error: "Managed OpenAI runtime configuration unavailable" });
+    }
+    try {
+      if (await testManagedOpenAI()) return res.json({ success: true, status: "connected" });
+    } catch {
+      // Upstream errors may contain credentials, URLs or request details.
+    }
+    return res.status(502).json({ success: false, error: "Managed OpenAI request failed" });
+  });
+
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
