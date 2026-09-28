@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import {
   ArrowRight, CalendarDays, ChevronRight, Clock3, Download, History,
-  Image as ImageIcon, Search, Star, Trophy, UserRound,
+  Image as ImageIcon, PlayCircle, Search, Star, Trophy, UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EventCard from "@/components/event-card";
@@ -12,9 +12,12 @@ import Footer from "@/components/footer";
 import MainNavigation from "@/components/main-navigation";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/hooks/use-auth";
+import { topShotDownloadName } from "@/lib/top-shot-download";
 
 export default function HomePage() {
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
+  const { user } = useAuth();
   const { data: events = [], isLoading: eventsLoading, error: eventsError, refetch, isFetching } = useQuery<Event[]>({
     queryKey: ["/api/events"],
     retry: 3,
@@ -46,16 +49,15 @@ export default function HomePage() {
     try {
       const authorization = await fetch(`/api/media/${item.id}/download`, { method: "POST", credentials: "include" });
       if (!authorization.ok) {
-        const message = await authorization.text();
-        throw new Error(message || `Download authorization failed (${authorization.status})`);
+        throw new Error(authorization.status === 401 ? "Sign in to download this media." : `Download unavailable (${authorization.status}).`);
       }
       let blob: Blob;
-      let filename = `media-${item.id}`;
+      let downloadUrl = item.url;
       if ((authorization.headers.get("content-type") || "").includes("application/json")) {
         const result = await authorization.json();
         if (typeof result.url !== "string" || !result.url) throw new Error("The server did not provide an authorized media download URL.");
-        filename = result.url.split("/").pop() || filename;
-        const response = await fetch(quality === "low" ? item.thumbnail : result.url, { credentials: "include" });
+        downloadUrl = quality === "low" ? item.thumbnail : result.url;
+        const response = await fetch(downloadUrl, { credentials: "include" });
         if (!response.ok) throw new Error(`Media download failed (${response.status})`);
         blob = await response.blob();
       } else {
@@ -63,7 +65,7 @@ export default function HomePage() {
       }
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = `${filename}-${quality}.jpg`;
+      link.download = topShotDownloadName(item, quality, downloadUrl, blob.type);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -198,13 +200,15 @@ export default function HomePage() {
                 </div>
                 <Button asChild variant="ghost"><Link href="/search">Explore all media<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
               </div>
-              {topShotsLoading ? <div className="grid grid-cols-1 gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="aspect-video animate-pulse rounded-md bg-card/70" />)}</div> : (
+              {topShotsLoading ? <div className="grid grid-cols-1 gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="h-72 animate-pulse rounded-md bg-card/70" />)}</div> : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  {topShots.slice(0, 3).map((shot) => <button key={shot.id} type="button" onClick={() => setSelectedMedia(shot)} className="group relative aspect-video overflow-hidden rounded-md border border-foreground/15 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                    <img src={shot.thumbnail} alt={shot.caption || "Featured racing photograph"} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none" loading="lazy" />
-                    <span className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
-                    <span className="absolute bottom-0 left-0 right-0 flex items-end justify-between gap-3 p-4">
-                      <span className="line-clamp-2 text-sm font-semibold text-white">{shot.caption || "Open featured image"}</span>
+                  {topShots.slice(0, 3).map((shot) => <button key={shot.id} type="button" onClick={() => setSelectedMedia(shot)} aria-label={`Open ${shot.type === "video" ? "video" : "photo"}: ${shot.caption || `Media ${shot.id}`}`} className="group flex min-w-0 flex-col overflow-hidden rounded-md border border-foreground/15 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                    <span className="relative flex h-60 w-full items-center justify-center bg-black/30 sm:h-72 md:h-64 lg:h-72">
+                      <img src={shot.thumbnail} alt="" className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none" loading="lazy" />
+                      {shot.type === "video" && <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded bg-black/85 px-2 py-1 text-xs font-semibold text-white"><PlayCircle className="h-4 w-4" /> Video</span>}
+                    </span>
+                    <span className="flex w-full items-center justify-between gap-3 p-4">
+                      <span className="line-clamp-2 min-w-0 text-sm font-semibold">{shot.caption || (shot.type === "video" ? "Open featured video" : "Open featured photo")}</span>
                       <span className="flex shrink-0 items-center gap-1.5 text-xs font-bold text-primary"><Download className="h-3.5 w-3.5" />{shot.downloadCount}</span>
                     </span>
                   </button>)}
@@ -250,14 +254,19 @@ export default function HomePage() {
         <DialogContent className="w-[calc(100%-1rem)] max-w-4xl max-h-[95dvh] overflow-y-auto border-foreground/15 bg-background">
           {selectedMedia && <div className="space-y-4">
             <DialogTitle>{selectedMedia.caption || "Media preview"}</DialogTitle>
-            <div className="relative aspect-video bg-black/30"><img src={selectedMedia.thumbnail || selectedMedia.url} alt={selectedMedia.caption || "Media preview"} className="absolute inset-0 h-full w-full object-contain" /></div>
+            <div className="relative flex min-h-40 items-center justify-center bg-black/30">
+              {selectedMedia.type === "video" && user && selectedMedia.url
+                ? <video key={selectedMedia.id} src={selectedMedia.url} poster={selectedMedia.thumbnail} controls preload="none" className="max-h-[65dvh] max-w-full" />
+                : <img src={selectedMedia.thumbnail || selectedMedia.url} alt={selectedMedia.caption || "Media preview"} className="max-h-[65dvh] max-w-full object-contain" />}
+            </div>
+            {selectedMedia.type === "video" && !user && <p className="text-sm text-foreground/75">Sign in to play this video. Its poster is shown above.</p>}
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>{selectedMedia.photographer && <p className="text-sm text-foreground/70">Photographer: {selectedMedia.photographer}</p>}{selectedMedia.caption && <p className="mt-1 text-sm">{selectedMedia.caption}</p>}</div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild><Button variant="outline"><Download className="mr-2 h-4 w-4" />Download</Button></DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => handleDownload(selectedMedia, "high")}>Download high-res</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleDownload(selectedMedia, "low")}>Download low-res</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "high")}>Download {selectedMedia.type === "video" ? "video" : "high-res photo"}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "low")}>Download {selectedMedia.type === "video" ? "poster image" : "low-res photo"}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

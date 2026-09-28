@@ -18,6 +18,7 @@ const mediaListColumns = {
   url: sql<string>`case when ${mediaItems.url} like 'data:%'
     then '/api/media/legacy/' || ${mediaItems.id} || '/file' else ${mediaItems.url} end`,
   thumbnail: sql<string>`case when ${mediaItems.type} = 'video' and ${mediaItems.thumbnail} like 'data:%'
+    and ${mediaItems.thumbnail} not like 'data:image/%'
     then '/attached_assets/%2389_3.png'
     when ${mediaItems.thumbnail} like 'data:%'
     then '/api/media/legacy/' || ${mediaItems.id} || '/thumbnail' else ${mediaItems.thumbnail} end`,

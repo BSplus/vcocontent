@@ -332,7 +332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get top shots
   app.get("/api/media/top-shots", async (req, res) => {
     try {
-      const topShots = (await storage.topMedia(30, null)).filter(item => item.type === "image").slice(0, 3);
+      const topShots = await storage.topMedia(3, null);
       res.json(topShots.map(publicMedia));
     } catch (error) {
       console.error('Error fetching top shots:', error);
