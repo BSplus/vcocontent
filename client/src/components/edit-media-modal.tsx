@@ -12,11 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { MediaItem, insertMediaItemSchema } from "@shared/schema";
+import { MediaItem } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Wand2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { z } from "zod";
 
 interface EditMediaModalProps {
   open: boolean;
@@ -31,6 +32,22 @@ interface FormData {
   tags: string;
 }
 
+interface CaptionPreview {
+  numbers: string[];
+  matches: { number: string; team: string; car: string; drivers: string }[];
+  scene: string | null;
+  suggestion: string;
+  ambiguous: boolean;
+}
+
+type CaptionScene = "Race Action" | "Start" | "Finish";
+
+const editFormSchema = z.object({
+  caption: z.string().max(1000, "Caption cannot exceed 1000 characters"),
+  photographer: z.string(),
+  tags: z.string(),
+});
+
 export default function EditMediaModal({
   open,
   onOpenChange,
@@ -41,13 +58,49 @@ export default function EditMediaModal({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiTags, setAiTags] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
+  const [captionPreview, setCaptionPreview] = useState<CaptionPreview | null>(null);
+  const [selectedScene, setSelectedScene] = useState<CaptionScene | null>(null);
 
   const form = useForm<FormData>({
-    resolver: zodResolver(insertMediaItemSchema.partial()),
+    resolver: zodResolver(editFormSchema),
     defaultValues: {
       caption: mediaItem.caption || "",
       photographer: mediaItem.photographer || "",
       tags: mediaItem.tags?.join(", ") || "",
+    },
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    form.reset({ caption: mediaItem.caption || "", photographer: mediaItem.photographer || "", tags: mediaItem.tags?.join(", ") || "" });
+    setCaptionPreview(null);
+    setSelectedScene(null);
+  }, [open, mediaItem.id]);
+
+  const captionPreviewMutation = useMutation({
+    mutationFn: async (scene?: CaptionScene) => {
+      const res = await fetch(`/api/media/${mediaItem.id}/caption-preview`, {
+        method: "POST",
+        credentials: "include",
+        ...(scene && {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scene }),
+        }),
+      });
+      if (!res.ok) {
+        throw new Error("Caption suggestion could not be generated. Please try again.");
+      }
+      return res.json() as Promise<CaptionPreview>;
+    },
+    onSuccess: (data) => {
+      setCaptionPreview(data);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Caption Suggestion Failed",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -89,12 +142,13 @@ export default function EditMediaModal({
     onSuccess: (data) => {
       setAiTags(data.generatedTags || []);
       setCategory(data.category || null);
-      
-      // Update the form with the new tags
-      if (data.tags && data.tags.length > 0) {
-        form.setValue("tags", data.tags.join(", "));
+      // The analysis route has already saved its tags. Preserve edits made in
+      // this still-open form and merge in the new tags before a later save.
+      if (Array.isArray(data.tags)) {
+        const typed = form.getValues("tags").split(",").map(tag => tag.trim()).filter(Boolean);
+        form.setValue("tags", Array.from(new Set([...typed, ...data.tags])).join(", "), { shouldDirty: true });
       }
-      
+
       toast({
         title: "AI Analysis Complete",
         description: `Generated ${data.tags?.length || 0} tags for your media`,
@@ -125,7 +179,7 @@ export default function EditMediaModal({
       // Convert comma-separated string to array of tags
       const tags = formData.tags
         ? formData.tags.split(',').map((tag: string) => tag.trim()).filter(Boolean)
-        : null;
+        : [];
 
       await updateMutation.mutateAsync({
         ...formData,
@@ -140,7 +194,7 @@ export default function EditMediaModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-       <DialogContent>
+       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Media</DialogTitle>
         </DialogHeader>
@@ -167,8 +221,99 @@ export default function EditMediaModal({
             <Label htmlFor="caption">Caption</Label>
             <Textarea
               id="caption"
+              maxLength={1000}
               {...form.register("caption")}
             />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSelectedScene(null);
+                  captionPreviewMutation.mutate(undefined);
+                }}
+                disabled={captionPreviewMutation.isPending}
+              >
+                {captionPreviewMutation.isPending && selectedScene === null ? (
+                  <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                ) : null}
+                Suggest Caption
+              </Button>
+              {(["Race Action", "Start", "Finish"] as const).map((scene) => (
+                <Button
+                  key={scene}
+                  type="button"
+                  size="sm"
+                  variant={selectedScene === scene ? "default" : "outline"}
+                  onClick={() => {
+                    setSelectedScene(scene);
+                    captionPreviewMutation.mutate(scene);
+                  }}
+                  disabled={captionPreviewMutation.isPending}
+                >
+                  {captionPreviewMutation.isPending && selectedScene === scene ? (
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                  ) : null}
+                  {scene}
+                </Button>
+              ))}
+            </div>
+            {form.formState.errors.caption && (
+              <p className="text-sm text-destructive">{form.formState.errors.caption.message}</p>
+            )}
+            {captionPreview && (
+              <div className="space-y-3 rounded-md border p-3">
+                {captionPreview.scene && (
+                  <p className="text-sm font-medium">Scene: {captionPreview.scene}</p>
+                )}
+                {captionPreview.numbers.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Detected numbers</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {captionPreview.numbers.map((number, index) => (
+                        <Badge key={`${number}-${index}`} variant="outline">{number}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {captionPreview.matches.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Matching entries</p>
+                    {captionPreview.matches.map((match, index) => (
+                      <p key={`${match.number}-${index}`} className="text-sm">
+                        #{match.number} · {match.team} · {match.car} · {match.drivers}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {captionPreview.ambiguous && (
+                  <p className="text-sm text-amber-600">
+                    Some detected numbers have ambiguous matches. Review the suggestion before applying it.
+                  </p>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="caption-suggestion">Caption suggestion (editable)</Label>
+                  <Textarea
+                    id="caption-suggestion"
+                    value={captionPreview.suggestion}
+                    maxLength={1000}
+                    onChange={(event) => setCaptionPreview({
+                      ...captionPreview,
+                      suggestion: event.target.value,
+                    })}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => form.setValue("caption", captionPreview.suggestion, { shouldValidate: true, shouldDirty: true })}
+                  >
+                    Apply Suggestion to Caption
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

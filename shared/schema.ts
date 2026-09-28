@@ -32,6 +32,8 @@ export const events = pgTable("events", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description").notNull(),
+  round: text("round"),
+  track: text("track"),
   coverImage: text("cover_image"),
   customThumbnail: text("custom_thumbnail"),
   date: timestamp("date").notNull(),
@@ -42,6 +44,23 @@ export const events = pgTable("events", {
   creditCost: integer("credit_cost").default(1),
   viewCount: integer("view_count").notNull().default(0),
 });
+
+export const eventEntries = pgTable("event_entries", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+  number: text("number").notNull(),
+  team: text("team").notNull(),
+  car: text("car").notNull(),
+  drivers: text("drivers").notNull(),
+}, table => [index("event_entries_event_idx").on(table.eventId)]);
+
+export const entryRowSchema = z.object({
+  number: z.string().trim().regex(/^[0-9]{1,4}$/, "Startnummer muss 1–4 Ziffern enthalten"),
+  team: z.string().trim().min(1).max(160),
+  car: z.string().trim().min(1).max(160),
+  drivers: z.string().trim().min(1).max(500),
+});
+export type EntryRow = z.infer<typeof entryRowSchema>;
 
 export const mediaItems = pgTable("media_items", {
   id: serial("id").primaryKey(),
@@ -121,6 +140,8 @@ export const insertSeriesSchema = createInsertSchema(series).extend({
 export const insertEventSchema = createInsertSchema(events).extend({
   title: z.string().min(1, "Title is required"),
   description: z.string().min(1, "Description is required"),
+  round: z.string().trim().max(100).nullable().optional(),
+  track: z.string().trim().max(160).nullable().optional(),
   coverImage: z.string().optional(),
   customThumbnail: z.string().optional(),
   date: z.coerce.date(),
@@ -135,7 +156,7 @@ export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   type: z.enum(["image", "video"]),
   url: z.union([z.string().url(), z.string().regex(/^\/api\/media\/files\/media-[0-9a-f-]{36}\.(jpg|png|gif|webp|mp4|mov|webm)$/)]),
   thumbnail: z.union([z.string().url(), z.string().regex(/^\/api\/media\/files\/thumb-[0-9a-f-]{36}\.webp$/)]),
-  caption: z.string().max(200, "Caption cannot exceed 200 characters").optional(),
+  caption: z.string().max(1000, "Caption cannot exceed 1000 characters").optional(),
   photographer: z.string().optional(),
   tags: z.array(z.string()),
   category: z.string().optional(),

@@ -262,6 +262,10 @@ export default function MediaUploadModal({
 
   const handleBulkUpload = async () => {
     try {
+      if ((form.getValues("caption") || "").length > 1000) {
+        toast({ title: "Caption too long", description: "Maximum 1000 characters.", variant: "destructive" });
+        return;
+      }
       setUploading(true);
       const pendingUploads = uploads.filter(u => u.status === 'pending');
 
@@ -472,6 +476,7 @@ export default function MediaUploadModal({
             <Label htmlFor="caption">Caption (applies to all uploads)</Label>
             <Textarea
               id="caption"
+               maxLength={1000}
               {...form.register("caption")}
               className="min-h-[100px] touch-auto"
             />

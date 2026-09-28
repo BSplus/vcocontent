@@ -1,5 +1,5 @@
-import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries } from "@shared/schema";
-import { users, events, mediaItems, mediaReservations, mediaCleanup, nextcloudFiles, series as seriesTable } from "@shared/schema";
+import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries, type EntryRow } from "@shared/schema";
+import { users, events, eventEntries, mediaItems, mediaReservations, mediaCleanup, nextcloudFiles, series as seriesTable } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, sql, desc, lt, ilike, getTableColumns } from "drizzle-orm";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
@@ -146,6 +146,20 @@ class DatabaseStorage implements IStorage {
       .where(eq(events.id, id))
       .limit(1);
     return result[0];
+  }
+
+  async getEventEntries(eventId: number): Promise<EntryRow[]> {
+    const rows = await db.select().from(eventEntries).where(eq(eventEntries.eventId, eventId)).orderBy(eventEntries.id);
+    return rows.map(({ number, team, car, drivers }) => ({ number, team, car, drivers }));
+  }
+
+  async replaceEventEntries(eventId: number, rows: EntryRow[]): Promise<void> {
+    await db.transaction(async tx => {
+      const locked = await tx.execute(sql`select id from events where id = ${eventId} for update`);
+      if (!locked.rows.length) throw new Error("Event not found");
+      await tx.delete(eventEntries).where(eq(eventEntries.eventId, eventId));
+      if (rows.length) await tx.insert(eventEntries).values(rows.map(row => ({ ...row, eventId })));
+    });
   }
 
   async createEvent(event: InsertEvent): Promise<Event> {

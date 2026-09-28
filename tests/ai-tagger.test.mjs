@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-const { parseTagResponse, generateTagsForImage, isAITaggingConfigured } = await import("../server/utils/ai-tagger.ts");
+const { parseTagResponse, generateTagsForImage, isAITaggingConfigured, detectRaceNumbers } = await import("../server/utils/ai-tagger.ts");
 
 test("accepts only allowed tags and removes duplicates", () => {
   assert.deepEqual(
@@ -95,5 +95,36 @@ test("provider failure never exposes its response or credentials", async () => {
     else process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = originalBase;
     if (originalKey === undefined) delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
     else process.env.AI_INTEGRATIONS_OPENAI_API_KEY = originalKey;
+  }
+});
+
+test("number detection only accepts visible-number JSON and rejects model-invented metadata", async () => {
+  const base = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  const fetchOriginal = globalThis.fetch;
+  process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = "https://managed.example.invalid/v1";
+  process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "test-placeholder";
+  const response = content => new Response(JSON.stringify({
+    id: "test", object: "chat.completion", created: 0, model: "gpt-4.1-mini",
+    choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content } }],
+  }), { headers: { "content-type": "application/json" } });
+  try {
+    let request;
+    globalThis.fetch = async (_url, options) => {
+      request = JSON.parse(options.body);
+      return response('{"numbers":["007","12","007"],"scene":"Start","team":"Model guess"}');
+    };
+    assert.deepEqual(await detectRaceNumbers("data:image/webp;base64,AAAA"), { numbers: ["007", "12"], scene: "Start" });
+    assert.equal(request.messages[1].content[1].type, "image_url");
+    globalThis.fetch = async () => response('{"numbers":["7","unknown"],"scene":"Start"}');
+    await assert.rejects(detectRaceNumbers("data:image/webp;base64,AAAA"), { message: "Image number detection failed" });
+    globalThis.fetch = async () => new Response("private-provider-error", { status: 502 });
+    await assert.rejects(detectRaceNumbers("data:image/webp;base64,AAAA"), { message: "Image number detection failed" });
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    if (base === undefined) delete process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    else process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = base;
+    if (key === undefined) delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    else process.env.AI_INTEGRATIONS_OPENAI_API_KEY = key;
   }
 });

@@ -24,6 +24,7 @@ import { Event, InsertEvent, insertEventSchema, Series } from "@shared/schema";
 import { Loader2, Upload, Image as ImageIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { eventCreateRoute } from "@/lib/event-create-route";
+import EntryListEditor from "@/components/entry-list-editor";
 
 interface UploadModalProps {
   open: boolean;
@@ -47,6 +48,7 @@ export default function UploadModal({
   const [links, setLinks] = useState<{ link: string; password: string }[]>([{ link: "", password: "" }]);
   const [preview, setPreview] = useState<{ count: number; images: number; videos: number; skipped: number } | null>(null);
   const [importEventId, setImportEventId] = useState<number | null>(null);
+  const [createdEventId, setCreatedEventId] = useState<number | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const [previewBusy, setPreviewBusy] = useState(false);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
@@ -100,11 +102,14 @@ export default function UploadModal({
       coverImage: "/attached_assets/%2389_3.png",
       customThumbnail: undefined,
       seriesId: undefined,
-    },
+      round: "",
+      track: "",
+    } as any,
   });
 
   useEffect(() => {
     if (eventData && isEditing) {
+      const eventWithRaceDetails = eventData as Event & { round?: string | number | null; track?: string | null };
       form.reset({
         title: eventData.title,
         description: eventData.description || "",
@@ -112,7 +117,9 @@ export default function UploadModal({
         coverImage: eventData.coverImage || "",
         customThumbnail: eventData.customThumbnail || undefined,
         seriesId: eventData.seriesId || undefined,
-      });
+        round: eventWithRaceDetails.round ?? "",
+        track: eventWithRaceDetails.track ?? "",
+      } as any);
 
       if (eventData.customThumbnail) {
         setThumbnailPreview(eventData.customThumbnail);
@@ -171,16 +178,13 @@ export default function UploadModal({
 
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (event: Event) => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
-      if (imageSource === "nextcloud") return;
-      onOpenChange(false);
-      form.reset();
-      setThumbnailPreview(null);
+      setCreatedEventId(event.id);
       toast({
         title: "Success",
-        description: "Event created successfully",
+        description: "Event created. You can now add its entry list before closing.",
       });
     },
     onError: (error: Error) => {
@@ -209,6 +213,8 @@ export default function UploadModal({
           coverImage: formData.coverImage,
           customThumbnail: thumbnailPreview,
           seriesId: formData.seriesId,
+          round: formData.round,
+          track: formData.track,
           isPremium: false,
         }),
       });
@@ -248,9 +254,9 @@ export default function UploadModal({
         // Recheck the current inputs before creating an album, even if the preview
         // was for an older link or the share has since become unavailable.
         await nextcloudPost("/api/admin/nextcloud/preview", { sources: sources() });
-        const id = importEventId || (isEditing ? eventId : null);
+        const id = importEventId || createdEventId || (isEditing ? eventId : null);
         const event = id ? null : await createMutation.mutateAsync(data);
-        const targetId = id || event.id;
+        const targetId = id ?? event!.id;
         setImportEventId(targetId);
         await nextcloudPost(`/api/admin/events/${targetId}/nextcloud`, { sources: sources() });
         queryClient.invalidateQueries({ queryKey: [`/api/admin/events/${targetId}/nextcloud`] });
@@ -286,6 +292,7 @@ export default function UploadModal({
       form.reset();
       setThumbnailPreview(null);
       setImportEventId(null);
+      setCreatedEventId(null);
       setPreview(null);
       setLinks([{ link: "", password: "" }]);
       setImageSource("local");
@@ -294,7 +301,7 @@ export default function UploadModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-       <DialogContent className="max-w-2xl">
+       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "Edit Event" : "Create New Event"}
@@ -344,6 +351,22 @@ export default function UploadModal({
             )}
           </div>
 
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="round">Round</Label>
+              <Input id="round" {...form.register("round" as any)} className="touch-auto" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="track">Track</Label>
+              <Input id="track" {...form.register("track" as any)} className="touch-auto" />
+            </div>
+          </div>
+          {!isEditing && !createdEventId && (
+            <p className="text-sm text-muted-foreground">
+              Create the event first; then you can add or import its entry list here.
+            </p>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="series">Race Series (Optional)</Label>
             <Select
@@ -363,6 +386,8 @@ export default function UploadModal({
               </SelectContent>
             </Select>
           </div>
+
+          {(isEditing && eventId !== null || createdEventId !== null) && <EntryListEditor eventId={(eventId ?? createdEventId)!} />}
           
           <div className="space-y-2">
             <Label>Event Thumbnail</Label>
@@ -441,12 +466,13 @@ export default function UploadModal({
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-               disabled={createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (imageSource === "nextcloud" && !preview)}
+             <Button
+              type={createdEventId && !isEditing && imageSource !== "nextcloud" ? "button" : "submit"}
+              onClick={createdEventId && !isEditing && imageSource !== "nextcloud" ? () => onOpenChange(false) : undefined}
+               disabled={createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (imageSource === "nextcloud" && !preview && !createdEventId)}
               className="bg-primary text-black hover:bg-primary/90"
             >
-              {createMutation.isPending || updateMutation.isPending || importBusy ? (
+               {createdEventId && !isEditing && imageSource !== "nextcloud" && !importBusy ? "Fertig" : createMutation.isPending || updateMutation.isPending || importBusy ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   {isEditing ? "Updating..." : "Creating..."}

@@ -180,6 +180,28 @@ test("creator image/video uploads, delivery and ownership", async () => {
     eventId = event.id;
     assert.equal(event.creatorId, accounts[0].id);
 
+    const details = await json(await owner(`/api/events/${eventId}`, {
+      method: "PUT", json: true, body: { round: "Round 3", track: "Hockenheim" },
+    }), 200);
+    assert.equal(details.round, "Round 3");
+    assert.equal(details.track, "Hockenheim");
+    await json(await outsider(`/api/events/${eventId}/entries`), 403);
+    await json(await anonymous(`/api/events/${eventId}/entries`), 401);
+    const csv = new FormData();
+    csv.set("file", new Blob(["Number,Team,Car,Drivers\n007,Team One,Porsche,A. Driver\n"], { type: "text/csv" }), "entries.csv");
+    const entryPreview = await json(await owner(`/api/events/${eventId}/entries/preview`, { method: "POST", body: csv }), 200);
+    assert.equal(entryPreview.rows[0].number, "007");
+    await json(await outsider(`/api/events/${eventId}/entries/preview`, { method: "POST", body: csv }), 403);
+    await json(await outsider(`/api/events/${eventId}/entries`, {
+      method: "PUT", json: true, body: { rows: entryPreview.rows },
+    }), 403);
+    await json(await owner(`/api/events/${eventId}/entries`, {
+      method: "PUT", json: true, body: { rows: [{ ...entryPreview.rows[0], number: "7" }, entryPreview.rows[0]] },
+    }), 400);
+    await json(await owner(`/api/events/${eventId}/entries`, {
+      method: "PUT", json: true, body: { rows: entryPreview.rows },
+    }), 200);
+
     const uploaded = [];
     for (const [bytes, filename, mime, type] of [
       [image, "tiny.png", "image/png", "image"],
@@ -219,6 +241,29 @@ test("creator image/video uploads, delivery and ownership", async () => {
       new Set(listing.map((item) => item.id)),
       new Set(uploaded.map((item) => item.id)),
     );
+    const longCaption = "Entry 007 — Team One, Porsche, A. Driver. ".repeat(8);
+    const updatedImage = await json(await owner(`/api/media/${uploaded[0].id}`, {
+      method: "PUT", json: true, body: { caption: longCaption, tags: ["Manual"] },
+    }), 200);
+    assert.equal(updatedImage.caption, longCaption);
+    await json(await outsider(`/api/media/${uploaded[0].id}`, {
+      method: "PUT", json: true, body: { caption: "Hijacked" },
+    }), 403);
+    await json(await owner(`/api/media/${uploaded[0].id}`, {
+      method: "PUT", json: true, body: { caption: "x".repeat(1001) },
+    }), 400);
+    const clearedTags = await json(await owner(`/api/media/${uploaded[0].id}`, {
+      method: "PUT", json: true, body: { caption: longCaption, tags: [] },
+    }), 200);
+    assert.deepEqual(clearedTags.tags, []);
+    const untaggedCaption = await json(await owner(`/api/media/${uploaded[0].id}`, {
+      method: "PUT", json: true, body: { caption: longCaption + " Edited" },
+    }), 200);
+    assert.equal(untaggedCaption.caption, longCaption + " Edited");
+    await json(await owner(`/api/media/${uploaded[0].id}`, {
+      method: "PUT", json: true, body: { caption: longCaption },
+    }), 200);
+    assert.equal((await json(await owner(`/api/events/${eventId}/media`), 200)).find(item => item.id === uploaded[0].id).caption, longCaption);
     const featured = await json(await anonymous(`/api/media/top/creator/${accounts[0].id}`), 200);
     const imageCard = featured.find(item => item.id === uploaded.find(item => item.type === "image").id);
     assert.ok(imageCard, "new creator image should appear in featured media");
@@ -282,7 +327,10 @@ test("creator image/video uploads, delivery and ownership", async () => {
     await stopServer(server);
     server = undefined;
     server = await startServer(port);
+    assert.equal((await json(await owner(`/api/events/${eventId}`), 200)).track, "Hockenheim");
+    assert.equal((await json(await owner(`/api/events/${eventId}/entries`), 200))[0].number, "007");
     const persisted = await json(await owner(`/api/events/${eventId}/media`), 200);
+    assert.equal(persisted.find(item => item.id === uploaded[0].id).caption, longCaption);
     assert.deepEqual(new Set(persisted.map((item) => item.id)), new Set(uploaded.map((item) => item.id)));
     for (const media of uploaded) {
       const restored = persisted.find((item) => item.id === media.id);

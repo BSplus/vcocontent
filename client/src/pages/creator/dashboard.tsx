@@ -1,22 +1,18 @@
 import { useState, useEffect } from "react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Event, MediaItem, InsertEvent } from "@shared/schema";
+import { Event, MediaItem } from "@shared/schema";
 import { 
   ArrowLeft, Loader2, Plus, Image as ImageIcon, Film, 
   Edit, Eye, Trash2, PenLine
 } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
-import SimpleModal from "@/components/simple-modal";
 import EditMediaModal from "@/components/edit-media-modal";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 
 export default function CreatorDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -25,124 +21,6 @@ export default function CreatorDashboard() {
   const [selectedMediaItem, setSelectedMediaItem] = useState<MediaItem | null>(null);
   const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"events" | "media" | "analytics">("events");
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    date: new Date().toISOString().split('T')[0],
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  
-  // Laden eines vorhandenen Events in den Formular-State
-  useEffect(() => {
-    if (selectedEventId && events) {
-      const event = events.find(e => e.id === selectedEventId);
-      if (event) {
-        setFormData({
-          title: event.title,
-          description: event.description || "",
-          date: new Date(event.date).toISOString().split('T')[0],
-        });
-      }
-    } else {
-      // Reset auf leere Werte beim Öffnen eines neuen Formulars
-      setFormData({
-        title: "",
-        description: "",
-        date: new Date().toISOString().split('T')[0],
-      });
-    }
-  }, [selectedEventId, uploadModalOpen]);
-  
-  // Event erstellen Mutation
-  const createEventMutation = useMutation({
-    mutationFn: async (data: InsertEvent) => {
-      console.log("Creating event with data:", data);
-      const response = await apiRequest("POST", "/api/creator/events", data);
-      return await response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
-      toast({
-        title: "Success!",
-        description: selectedEventId ? "Event updated" : "Event created",
-      });
-      setUploadModalOpen(false);
-    },
-    onError: (error: Error) => {
-      console.error("Error creating event:", error);
-      toast({
-        title: "Error",
-        description: `Error ${selectedEventId ? "updating" : "creating"} event: ${error.message}`,
-        variant: "destructive",
-      });
-    }
-  });
-  
-  // Event update mutation
-  const updateEventMutation = useMutation({
-    mutationFn: async (data: { id: number, event: Partial<InsertEvent> }) => {
-      console.log("Updating event with data:", data);
-      const response = await apiRequest("PATCH", `/api/creator/events/${data.id}`, data.event);
-      return await response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
-      toast({
-        title: "Success!",
-        description: "Event updated",
-      });
-      setUploadModalOpen(false);
-    },
-    onError: (error: Error) => {
-      console.error("Error updating event:", error);
-      toast({
-        title: "Error",
-        description: `Error updating event: ${error.message}`,
-        variant: "destructive",
-      });
-    }
-  });
-  
-  // Submit form
-  const handleSubmit = () => {
-    setIsSubmitting(true);
-    
-    // Form validation
-    if (!formData.title || !formData.date) {
-      toast({
-        title: "Error",
-        description: "Please fill in all required fields (Title and Date)",
-        variant: "destructive",
-      });
-      setIsSubmitting(false);
-      return;
-    }
-    
-    // Create InsertEvent object with all required fields
-    const eventData = {
-      title: formData.title,
-      description: formData.description,
-      date: formData.date,
-      isPremium: false,
-    } as any; // Using any to avoid TypeScript errors
-    
-    try {
-      if (selectedEventId) {
-        // Update existing event
-        updateEventMutation.mutate({ id: selectedEventId, event: eventData });
-      } else {
-        // Create new event
-        createEventMutation.mutate(eventData);
-      }
-    } catch (error) {
-      console.error("Error submitting event:", error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   // Load creator's events
   const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
@@ -223,10 +101,8 @@ export default function CreatorDashboard() {
               <h2 className="text-2xl font-bold">My Events</h2>
               <Button
                 onClick={() => {
-                  console.log("Create New Event button clicked");
-                  console.log("Current uploadModalOpen state:", uploadModalOpen);
+                  setSelectedEventId(null);
                   setUploadModalOpen(true);
-                  console.log("New uploadModalOpen state should be true");
                 }}
                 className="bg-primary text-black hover:bg-primary/90"
               >
@@ -468,80 +344,11 @@ export default function CreatorDashboard() {
         </Tabs>
       </main>
 
-      {/* Original modals (hidden) */}
-      <div style={{ display: 'none' }}>
-        <UploadModal
-          open={false}
-          onOpenChange={setUploadModalOpen}
-          eventId={selectedEventId}
-        />
-      </div>
-
-      {/* SimpleModal for Event Creation */}
-      <SimpleModal
-        isOpen={uploadModalOpen}
-        onClose={() => setUploadModalOpen(false)}
-        title={selectedEventId ? "Edit Event" : "Create New Event"}
-      >
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium mb-1">Title</label>
-            <input 
-              type="text" 
-              id="title"
-              value={formData.title}
-              onChange={(e) => setFormData({...formData, title: e.target.value})}
-              placeholder="Event title" 
-              className="w-full border rounded p-2"
-            />
-          </div>
-          
-          <div>
-            <label htmlFor="desc" className="block text-sm font-medium mb-1">Description</label>
-            <textarea 
-              id="desc" 
-              value={formData.description}
-              onChange={(e) => setFormData({...formData, description: e.target.value})}
-              placeholder="Event description" 
-              className="w-full border rounded p-2 min-h-[100px]"
-            />
-          </div>
-          
-          <div>
-            <label htmlFor="date" className="block text-sm font-medium mb-1">Date</label>
-            <input 
-              type="date" 
-              id="date"
-              value={formData.date}
-              onChange={(e) => setFormData({...formData, date: e.target.value})}
-              className="w-full border rounded p-2"
-            />
-          </div>
-          
-          <div className="flex justify-end gap-2 pt-4">
-            <button 
-              type="button" 
-              onClick={() => setUploadModalOpen(false)}
-              className="px-4 py-2 border rounded hover:bg-gray-100"
-            >
-              Cancel
-            </button>
-            <button 
-              type="button" 
-              disabled={isSubmitting}
-              className={`px-4 py-2 bg-primary text-black rounded ${isSubmitting ? 'opacity-70 cursor-not-allowed' : 'hover:bg-primary/90'}`}
-              onClick={handleSubmit}
-            >
-              {isSubmitting ? (
-                <span className="flex items-center">
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Loading...
-                </span>
-              ) : selectedEventId ? "Update Event" : "Create Event"}
-            </button>
-          </div>
-        </div>
-      </SimpleModal>
+      <UploadModal
+        open={uploadModalOpen}
+        onOpenChange={setUploadModalOpen}
+        eventId={selectedEventId}
+      />
 
       {selectedEventId && (
         <MediaUploadModal
