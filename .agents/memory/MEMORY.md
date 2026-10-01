@@ -9,6 +9,7 @@
 - [Preview process ownership](preview-process-ownership.md) — a workflow restart may leave an earlier listener; verify the process actually owning the preview port.
 - [Vite module interception](vite-module-interception.md) — browser mocks for Vite entry modules need URL patterns that include cache-busting query strings.
 - [Managed OpenAI testing](openai-managed-testing.md) — the OpenAI SDK captures default fetch at import time; inject transport to mock requests later.
+- [Managed AI setup](managed-ai-setup.md) — managed OpenAI provisioning uses a dedicated setup flow; an empty connector search does not mean it is unavailable.
 - [Radix tabs in browser checks](radix-tabs-browser-checks.md) — synthetic click alone does not activate Radix tabs; simulate pointer/mouse down or keyboard activation.
 - [Nextcloud media classification](nextcloud-media-classification.md) — import and progress intentionally share extension-based classification; validate downloaded content separately.
 - [Admin diagnostic cooldown](admin-diagnostic-cooldown.md) — the inexpensive per-admin OpenAI probe limit is process-local; scale-out needs shared coordination.
