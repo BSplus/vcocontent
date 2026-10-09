@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { discover, resolveSource } from "../server/nextcloud.ts";
-import { startImport, importStatus } from "../server/nextcloud.ts";
+import { startImport, importStatus, stopImportWorker } from "../server/nextcloud.ts";
+import { stopAnalysisWorker } from "../server/analysis-jobs.ts";
+import { pool } from "../server/db.ts";
 import { storage } from "../server/storage.ts";
 import sharp from "sharp";
 import express from "express";
@@ -19,7 +21,11 @@ const previous = {
 process.env.NEXTCLOUD_BASE_URL = base;
 process.env.NEXTCLOUD_USERNAME = "admin";
 process.env.NEXTCLOUD_APP_PASSWORD = "test-app-password";
-test.after(() => {
+test.after(async () => {
+  await stopImportWorker();
+  await stopAnalysisWorker();
+  await storage.cleanupObjects();
+  await pool.end();
   for (const [key, value] of Object.entries({
     NEXTCLOUD_BASE_URL: previous.base, NEXTCLOUD_USERNAME: previous.user,
     NEXTCLOUD_APP_PASSWORD: previous.password,

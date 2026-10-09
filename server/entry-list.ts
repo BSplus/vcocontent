@@ -460,7 +460,8 @@ async function renderPdfPage(buffer: Buffer, pageNumber: number): Promise<Buffer
   }
 }
 
-export async function parseEntryFile(buffer: Buffer, mime: string, name: string): Promise<EntryListParseResult> {
+export async function parseEntryFile(buffer: Buffer, mime: string, name: string,
+  runVision: (work: () => Promise<EditableEntryRow[]>) => Promise<EditableEntryRow[]> = work => work()): Promise<EntryListParseResult> {
   if (!Buffer.isBuffer(buffer)) throw new Error("Entry-list file contents must be a buffer.");
   const type = validateType(buffer, mime, name);
   if (type === "csv") {
@@ -480,7 +481,7 @@ export async function parseEntryFile(buffer: Buffer, mime: string, name: string)
   if (type === "image") {
     const openai = getManagedOpenAI();
     const screenshot = await normalizeScreenshot(buffer);
-    const rows = await extractRowsFromImage(openai, screenshot.bytes, screenshot.mime);
+    const rows = await runVision(() => extractRowsFromImage(openai, screenshot.bytes, screenshot.mime));
     return flagAmbiguousNumbers({ rows, issues: rows.length ? [] : ["No entry rows could be confidently read from the image."] });
   }
 
@@ -511,7 +512,7 @@ export async function parseEntryFile(buffer: Buffer, mime: string, name: string)
   const rows: EditableEntryRow[] = [];
   for (let page = 1; page <= Math.min(extracted.pages, ENTRY_LIST_LIMITS.visionPages); page++) {
     const renderedPage = await renderPdfPage(buffer, page);
-    rows.push(...await extractRowsFromImage(openai, renderedPage, "image/png"));
+    rows.push(...await runVision(() => extractRowsFromImage(openai, renderedPage, "image/png")));
     if (rows.length >= ENTRY_LIST_LIMITS.rows) {
       rows.length = ENTRY_LIST_LIMITS.rows;
       break;

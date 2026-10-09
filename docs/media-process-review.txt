@@ -1,0 +1,166 @@
+MEDIA AND AI PROCESS REVIEW
+===========================
+
+Conclusion
+----------
+The strongest improvement is separating durable file storage from optional AI,
+not replacing the model. This is now implemented. A successful upload no longer
+waits for an OpenAI response. Nextcloud transfers and analysis use separate,
+bounded workers. Downloads use native browser delivery instead of fetching the
+complete file into a JavaScript Blob.
+
+Implemented safeguards
+----------------------
+- Media storage and an optional analysis request commit together. A full queue
+  or unavailable provider leaves the file saved and a visible, retryable failure.
+- Tag jobs survive process restarts. Expired leases are recovered; fencing
+  prevents late workers from overwriting a newer job.
+- Up to two tag jobs run concurrently across server instances. Tags, caption
+  previews and scanned Entry List extraction share a two-request vision budget.
+- Provider requests have explicit timeouts and no SDK retries. The durable tag
+  queue owns its maximum three attempts and backoff. A busy shared budget defers
+  work without consuming the provider-failure attempt budget.
+- Completed tag results are reused for the same immutable thumbnail/prompt
+  version. Repeated enqueue/retry clicks do not create duplicate provider calls.
+- Applying tags uses an atomic union with the latest manual tags. Workers never
+  overwrite approved captions. Captions and Entry Lists still need confirmation.
+- Analysis status, sanitized failures and individual retry are available in
+  upload/edit dialogs and the Nextcloud import view.
+- One Nextcloud import runs globally, with at most two file transfers inside it.
+  Multipart uploads and imports share a per-process two-file processing budget
+  with eight waiting slots; waiting inputs remain on disk rather than in RAM.
+- Nextcloud manifests are persisted with authenticated encryption. Access data
+  is cleared after successful import, or expired after 24 hours. Partial imports
+  can resume without entering the same links again within that period.
+  Changing SESSION_SECRET invalidates saved manifests; affected imports must
+  be restarted with their links. Already saved media remains deduplicated.
+- Workers wake immediately for newly requested work, then reduce idle polling.
+- Download authorization alone no longer increments the counter. Completed
+  server deliveries increment it atomically; aborted streams do not count.
+  Delivery does not prove that a person saved the file on their device.
+- Original/private/premium permissions are rechecked on the download GET.
+  Historical base64 files still need server-side decoding, but no modern file
+  requires a full-file browser JavaScript buffer.
+
+Controlled before/after experiment
+---------------------------------
+Command:
+  node --import tsx scripts/benchmark-media-processes.mjs
+Raw results:
+  docs/measurements/media-pipeline.json
+
+This is NOT a production latency benchmark. It runs the production uploadMedia
+and Sharp conversion code with simulated object writes (20 ms/object) and AI
+(250 ms/image). Each case runs in a fresh process. Two supplied VCO photos are
+used; the video is a 50 MiB MP4-signature fixture, NOT a playable video. It tests
+the current byte/persistence path, not video decoding, codec quality or playback.
+
+Case       Stored before/after   Analyzed before/after   Peak RSS before/after
+2 photos       2844 / 1794 ms         3095 / 2044 ms          211 / 248 MiB
+video           320 /  278 ms          320 /  278 ms          169 / 165 MiB
+mixed          2824 / 1736 ms         3074 / 1987 ms          215 / 246 MiB
+
+The mixed experiment reached storage about 39% sooner and all analysis about
+35% sooner. These are controlled observations, not promised live speed gains.
+The one-video path has no architectural change; its timing difference is normal
+run-to-run variation. Parallel image conversion raised peak memory by 31-37 MiB
+on this small set, which is why concurrency is capped at two, not increased
+without bound. These peaks include fixture buffers and native Sharp allocations;
+they are not a worst-case production memory guarantee.
+
+Bytes written did not change: 1,394,474 bytes for the two photos,
+52,430,748 for the video+poster, and 53,825,222 for the mixed set.
+AI request counts remained 2 / 0 / 2. All six controlled cases had zero errors.
+For a modern 50 MiB download the previous client awaited a whole-file Blob;
+the new client does not allocate that application-level whole-file buffer.
+Native browser and network buffers still exist; this is not a claim of zero RAM.
+
+Real managed-OpenAI comparison
+------------------------------
+Command (explicitly makes six billable provider requests):
+  node --import tsx scripts/compare-vision-strategies.mjs --live
+Raw results:
+  docs/measurements/vision-strategies.json
+
+Both supplied racing photos were resized to the same 640-pixel thumbnail for
+every strategy. Baseline: existing tag request plus existing number/scene
+request. Combined: one structured gpt-4.1-mini request. OCR: local Tesseract plus
+literal number extraction. No media, tags or captions were saved by this test.
+
+Photo       Baseline time/tokens   Combined time/tokens   OCR time
+car 89         1321 ms / 1309        719 ms / 674          1813 ms
+group scene    1090 ms /  857        663 ms / 449           469 ms
+
+Across both photos, combined requests used 1123 tokens versus 2166 when tags
+AND number/scene detection were requested separately: about 48% fewer tokens
+and two requests instead of four. Existing tag-only requests used 1129 tokens
+in this run, roughly the same as combined requests. The measured provider
+returned token usage, not an invoice; no currency-cost estimate is asserted.
+
+Quality matters more than the latency result:
+- Both vision approaches returned all three manually chosen core tags per
+  photo. This is a small recall check, not proof that every extra tag was correct.
+- Both missed the visible number 89 at thumbnail size.
+- Both called that stock car a "GT Car"; the current taxonomy lacks a Stock Car
+  label. A faster prompt does not fix an incomplete taxonomy.
+- The baseline returned Race Action for both scenes. The combined prompt
+  returned null for both, so it is not a quality-equivalent replacement.
+- OCR invented number 4 on the car-89 photo and found nothing on the group
+  photo. It cannot provide the required scene/visual tags on its own.
+
+Decision: retain the current provider and keep number/caption generation
+on demand. A combined structured call is promising when both outputs are
+needed, but not adopted on the strength of two photos with known quality gaps.
+Neither captions nor uncertain numbers are automatically published.
+
+Privacy and alternatives
+------------------------
+Vision sends only the selected thumbnail to managed OpenAI, rather than the
+original file. Combined extraction uses the same external image transfer; it
+does not inherently improve privacy. Local OCR keeps the image local and has
+no external inference bill, but still uses CPU and gave a false number here.
+Searchable PDF/CSV Entry Lists already use deterministic local parsing; only
+screenshots/scanned PDF pages need vision, and those requests are now budgeted.
+Do not replace these local paths with an LLM.
+
+A useful next evaluation is a larger reviewed VCO dataset, including small or
+obscured numbers and different car types. Compare number-specific crops or
+higher-resolution inputs before adding a different model, a second provider,
+local vision infrastructure or automatically extracting numbers on every
+upload. This pilot is too small to justify those changes.
+
+Verification and remaining operational limits
+--------------------------------------------
+Focused checks cover idempotent analysis, shared budgets, manual edits during
+analysis, interrupted leases, sanitized terminal failure and targeted retry,
+resumed imports without duplicate transfers, encrypted-manifest cleanup,
+download permissions/counting, and cancellation of a streamed original.
+All 37 focused/Entry List/legacy-media/top-shots checks passed, along with type
+checking and the production build. The public page was inspected in preview.
+An authenticated browser check confirmed Edit Media failure/retry and
+queued/completed rendering, with typed tags retained. That UI check mocked the
+analysis responses; durable queue behavior was tested separately against the
+database. No authentication bypass was added to the app.
+Existing mixed-import tests additionally cover invalid images/videos, size
+limits, partial failure and retry. The video fixture does not replace testing
+real video playback or the operator's actual Nextcloud instance.
+
+Run focused database-worker tests in isolation:
+  npm run test:media-processes
+Pause the preview workflow first if it also consumes the same database queue.
+Tests sharing that queue must run serially; another live consumer can claim a
+fixture job and bypass its process-local network mock.
+
+The deployed configuration currently uses Autoscale. Replit's documentation
+states that Autoscale can scale to zero when idle, whereas Reserved VM supports
+always-on workers. Persisted jobs resume when an app instance starts, but this
+does NOT guarantee uninterrupted processing while the site is unattended.
+An always-on worker/hosting decision is a separate operational step; no hosting
+settings or production data were changed and nothing was published here.
+
+Schema changes are additive and have a development-only post-merge setup.
+There is no startup-time or deployment-build database mutation. Production
+schema must follow the project's database ownership/migration workflow.
+
+Reference:
+https://docs.replit.com/features/publishing/deployment-types

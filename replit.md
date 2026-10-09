@@ -115,10 +115,15 @@ Preferred communication style: Simple, everyday language.
 - Predefined tag taxonomy for consistent categorization
 
 **Media Handling:**
-- Base64 encoding for file uploads (250MB limit)
-- Client-side image processing for thumbnails
-- Video frame extraction for preview generation
+- Disk-backed multipart uploads to private App Storage, with shared bounded processing and the limits in `server/media-policy.ts`
+- Server-side image conversion and thumbnails; video files use safe poster previews
 - IPTC metadata extraction for professional photo metadata
+- Durable AI tag jobs with shared provider concurrency, bounded retries and manual-tag/caption preservation
+- Encrypted, expiring Nextcloud manifests for resumable imports; saved files are deduplicated
+- Native browser downloads through permission-checked streaming routes; count completed delivery, not authorization
+- Additive development/post-merge schema setup; never perform production DDL at application startup or build
+- Focused queue tests require serial execution and no competing preview worker on the same database
+- Autoscale does not guarantee uninterrupted idle-time processing; see `docs/media-process-review.txt` for measurements and operational limits
 
 **Third-Party UI Components:**
 - Radix UI for accessible component primitives

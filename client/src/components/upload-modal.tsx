@@ -66,11 +66,14 @@ export default function UploadModal({
   const { data: importProgress } = useQuery<{
     status: string; error?: string; total: number; imported: number; importedImages: number; importedVideos: number;
     failed: number; skipped: number; warnings: number;
-    files: { name: string; type?: "image" | "video"; status: string; message?: string; aiWarning?: string }[];
+    analysisPending: number; analysisCompleted: number;
+    files: { name: string; type?: "image" | "video"; status: string; message?: string; aiWarning?: string;
+      mediaId?: number; analysisStatus?: string; analysisError?: string }[];
   }>({
     queryKey: [`/api/admin/events/${importEventId}/nextcloud`],
     enabled: open && !!importEventId,
-    refetchInterval: importEventId ? 2000 : false,
+    refetchInterval: query => !query.state.data || ["queued", "running"].includes(query.state.data.status)
+      || query.state.data.analysisPending > 0 ? 4000 : false,
   });
 
   const sources = () => links.map(({ link, password }) => ({ link: link.trim(), password: password || undefined }));
@@ -450,11 +453,26 @@ export default function UploadModal({
                 {importProgress && <div role="status" className="text-sm space-y-1">
                    <p>Import: {importProgress.status} · {importProgress.imported}/{importProgress.total} Medien ({importProgress.importedImages} Bilder, {importProgress.importedVideos} Videos) · {importProgress.skipped} übersprungen · {importProgress.failed} Fehler · {importProgress.warnings} Bild-KI-Warnungen</p>
                   {importProgress.error && <p className="text-amber-600">{importProgress.error}</p>}
+                  <p>AI: {importProgress.analysisPending || 0} pending · {importProgress.analysisCompleted || 0} completed. Files are already saved independently.</p>
                   <div className="max-h-28 overflow-y-auto">
-                    {importProgress.files.filter(file => file.message || file.aiWarning).map((file, index) =>
-                      <p key={index}>{file.name}: {file.message || file.aiWarning}</p>)}
+                    {importProgress.files.filter(file => file.message || file.aiWarning || file.analysisStatus === "failed").map((file, index) =>
+                      <div key={index}>{file.name}: {file.message || file.aiWarning || file.analysisError}
+                        {file.mediaId && (file.aiWarning || file.analysisStatus === "failed") && <Button type="button" variant="outline" size="sm"
+                          onClick={async () => {
+                            try {
+                              await nextcloudPost(`/api/media/${file.mediaId}/analyze`, { retry: true });
+                              await queryClient.invalidateQueries({ queryKey: [`/api/admin/events/${importEventId}/nextcloud`] });
+                            } catch (error) { toast({ title: "Analysis unavailable", description: error instanceof Error ? error.message : "Retry later", variant: "destructive" }); }
+                          }}>Retry analysis</Button>}
+                      </div>)}
                   </div>
-                   <p>Bei Unterbrechung dieselben Links erneut eingeben und den Import erneut starten. Bereits importierte Medien werden nicht verdoppelt.</p>
+                  {["partial", "error"].includes(importProgress.status) && <Button type="button" variant="outline"
+                    onClick={async () => {
+                      try { await nextcloudPost(`/api/admin/events/${importEventId}/nextcloud/resume`, {});
+                        await queryClient.invalidateQueries({ queryKey: [`/api/admin/events/${importEventId}/nextcloud`] }); }
+                      catch (error) { toast({ title: "Import could not resume", description: error instanceof Error ? error.message : "Check the links again", variant: "destructive" }); }
+                    }}>Resume failed files</Button>}
+                   <p>Bei Serverneustart wird der Import automatisch fortgesetzt. Bereits gespeicherte Medien werden nicht verdoppelt. Importzugänge werden verschlüsselt gespeichert und nach Erfolg oder spätestens nach 24 Stunden gelöscht.</p>
                 </div>}
               </>}
             </div>

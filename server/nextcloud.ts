@@ -8,12 +8,12 @@ import { Readable, Transform } from "stream";
 import { XMLParser } from "fast-xml-parser";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { nextcloudFiles, nextcloudJobs, insertMediaItemSchema } from "@shared/schema";
+import { nextcloudFiles, nextcloudJobs, mediaItems, mediaAnalysisJobs, insertMediaItemSchema } from "@shared/schema";
 import { storage } from "./storage";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { createMediaKeys, uploadMedia, type MediaType } from "./media-storage";
-import { analysisImageInput } from "./image-analysis";
-import { generateTagsForImage, categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
+import { enqueueAnalysis } from "./analysis-jobs";
+import { encryptManifest, decryptManifest } from "./import-manifest";
 
 export class NextcloudError extends Error {}
 export type SourceInput = { link: string; password?: string };
@@ -210,55 +210,152 @@ export async function discover(inputs: SourceInput[]): Promise<{ sources: Source
 export async function importStatus(eventId: number) {
   const [job] = await db.select().from(nextcloudJobs).where(eq(nextcloudJobs.eventId, eventId));
   const files = await db.select({ name: nextcloudFiles.name, status: nextcloudFiles.status,
-    message: nextcloudFiles.message, aiWarning: nextcloudFiles.aiWarning })
-    .from(nextcloudFiles).where(eq(nextcloudFiles.eventId, eventId)).orderBy(nextcloudFiles.id).limit(500);
-  const typedFiles = files.map(file => ({ ...file, type: mediaForName(file.name)?.type }));
+    message: nextcloudFiles.message, aiWarning: nextcloudFiles.aiWarning, mediaId: nextcloudFiles.mediaId,
+    analysisStatus: mediaAnalysisJobs.status, analysisError: mediaAnalysisJobs.error })
+    .from(nextcloudFiles).leftJoin(mediaAnalysisJobs, eq(nextcloudFiles.mediaId, mediaAnalysisJobs.mediaId))
+    .where(eq(nextcloudFiles.eventId, eventId)).orderBy(nextcloudFiles.id).limit(500);
+  const typedFiles = files.map(file => ({ ...file,
+    aiWarning: file.analysisStatus && file.analysisStatus !== "failed" ? null : file.aiWarning,
+    type: mediaForName(file.name)?.type }));
   return { status: job?.status || "idle", error: job?.error, total: files.length,
     imported: files.filter(f => f.status === "saved").length,
     importedImages: typedFiles.filter(f => f.status === "saved" && f.type === "image").length,
     importedVideos: typedFiles.filter(f => f.status === "saved" && f.type === "video").length,
     skipped: (job?.skipped || 0) + files.filter(f => f.status === "skipped").length,
     failed: files.filter(f => f.status === "error").length,
-    warnings: files.filter(f => f.aiWarning).length, files: typedFiles };
+    warnings: typedFiles.filter(f => f.aiWarning || f.analysisStatus === "failed").length,
+    analysisPending: files.filter(f => f.analysisStatus === "queued" || f.analysisStatus === "running").length,
+    analysisCompleted: files.filter(f => f.analysisStatus === "completed").length,
+    files: typedFiles };
 }
+
+type Manifest = { sources: { base: string; root: string; auth: string }[];
+  files: (Omit<Found, "href"> & { href: string })[] };
 
 export async function startImport(eventId: number, inputs: SourceInput[]): Promise<void> {
   const { sources, files, skipped } = await discover(inputs);
-  await db.insert(nextcloudJobs).values({ eventId }).onConflictDoNothing();
-  const [locked] = await db.update(nextcloudJobs).set({ status: "running", skipped, error: null, updatedAt: new Date() })
-    .where(and(eq(nextcloudJobs.eventId, eventId), sql`(${nextcloudJobs.status} != 'running' or ${nextcloudJobs.updatedAt} < now() - interval '30 seconds')`)).returning();
-  if (!locked) throw new NextcloudError("Für dieses Album läuft bereits ein Import.");
-  try {
+  const manifest = encryptManifest({
+    sources: sources.map(s => ({ base: s.base.href, root: s.root.href, auth: s.auth })),
+    files: files.map(f => ({ ...f, href: f.href.href })),
+  } satisfies Manifest);
+  await db.transaction(async tx => {
+    await tx.insert(nextcloudJobs).values({ eventId }).onConflictDoNothing();
+    const [locked] = await tx.update(nextcloudJobs).set({ status: "queued", skipped, manifest,
+      manifestExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      workerToken: null, error: null, updatedAt: new Date() })
+      .where(and(eq(nextcloudJobs.eventId, eventId), sql`${nextcloudJobs.status} not in ('queued','running')`)).returning();
+    if (!locked) throw new NextcloudError("Für dieses Album läuft bereits ein Import.");
     for (const file of files) {
       const sourceKey = createHash("sha256").update(file.href.href).digest("hex");
-      await db.insert(nextcloudFiles).values({ eventId, sourceKey, name: file.name }).onConflictDoNothing();
+      await tx.insert(nextcloudFiles).values({ eventId, sourceKey, name: file.name }).onConflictDoNothing();
     }
-  } catch {
-    await db.update(nextcloudJobs).set({ status: "error", error: "Importliste konnte nicht gespeichert werden." })
-      .where(eq(nextcloudJobs.eventId, eventId));
-    throw new NextcloudError("Importliste konnte nicht gespeichert werden.");
-  }
-  void runImport(eventId, sources, files).catch(async () => {
-    await db.update(nextcloudJobs).set({ status: "error", error: "Import unterbrochen. Bitte mit denselben Links erneut starten.", updatedAt: new Date() })
-      .where(eq(nextcloudJobs.eventId, eventId));
   });
+  startImportWorker();
+  void kickImportWorker();
 }
 
-async function runImport(eventId: number, sources: Source[], files: Found[]) {
+export async function resumeImport(eventId: number) {
+  const [job] = await db.update(nextcloudJobs).set({ status: "queued", error: null, workerToken: null, updatedAt: new Date() })
+    .where(and(eq(nextcloudJobs.eventId, eventId), sql`${nextcloudJobs.status} in ('partial', 'error') and ${nextcloudJobs.manifest} is not null
+      and ${nextcloudJobs.manifestExpiresAt} > now()`)).returning();
+  if (!job) throw new NextcloudError("Kein fortsetzbarer Import vorhanden. Bitte Links erneut prüfen.");
+  startImportWorker();
+  void kickImportWorker();
+}
+
+let workerTimer: NodeJS.Timeout | undefined;
+let workerRunning = false;
+const importsInFlight = new Set<Promise<unknown>>();
+function kickImportWorker() {
+  const work = drainImportQueue().catch(() => { console.error("Import queue unavailable"); return false; });
+  importsInFlight.add(work);
+  void work.finally(() => importsInFlight.delete(work));
+  return work;
+}
+export function startImportWorker() {
+  if (workerRunning) return;
+  workerRunning = true;
+  const tick = async () => {
+    const active = await kickImportWorker();
+    if (!workerRunning) return;
+    workerTimer = setTimeout(tick, active ? 1000 : 30000);
+    workerTimer.unref();
+  };
+  void tick();
+}
+
+export async function stopImportWorker() {
+  workerRunning = false;
+  if (workerTimer) clearTimeout(workerTimer);
+  workerTimer = undefined;
+  await Promise.allSettled(Array.from(importsInFlight));
+}
+
+export async function drainImportQueue() {
+  const job = await db.transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(761021)`);
+    await tx.execute(sql`update nextcloud_jobs set manifest=null, manifest_expires_at=null,
+      status='error', worker_token=null, error='Gespeicherter Importzugang ist abgelaufen. Links erneut prüfen.'
+      where manifest is not null and manifest_expires_at < now()`);
+    const active = await tx.execute(sql`select count(*)::int as count from nextcloud_jobs where status='running'
+      and updated_at >= now() - interval '90 seconds'`);
+    if (Number(active.rows[0]?.count) >= 1) return undefined;
+    const [row] = await tx.select().from(nextcloudJobs)
+      .where(sql`${nextcloudJobs.manifest} is not null and (${nextcloudJobs.status}='queued' or
+        (${nextcloudJobs.status}='running' and ${nextcloudJobs.updatedAt}<now()-interval '90 seconds'))`)
+      .orderBy(nextcloudJobs.updatedAt).limit(1).for("update", { skipLocked: true });
+    if (!row) return undefined;
+    const token = randomUUID();
+    await tx.update(nextcloudJobs).set({ status: "running", workerToken: token, updatedAt: new Date() }).where(eq(nextcloudJobs.id, row.id));
+    return { ...row, workerToken: token };
+  });
+  if (!job) return false;
+  try {
+    const data = decryptManifest<Manifest>(job.manifest!);
+    const sources = data.sources.map(s => ({ ...s, base: new URL(s.base), root: new URL(s.root) }));
+    const files = data.files.map(f => ({ ...f, href: new URL(f.href) }));
+    await runImport(job.eventId, sources, files, job.workerToken);
+  } catch {
+    await db.update(nextcloudJobs).set({ status: "error", workerToken: null,
+      error: "Import unterbrochen. Fortsetzen ist möglich; bei geänderten Zugangsdaten Links erneut prüfen.", updatedAt: new Date() })
+      .where(and(eq(nextcloudJobs.id, job.id), eq(nextcloudJobs.workerToken, job.workerToken)));
+  }
+  return true;
+}
+
+async function runImport(eventId: number, sources: Source[], files: Found[], workerToken: string) {
   const started = Date.now();
   let failed = 0, downloaded = 0;
+  const owned = and(eq(nextcloudJobs.eventId, eventId), eq(nextcloudJobs.workerToken, workerToken));
   const heartbeat = setInterval(() => {
-    void db.update(nextcloudJobs).set({ updatedAt: new Date() }).where(eq(nextcloudJobs.eventId, eventId)).catch(() => {});
+    void db.update(nextcloudJobs).set({ updatedAt: new Date() }).where(owned).catch(() => {});
   }, 10000);
   heartbeat.unref();
   try {
-  for (const file of files) {
+   // One import globally, two transfers/conversions within it. AI has its own
+   // separate budget and never blocks the next transfer.
+   let cursor = 0;
+   const processFile = async (file: Found) => {
     if (Date.now() - started > MAX_MS) throw new NextcloudError("Import-Zeitlimit erreicht.");
-    const source = sources.find(s => file.href.pathname === s.root.pathname || file.href.pathname.startsWith(s.root.pathname.replace(/\/$/, "") + "/"))!;
+    const [lease] = await db.select({ token: nextcloudJobs.workerToken }).from(nextcloudJobs).where(owned);
+    if (!lease) throw new NextcloudError("Import lease expired");
+    const source = sources.find(s => file.href.origin === s.root.origin &&
+      (file.href.pathname === s.root.pathname || file.href.pathname.startsWith(s.root.pathname.replace(/\/$/, "") + "/")))!;
     const key = createHash("sha256").update(file.href.href).digest("hex");
     await db.insert(nextcloudFiles).values({ eventId, sourceKey: key, name: file.name }).onConflictDoNothing();
     const [record] = await db.select().from(nextcloudFiles).where(and(eq(nextcloudFiles.eventId, eventId), eq(nextcloudFiles.sourceKey, key)));
-    if (record.status === "saved" && record.mediaId) continue;
+    const queueTags = async (mediaId: number) => {
+      if (file.type !== "image") return;
+      try {
+        const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, mediaId));
+        if (!item) return;
+        await enqueueAnalysis(item);
+        await db.update(nextcloudFiles).set({ aiWarning: null }).where(eq(nextcloudFiles.id, record.id));
+      } catch {
+        await db.update(nextcloudFiles).set({ aiWarning: "KI-Analyse nicht gestartet. Im Bilddialog gezielt erneut versuchen." }).where(eq(nextcloudFiles.id, record.id));
+      }
+    };
+    if (record.status === "saved" && record.mediaId) { await queueTags(record.mediaId); return; }
     if (record.status !== "pending") {
       await db.update(nextcloudFiles).set({ status: "pending", mediaId: null, message: null, aiWarning: null })
         .where(eq(nextcloudFiles.id, record.id));
@@ -290,32 +387,32 @@ async function runImport(eventId: number, sources: Source[], files: Found[]) {
          eventId, type: saved.mediaType, url: saved.url, thumbnail: saved.thumbnail, storedBytes: saved.storedBytes,
           highBytes: saved.highBytes, lowBytes: saved.lowBytes,
         objectCount: saved.objectCount, caption: file.name, tags: [], isPremium: false,
-      }), record.id);
+       }), record.id, workerToken, true);
       reservation = undefined;
-       if (file.type === "image") {
-         try {
-           if (!isAITaggingConfigured()) throw new Error("not configured");
-           const tags = await generateTagsForImage(await analysisImageInput(item.thumbnail));
-           if (!tags.length) throw new Error("no matching tags");
-           await storage.updateMediaItem(item.id, { tags, category: await categorizeContent(tags) });
-         } catch {
-           await db.update(nextcloudFiles).set({ aiWarning: "KI-Analyse nicht verfügbar oder fehlgeschlagen; Bild noch nicht analysiert." }).where(eq(nextcloudFiles.id, record.id));
-         }
-      }
+       await queueTags(item.id);
     } catch (error) {
       const [current] = await db.select({ status: nextcloudFiles.status }).from(nextcloudFiles).where(eq(nextcloudFiles.id, record.id));
       if (current?.status !== "saved") {
         failed++;
         await db.update(nextcloudFiles).set({ status: "error", message: error instanceof MediaLimitError ? error.message : "Datei konnte nicht importiert werden." })
-          .where(eq(nextcloudFiles.id, record.id));
+          .where(and(eq(nextcloudFiles.id, record.id), eq(nextcloudFiles.status, "pending")));
       }
     } finally {
       if (reservation) await storage.abandonMedia(reservation).catch(() => {});
       await unlink(tmp).catch(() => {});
-      await db.update(nextcloudJobs).set({ updatedAt: new Date() }).where(eq(nextcloudJobs.eventId, eventId));
+       await db.update(nextcloudJobs).set({ updatedAt: new Date() }).where(owned);
     }
-  }
-  await db.update(nextcloudJobs).set({ status: failed ? "partial" : "completed", updatedAt: new Date() }).where(eq(nextcloudJobs.eventId, eventId));
+   };
+   let stopped = false;
+   const outcomes = await Promise.allSettled(Array.from({ length: 2 }, async () => {
+     try { while (!stopped && cursor < files.length) { const file = files[cursor++]; await processFile(file); } }
+     catch (error) { stopped = true; throw error; }
+   }));
+   const rejected = outcomes.find(result => result.status === "rejected");
+   if (rejected?.status === "rejected") throw rejected.reason;
+   await db.update(nextcloudJobs).set({ status: failed ? "partial" : "completed",
+     manifest: failed ? undefined : null, manifestExpiresAt: failed ? undefined : null,
+     workerToken: null, updatedAt: new Date() }).where(owned);
   } finally {
     clearInterval(heartbeat);
   }

@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { withMediaWorkBudget } from "./media-work-budget";
 import { mkdirSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
@@ -162,6 +163,14 @@ async function uploadFromFilename(objectName: string, filename: string): Promise
  * those URLs in the media-serving route; never make a bucket public.
  */
 export async function uploadMedia(
+  file: Express.Multer.File,
+  type?: MediaType,
+  keys?: { storageKey: string; thumbnailKey: string },
+): Promise<StoredMedia> {
+  return withMediaWorkBudget(() => performUploadMedia(file, type, keys));
+}
+
+async function performUploadMedia(
   file: Express.Multer.File,
   type?: MediaType,
   keys?: { storageKey: string; thumbnailKey: string },

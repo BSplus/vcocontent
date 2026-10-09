@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "vKJYIolqti8MobsiTiQac"
+uri = "file://docs/media-process-review.txt"
+type = "text"
+title = "Media and AI process review"
+description = "Implemented improvements, before/after measurements, real OpenAI/OCR comparison, verification and hosting limitations."
+logical_id = "c5b53dba-9332-4871-80dc-2b2a5b2649e5"
+content_hash = "sha256:50ad84c9c24fdcd4e0c67446a7b74205bde41238d4ff893a1e8d0c218fae4620"
+size = 9740
+mtime_ms = 1791560557534
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/c5b53dba-9332-4871-80dc-2b2a5b2649e5/7023b863-64f8-4d10-995a-9ca7b0eec306"
+storage_version_token = "1791560594098558"
+content_type = "text/plain"

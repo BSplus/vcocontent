@@ -110,7 +110,25 @@ export const nextcloudJobs = pgTable("nextcloud_jobs", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   error: text("error"),
   skipped: integer("skipped").notNull().default(0),
-}, table => [uniqueIndex("nextcloud_job_event_idx").on(table.eventId)]);
+  // Auth and source URLs are encrypted, never returned in status responses.
+  manifest: text("manifest"),
+  manifestExpiresAt: timestamp("manifest_expires_at"),
+  workerToken: text("worker_token"),
+}, table => [uniqueIndex("nextcloud_job_event_idx").on(table.eventId),
+  index("nextcloud_job_ready_idx").on(table.status, table.updatedAt)]);
+
+export const mediaAnalysisJobs = pgTable("media_analysis_jobs", {
+  mediaId: integer("media_id").primaryKey().references(() => mediaItems.id, { onDelete: "cascade" }),
+  fingerprint: text("fingerprint").notNull(),
+  status: text("status").notNull().default("queued"),
+  attempts: integer("attempts").notNull().default(0),
+  availableAt: timestamp("available_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  workerToken: text("worker_token"),
+  generatedTags: text("generated_tags").array(),
+  error: text("error"),
+  durationMs: integer("duration_ms"),
+}, table => [index("media_analysis_ready_idx").on(table.status, table.availableAt)]);
 
 export const nextcloudFiles = pgTable("nextcloud_files", {
   id: serial("id").primaryKey(),

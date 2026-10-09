@@ -15,7 +15,7 @@ export function isAITaggingConfigured(): boolean {
   return Boolean(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL && process.env.AI_INTEGRATIONS_OPENAI_API_KEY);
 }
 
-function getOpenAIClient(): OpenAI | null {
+export function getOpenAIClient(): OpenAI | null {
   const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
   const managedKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   if (baseURL && managedKey) {
@@ -65,7 +65,7 @@ export async function generateTagsForImage(imageUrl: string): Promise<string[]> 
         },
       ],
       max_tokens: 150,
-    });
+    }, { timeout: 20000, maxRetries: 0 });
 
     const tagsText = response.choices[0]?.message?.content || '';
     return parseTagResponse(tagsText);

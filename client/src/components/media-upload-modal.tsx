@@ -29,6 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { InsertMediaItem, MediaItem, insertMediaItemSchema } from "@shared/schema";
 import { Loader2, Upload, X, Info } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { analysisPending, requestAnalysis, type AnalysisState } from "@/hooks/use-media-analysis";
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -44,6 +45,8 @@ interface FileUpload {
   error?: string;
   aiWarning?: string;
   aiTags?: string[];
+  mediaId?: number;
+  aiStatus?: AnalysisState["status"];
 }
 
 const IMAGE_LIMIT = 32 * 1024 * 1024;
@@ -60,11 +63,39 @@ export default function MediaUploadModal({
   const imageLimit = limits?.imageBytes ?? IMAGE_LIMIT;
   const videoLimit = limits?.videoBytes ?? VIDEO_LIMIT;
   const [uploads, setUploads] = useState<FileUpload[]>([]);
+  const previewUrls = useRef(new Set<string>());
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [autoTagEnabled, setAutoTagEnabled] = useState(true);
   const [tagsInput, setTagsInput] = useState("");
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
+  const jobQuery = useQuery<(AnalysisState & { mediaId: number })[]>({
+    queryKey: [`/api/events/${eventId}/analysis`],
+    enabled: open && uploads.some(u => u.mediaId && analysisPending(u.aiStatus)),
+    refetchInterval: query => query.state.fetchFailureCount < 3 ? 4000 : false,
+  });
+  useEffect(() => {
+    if (!jobQuery.data) return;
+    setUploads(previous => previous.map(upload => {
+      const job = jobQuery.data.find(job => job.mediaId === upload.mediaId);
+      if (!job) return upload;
+      return { ...upload, aiStatus: job.status, aiTags: job.generatedTags || undefined,
+        aiWarning: job.error || undefined };
+    }));
+    queryClient.invalidateQueries({ predicate: query =>
+      String(query.queryKey[0]).startsWith(`/api/events/${eventId}/media`) });
+  }, [jobQuery.data, eventId]);
+  const retryTags = async (upload: FileUpload) => {
+    if (!upload.mediaId) return;
+    try {
+      const job = await requestAnalysis(upload.mediaId, true);
+      setUploads(previous => previous.map(u => u.mediaId === upload.mediaId
+        ? { ...u, aiStatus: job.status, aiWarning: job.error || undefined } : u));
+      queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/analysis`] });
+    } catch (error) {
+      toast({ title: "Analysis unavailable", description: error instanceof Error ? error.message : "Please retry later.", variant: "destructive" });
+    }
+  };
 
   const form = useForm<InsertMediaItem>({
     resolver: zodResolver(insertMediaItemSchema),
@@ -98,11 +129,9 @@ export default function MediaUploadModal({
   }
 
   const processImageFile = async (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.readAsDataURL(file);
-    });
+    const url = URL.createObjectURL(file);
+    previewUrls.current.add(url);
+    return url;
   };
 
   const handleZipFile = async (zipFile: File) => {
@@ -207,9 +236,7 @@ export default function MediaUploadModal({
         continue;
       }
 
-      const preview = form.getValues("type") === "video"
-        ? URL.createObjectURL(file)
-        : await processImageFile(file);
+      const preview = await processImageFile(file);
       newUploads.push({
         file,
         preview,
@@ -233,6 +260,7 @@ export default function MediaUploadModal({
       formData.append("type", upload.file.type.startsWith("video/") ? "video" : "image");
       formData.append("caption", caption);
       formData.append("photographer", photographer);
+      formData.append("autoTag", String(autoTagEnabled && upload.file.type.startsWith("image/")));
       formData.append("tags", JSON.stringify(tags));
 
       const res = await fetch(`/api/events/${eventId}/media/upload`, {
@@ -287,29 +315,9 @@ export default function MediaUploadModal({
             photographer: form.getValues("photographer") || "",
           });
           
-          // If auto-tagging is enabled, analyze the uploaded media
-          if (autoTagEnabled && mediaResponse && mediaResponse.id) {
-            try {
-              const tagResponse = await fetch(`/api/media/${mediaResponse.id}/analyze`, {
-                method: "POST",
-                credentials: "include",
-              });
-              const result = await tagResponse.json();
-              if (!tagResponse.ok) {
-                 upload.aiWarning = tagResponse.status === 503
-                    ? "KI-Analyse ist noch nicht eingerichtet. Das Bild wurde trotzdem gespeichert."
-                    : tagResponse.status === 502
-                      ? "KI-Anbieteraufruf fehlgeschlagen. Das Bild wurde trotzdem gespeichert. Bitte später erneut versuchen."
-                      : "KI-Analyse konnte nicht durchgeführt werden. Das Bild wurde trotzdem gespeichert.";
-              } else if (result.success === true && Array.isArray(result.generatedTags) && result.generatedTags.length > 0 && result.generatedTags.every((tag: unknown) => typeof tag === "string")) {
-                upload.aiTags = result.generatedTags;
-              } else {
-                upload.aiWarning = "KI-Analyse lieferte keine gültigen Tags.";
-              }
-            } catch (tagError) {
-              upload.aiWarning = "KI-Analyse nicht erreichbar. Das Bild wurde trotzdem gespeichert.";
-            }
-          }
+          // Analysis commits with the saved media; never await the model here.
+          upload.mediaId = mediaResponse.id;
+          if (autoTagEnabled && upload.file.type.startsWith("image/")) upload.aiStatus = "queued";
 
           upload.status = 'success';
           upload.progress = 100;
@@ -348,16 +356,24 @@ export default function MediaUploadModal({
   };
 
   const removeUpload = (index: number) => {
+    URL.revokeObjectURL(uploads[index].preview);
+    previewUrls.current.delete(uploads[index].preview);
     setUploads(uploads.filter((_, i) => i !== index));
   };
 
   useEffect(() => {
     if (!open) {
+      previewUrls.current.forEach(url => URL.revokeObjectURL(url));
+      previewUrls.current.clear();
       form.reset();
       setUploads([]);
       setTagsInput("");
     }
   }, [open, form]);
+  useEffect(() => () => {
+    previewUrls.current.forEach(url => URL.revokeObjectURL(url));
+    previewUrls.current.clear();
+  }, []);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -436,8 +452,17 @@ export default function MediaUploadModal({
                       {upload.status === 'error' && (
                         <p className="text-sm text-destructive mt-1">{upload.error}</p>
                       )}
+                      {upload.status === "error" && <Button type="button" size="sm" variant="outline" disabled={uploading}
+                        onClick={() => setUploads(previous => previous.map(u => u === upload
+                          ? { ...u, status: "pending", error: undefined } : u))}>Retry upload</Button>}
                       {upload.aiWarning && (
                         <p className="text-sm text-amber-600 mt-1">{upload.aiWarning}</p>
+                      )}
+                      {upload.status === "success" && analysisPending(upload.aiStatus) && (
+                        <p role="status" className="text-muted-foreground text-xs mt-1">Saved · AI {upload.aiStatus} in background</p>
+                      )}
+                      {upload.aiStatus === "failed" && (
+                        <Button type="button" size="sm" variant="outline" onClick={() => retryTags(upload)}>Retry analysis</Button>
                       )}
                       {upload.aiTags && (
                         <p className="text-sm text-green-700 mt-1" role="status">
@@ -474,6 +499,10 @@ export default function MediaUploadModal({
 
           <div className="space-y-2">
             <Label htmlFor="caption">Caption (applies to all uploads)</Label>
+            {uploads.some(u => analysisPending(u.aiStatus)) && <p className="text-sm text-muted-foreground">
+              Analysis runs server-side after closing this dialog and resumes when the server restarts. Status and retry are also available in Edit Media.
+              {jobQuery.isError && " Status is temporarily unavailable; the files remain saved."}
+            </p>}
             <Textarea
               id="caption"
                maxLength={1000}

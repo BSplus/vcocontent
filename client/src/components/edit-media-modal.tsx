@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { MediaItem } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Wand2 } from "lucide-react";
+import { analysisPending, requestAnalysis, useMediaAnalysis } from "@/hooks/use-media-analysis";
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
 import { z } from "zod";
@@ -128,31 +129,24 @@ export default function EditMediaModal({
   });
 
   // AI analysis mutation
+  const analysis = useMediaAnalysis(mediaItem.id, open && mediaItem.type === "image");
+  useEffect(() => {
+    setIsAnalyzing(analysisPending(analysis.data?.status));
+    if (analysis.data?.status !== "completed") return;
+    setAiTags(analysis.data.generatedTags || []);
+    setCategory(analysis.data.category || null);
+    const typed = form.getValues("tags").split(",").map(tag => tag.trim()).filter(Boolean);
+    form.setValue("tags", Array.from(new Set([...typed, ...(analysis.data.tags || [])])).join(", "), { shouldDirty: true });
+    queryClient.invalidateQueries({ predicate: query =>
+      String(query.queryKey[0]).startsWith(`/api/events/${mediaItem.eventId}/media`) });
+  }, [analysis.data, mediaItem.id]);
   const analysisMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/media/${mediaItem.id}/analyze`, { method: "POST", credentials: "include" });
-      if (!res.ok) {
-        if (res.status === 503) throw new Error("KI-Analyse ist noch nicht eingerichtet.");
-        if (res.status === 502) throw new Error("KI-Anbieteraufruf fehlgeschlagen. Bitte später erneut versuchen.");
-        if (res.status === 422) throw new Error("Für dieses Medium wurden keine passenden Bild-Tags gefunden oder es ist kein Bild.");
-        throw new Error("KI-Analyse konnte nicht durchgeführt werden.");
-      }
-      return res.json();
-    },
+    mutationFn: () => requestAnalysis(mediaItem.id, analysis.data?.status === "failed"),
     onSuccess: (data) => {
-      setAiTags(data.generatedTags || []);
-      setCategory(data.category || null);
-      // The analysis route has already saved its tags. Preserve edits made in
-      // this still-open form and merge in the new tags before a later save.
-      if (Array.isArray(data.tags)) {
-        const typed = form.getValues("tags").split(",").map(tag => tag.trim()).filter(Boolean);
-        form.setValue("tags", Array.from(new Set([...typed, ...data.tags])).join(", "), { shouldDirty: true });
-      }
-
-      toast({
-        title: "AI Analysis Complete",
-        description: `Generated ${data.tags?.length || 0} tags for your media`,
-      });
+      setIsAnalyzing(analysisPending(data.status));
+      queryClient.invalidateQueries({ queryKey: [`/api/media/${mediaItem.id}/analysis`] });
+      toast({ title: data.status === "completed" ? "Existing analysis reused" : "Analysis queued",
+        description: "You can close this dialog; your media is already saved." });
     },
     onError: (error: Error) => {
       toast({
@@ -160,6 +154,7 @@ export default function EditMediaModal({
         description: error.message,
         variant: "destructive",
       });
+      setIsAnalyzing(false);
     },
   });
 
@@ -170,7 +165,7 @@ export default function EditMediaModal({
     } catch {
       // The mutation displays the safe status message above.
     } finally {
-      setIsAnalyzing(false);
+      // The persisted job status now controls the activity indicator.
     }
   };
 
@@ -344,10 +339,14 @@ export default function EditMediaModal({
                 ) : (
                   <>
                     <Wand2 className="h-3 w-3" />
-                    <span>Auto-Generate Tags</span>
+                    <span>{analysis.data?.status === "failed" ? "Retry analysis" : "Auto-Generate Tags"}</span>
                   </>
                 )}
               </Button>
+              {analysis.data && <p role="status" className="text-sm text-muted-foreground">
+                AI: {analysis.data.status}{analysis.data.error ? ` · ${analysis.data.error}` : ""}
+                {analysisPending(analysis.data.status) ? " · Runs server-side; resumes when the server restarts." : ""}
+              </p>}
             </div>
             
             <Input

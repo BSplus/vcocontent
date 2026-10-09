@@ -1,0 +1,200 @@
+{
+  "caveat": "Two VCO photos, single run; not a general accuracy or pricing benchmark",
+  "cost": "Token usage when supplied by the provider; no inferred currency cost",
+  "results": [
+    {
+      "sample": "#89_3.png",
+      "knownNumbers": [
+        "89"
+      ],
+      "requiredTags": [
+        "Front View",
+        "Day",
+        "Dry Track"
+      ],
+      "thumbnailBytes": 23936,
+      "baseline": {
+        "result": {
+          "tags": [
+            "Front View",
+            "Day",
+            "Dry Track",
+            "GT Car"
+          ],
+          "numbers": [],
+          "scene": "Race Action"
+        },
+        "ms": 1321,
+        "usage": [
+          {
+            "prompt_tokens": 667,
+            "completion_tokens": 10,
+            "total_tokens": 677,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          {
+            "prompt_tokens": 617,
+            "completion_tokens": 15,
+            "total_tokens": 632,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          }
+        ]
+      },
+      "combined": {
+        "result": {
+          "tags": [
+            "Front View",
+            "Day",
+            "Dry Track",
+            "GT Car"
+          ],
+          "numbers": [],
+          "scene": null
+        },
+        "ms": 719,
+        "usage": [
+          {
+            "prompt_tokens": 652,
+            "completion_tokens": 22,
+            "total_tokens": 674,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          }
+        ]
+      },
+      "ocr": {
+        "result": {
+          "numbers": [
+            "4"
+          ],
+          "tags": null,
+          "scene": null
+        },
+        "ms": 1813,
+        "usage": []
+      }
+    },
+    {
+      "sample": "IMG_7464.png",
+      "knownNumbers": [],
+      "requiredTags": [
+        "Group",
+        "Day",
+        "Dry Track"
+      ],
+      "thumbnailBytes": 21738,
+      "baseline": {
+        "result": {
+          "tags": [
+            "Rear View",
+            "Group",
+            "Day",
+            "Dry Track",
+            "GT Car"
+          ],
+          "numbers": [],
+          "scene": "Race Action"
+        },
+        "ms": 1090,
+        "usage": [
+          {
+            "prompt_tokens": 440,
+            "completion_tokens": 12,
+            "total_tokens": 452,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          {
+            "prompt_tokens": 390,
+            "completion_tokens": 15,
+            "total_tokens": 405,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          }
+        ]
+      },
+      "combined": {
+        "result": {
+          "tags": [
+            "Side View",
+            "Group",
+            "GT Car",
+            "Day",
+            "Dry Track"
+          ],
+          "numbers": [],
+          "scene": null
+        },
+        "ms": 663,
+        "usage": [
+          {
+            "prompt_tokens": 425,
+            "completion_tokens": 24,
+            "total_tokens": 449,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          }
+        ]
+      },
+      "ocr": {
+        "result": {
+          "numbers": [],
+          "tags": null,
+          "scene": null
+        },
+        "ms": 469,
+        "usage": []
+      }
+    }
+  ]
+}

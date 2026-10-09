@@ -1,5 +1,7 @@
 import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries, type EntryRow } from "@shared/schema";
-import { users, events, eventEntries, mediaItems, mediaReservations, mediaCleanup, nextcloudFiles, series as seriesTable } from "@shared/schema";
+import { users, events, eventEntries, mediaItems, mediaReservations, mediaCleanup, nextcloudFiles, nextcloudJobs, mediaAnalysisJobs, series as seriesTable } from "@shared/schema";
+import { analysisFingerprint } from "./analysis-jobs";
+import { isAITaggingConfigured } from "./utils/ai-tagger";
 import { db } from "./db";
 import { eq, and, or, sql, desc, lt, ilike, getTableColumns } from "drizzle-orm";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
@@ -397,12 +399,27 @@ class DatabaseStorage implements IStorage {
     });
   }
 
-  async finishMedia(id: string, mediaItem: InsertMediaItem, nextcloudFileId?: number): Promise<MediaItem> {
+  async finishMedia(id: string, mediaItem: InsertMediaItem, nextcloudFileId?: number, workerToken?: string, requestAnalysis = false): Promise<MediaItem> {
     return db.transaction(async tx => {
+      if (workerToken) {
+        const [owner] = await tx.select().from(nextcloudJobs)
+          .where(and(eq(nextcloudJobs.eventId, mediaItem.eventId!), eq(nextcloudJobs.workerToken, workerToken))).for("update");
+        if (!owner) throw new Error("Import lease has expired");
+      }
       await tx.execute(sql`select id from media_reservations where id = ${id} for update`);
       const [reservation] = await tx.select().from(mediaReservations).where(eq(mediaReservations.id, id));
       if (!reservation) throw new Error("Upload reservation has expired");
       const [item] = await tx.insert(mediaItems).values(mediaItem).returning();
+      if (requestAnalysis && item.type === "image") {
+        await tx.execute(sql`select pg_advisory_xact_lock(761020)`);
+        const pending = await tx.execute(sql`select count(*)::int as count from media_analysis_jobs where status in ('queued','running')`);
+        const ready = isAITaggingConfigured() && Number(pending.rows[0]?.count) < 1000;
+        // Saving media and requesting analysis commit together. A full queue or
+        // unavailable provider must not discard a successful transfer.
+        await tx.insert(mediaAnalysisJobs).values({ mediaId: item.id,
+          fingerprint: analysisFingerprint(item.thumbnail), status: ready ? "queued" : "failed",
+          error: ready ? null : "AI analysis not started. Retry when the service is available." });
+      }
       if (nextcloudFileId) {
         const [file] = await tx.update(nextcloudFiles).set({ status: "saved", mediaId: item.id, message: null })
           .where(and(eq(nextcloudFiles.id, nextcloudFileId), eq(nextcloudFiles.status, "pending"))).returning();
@@ -421,6 +438,12 @@ class DatabaseStorage implements IStorage {
         await tx.insert(mediaCleanup).values({ key }).onConflictDoNothing();
       await tx.delete(mediaReservations).where(eq(mediaReservations.id, id));
     });
+  }
+
+  async incrementDownloadCount(id: number): Promise<void> {
+    await db.update(mediaItems).set({ downloadCount: sql`case when coalesce(${mediaItems.downloadCount}, 0) < 2147483647
+      then coalesce(${mediaItems.downloadCount}, 0) + 1 else 2147483647 end` })
+      .where(eq(mediaItems.id, id));
   }
 
   async cleanupObjects(): Promise<void> {

@@ -19,3 +19,4 @@
 - [Python tooling in Node projects](python-tooling-node-projects.md) — installing a Python inspection package may generate Python scaffolding and alter Replit Nix config.
 - [Fontsource export paths](fontsource-export-paths.md) — font packages can expose different CSS import paths; verify their export maps and the production build.
 - [Site date display](site-date-display.md) — visible dates should use day, full English month, four-digit year throughout the site.
+- [Background analysis decisions](background-analysis-decisions.md) — combine AI outputs only with quality evidence; shared-queue tests need exclusive consumers, not parallel mocks.

@@ -2,14 +2,14 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, entryRowSchema, users, type EntryRow } from "@shared/schema";
+import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, entryRowSchema, users, mediaAnalysisJobs, mediaItems, type EntryRow } from "@shared/schema";
 import express from "express";
 import path from "path";
 import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
 import { log } from "./vite";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
-import { generateTagsForImage, categorizeContent, isAITaggingConfigured, testManagedOpenAI, detectRaceNumbers } from "./utils/ai-tagger";
+import { eq, sql } from "drizzle-orm";
+import { isAITaggingConfigured, testManagedOpenAI, detectRaceNumbers } from "./utils/ai-tagger";
 import { entryConflicts, proposeCaption, scenes } from "./caption-proposal";
 import { parseEntryFile } from "./entry-list";
 import multer from "multer";
@@ -19,8 +19,13 @@ import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { z } from "zod";
-import { discover, importStatus, startImport, NextcloudError } from "./nextcloud";
+import { discover, importStatus, startImport, startImportWorker, resumeImport, NextcloudError } from "./nextcloud";
 import { downloadAccess } from "./download-access";
+import { downloadStream } from "./media-delivery";
+import { enqueueAnalysis, analysisStatus, startAnalysisWorker, kickAnalysisWorker, AnalysisUnavailable } from "./analysis-jobs";
+import { pipeline } from "stream/promises";
+import { withVisionBudget } from "./ai-budget";
+import { MediaBusyError } from "./media-work-budget";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -291,14 +296,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? "Low resolution is available for images only" : "Sign in to download this media",
       });
 
-      await storage.updateMediaItem(mediaId, {
-        downloadCount: (mediaItem.downloadCount || 0) + 1
-      });
-      const normalized = publicMedia(mediaItem);
-      res.json({ success: true, url: quality === "low" ? normalized.thumbnail : normalized.url });
+      res.json({ success: true, url: `/api/media/${mediaId}/download?quality=${quality}` });
     } catch (error) {
       console.error('Error processing download:', error);
       res.status(500).json({ error: "Failed to process download" });
+    }
+  });
+
+  app.get("/api/media/:id/download", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const quality = req.query.quality === undefined ? "high" : req.query.quality;
+      if (!Number.isSafeInteger(id) || id < 1 || (quality !== "high" && quality !== "low"))
+        return res.status(400).json({ error: "Invalid download" });
+      const item = await storage.getMediaItem(id);
+      const event = item?.eventId ? await storage.getEvent(item.eventId) : undefined;
+      if (!item || !event) return res.status(404).json({ error: "Media not found" });
+      const access = downloadAccess(item, event, quality, req.isAuthenticated());
+      if (access !== 200) return res.status(access).json({ error: "Download not permitted" });
+      const { stream, contentType, filename } = await downloadStream(item, quality);
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      const cancel = () => { if (!res.writableFinished) stream.destroy(); };
+      res.once("close", cancel);
+      try {
+        await pipeline(stream, res);
+        // Counts complete server deliveries, not authorization requests, and
+        // cannot confirm whether the recipient saved the file on their device.
+        await storage.incrementDownloadCount(id);
+      } finally { res.off("close", cancel); }
+    } catch {
+      console.error("Media download delivery failed");
+      if (!res.headersSent && !res.destroyed) res.status(502).json({ error: "Media could not be downloaded" });
     }
   });
 
@@ -344,6 +375,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       res.status(error instanceof z.ZodError || error instanceof NextcloudError ? 400 : 502)
         .json({ error: error instanceof NextcloudError ? error.message : "Import konnte nicht gestartet werden." });
+    }
+  });
+  app.post("/api/admin/events/:id/nextcloud/resume", requireAdmin, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Invalid event" });
+      const event = await storage.getEvent(id);
+      if (!event || event.creatorId || event.isPremium) return res.status(404).json({ error: "Event not found" });
+      await resumeImport(id);
+      res.status(202).json(await importStatus(id));
+    } catch (error) {
+      res.status(400).json({ error: error instanceof NextcloudError ? error.message : "Import could not be resumed" });
     }
   });
 
@@ -536,6 +579,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             caption: z.string().max(1000).optional(),
             photographer: z.string().max(150).optional(),
             tags: z.string().max(1500).optional(),
+            autoTag: z.enum(["true", "false"]).optional(),
           }).parse(req.body);
           if (req.file.size > (metadata.type === "image" ? mediaPolicy.imageBytes : mediaPolicy.videoBytes))
             throw new MediaLimitError(`${metadata.type === "image" ? "Image" : "Video"} exceeds the ${metadata.type === "image" ? mediaPolicy.imageBytes / 1048576 : mediaPolicy.videoBytes / 1048576} MiB limit`);
@@ -564,13 +608,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 })()
               : [],
             isPremium: false,
-          }));
+          }), undefined, undefined, metadata.autoTag === "true");
           res.status(201).json(item);
+          if (metadata.autoTag === "true") void kickAnalysisWorker();
         } catch (error) {
           console.error("Media upload failed:", error);
           if (reservationId) await storage.abandonMedia(reservationId).catch(cleanupError => console.error("Upload cleanup pending:", cleanupError));
-          res.status(error instanceof MediaLimitError ? 413 : error instanceof z.ZodError ? 400 : 502).json({
-            error: error instanceof MediaLimitError ? error.message : error instanceof z.ZodError ? "Invalid upload details" : "Could not store media",
+          res.status(error instanceof MediaBusyError ? 503 : error instanceof MediaLimitError ? 413 : error instanceof z.ZodError ? 400 : 502).json({
+            error: error instanceof MediaBusyError || error instanceof MediaLimitError ? error.message : error instanceof z.ZodError ? "Invalid upload details" : "Could not store media",
           });
         } finally {
           const { unlink } = await import("fs/promises");
@@ -586,8 +631,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auto-tag media using AI
   app.post("/api/media/:id/analyze", requireCreator, async (req, res) => {
     try {
-      const mediaId = parseInt(req.params.id);
-      if (isNaN(mediaId)) {
+      const mediaId = Number(req.params.id);
+      if (!Number.isSafeInteger(mediaId) || mediaId < 1) {
         return res.status(400).json({ error: "Invalid media ID" });
       }
 
@@ -606,38 +651,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`Beginning AI analysis for media ${mediaId} of type ${mediaItem.type}`);
 
-      const generatedTags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
-
-      if (generatedTags.length === 0) {
-        return res.status(422).json({ error: "No matching tags were found" });
-      }
-
-      console.log(`Generated ${generatedTags.length} tags for media ${mediaId}:`, generatedTags);
-
-      // Combine with existing tags if present
-      const existingTags = Array.isArray(mediaItem.tags) ? mediaItem.tags : [];
-      const combinedTags = Array.from(new Set([...existingTags, ...generatedTags]));
-
-      // Attempt to categorize the content
-      const category = await categorizeContent(combinedTags);
-      console.log(`Categorized media ${mediaId} as: ${category}`);
-
-      // Update the media item with new tags and category
-      await storage.updateMediaItem(mediaId, {
-        tags: combinedTags,
-        category
-      });
-
-      res.json({
-        success: true,
-        tags: combinedTags,
-        generatedTags,
-        category
-      });
+      res.status(202).json({ success: true, ...await enqueueAnalysis(mediaItem, req.body?.retry === true) });
     } catch (error) {
       console.error('Media analysis failed');
-      res.status(502).json({ error: "KI-Analyse fehlgeschlagen. Bitte später erneut versuchen." });
+      res.status(503).json({ error: error instanceof AnalysisUnavailable ? error.message : "AI analysis could not be queued" });
     }
+  });
+
+  app.get("/api/media/:id/analysis", requireCreator, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Invalid media ID" });
+      const item = await storage.getMediaItem(id);
+      const event = item?.eventId ? await storage.getEvent(item.eventId) : undefined;
+      if (!item || !event) return res.status(404).json({ error: "Media not found" });
+      if (!canManageEvent(req.user, event.creatorId ?? null)) return res.status(403).json({ error: "Forbidden" });
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({ ...await analysisStatus(id), tags: item.tags, category: item.category });
+    } catch { res.status(503).json({ error: "Analysis status unavailable" }); }
+  });
+  app.get("/api/events/:id/analysis", requireCreator, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Invalid event" });
+      const event = await storage.getEvent(id);
+      if (!event) return res.status(404).json({ error: "Event not found" });
+      if (!canManageEvent(req.user, event.creatorId ?? null)) return res.status(403).json({ error: "Forbidden" });
+      const jobs = await db.select({ mediaId: mediaAnalysisJobs.mediaId, status: mediaAnalysisJobs.status,
+        generatedTags: mediaAnalysisJobs.generatedTags, error: mediaAnalysisJobs.error })
+        .from(mediaAnalysisJobs).innerJoin(mediaItems, eq(mediaItems.id, mediaAnalysisJobs.mediaId))
+        .where(eq(mediaItems.eventId, id)).limit(1000);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json(jobs);
+    } catch { res.status(503).json({ error: "Analysis status unavailable" }); }
   });
 
   app.post("/api/media/:id/caption-preview", requireCreator, async (req, res) => {
@@ -656,7 +702,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let cached = captionDetections.get(id);
       if (!cached || cached.thumbnail !== media.thumbnail) {
         if (captionDetections.size >= 100) captionDetections.delete(captionDetections.keys().next().value!);
-        const result = analysisImageInput(media.thumbnail).then(detectRaceNumbers);
+        const result = analysisImageInput(media.thumbnail).then(input => withVisionBudget(() => detectRaceNumbers(input)));
         cached = { thumbnail: media.thumbnail, expires: now + 5 * 60_000, result };
         captionDetections.set(id, cached);
         void result.catch(() => { if (captionDetections.get(id)?.result === result) captionDetections.delete(id); });
@@ -724,7 +770,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error) return res.status(413).json({ error: "Entry List zu groß oder ungültig (maximal 8 MiB)." });
       if (!req.file) return res.status(400).json({ error: "Bitte eine Datei auswählen." });
       try {
-        res.json(await parseEntryFile(req.file.buffer, req.file.mimetype, req.file.originalname));
+        // Only actual image/scanned-PDF requests consume a shared vision slot.
+        res.json(await parseEntryFile(req.file.buffer, req.file.mimetype, req.file.originalname, withVisionBudget));
       } catch (failure) {
         const message = failure instanceof Error ? failure.message : "";
         res.status(/not configured|unavailable|failed/i.test(message) ? 503 : 400)
@@ -1005,10 +1052,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const results = [];
       const errors = [];
 
-      // Process each media item sequentially to avoid rate limiting
+      // Queue independently; background workers own the provider budget.
       for (const id of mediaIds) {
         try {
-          const mediaId = parseInt(id);
+          const mediaId = Number(id);
+          if (!Number.isSafeInteger(mediaId) || mediaId < 1) { errors.push({ id, error: "Invalid media ID" }); continue; }
           const mediaItem = await storage.getMediaItem(mediaId);
 
           if (!mediaItem) {
@@ -1025,29 +1073,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
-          const generatedTags = await generateTagsForImage(await analysisImageInput(mediaItem.thumbnail));
-
-          if (generatedTags.length > 0) {
-            const tags = Array.from(new Set([...(mediaItem.tags || []), ...generatedTags]));
-            // Categorize the content
-            const category = await categorizeContent(tags);
-
-            // Update the media item with the generated tags and category
-            await storage.updateMediaItem(mediaId, {
-              tags,
-              category
-            });
-
-            results.push({
-              id: mediaId,
-              success: true,
-              tags,
-              category
-            });
-
-          } else {
-            errors.push({ id: mediaId, error: "Failed to generate tags" });
-          }
+          results.push({ id: mediaId, success: true, ...await enqueueAnalysis(mediaItem, req.body?.retry === true) });
         } catch (error) {
           console.error(`Error analyzing media ID ${id}`);
           errors.push({ 
@@ -1057,7 +1083,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      res.json({
+      res.status(202).json({
         success: results.length > 0,
         processed: results.length,
         failed: errors.length,
@@ -1071,6 +1097,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
+  startAnalysisWorker();
+  startImportWorker();
 
   return httpServer;
 }

@@ -16,7 +16,9 @@ if [[ "$lock_before" != "$lock_after" ]]; then
   exit 1
 fi
 
-# Database changes are deliberately not pushed automatically.
+# Apply only the reviewed, additive development changes from this feature.
+# Production schema is not modified by this script.
+node --import tsx scripts/apply-dev-process-schema.mjs
 npm run check
 npm run build
 rm .post-merge-installing

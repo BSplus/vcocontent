@@ -1,0 +1,225 @@
+{
+  "environment": "local controlled experiment; isolated process per case",
+  "simulatedAI_ms": 250,
+  "simulatedObjectWrite_ms": 20,
+  "conversion": "production uploadMedia + sharp",
+  "videoCaveat": "50 MiB signature fixture exercises the current byte/persistence path, not video decoding",
+  "results": [
+    {
+      "scenario": "images",
+      "mode": "before_serial",
+      "allStoredMs": 2844,
+      "allAnalyzedMs": 3095,
+      "inputBytes": 17010979,
+      "objectWriteBytes": 1394474,
+      "aiCalls": 2,
+      "errors": 0,
+      "peakRssMiB": 211,
+      "rssIncreaseMiB": 84,
+      "savedAt": [
+        {
+          "name": "#89_3.png",
+          "ms": 1886,
+          "highBytes": 937474,
+          "lowBytes": 23888
+        },
+        {
+          "name": "IMG_7464.png",
+          "ms": 2844,
+          "highBytes": 411906,
+          "lowBytes": 21206
+        }
+      ],
+      "analyzedAt": [
+        {
+          "name": "#89_3.png",
+          "ms": 2136
+        },
+        {
+          "name": "IMG_7464.png",
+          "ms": 3095
+        }
+      ]
+    },
+    {
+      "scenario": "images",
+      "mode": "after_two_transfers_separate_ai",
+      "allStoredMs": 1794,
+      "allAnalyzedMs": 2044,
+      "inputBytes": 17010979,
+      "objectWriteBytes": 1394474,
+      "aiCalls": 2,
+      "errors": 0,
+      "peakRssMiB": 248,
+      "rssIncreaseMiB": 119,
+      "savedAt": [
+        {
+          "name": "IMG_7464.png",
+          "ms": 917,
+          "highBytes": 411906,
+          "lowBytes": 21206
+        },
+        {
+          "name": "#89_3.png",
+          "ms": 1794,
+          "highBytes": 937474,
+          "lowBytes": 23888
+        }
+      ],
+      "analyzedAt": [
+        {
+          "name": "IMG_7464.png",
+          "ms": 1166
+        },
+        {
+          "name": "#89_3.png",
+          "ms": 2044
+        }
+      ]
+    },
+    {
+      "scenario": "video",
+      "mode": "before_serial",
+      "allStoredMs": 320,
+      "allAnalyzedMs": 320,
+      "inputBytes": 52428800,
+      "objectWriteBytes": 52430748,
+      "aiCalls": 0,
+      "errors": 0,
+      "peakRssMiB": 169,
+      "rssIncreaseMiB": 40,
+      "savedAt": [
+        {
+          "name": "50MiB container-signature fixture (not playable)",
+          "ms": 320,
+          "highBytes": 52428800,
+          "lowBytes": 1948
+        }
+      ],
+      "analyzedAt": [
+        {
+          "name": "50MiB container-signature fixture (not playable)",
+          "ms": 320
+        }
+      ]
+    },
+    {
+      "scenario": "video",
+      "mode": "after_two_transfers_separate_ai",
+      "allStoredMs": 278,
+      "allAnalyzedMs": 278,
+      "inputBytes": 52428800,
+      "objectWriteBytes": 52430748,
+      "aiCalls": 0,
+      "errors": 0,
+      "peakRssMiB": 165,
+      "rssIncreaseMiB": 36,
+      "savedAt": [
+        {
+          "name": "50MiB container-signature fixture (not playable)",
+          "ms": 278,
+          "highBytes": 52428800,
+          "lowBytes": 1948
+        }
+      ],
+      "analyzedAt": [
+        {
+          "name": "50MiB container-signature fixture (not playable)",
+          "ms": 278
+        }
+      ]
+    },
+    {
+      "scenario": "mixed",
+      "mode": "before_serial",
+      "allStoredMs": 2824,
+      "allAnalyzedMs": 3074,
+      "inputBytes": 69439779,
+      "objectWriteBytes": 53825222,
+      "aiCalls": 2,
+      "errors": 0,
+      "peakRssMiB": 215,
+      "rssIncreaseMiB": 84,
+      "savedAt": [
+        {
+          "name": "#89_3.png",
+          "ms": 1689,
+          "highBytes": 937474,
+          "lowBytes": 23888
+        },
+        {
+          "name": "50MiB container-signature fixture (not playable)",
+          "ms": 2128,
+          "highBytes": 52428800,
+          "lowBytes": 1948
+        },
+        {
+          "name": "IMG_7464.png",
+          "ms": 2824,
+          "highBytes": 411906,
+          "lowBytes": 21206
+        }
+      ],
+      "analyzedAt": [
+        {
+          "name": "#89_3.png",
+          "ms": 1941
+        },
+        {
+          "name": "50MiB container-signature fixture (not playable)",
+          "ms": 2128
+        },
+        {
+          "name": "IMG_7464.png",
+          "ms": 3074
+        }
+      ]
+    },
+    {
+      "scenario": "mixed",
+      "mode": "after_two_transfers_separate_ai",
+      "allStoredMs": 1736,
+      "allAnalyzedMs": 1987,
+      "inputBytes": 69439779,
+      "objectWriteBytes": 53825222,
+      "aiCalls": 2,
+      "errors": 0,
+      "peakRssMiB": 246,
+      "rssIncreaseMiB": 115,
+      "savedAt": [
+        {
+          "name": "50MiB container-signature fixture (not playable)",
+          "ms": 283,
+          "highBytes": 52428800,
+          "lowBytes": 1948
+        },
+        {
+          "name": "IMG_7464.png",
+          "ms": 1043,
+          "highBytes": 411906,
+          "lowBytes": 21206
+        },
+        {
+          "name": "#89_3.png",
+          "ms": 1736,
+          "highBytes": 937474,
+          "lowBytes": 23888
+        }
+      ],
+      "analyzedAt": [
+        {
+          "name": "50MiB container-signature fixture (not playable)",
+          "ms": 284
+        },
+        {
+          "name": "IMG_7464.png",
+          "ms": 1294
+        },
+        {
+          "name": "#89_3.png",
+          "ms": 1987
+        }
+      ]
+    }
+  ]
+}

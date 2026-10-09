@@ -1,5 +1,4 @@
 import type { MediaItem } from "@shared/schema";
-import { topShotDownloadName } from "./top-shot-download";
 
 export type DownloadQuality = "high" | "low";
 
@@ -28,15 +27,10 @@ export async function downloadMedia(item: MediaItem, quality: DownloadQuality): 
       || typeof result.url !== "string" || !result.url.startsWith("/api/media/")) {
     throw new Error("The server did not provide a valid download URL.");
   }
-  const response = await fetch(result.url, { credentials: "include" });
-  if (!response.ok) throw new Error(`Media download failed (${response.status}).`);
-  const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.href = objectUrl;
-  link.download = topShotDownloadName(item, quality, result.url, blob.type);
+  link.href = result.url;
+  link.download = "";
   document.body.appendChild(link);
   link.click();
   link.remove();
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }

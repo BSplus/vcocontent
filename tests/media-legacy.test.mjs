@@ -54,7 +54,7 @@ test("historical Base64 media is lazy-loaded and private originals remain protec
     assert.equal((await fetch(`${base}/api/media/${item.id}/download?quality=low`, { method: "POST" })).status, 401);
     const lowResponse = await fetch(`${base}/api/media/${publicItem.id}/download?quality=low`, { method: "POST" });
     assert.equal(lowResponse.status, 200);
-    assert.equal((await lowResponse.json()).url, `/api/media/legacy/${publicItem.id}/thumbnail`);
+    assert.equal((await lowResponse.json()).url, `/api/media/${publicItem.id}/download?quality=low`);
     for (const [endpoint, expectedId] of [
       ["/api/media/top-shots", publicItem.id],
       ["/api/media/creator-top", item.id],
