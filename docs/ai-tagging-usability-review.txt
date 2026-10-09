@@ -1,0 +1,82 @@
+AI TAGGING: FUNCTION AND USABILITY CHECK
+======================================
+
+Scope
+-----
+Tested the development app with a temporary approved creator account, not an
+administrator. Used the real upload/edit UI and the existing managed OpenAI
+connection. Test accounts, events and stored files were removed afterwards.
+No application UI or production configuration was changed.
+
+Functional results
+------------------
+- Automatic tagging was enabled by default.
+- A real VCO photo was uploaded through the browser, with a manual tag and a
+  manually written caption. Upload finished in about 1.97 seconds; tagging
+  finished at about 2.58 seconds from the start. These are single development
+  observations, not guaranteed production timings.
+- The upload dialog was closed while the job was running. Analysis completed
+  afterwards, confirming the user does not need to keep the dialog open.
+- Returned tags: Aerial View, Group, Day, Dry Track, GT Car.
+- The manual tag and caption remained intact.
+- A repeated analysis request reused the completed result.
+- Removing generated tags, adding a manual tag, saving and reopening the editor
+  preserved the user's saved choices.
+- A failed-job fixture was created deliberately to test recovery. A fresh page
+  showed the error and Retry analysis; retry used the real provider and completed.
+  The failure itself was simulated, not an actual provider outage.
+- Five existing AI/provider validation tests and TypeScript checking passed.
+
+Accuracy warning
+----------------
+A separate live request using the supplied stock-car-89 photo returned:
+Front View, Day, Dry Track, GT Car.
+The GT Car classification is incorrect for that stock-car example. The current
+allowed taxonomy lacks a Stock Car category. Successful API requests do not mean
+every result is accurate. This small check does not establish accuracy across
+all VCO photos, and no model or taxonomy change was made.
+
+Usability assessment
+--------------------
+The basic path is simple: select a photo and upload it; tagging starts without
+an additional AI action. There is a visible retry control, and users retain
+manual control over their tags.
+
+The experience still has avoidable friction:
+1. The upload dialog mixes German helper text with English controls.
+2. User-facing status displays internal states such as "AI: completed" instead
+   of simple language such as "Tags ready" or "Adding tags".
+3. The upload button correctly becomes disabled after success, but its label
+   becomes "Upload 0 Files". A clear completion state would be easier to read.
+4. The editor still offers "Auto-Generate Tags" after analysis is completed,
+   although clicking it reuses the existing result rather than regenerating.
+5. Recently viewed analysis data uses the global five-minute freshness setting.
+   A status changed elsewhere can remain stale when the dialog is reopened.
+   This occurred in the independent failed-job test; a fresh page showed the
+   current failure immediately. Status freshness should not require a reload.
+6. Caption-generation controls, manual tags and historical AI-generated chips
+   are presented together. The distinction between currently saved tags and
+   previous AI suggestions could be clearer.
+
+Responsive check
+----------------
+The authenticated editor was checked at a 402 x 874 CSS viewport. The dialog
+was 370 pixels wide, stayed inside the viewport and scrolled internally. The
+Update Media button was accessible after scrolling. No blocked-save or clipped
+dialog issue was found at that tested size. This was a desktop browser's
+phone-sized responsive viewport, not a physical iPhone/keyboard test.
+
+Recommendation
+--------------
+Keep automatic tagging on by default, with no extra upload steps. Use one
+human-readable status per image, clear completion feedback, a retry only when
+needed, and fresh status when opening the editor. Clarify which tags are saved
+and which are suggestions. Separately improve car-type coverage and verify
+accuracy before treating AI classifications as authoritative.
+
+Repeatable live check
+---------------------
+node --import tsx .local/verify-ai-usability.mjs --live
+The explicit flag is required because the script makes real provider calls and
+creates/deletes temporary development fixtures. The browser-check helper and
+the running application are required. Results are written to /tmp.

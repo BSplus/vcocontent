@@ -14,3 +14,17 @@ mtime_ms = 1791560557534
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/c5b53dba-9332-4871-80dc-2b2a5b2649e5/7023b863-64f8-4d10-995a-9ca7b0eec306"
 storage_version_token = "1791560594098558"
 content_type = "text/plain"
+
+[[outputs]]
+id = "PRpCcxsri7WSOI02kD7yX"
+uri = "file://docs/ai-tagging-usability-review.txt"
+type = "text"
+title = "AI tagging and usability test results"
+description = "Real creator upload, background tagging, retry, manual-tag preservation, phone-sized editor check and specific usability findings."
+logical_id = "a19daa94-c1d0-4f86-8b65-74bac4c503bf"
+content_hash = "sha256:13d162d35a19be11962ced573056781ec278d1f799b70c132d4605ffd2aa1bdd"
+size = 4363
+mtime_ms = 1791585985260
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/a19daa94-c1d0-4f86-8b65-74bac4c503bf/a95c2135-c67e-4937-a16d-d186aabadcd6"
+storage_version_token = "1791585998834008"
+content_type = "text/plain"

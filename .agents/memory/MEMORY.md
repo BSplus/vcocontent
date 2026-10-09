@@ -20,3 +20,4 @@
 - [Fontsource export paths](fontsource-export-paths.md) — font packages can expose different CSS import paths; verify their export maps and the production build.
 - [Site date display](site-date-display.md) — visible dates should use day, full English month, four-digit year throughout the site.
 - [Background analysis decisions](background-analysis-decisions.md) — combine AI outputs only with quality evidence; shared-queue tests need exclusive consumers, not parallel mocks.
+- [Mobile browser viewport checks](mobile-browser-viewport-checks.md) — screenshot size can differ from the CSS viewport; measure both before claiming dialog clipping.
