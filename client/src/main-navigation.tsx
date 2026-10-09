@@ -15,16 +15,16 @@ export default function MainNavigation() {
   });
 
   return (
-    <header className="border-b border-primary/20 bg-black/50 backdrop-blur-sm">
-      <div className="container mx-auto px-4 py-2 flex justify-between items-center">
+    <header className="border-b border-border bg-background/95 backdrop-blur-sm">
+      <div className="mx-auto flex max-w-[1492px] items-center justify-between gap-4 px-4 py-2 sm:px-6 lg:px-9">
         <div className="flex items-center gap-4">
           <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
             <img 
               src="/attached_assets/VCO_2021_reg_White_Trans.png"
               alt="VCO Logo"
-              className="h-[100px] w-auto" 
+              className="h-12 w-auto"
             />
-            <span className="text-2xl font-[Orbitron] text-white tracking-wider">
+            <span className="text-xs font-bold tracking-[0.14em] text-foreground sm:text-sm">
               MEDIA DATABASE
             </span>
           </Link>

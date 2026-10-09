@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -131,7 +132,7 @@ export default function AdminUsers() {
                   <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
                     <dt className="text-muted-foreground">Role</dt><dd>{roles(user)}</dd>
                     <dt className="text-muted-foreground">Credits</dt><dd>{user.credits || 0}</dd>
-                    <dt className="text-muted-foreground">Created</dt><dd>{new Date(user.createdAt).toLocaleDateString()}</dd>
+                    <dt className="text-muted-foreground">Created</dt><dd>{formatDate(user.createdAt)}</dd>
                   </dl>
                   <div aria-label={`Actions for ${user.username}`}>{actions(user)}</div>
                 </section>
@@ -155,7 +156,7 @@ export default function AdminUsers() {
                     <TableCell>{roles(user)}</TableCell>
                     <TableCell>{user.credits || 0}</TableCell>
                     <TableCell>
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {formatDate(user.createdAt)}
                     </TableCell>
                     <TableCell>{actions(user)}</TableCell>
                   </TableRow>

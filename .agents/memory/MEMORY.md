@@ -17,3 +17,5 @@
 - [Express wildcard SEO paths](express-wildcard-seo-paths.md) — fallback middleware sees a mount-relative path; use the original URL to render route-specific metadata.
 - [Entry-list PDF layout](entry-list-pdf-layout.md) — searchable table PDFs can produce hundreds of false rows when flattened; check real documents as well as synthetic fixtures.
 - [Python tooling in Node projects](python-tooling-node-projects.md) — installing a Python inspection package may generate Python scaffolding and alter Replit Nix config.
+- [Fontsource export paths](fontsource-export-paths.md) — font packages can expose different CSS import paths; verify their export maps and the production build.
+- [Site date display](site-date-display.md) — visible dates should use day, full English month, four-digit year throughout the site.

@@ -5,10 +5,14 @@ export default {
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["IBM Plex Sans Condensed", "sans-serif"],
+        display: ["Big Shoulders Display", "sans-serif"],
+      },
       borderRadius: {
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        md: "0.1rem",
+        sm: "0.06rem",
       },
       colors: {
         background: "hsl(var(--background))",

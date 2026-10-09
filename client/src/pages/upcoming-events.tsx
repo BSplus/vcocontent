@@ -5,6 +5,8 @@ import { type Event } from "@shared/schema";
 import { ArrowLeft, CalendarDays, Clock3, Search } from "lucide-react";
 import Footer from "@/components/footer";
 import MainNavigation from "@/components/main-navigation";
+import EventTitle from "@/components/event-title";
+import { formatDate } from "@/lib/utils";
 
 export default function UpcomingEventsPage() {
   const { data: events, isLoading, error, refetch, isFetching } = useQuery<Event[]>({ queryKey: ["/api/events"] });
@@ -45,20 +47,16 @@ export default function UpcomingEventsPage() {
             {upcomingEvents.map((event, index) => {
               const date = new Date(event.date);
               return (
-                <li key={event.id} className="grid grid-cols-[3.5rem_1fr] gap-4 py-5 sm:grid-cols-[4.5rem_1fr_auto] sm:items-center sm:gap-6">
-                  <div className="flex h-14 w-14 flex-col items-center justify-center border-l-2 border-accent bg-accent/10 text-accent">
-                    <span className="text-[10px] font-bold uppercase tracking-wider">{date.toLocaleDateString("en-US", { month: "short" })}</span>
-                    <span className="font-[Orbitron] text-xl font-bold leading-tight">{date.getDate().toString().padStart(2, "0")}</span>
-                  </div>
+                <li key={event.id} className="grid grid-cols-[1fr_auto] items-center gap-4 py-5 sm:gap-6">
                   <div className="min-w-0">
-                    <h2 className="truncate text-lg font-bold tracking-wide sm:text-xl">{event.title}</h2>
+                    <h2 className="truncate text-lg font-bold tracking-wide sm:text-xl"><EventTitle title={event.title} /></h2>
                     <p className="mt-1 flex items-center gap-2 text-sm text-foreground/75">
                       <Clock3 className="h-4 w-4 shrink-0 text-accent" />
-                      {date.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                      <time dateTime={date.toISOString()}>{formatDate(date)}</time>
                     </p>
                     {event.description && <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-relaxed text-foreground/70">{event.description}</p>}
                   </div>
-                  <span className="col-start-2 text-xs font-semibold uppercase tracking-widest text-foreground/45 sm:col-start-auto sm:text-right">
+                  <span className="text-xs font-semibold uppercase tracking-widest text-foreground/45 sm:text-right">
                     {index === 0 ? "Next event" : "Scheduled"}
                   </span>
                 </li>

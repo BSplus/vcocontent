@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -12,6 +13,7 @@ import {
 import UploadModal from "@/components/upload-modal";
 import MediaUploadModal from "@/components/media-upload-modal";
 import EditMediaModal from "@/components/edit-media-modal";
+import EventTitle from "@/components/event-title";
 import DashboardEventList from "@/components/dashboard-event-list";
 
 export default function CreatorDashboard() {
@@ -269,9 +271,9 @@ export default function CreatorDashboard() {
                       return (
                         <div key={event.id} className="flex justify-between items-center pb-4 border-b border-border last:border-0">
                           <div>
-                            <h3 className="font-medium">{event.title}</h3>
+                            <h3 className="font-medium"><EventTitle title={event.title} /></h3>
                             <p className="text-sm text-muted-foreground">
-                              {new Date(event.date).toLocaleDateString()}
+                              {formatDate(event.date)}
                             </p>
                           </div>
                           <div className="text-right">

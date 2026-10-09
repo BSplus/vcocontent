@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
+import EventTitle from "@/components/event-title";
+import { formatDate } from "@/lib/utils";
 
 export default function HomePage() {
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
@@ -62,20 +64,20 @@ export default function HomePage() {
           <div className="absolute inset-0 -z-20">
             <img src="/attached_assets/IMG_7464.png" alt="" className="h-full w-full object-cover object-center" />
           </div>
-          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-background via-background/90 to-background/55" />
-          <div className="container mx-auto grid min-h-[360px] items-center gap-8 px-4 py-12 md:min-h-[390px] md:grid-cols-[1.1fr_0.9fr] md:py-14">
+          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-background via-background/90 to-background/45" />
+          <div className="mx-auto grid min-h-[390px] w-full max-w-[1492px] items-center gap-8 px-4 py-12 sm:px-6 md:min-h-[440px] md:grid-cols-[1.1fr_0.9fr] md:py-14 lg:px-9">
             <div className="max-w-2xl">
-              <p className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-primary">
-                <span className="h-2 w-2 bg-primary" /> VCO media database
+              <p className="vco-kicker mb-4">
+                VCO Media Database
               </p>
-              <h1 className="max-w-2xl font-[Orbitron] text-3xl font-bold uppercase leading-[1.15] tracking-wide text-foreground sm:text-4xl lg:text-5xl">
+              <h1 className="max-w-2xl text-[clamp(3.2rem,8vw,7.25rem)] font-extrabold uppercase leading-[0.82] tracking-[-0.035em] text-foreground">
                 Every race.<br /><span className="text-primary">Every frame.</span>
               </h1>
               <p className="mt-4 max-w-xl text-base leading-relaxed text-foreground/85 sm:text-lg">
                 Find the moment you remember. Browse event galleries and creator coverage from the VCO racing world.
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
-                <Button asChild className="min-h-12 bg-primary px-5 font-bold text-primary-foreground hover:bg-primary/90">
+                <Button asChild className="vco-button min-h-12 bg-primary px-5 text-primary-foreground hover:bg-primary/90">
                   <Link href="/search"><Search className="mr-2 h-4 w-4" />Search the archive<ArrowRight className="ml-3 h-4 w-4" /></Link>
                 </Button>
                 <Button asChild variant="outline" className="min-h-12 border-foreground/40 bg-background/60 px-5 hover:bg-background/90">
@@ -156,11 +158,7 @@ export default function HomePage() {
                 {upcomingEvents.map((event) => {
                   const date = new Date(event.date);
                   return <li key={event.id} className="flex items-center gap-4 py-4">
-                    <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center border-l-2 border-accent bg-accent/10 text-accent">
-                      <span className="text-[9px] font-bold uppercase tracking-wider">{date.toLocaleDateString("en-US", { month: "short" })}</span>
-                      <span className="font-[Orbitron] text-lg font-bold leading-tight">{date.getDate()}</span>
-                    </div>
-                    <div className="min-w-0"><p className="truncate font-bold">{event.title}</p><p className="mt-1 text-sm text-foreground/70">{date.toLocaleDateString("en-US", { weekday: "long", year: "numeric" })}</p></div>
+                    <div className="min-w-0 border-l-2 border-accent pl-4"><p className="truncate font-bold"><EventTitle title={event.title} /></p><p className="mt-1 text-sm text-foreground/70"><time dateTime={date.toISOString()}>{formatDate(date)}</time></p></div>
                   </li>;
                 })}
               </ol>
@@ -181,7 +179,7 @@ export default function HomePage() {
               {topShotsLoading ? <div className="grid grid-cols-1 gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="h-72 animate-pulse rounded-md bg-card/70" />)}</div> : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   {topShots.slice(0, 3).map((shot) => <button key={shot.id} type="button" onClick={() => setSelectedMedia(shot)} aria-label={`Open ${shot.type === "video" ? "video" : "photo"}: ${shot.caption || `Media ${shot.id}`}`} className="group flex min-w-0 flex-col overflow-hidden rounded-md border border-foreground/15 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                    <span className="relative flex h-60 w-full items-center justify-center bg-black/30 sm:h-72 md:h-64 lg:h-72">
+                      <span className="relative flex h-60 w-full items-center justify-center bg-background sm:h-72 md:h-64 lg:h-72">
                       <img src={shot.thumbnail} alt="" className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none" loading="lazy" />
                       {shot.type === "video" && <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded bg-black/85 px-2 py-1 text-xs font-semibold text-white"><PlayCircle className="h-4 w-4" /> Video</span>}
                     </span>
@@ -202,7 +200,7 @@ export default function HomePage() {
                 <Button asChild variant="ghost"><Link href="/creator-events">Browse creator events<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                {creatorTopMedia.slice(0, 3).map((item) => <button key={item.id} type="button" onClick={() => setSelectedMedia(item)} className="group relative aspect-video overflow-hidden rounded-md border border-accent/25 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                  {creatorTopMedia.slice(0, 3).map((item) => <button key={item.id} type="button" onClick={() => setSelectedMedia(item)} className="group relative aspect-video overflow-hidden border border-accent/25 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                   <img src={item.thumbnail} alt={item.caption || "Creator racing media"} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none" loading="lazy" />
                   <span className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
                   <span className="absolute bottom-0 left-0 right-0 p-4">
@@ -248,7 +246,7 @@ export default function HomePage() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            {selectedMedia.tags?.length ? <div className="flex flex-wrap gap-2">{selectedMedia.tags.map((tag) => <span key={tag} className="rounded-full bg-secondary px-3 py-1 text-xs text-secondary-foreground">{tag}</span>)}</div> : null}
+            {selectedMedia.tags?.length ? <div className="flex flex-wrap gap-2">{selectedMedia.tags.map((tag) => <span key={tag} className="border border-border bg-secondary px-2.5 py-1 text-xs text-secondary-foreground">{tag}</span>)}</div> : null}
           </div>}
         </DialogContent>
       </Dialog>

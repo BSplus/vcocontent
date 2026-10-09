@@ -9,6 +9,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { Badge } from "@/components/ui/badge";
 import MainNavigation from "@/components/main-navigation";
 import Footer from "@/components/footer";
+import EventTitle from "@/components/event-title";
+import { formatDate } from "@/lib/utils";
 
 export default function EventGallery() {
   const [, params] = useRoute<{ id: string }>("/events/:id");
@@ -80,7 +82,7 @@ export default function EventGallery() {
           <div className="space-y-4">
             <p className="text-sm uppercase tracking-widest text-primary">Event gallery</p>
             <h1 className="text-2xl md:text-4xl font-bold text-foreground break-words">
-              {event.title}
+              <EventTitle title={event.title} />
             </h1>
             
             {event.creatorId && creator && (
@@ -93,13 +95,8 @@ export default function EventGallery() {
             )}
             
             {event.date && (
-              <p className="text-muted-foreground font-[Rajdhani] text-lg">
-                {new Date(event.date).toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
+              <p className="text-muted-foreground text-lg">
+                {formatDate(event.date)}
               </p>
             )}
             {event.description && (

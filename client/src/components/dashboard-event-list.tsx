@@ -1,8 +1,10 @@
+import { formatDate } from "@/lib/utils";
 import React, { useEffect, useState, type ReactNode } from "react";
 import { Event, MediaItem } from "@shared/schema";
 import { Image as ImageIcon, Film } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import EventTitle from "@/components/event-title";
 
 export const EVENTS_PER_PAGE = 8;
 
@@ -62,9 +64,9 @@ export default function DashboardEventList({
             return (
               <li key={event.id} className="flex min-w-0 flex-col gap-2 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
-                  <p className="break-words font-semibold leading-tight">{event.title}</p>
+                  <p className="break-words font-semibold leading-tight"><EventTitle title={event.title} /></p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                    <time dateTime={new Date(event.date).toISOString()}>{new Date(event.date).toLocaleDateString()}</time>
+                    <time dateTime={new Date(event.date).toISOString()}>{formatDate(event.date)}</time>
                     <Badge variant="secondary" className="gap-1"><ImageIcon className="h-3 w-3" />{stats.photos} Photos</Badge>
                     <Badge variant="secondary" className="gap-1"><Film className="h-3 w-3" />{stats.videos} Videos</Badge>
                     {showPremium && <span>{stats.premium} Premium</span>}

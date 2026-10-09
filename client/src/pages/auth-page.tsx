@@ -112,8 +112,8 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2">
-      <div className="flex items-center justify-center p-8">
+    <div className="grid min-h-[100dvh] bg-background lg:grid-cols-[0.88fr_1.12fr]">
+      <div className="flex items-center justify-center p-5 sm:p-8">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>VCO Media Platform</CardTitle>
@@ -269,9 +269,13 @@ export default function AuthPage() {
         </Card>
       </div>
 
-      <div className="hidden lg:flex items-center justify-center bg-muted p-8">
-        <div className="max-w-md">
-          <h1 className="text-4xl font-bold mb-4">
+      <div className="relative hidden items-center justify-center overflow-hidden border-l border-border bg-secondary p-8 lg:flex">
+        <img src="/attached_assets/IMG_7464.png" alt="" className="absolute inset-0 h-full w-full object-cover opacity-35" />
+        <div className="absolute inset-0 bg-gradient-to-r from-secondary via-secondary/75 to-secondary/35" />
+        <div className="relative max-w-lg">
+          <img src="/attached_assets/VCO_2021_reg_White_Trans.png" alt="VCO" className="mb-10 h-12 w-auto" />
+          <p className="vco-kicker mb-4">Inside the archive</p>
+          <h1 className="mb-4 text-6xl font-extrabold leading-[0.86]">
             VCO Sim Racing Media Platform
           </h1>
           <p className="text-lg text-muted-foreground mb-6">

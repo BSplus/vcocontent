@@ -18,17 +18,17 @@ export default function MainNavigation() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const isActive = (href: string) => location === href;
   const itemClasses = (href: string) =>
-    `relative inline-flex min-h-11 items-center text-sm font-semibold tracking-wide transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+    `relative inline-flex min-h-11 items-center text-xs font-bold uppercase tracking-[0.09em] transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
       isActive(href) ? "text-primary" : "text-foreground/80"
     }`;
   const closeMenu = () => setMobileOpen(false);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-primary/25 bg-background/95 shadow-[0_8px_28px_rgba(0,0,0,0.24)] backdrop-blur-md">
-      <div className="container mx-auto flex min-h-[76px] items-center justify-between gap-4 px-4">
+    <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-md">
+      <div className="mx-auto flex min-h-[72px] max-w-[1492px] items-center justify-between gap-4 px-5 sm:px-6 lg:px-9">
         <Link href="/" aria-label="VCO Media Database home" className="flex shrink-0 items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-          <img src="/attached_assets/VCO_2021_reg_White_Trans.png" alt="VCO" className="h-12 w-auto sm:h-[58px]" />
-          <span className="hidden border-l border-foreground/20 pl-3 font-[Orbitron] text-sm font-bold tracking-[0.16em] text-foreground sm:block md:text-base">
+          <img src="/attached_assets/VCO_2021_reg_White_Trans.png" alt="VCO" className="h-10 w-auto sm:h-12" />
+          <span className="hidden border-l border-foreground/20 pl-3 text-[11px] font-bold leading-tight tracking-[0.16em] text-foreground sm:block md:text-xs">
             MEDIA<br className="hidden sm:block" /> DATABASE
           </span>
         </Link>
@@ -50,11 +50,11 @@ export default function MainNavigation() {
         </nav>
 
         <div className="hidden shrink-0 items-center gap-2 lg:flex">
-          <Button asChild className="h-10 bg-primary px-4 font-bold text-primary-foreground hover:bg-primary/90">
+          <Button asChild className="vco-button h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90">
             <Link href="/search" aria-current={location === "/search" ? "page" : undefined} aria-label="Search media"><Search className="mr-2 h-4 w-4" />Search media</Link>
           </Button>
           {!user ? (
-            <Button variant="outline" asChild className="h-10 border-foreground/25">
+            <Button variant="outline" asChild className="vco-button h-10 border-foreground/25">
               <Link href="/auth">Sign in</Link>
             </Button>
           ) : (
@@ -90,7 +90,7 @@ export default function MainNavigation() {
       </div>
 
       {mobileOpen && (
-        <nav id="mobile-navigation" aria-label="Mobile navigation" className="max-h-[calc(100dvh-76px)] overflow-y-auto border-t border-primary/20 bg-background px-4 py-3 lg:hidden">
+        <nav id="mobile-navigation" aria-label="Mobile navigation" className="max-h-[calc(100dvh-76px)] overflow-y-auto border-t border-primary/20 bg-background px-5 py-3 lg:hidden">
           <div className="container mx-auto grid grid-cols-2 gap-x-5 gap-y-1">
             {links.map((link) => (
               <Link key={link.href} href={link.href} onClick={closeMenu} aria-current={location === link.href ? "page" : undefined} className={`${itemClasses(link.href)} border-b border-foreground/10`}>
