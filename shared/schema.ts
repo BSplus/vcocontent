@@ -14,6 +14,12 @@ export const users = pgTable("users", {
   credits: decimal("credits").notNull().default('0'),
   profileImage: text("profile_image"),
   profileImagePublic: boolean("profile_image_public").notNull().default(false),
+  displayName: text("display_name"),
+  profileCoverImage: text("profile_cover_image"),
+  profileCoverPublic: boolean("profile_cover_public").notNull().default(false),
+  publicContactEmail: text("public_contact_email"),
+  websiteUrl: text("website_url"),
+  instagramUrl: text("instagram_url"),
   bio: text("bio"),
   stripeCustomerId: text("stripe_customer_id").unique(),
   stripeSubscriptionId: text("stripe_subscription_id").unique(),
@@ -23,6 +29,17 @@ export const users = pgTable("users", {
   quotaException: boolean("quota_exception").notNull().default(false),
   analysisLastServedAt: timestamp("analysis_last_served_at"),
 });
+
+export const creatorFollows = pgTable("creator_follows", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  creatorId: integer("creator_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, table => ({
+  uniqueFollow: uniqueIndex("creator_follows_user_creator_unique").on(table.userId, table.creatorId),
+  creatorIndex: index("creator_follows_creator_idx").on(table.creatorId),
+  noSelfFollow: check("creator_follows_no_self", sql`${table.userId} <> ${table.creatorId}`),
+}));
 
 export const series = pgTable("series", {
   id: serial("id").primaryKey(),

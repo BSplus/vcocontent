@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import type { CommunityGallery } from "@/types/creator-association";
+import CreatorIdentity from "@/components/creator-identity";
 
 interface CommunityGalleriesProps {
   officialEventId: number;
@@ -50,9 +51,7 @@ export default function CommunityGalleries({ officialEventId }: CommunityGalleri
                   <p className="mt-1 text-sm text-muted-foreground">
                     <time dateTime={new Date(gallery.date).toISOString()}>{formatDate(gallery.date)}</time>
                     {" · "}by{" "}
-                    <Link href={`/creator/${gallery.creatorId}`} className="underline underline-offset-2 hover:text-primary">
-                      {gallery.creatorName}
-                    </Link>
+                    <CreatorIdentity creator={{ id: gallery.creatorId, username: gallery.creatorName, isCreator: true }} className="text-sm" />
                   </p>
                 </div>
               </div>

@@ -43,7 +43,10 @@ test("community actions, private account and studio work with keyboard and narro
     else if(path===`/api/events/${gallery.id}`)body=gallery;
     else if(path.startsWith("/api/users/"))body=user;
     else if(path==="/api/media/policy")body={community:true,imageBytes:5000000,videoBytes:0,maxPixels:40000000,zipCount:100,zipBytes:104857600};
-    browser.command("Fetch.fulfillRequest",{requestId,responseCode:status,responseHeaders:[{name:"Content-Type",value:"application/json"}],body:Buffer.from(JSON.stringify(body)).toString("base64")}).catch(e=>mockErrors.push(String(e)));
+    browser.command("Fetch.fulfillRequest",{requestId,responseCode:status,responseHeaders:[{name:"Content-Type",value:"application/json"}],body:Buffer.from(JSON.stringify(body)).toString("base64")}).catch(e=>{
+      // Navigation can cancel an intercepted query before fulfillment; this is not an app exception.
+      if(!String(e).includes("Invalid InterceptionId")) mockErrors.push(String(e));
+    });
   });
   await browser.command("Fetch.enable",{patterns:[{urlPattern:"*/api/*",requestStage:"Request"}]});
   const visit=async(path,ready)=>{await browser.command("Page.navigate",{url:new URL(path,base).href});await browser.wait(ready);};

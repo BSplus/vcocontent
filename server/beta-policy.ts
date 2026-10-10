@@ -71,6 +71,9 @@ export async function creatorUsage(executor: any, creatorId: number) {
       select profile_image,octet_length(decode(split_part(profile_image,',',2),'base64'))::bigint
         from users where id=${creatorId} and profile_image like 'data:%;base64,%'
       union all
+      select profile_cover_image,octet_length(decode(split_part(profile_cover_image,',',2),'base64'))::bigint
+        from users where id=${creatorId} and profile_cover_image like 'data:%;base64,%'
+      union all
       select c.key,max(c.stored_bytes) from media_cleanup c where c.creator_id=${creatorId}
         and not exists(select 1 from media_reservations r where r.storage_key=c.key or r.thumbnail_key=c.key)
         group by c.key

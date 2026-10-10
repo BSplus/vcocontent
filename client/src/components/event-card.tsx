@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { type Event, type MediaItem, type Series } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, CalendarDays, ImagePlus, User as UserIcon } from "lucide-react";
+import { ArrowUpRight, CalendarDays, ImagePlus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import EventTitle from "@/components/event-title";
 import { formatDate } from "@/lib/utils";
 import CommunityActions from "@/components/community-actions";
+import CreatorIdentity, { type PublicCreator } from "@/components/creator-identity";
 
 interface EventCardProps {
   event: Event;
@@ -25,8 +26,8 @@ export default function EventCard({ event }: EventCardProps) {
     queryKey: [`/api/series/${event.seriesId}`],
     enabled: !!event.seriesId,
   });
-  const { data: creator } = useQuery<{ username: string; id: number; isCreator: boolean }>({
-    queryKey: [`/api/users/${event.creatorId}`],
+  const { data: creator } = useQuery<PublicCreator>({
+    queryKey: [`/api/users/${event.creatorId}`, user?.id ?? "signed-out"],
     enabled: isCreatorEvent,
   });
   const thumbnailUrl = event.customThumbnail ||
@@ -51,9 +52,7 @@ export default function EventCard({ event }: EventCardProps) {
           <div className="flex flex-col items-end gap-1.5">
             {isUpcoming && <Badge className="border-0 bg-primary font-bold text-primary-foreground">Upcoming</Badge>}
             {isCreatorEvent && creator && (
-              <Link href={`/creator/${creator.id}`} className="pointer-events-auto inline-flex items-center gap-1.5 rounded-sm bg-background/90 px-2 py-1 text-xs font-semibold text-foreground shadow-sm transition-colors hover:bg-accent hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                <UserIcon className="h-3 w-3" />{creator.username}
-              </Link>
+              <span className="pointer-events-auto inline-flex items-center rounded-sm bg-background/90 px-2 py-1 text-xs font-semibold text-foreground shadow-sm"><CreatorIdentity creator={creator} /></span>
             )}
           </div>
         </div>

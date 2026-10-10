@@ -8,6 +8,7 @@ import { eventPublic, mediaPublic } from "./beta-access";
 import { publicEventPredicate, publicMediaPredicate } from "./beta-policy";
 import { requireAuth } from "./middleware/auth";
 import { registerCommunityProfile } from "./community-profile";
+import { registerCreatorProfiles } from "./creator-profiles";
 
 const preview = (id:number, thumbnail:string) => thumbnail.startsWith("data:") ? `/api/media/legacy/${id}/thumbnail` : thumbnail;
 export async function communityTarget(kind:string,id:number) {
@@ -53,6 +54,7 @@ export async function recordDownload(userId:number,mediaId:number,quality:string
 }
 export function registerCommunityRoutes(app:Express) {
   registerCommunityProfile(app);
+  registerCreatorProfiles(app);
   app.get("/api/community/:kind/:id",async(req,res)=>{
     try {
       const {kind,id}=req.params;

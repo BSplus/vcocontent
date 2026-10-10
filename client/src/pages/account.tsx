@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bookmark, Download, ArrowUpRight, ChevronLeft, ChevronRight, CircleUserRound, Image as ImageIcon } from "lucide-react";
+import { Bookmark, Download, ArrowUpRight, ChevronLeft, ChevronRight, CircleUserRound, Image as ImageIcon, Users, UserRound } from "lucide-react";
 import MainNavigation from "@/components/main-navigation";
 import Footer from "@/components/footer";
 import CommunityActions from "@/components/community-actions";
@@ -9,11 +9,12 @@ import ProfileSettings from "@/components/profile-settings";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { formatDate } from "@/lib/utils";
+import CreatorIdentity, { type PublicCreator } from "@/components/creator-identity";
 
 type FavoriteItem = { kind: "media" | "event"; id: number; title: string; thumbnail: string | null; eventTitle: string; href: string; date: string };
 type DownloadItem = { historyId: number; id: number; title: string; thumbnail: string | null; eventTitle: string; href: string; date: string; quality: string };
 type PageEnvelope<T> = { items: T[]; hasMore: boolean };
-type AccountTab = "downloads" | "favorites" | "settings";
+type AccountTab = "downloads" | "favorites" | "following" | "settings";
 
 function PanelSkeleton() {
   return <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Loading account content">
@@ -30,14 +31,25 @@ export default function AccountPage() {
   const [page, setPage] = useState(1);
   const search = useSearch();
   const active = (new URLSearchParams(search).get("tab") || "downloads") as AccountTab;
-  const tab = (["downloads", "favorites", "settings"].includes(active) ? active : "downloads") as AccountTab;
+  const tab = (["downloads", "favorites", "following", "settings"].includes(active) ? active : "downloads") as AccountTab;
   const endpoint = tab === "favorites" ? "favorites" : "downloads";
   const queryKey = [`/api/account/${endpoint}?page=${page}`, user?.id ?? "signed-out"];
   const { data, isLoading, isError, refetch } = useQuery<PageEnvelope<FavoriteItem | DownloadItem>>({
     queryKey,
-    enabled: !!user && tab !== "settings",
+    enabled: !!user && tab !== "settings" && tab !== "following",
     staleTime: 0,
     gcTime: 0,
+    retry: false,
+  });
+  const followingQuery = useQuery<PageEnvelope<PublicCreator>>({
+    queryKey: ["/api/account/following", user?.id ?? "signed-out", page],
+    queryFn: async () => {
+      const response=await fetch(`/api/account/following?page=${page}`,{credentials:"include"});
+      if(!response.ok) throw new Error("Your followed creators could not be loaded.");
+      return response.json();
+    },
+    enabled: !!user && tab === "following",
+    staleTime: 0,
     retry: false,
   });
   const changeTab = (next: AccountTab) => {
@@ -62,6 +74,7 @@ export default function AccountPage() {
         {([
           ["downloads", "My Downloads", Download],
           ["favorites", "My Favorites", Bookmark],
+          ["following", "Following", Users],
           ["settings", "Settings", CircleUserRound],
         ] as const).map(([value, label, Icon]) => <button key={value} type="button" onClick={() => changeTab(value)} aria-current={tab === value ? "page" : undefined}
           className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-4 text-sm font-bold uppercase tracking-wider transition-colors ${tab === value ? "border-primary text-primary" : "border-transparent text-foreground/65 hover:text-foreground"}`}>
@@ -69,7 +82,25 @@ export default function AccountPage() {
         </button>)}
       </nav>
 
-      {tab === "settings" ? <section className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
+      {tab === "following" ? <section>
+        <div className="mb-5 flex items-end justify-between gap-3"><div><p className="vco-kicker">The photographers you follow</p><h2 className="mt-2 text-2xl">Following</h2></div><span className="text-xs uppercase tracking-widest text-muted-foreground">Page {page}</span></div>
+        {followingQuery.isLoading ? <PanelSkeleton /> : followingQuery.isError ? <div role="alert" className="border border-destructive/40 bg-card px-5 py-8 text-center"><p className="text-lg">Your following list is temporarily unavailable.</p><Button variant="outline" className="mt-4" onClick={() => void followingQuery.refetch()}>Try again</Button></div> : !followingQuery.data?.items.length ? <div className="border border-dashed border-border bg-card/50 px-6 py-14 text-center">
+          <Users className="mx-auto h-8 w-8 text-primary" /><h3 className="mt-4 text-xl">Your circuit starts here</h3><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Follow a photographer to keep their public galleries close at hand.</p>
+          <Button asChild className="vco-button mt-5 min-h-11 bg-primary text-primary-foreground"><Link href="/creator-events">Discover creator galleries</Link></Button>
+        </div> : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {followingQuery.data.items.map(creator => <article key={creator.id} className="flex min-h-32 items-center gap-4 border border-border bg-card p-5">
+            <Link href={`/creator/${creator.id}`} aria-label={`View ${creator.displayName || creator.username}'s profile`} className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/30 bg-primary/10 text-primary">
+              {creator.profileImage ? <img src={creator.profileImage} alt="" className="h-full w-full object-cover" /> : <UserRound className="h-7 w-7" />}
+            </Link>
+            <div className="min-w-0 flex-1"><CreatorIdentity creator={creator} className="text-lg font-bold" /><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{creator.bio || "VCO creator"}</p><p className="mt-2 text-xs text-muted-foreground">{creator.followerCount ?? 0} followers</p></div>
+          </article>)}
+        </div>}
+        {!followingQuery.isLoading && !followingQuery.isError && followingQuery.data?.items.length ? <nav aria-label="Following pages" className="mt-7 flex items-center justify-between border-t border-border pt-4">
+          <Button variant="outline" className="min-h-11" disabled={page === 1} onClick={() => setPage(value => Math.max(1, value - 1))}><ChevronLeft className="mr-1 h-4 w-4" />Previous</Button>
+          <span className="text-sm text-muted-foreground">Page {page}</span>
+          <Button variant="outline" className="min-h-11" disabled={!followingQuery.data?.hasMore} onClick={() => setPage(value => value + 1)}>Next<ChevronRight className="ml-1 h-4 w-4" /></Button>
+        </nav> : null}
+      </section> : tab === "settings" ? <section className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
         <div className="space-y-6">
           {user && <ProfileSettings user={user} />}
           <div className="border border-border bg-card p-5 sm:p-7">
@@ -83,7 +114,7 @@ export default function AccountPage() {
         </div>
         <aside className="border border-primary/25 bg-primary/[0.04] p-5 sm:p-7">
           <p className="vco-kicker">Preferences & help</p><h2 className="mt-3 text-2xl">Keep your account in good standing.</h2>
-          <p className="mt-4 leading-relaxed text-foreground/75">Your username, biography, and profile photo are reviewed before public display. Email address, roles, and payment details are not editable here.</p>
+          <p className="mt-4 leading-relaxed text-foreground/75">Your username, biography, and profile photo are reviewed before public display. Creator accounts can also add an optional display name, cover and explicitly public contact details. Private account email remains private.</p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Button asChild variant="outline" className="min-h-11"><Link href="/privacy-policy">Privacy policy</Link></Button>
             <Button asChild variant="outline" className="min-h-11"><Link href="/credits">Credits & beta information</Link></Button>

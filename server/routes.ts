@@ -35,6 +35,7 @@ import { registerBetaRoutes } from "./beta-routes";
 import { checkContent, reviewEventSafety, reviewMediaSafety } from "./content-safety";
 import { verificationConfigured } from "./email-verification";
 import { registerCommunityRoutes, issueDownloadOperation, validDownloadOperation, recordDownload } from "./community";
+import { publicCreatorById } from "./creator-profiles";
 import { registerCreatorEventAssociationRoutes } from "./creator-event-association";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
@@ -1026,24 +1027,16 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   // Get user by ID
   app.get("/api/users/:id", async (req, res) => {
     try {
-      const userId = parseInt(req.params.id);
-      const user = await storage.getUser(userId);
+      const userId = Number(req.params.id);
+      const user = await publicCreatorById(userId, req.user?.suspended ? undefined : req.user?.id);
       
-      if (!user || user.suspended || user.creatorStatus==="rejected") {
+      if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
       
       // Return a simplified version without sensitive information
-      const safeUser = {
-        id: user.id,
-        username: user.username,
-        isCreator: user.isCreator,
-        creatorStatus: user.creatorStatus,
-        profileImage: user.profileImagePublic ? user.profileImage : null,
-        bio: user.bio
-      };
-      
-      res.json(safeUser);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json(user);
     } catch (error) {
       console.error('Error fetching user:', error);
       res.status(500).json({ error: "Failed to fetch user" });
