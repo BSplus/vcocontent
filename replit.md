@@ -24,8 +24,18 @@ Preferred communication style: Simple, everyday language.
 
 **Design Decisions:**
 - Component-based architecture with reusable UI elements
+- Explicit media-editor analysis can match entry/result references. Automatic upload tagging stays tag-only; captions and manual entry corrections are never automatically replaced. Reference sources are private App Storage objects with authenticated owner/Admin access and durable cleanup.
+- Analysis completion in the editor must reconcile against effective saved tags, not raw generated tags, preserving suppression and draft removals. Production startup verifies schema readiness read-only and refuses to serve an unmigrated database; no startup DDL is allowed.
 - Custom theme system using CSS variables and JSON configuration for brand consistency
 - Responsive design optimized for both desktop and mobile viewing
+
+**Click-target conventions:**
+- Public media search is labeled “Search media”; it searches media metadata, not a separate event catalog.
+- “Recent events” and “Creator events” identify event-list destinations; upcoming listings are calendar information, not gallery links.
+- “Preview” opens a dialog, “Media details” navigates to the media page, and “Download options” opens the existing quality menu. Download counts are statistics.
+- In admin selection mode, thumbnail labels say Select/Deselect; the explicit Preview button still opens a preview.
+- Creator media editing stays visible without hover and returns keyboard focus to its opener.
+- Focused browser checks: `node --test tests/ui-click-targets.test.mjs`. These use isolated API fixtures without database writes; they verify UI role boundaries, not authenticated backend ownership.
 - Client-side search and filtering using Fuse.js for fuzzy matching
 - Error boundary implementation for graceful error handling
 - Font system using Orbitron for headings, Rajdhani for interactive elements, and Space Grotesk for body text

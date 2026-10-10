@@ -4,6 +4,22 @@ import { createCanvas } from "@napi-rs/canvas";
 
 const { parseEntryFile, ENTRY_LIST_LIMITS } = await import("../server/entry-list.ts");
 
+test("XLSX references retain optional metadata without requiring it in legacy entry files", async () => {
+  const { default: JSZip } = await import("jszip");
+  const zip = new JSZip();
+  const columns = ["Number", "Team", "Car", "Drivers", "Manufacturer", "Class"];
+  const values = ["007", "Apex", "GT3", "Ada One", "Fixture make", "GT3"];
+  const row = (data, index) => `<row r="${index}">${data.map((text, column) =>
+    `<c r="${String.fromCharCode(65 + column)}${index}" t="inlineStr"><is><t>${text}</t></is></c>`).join("")}</row>`;
+  zip.file("xl/worksheets/sheet1.xml", `<worksheet><sheetData>${row(columns, 1)}${row(values, 2)}</sheetData></worksheet>`);
+  const parsed = await parseEntryFile(await zip.generateAsync({ type: "nodebuffer" }),
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "reference.xlsx");
+  assert.equal(parsed.rows[0].number, "007");
+  assert.equal(parsed.rows[0].manufacturer, "Fixture make");
+  assert.equal(parsed.rows[0].racingClass, "GT3");
+  assert.deepEqual(parsed.rows[0].issues, []);
+});
+
 function completionResponse(rows, model = "gpt-4.1-mini") {
   return new Response(JSON.stringify({
     id: "entry-test",

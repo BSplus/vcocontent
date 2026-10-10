@@ -30,7 +30,7 @@ export default function CurrentEventsPage() {
             <p className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-primary">The latest from the paddock</p>
             <div className="flex items-center gap-3">
               <Trophy className="h-7 w-7 text-primary" aria-hidden="true" />
-              <h1 className="text-3xl font-bold tracking-wide text-foreground sm:text-4xl">Current events</h1>
+              <h1 className="text-3xl font-bold tracking-wide text-foreground sm:text-4xl">Recent events</h1>
             </div>
           </div>
           <p className="max-w-sm text-sm leading-relaxed text-foreground/75">Recent event galleries, updated as the season unfolds.</p>

@@ -2,8 +2,8 @@ import { createHash, randomUUID } from "crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { mediaAnalysisJobs, mediaItems, events } from "@shared/schema";
-import { recognitionImageInput } from "./image-analysis";
-import { categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
+import { analysisImageInput, recognitionImageInput } from "./image-analysis";
+import { categorizeContent, generateTagsForImage, isAITaggingConfigured } from "./utils/ai-tagger";
 import { recognizeMotorsportImage } from "./utils/motorsport-recognition";
 import { identifyEntries } from "./reference-matching";
 import { withVisionBudget, VisionBusy } from "./ai-budget";
@@ -33,16 +33,17 @@ export async function analysisStatus(mediaId: number) {
   return job || { status: "not_requested", attempts: 0, error: null, generatedTags: null };
 }
 
-export async function enqueueAnalysis(item: Item, retry = false, reanalyse = false) {
+export async function enqueueAnalysis(item: Item, options: boolean | { retry?: boolean; reanalyse?: boolean; recognition?: boolean } = false, legacyReanalyse = false) {
+  const settings = typeof options === "boolean" ? { retry: options, reanalyse: legacyReanalyse } : options;
   if (item.type !== "image") throw new AnalysisUnavailable("Video frame analysis is not available");
   if (!isAITaggingConfigured()) throw new AnalysisUnavailable("AI tagging is not configured");
-  const fingerprint = analysisFingerprint(item.thumbnail);
+  const fingerprint = (settings.recognition ? "recognition:" : "tags:") + analysisFingerprint(item.thumbnail);
   await db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(${LOCK})`);
     const [existing] = await tx.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id));
     if (existing && (existing.status === "queued" || existing.status === "running")) return;
-    if (existing?.fingerprint === fingerprint && !reanalyse &&
-        (!retry || existing.status !== "failed")) return;
+    if (existing?.fingerprint === fingerprint && !settings.reanalyse &&
+        (!settings.retry || existing.status !== "failed")) return;
     const pending = await tx.execute(sql`select count(*)::int as count from media_analysis_jobs
       where status in ('queued', 'running')`);
     if (Number(pending.rows[0]?.count) >= MAX_PENDING)
@@ -99,22 +100,26 @@ export async function drainAnalysisQueue() {
   try {
     const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, claimed.mediaId));
     if (!item) return true;
-    if (claimed.fingerprint !== analysisFingerprint(item.thumbnail)) {
+    const tagOnly = claimed.fingerprint.startsWith("tags:");
+    const prefix = tagOnly ? "tags:" : claimed.fingerprint.startsWith("recognition:") ? "recognition:" : "";
+    if (claimed.fingerprint !== prefix + analysisFingerprint(item.thumbnail)) {
       // Upgrade only jobs already requested, never mass-retag completed media.
-      claimed.fingerprint = analysisFingerprint(item.thumbnail);
+      claimed.fingerprint = prefix + analysisFingerprint(item.thumbnail);
       await db.update(mediaAnalysisJobs).set({fingerprint:claimed.fingerprint})
         .where(and(eq(mediaAnalysisJobs.mediaId,item.id),eq(mediaAnalysisJobs.workerToken,claimed.token)));
     }
     const result = claimed.referenceOnly && claimed.recognition
       ? { tags: claimed.generatedTags || [], vehicles: claimed.recognition }
-      : await withVisionBudget(async () => recognizeMotorsportImage(await recognitionImageInput(item)));
+      : tagOnly
+        ? { tags: await withVisionBudget(async () => generateTagsForImage(await analysisImageInput(item.thumbnail))), vehicles: null }
+        : await withVisionBudget(async () => recognizeMotorsportImage(await recognitionImageInput(item)));
     const tags = result.tags;
     await db.transaction(async tx => {
       const [owned] = await tx.select().from(mediaAnalysisJobs)
         .where(and(eq(mediaAnalysisJobs.mediaId, item.id), eq(mediaAnalysisJobs.workerToken, claimed.token))).for("update");
       if (!owned || owned.fingerprint !== claimed.fingerprint) return;
       const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,item.id)).for("update");
-      if (!current || analysisFingerprint(current.thumbnail) !== claimed.fingerprint) return;
+      if (!current || prefix + analysisFingerprint(current.thumbnail) !== claimed.fingerprint) return;
       const [event] = current.eventId ? await tx.select().from(events).where(eq(events.id,current.eventId)) : [];
       // Track future tag provenance. Legacy curation cannot be reconstructed:
       // conservatively preserve it rather than deleting possibly manual tags.
@@ -127,7 +132,7 @@ export async function drainAnalysisQueue() {
         if (manualTags.includes(b)) freshTags=freshTags.filter(t=>t!==a);
       }
       const merged = claimed.referenceOnly ? current.tags || [] : Array.from(new Set([...manualTags,...freshTags])).slice(0,100);
-      const identification = current.identificationManual ? current.identification : event
+      const identification = current.identificationManual || !result.vehicles ? current.identification : event
         ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx) : result.vehicles;
       await tx.update(mediaItems).set({ tags: merged, identification,
         ...(claimed.referenceOnly ? {} : {manualTags}),

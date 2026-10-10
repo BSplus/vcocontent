@@ -55,7 +55,7 @@ export default function ArchiveEventsPage() {
             <h2 className="mt-4 text-xl font-bold">The archive is ready for its first chapter</h2>
             <p className="mx-auto mt-2 max-w-md text-sm text-foreground/75">Explore recent galleries or search all available media.</p>
             <div className="mt-5 flex justify-center gap-3">
-              <Button asChild variant="outline"><Link href="/current-events">Current events</Link></Button>
+              <Button asChild variant="outline"><Link href="/current-events">Recent events</Link></Button>
               <Button asChild><Link href="/search"><Search className="mr-2 h-4 w-4" />Search media</Link></Button>
             </div>
           </div>

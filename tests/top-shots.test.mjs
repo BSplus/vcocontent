@@ -69,9 +69,9 @@ async function checkTopShotsInBrowser(videoId, photoId, landscapeId, account, pa
     for (const width of [390, 1280]) {
       await send("Emulation.setDeviceMetricsOverride", { width, height: 800, deviceScaleFactor: 1, mobile: width === 390 }, sessionId);
       await send("Page.navigate", { url: base }, sessionId);
-      await waitFor(`document.querySelector('button[aria-label^="Open video:"][aria-label$="Media ${videoId}"]') !== null`);
+      await waitFor(`document.querySelector('button[aria-label^="Preview video:"][aria-label$="Media ${videoId}"]') !== null`);
       const state = await evaluate(`(() => {
-        const cards = [...document.querySelectorAll('section[aria-labelledby="top-shots-heading"] button[aria-label^="Open"]')];
+        const cards = [...document.querySelectorAll('section[aria-labelledby="top-shots-heading"] button[aria-label^="Preview"]')];
         return { cardCount: cards.length, video: cards[0]?.querySelector('img')?.style.objectFit || getComputedStyle(cards[0]?.querySelector('img')).objectFit,
           photo: cards.find(card => card.getAttribute('aria-label').endsWith('Media ${photoId}'))?.querySelector('img')?.getAttribute('class'),
           landscape: cards.find(card => card.getAttribute('aria-label').endsWith('Media ${landscapeId}'))?.querySelector('img')?.getAttribute('class'),

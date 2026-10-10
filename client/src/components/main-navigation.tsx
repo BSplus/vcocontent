@@ -6,10 +6,10 @@ import { useAuth } from "@/hooks/use-auth";
 
 const links = [
   { href: "/", label: "Home" },
-  { href: "/current-events", label: "Current" },
+  { href: "/current-events", label: "Recent events" },
   { href: "/upcoming-events", label: "Upcoming" },
   { href: "/archive-events", label: "Archive" },
-  { href: "/creator-events", label: "Creators" },
+  { href: "/creator-events", label: "Creator events" },
 ];
 
 export default function MainNavigation() {
@@ -33,7 +33,7 @@ export default function MainNavigation() {
           </span>
         </Link>
 
-        <nav aria-label="Main navigation" className="hidden items-center gap-5 lg:flex">
+        <nav aria-label="Main navigation" className="hidden items-center gap-3 2xl:flex">
           {links.map((link) => (
             <Link key={link.href} href={link.href} aria-current={location === link.href ? "page" : undefined} className={itemClasses(link.href)}>
               {link.label}
@@ -49,7 +49,7 @@ export default function MainNavigation() {
           )}
         </nav>
 
-        <div className="hidden shrink-0 items-center gap-2 lg:flex">
+        <div className="hidden shrink-0 items-center gap-2 2xl:flex">
           <Button asChild className="vco-button h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90">
             <Link href="/search" aria-current={location === "/search" ? "page" : undefined} aria-label="Search media"><Search className="mr-2 h-4 w-4" />Search media</Link>
           </Button>
@@ -71,7 +71,7 @@ export default function MainNavigation() {
           )}
         </div>
 
-        <div className="flex items-center gap-2 lg:hidden">
+        <div className="flex shrink-0 items-center gap-2 2xl:hidden">
           <Button asChild size="icon" className="h-10 w-10 bg-primary text-primary-foreground" aria-label="Search media">
             <Link href="/search" aria-current={location === "/search" ? "page" : undefined}><Search className="h-5 w-5" /></Link>
           </Button>
@@ -90,7 +90,7 @@ export default function MainNavigation() {
       </div>
 
       {mobileOpen && (
-        <nav id="mobile-navigation" aria-label="Mobile navigation" className="max-h-[calc(100dvh-76px)] overflow-y-auto border-t border-primary/20 bg-background px-5 py-3 lg:hidden">
+        <nav id="mobile-navigation" aria-label="Mobile navigation" className="max-h-[calc(100dvh-76px)] overflow-y-auto border-t border-primary/20 bg-background px-5 py-3 2xl:hidden">
           <div className="container mx-auto grid grid-cols-2 gap-x-5 gap-y-1">
             {links.map((link) => (
               <Link key={link.href} href={link.href} onClick={closeMenu} aria-current={location === link.href ? "page" : undefined} className={`${itemClasses(link.href)} border-b border-foreground/10`}>

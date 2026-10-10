@@ -153,6 +153,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
       newSelectedItems.add(item.id);
     }
     setSelectedItems(newSelectedItems);
+    setIsSelectionMode(newSelectedItems.size > 0);
   };
 
   const handleBulkDelete = async () => {
@@ -203,7 +204,8 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               <button
                 type="button"
                 className="block w-full aspect-[4/3] bg-black/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                aria-label={`Open ${item.type === 'video' ? 'video' : 'photo'}: ${item.caption || `Media ${item.id}`}`}
+                aria-label={`${isSelectionMode ? (selectedItems.has(item.id) ? 'Deselect' : 'Select') : `Preview ${item.type === 'video' ? 'video' : 'photo'}`}: ${item.caption || `Media ${item.id}`}`}
+                aria-pressed={isSelectionMode ? selectedItems.has(item.id) : undefined}
                 onClick={(event) => {
                   if (isSelectionMode) { toggleSelection(item); return; }
                   openItem(item, index, event.currentTarget);
@@ -211,7 +213,8 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               >
                 <img src={item.thumbnail} alt={item.caption || (item.type === 'video' ? 'Video preview' : 'Photo preview')} loading="lazy" className="h-full w-full object-contain" />
                 <span className="absolute bottom-3 right-3 rounded bg-black/80 px-2 py-1 text-sm text-white flex items-center gap-2">
-                  {item.type === 'video' ? <PlayCircle className="h-4 w-4" /> : <Eye className="h-4 w-4" />} Open
+                  {isSelectionMode ? <Check className="h-4 w-4" /> : item.type === 'video' ? <PlayCircle className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {isSelectionMode ? (selectedItems.has(item.id) ? 'Deselect' : 'Select') : 'Preview'}
                 </span>
               </button>
               {user?.isAdmin && (
@@ -229,10 +232,10 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               <p className="text-sm font-medium line-clamp-2 min-h-5">{item.caption || (item.type === 'video' ? 'Video' : 'Photo')}</p>
               {item.photographer && <p className="text-sm text-foreground/75">By {item.photographer}</p>}
               <div className="flex flex-wrap items-center gap-2 pt-2">
-                <Button variant="outline" size="sm" className="min-h-11" onClick={(event) => openItem(item, index, event.currentTarget)}>View</Button>
-                <Link href={`/media/${item.id}`} className="rounded border border-border px-3 py-2 text-sm underline">Details</Link>
+                <Button variant="outline" size="sm" className="min-h-11" onClick={(event) => openItem(item, index, event.currentTarget)}>Preview</Button>
+                <Link href={`/media/${item.id}`} className="inline-flex min-h-11 items-center rounded border border-border px-3 py-2 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Media details</Link>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="min-h-11" aria-label={`Download ${item.caption || 'media'}`}><Download className="h-4 w-4" /> Download</Button></DropdownMenuTrigger>
+                  <DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="min-h-11" aria-label={`Download options: ${item.caption || 'media'}`}><Download className="h-4 w-4" /> Download options</Button></DropdownMenuTrigger>
                   <DropdownMenuContent>
                     <DropdownMenuItem onSelect={() => handleDownload(item, 'high')}>{downloadOptionLabel(item, "high")}{!user && " · Sign in required"}</DropdownMenuItem>
                     {item.type === "image" && <DropdownMenuItem onSelect={() => handleDownload(item, 'low')}>{downloadOptionLabel(item, "low")}</DropdownMenuItem>}
@@ -257,8 +260,9 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
         }}>
           <DialogHeader>
             <DialogTitle>
-              {selectedItem?.caption || "Media Preview"}
+              Media preview
             </DialogTitle>
+            {selectedItem?.caption && <p className="text-sm text-foreground/80">{selectedItem.caption}</p>}
           </DialogHeader>
 
           <div className="relative aspect-video bg-black/20">
@@ -350,7 +354,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline">
                       <Download className="h-4 w-4 mr-2" />
-                      Download
+                      Download options
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>

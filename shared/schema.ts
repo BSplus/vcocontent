@@ -227,8 +227,8 @@ export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   caption: z.string().max(1000, "Caption cannot exceed 1000 characters").optional(),
   photographer: z.string().optional(),
   tags: z.array(z.string()),
-  identification: z.array(identificationSchema).optional(),
   category: z.string().optional(),
+  identification: z.array(identificationSchema).max(12).optional(),
   isPremium: z.boolean().optional(),
   creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),
 });

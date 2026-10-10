@@ -487,7 +487,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (type !== undefined && type !== "all" && type !== "image" && type !== "video")
         return res.status(400).json({ error: "Invalid media type" });
       if (fields !== undefined && (typeof fields !== "string" || fields.length > 64 ||
-          fields.split(",").some(field => !["caption", "photographer", "tags", "identification"].includes(field))))
+          (fields !== "" && fields.split(",").some(field => !["caption", "photographer", "tags", "identification"].includes(field)))))
         return res.status(400).json({ error: "Invalid search fields" });
       return res.json((await storage.listPublicMedia(page, 48, search || "",
         type === "image" || type === "video" ? type : undefined,
@@ -654,8 +654,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`Beginning AI analysis for media ${mediaId} of type ${mediaItem.type}`);
 
-      res.status(202).json({ success: true, ...await enqueueAnalysis(mediaItem, req.body?.retry === true, req.body?.reanalyse === true) });
+      const options = z.object({ retry: z.boolean().optional(), reanalyse: z.boolean().optional() }).strict().parse(req.body || {});
+      res.status(202).json({ success: true, ...await enqueueAnalysis(mediaItem, { ...options, recognition: true }) });
     } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid analysis request" });
       console.error('Media analysis failed');
       res.status(503).json({ error: error instanceof AnalysisUnavailable ? error.message : "AI analysis could not be queued" });
     }
@@ -702,7 +704,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const requestedScene = z.object({ scene: z.enum(scenes).optional() }).parse(req.body || {}).scene;
       const [known]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,id));
       const stored=known?.status==="completed" && known.recognition!==null &&
-        known.fingerprint===analysisFingerprint(media.thumbnail) ? known : undefined;
+        (known.fingerprint===analysisFingerprint(media.thumbnail) ||
+          known.fingerprint==="recognition:"+analysisFingerprint(media.thumbnail)) ? known : undefined;
       if (!stored && !isAITaggingConfigured()) return res.status(503).json({ error: "Bild-KI ist nicht verfügbar." });
       const now = Date.now();
       captionDetections.forEach((value, key) => { if (value.expires < now) captionDetections.delete(key); });

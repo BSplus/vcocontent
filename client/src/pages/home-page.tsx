@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { type Event, type MediaItem } from "@shared/schema";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "wouter";
 import {
-  ArrowRight, CalendarDays, ChevronRight, Clock3, Download, History,
-  Image as ImageIcon, PlayCircle, Search, Star, Trophy, UserRound,
+  ArrowRight, CalendarDays, Clock3, Download, History,
+  Eye, PlayCircle, Search, Star, Trophy,
+  UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EventCard from "@/components/event-card";
@@ -19,6 +20,7 @@ import { formatDate } from "@/lib/utils";
 
 export default function HomePage() {
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
+  const previewOpener = useRef<HTMLButtonElement | null>(null);
   const { user } = useAuth();
   const { data: events = [], isLoading: eventsLoading, error: eventsError, refetch, isFetching } = useQuery<Event[]>({
     queryKey: ["/api/events"],
@@ -65,8 +67,8 @@ export default function HomePage() {
             <img src="/attached_assets/IMG_7464.png" alt="" className="h-full w-full object-cover object-center" />
           </div>
           <div className="absolute inset-0 -z-10 bg-gradient-to-r from-background via-background/90 to-background/45" />
-          <div className="mx-auto grid min-h-[390px] w-full max-w-[1492px] items-center gap-8 px-4 py-12 sm:px-6 md:min-h-[440px] md:grid-cols-[1.1fr_0.9fr] md:py-14 lg:px-9">
-            <div className="max-w-2xl">
+          <div className="mx-auto flex min-h-[390px] w-full max-w-[1492px] items-center px-4 py-12 sm:px-6 md:min-h-[440px] md:py-14 lg:px-9">
+            <div className="max-w-3xl">
               <p className="vco-kicker mb-4">
                 VCO Media Database
               </p>
@@ -78,26 +80,11 @@ export default function HomePage() {
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
                 <Button asChild className="vco-button min-h-12 bg-primary px-5 text-primary-foreground hover:bg-primary/90">
-                  <Link href="/search"><Search className="mr-2 h-4 w-4" />Search the archive<ArrowRight className="ml-3 h-4 w-4" /></Link>
+                  <Link href="/search"><Search className="mr-2 h-4 w-4" />Search media<ArrowRight className="ml-3 h-4 w-4" /></Link>
                 </Button>
                 <Button asChild variant="outline" className="min-h-12 border-foreground/40 bg-background/60 px-5 hover:bg-background/90">
                   <Link href="/current-events">Browse recent events</Link>
                 </Button>
-              </div>
-            </div>
-            <div className="hidden justify-self-end md:block">
-              <div className="relative w-[290px] border-l-2 border-primary/80 bg-background/75 px-5 py-4 backdrop-blur-sm">
-                <span className="absolute -left-0.5 top-0 h-8 w-0.5 bg-accent" />
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-foreground/65">Find your next frame</p>
-                <Link href="/search" aria-label="Open media search" className="mt-3 flex min-h-12 items-center gap-3 border border-foreground/25 bg-background/70 px-3 text-sm text-foreground/65 transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                  <Search className="h-4 w-4 text-primary" />Search by event, driver…
-                  <ChevronRight className="ml-auto h-4 w-4" />
-                </Link>
-                <div className="mt-4 flex items-center gap-4 text-xs font-semibold uppercase tracking-wider text-foreground/65">
-                  <span className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-primary" />Events</span>
-                  <span className="flex items-center gap-1.5"><ImageIcon className="h-3.5 w-3.5 text-accent" />Media</span>
-                  <span className="flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5 text-primary" />Creators</span>
-                </div>
               </div>
             </div>
           </div>
@@ -148,7 +135,7 @@ export default function HomePage() {
             <div>
               <p className="mb-1 text-xs font-bold uppercase tracking-[0.2em] text-accent">Mark the date</p>
               <h2 id="upcoming-heading" className="flex items-center gap-3 text-2xl font-bold tracking-wide sm:text-3xl"><Clock3 className="h-6 w-6 text-accent" />Coming up</h2>
-              <p className="mt-3 max-w-sm text-sm leading-relaxed text-foreground/75">The next race weekends on the calendar.</p>
+              <p className="mt-3 max-w-sm text-sm leading-relaxed text-foreground/75">The next race weekends on the calendar. Calendar information only — these listings do not open galleries.</p>
               <Button asChild variant="outline" className="mt-5 border-foreground/30"><Link href="/upcoming-events">Full calendar<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
             </div>
             {eventsLoading ? (
@@ -178,15 +165,16 @@ export default function HomePage() {
               </div>
               {topShotsLoading ? <div className="grid grid-cols-1 gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="h-72 animate-pulse rounded-md bg-card/70" />)}</div> : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  {topShots.slice(0, 3).map((shot) => <button key={shot.id} type="button" onClick={() => setSelectedMedia(shot)} aria-label={`Open ${shot.type === "video" ? "video" : "photo"}: ${shot.caption || `Media ${shot.id}`}`} className="group flex min-w-0 flex-col overflow-hidden rounded-md border border-foreground/15 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                  {topShots.slice(0, 3).map((shot) => <button key={shot.id} type="button" onClick={(event) => { previewOpener.current = event.currentTarget; setSelectedMedia(shot); }} aria-label={`Preview ${shot.type === "video" ? "video" : "photo"}: ${shot.caption || `Media ${shot.id}`}`} className="group flex min-w-0 flex-col overflow-hidden rounded-md border border-foreground/15 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                       <span className="relative flex h-60 w-full items-center justify-center bg-background sm:h-72 md:h-64 lg:h-72">
                       <img src={shot.thumbnail} alt="" className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none" loading="lazy" />
                       {shot.type === "video" && <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded bg-black/85 px-2 py-1 text-xs font-semibold text-white"><PlayCircle className="h-4 w-4" /> Video</span>}
                     </span>
-                    <span className="flex w-full items-center justify-between gap-3 p-4">
-                      <span className="line-clamp-2 min-w-0 text-sm font-semibold">{shot.caption || (shot.type === "video" ? "Open featured video" : "Open featured photo")}</span>
-                      <span className="flex shrink-0 items-center gap-1.5 text-xs font-bold text-primary"><Download className="h-3.5 w-3.5" />{shot.downloadCount}</span>
+                      <span className="flex w-full items-center justify-between gap-3 p-4">
+                       <span className="line-clamp-2 min-w-0 text-sm font-semibold">{shot.caption || (shot.type === "video" ? "Featured video" : "Featured photo")}</span>
+                       <span className="shrink-0 text-xs font-semibold text-foreground/70">{shot.downloadCount} downloads</span>
                     </span>
+                     <span className="flex w-full items-center gap-2 border-t border-foreground/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-primary"><Eye className="h-3.5 w-3.5" />Preview {shot.type === "video" ? "video" : "photo"}</span>
                   </button>)}
                 </div>
               )}
@@ -200,13 +188,14 @@ export default function HomePage() {
                 <Button asChild variant="ghost"><Link href="/creator-events">Browse creator events<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  {creatorTopMedia.slice(0, 3).map((item) => <button key={item.id} type="button" onClick={() => setSelectedMedia(item)} className="group relative aspect-video overflow-hidden border border-accent/25 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                  {creatorTopMedia.slice(0, 3).map((item) => <button key={item.id} type="button" onClick={(event) => { previewOpener.current = event.currentTarget; setSelectedMedia(item); }} aria-label={`Preview ${item.type === "video" ? "video" : "photo"}: ${item.caption || `Media ${item.id}`}`} className="group relative aspect-video overflow-hidden border border-accent/25 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                   <img src={item.thumbnail} alt={item.caption || "Creator racing media"} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none" loading="lazy" />
                   <span className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
                   <span className="absolute bottom-0 left-0 right-0 p-4">
                     <span className="line-clamp-2 block text-sm font-semibold text-white">{item.caption || "Creator media"}</span>
-                    <span className="mt-2 flex items-center justify-between gap-2 text-xs text-white/85"><span>{item.photographer ? `By ${item.photographer}` : "Creator spotlight"}</span><span className="flex items-center gap-1 text-accent"><Download className="h-3.5 w-3.5" />{item.downloadCount}</span></span>
+                     <span className="mt-2 flex items-center justify-between gap-2 text-xs text-white/85"><span>{item.photographer ? `By ${item.photographer}` : "Creator spotlight"}</span><span className="text-accent">{item.downloadCount} downloads</span></span>
                   </span>
+                   <span className="absolute left-3 top-3 flex items-center gap-1.5 bg-background/90 px-2.5 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-accent"><Eye className="h-3.5 w-3.5" />Preview {item.type === "video" ? "video" : "photo"}</span>
                 </button>)}
               </div>
             </section>
@@ -227,9 +216,9 @@ export default function HomePage() {
       </main>
 
       <Dialog open={!!selectedMedia} onOpenChange={(open) => !open && setSelectedMedia(null)}>
-        <DialogContent className="w-[calc(100%-1rem)] max-w-4xl max-h-[95dvh] overflow-y-auto border-foreground/15 bg-background">
+        <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); previewOpener.current?.focus(); }} className="w-[calc(100%-1rem)] max-w-4xl max-h-[95dvh] overflow-y-auto border-foreground/15 bg-background">
           {selectedMedia && <div className="space-y-4">
-            <DialogTitle>{selectedMedia.caption || "Media preview"}</DialogTitle>
+             <DialogTitle>Media preview</DialogTitle>
             <div className="relative flex min-h-40 items-center justify-center bg-black/30">
               {selectedMedia.type === "video" && user && selectedMedia.url
                 ? <video key={selectedMedia.id} src={selectedMedia.url} poster={selectedMedia.thumbnail} controls preload="none" className="max-h-[65dvh] max-w-full" />
@@ -239,7 +228,7 @@ export default function HomePage() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>{selectedMedia.photographer && <p className="text-sm text-foreground/70">Photographer: {selectedMedia.photographer}</p>}{selectedMedia.caption && <p className="mt-1 text-sm">{selectedMedia.caption}</p>}</div>
               <DropdownMenu>
-                <DropdownMenuTrigger asChild><Button variant="outline"><Download className="mr-2 h-4 w-4" />Download</Button></DropdownMenuTrigger>
+                 <DropdownMenuTrigger asChild><Button variant="outline"><Download className="mr-2 h-4 w-4" />Download options</Button></DropdownMenuTrigger>
                 <DropdownMenuContent>
                   <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "high")}>{downloadOptionLabel(selectedMedia, "high")}{!user && " · Sign in required"}</DropdownMenuItem>
                   {selectedMedia.type === "image" && <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "low")}>{downloadOptionLabel(selectedMedia, "low")}</DropdownMenuItem>}

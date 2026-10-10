@@ -1,5 +1,5 @@
 import { formatDate } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ export default function CreatorDashboard() {
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const [selectedMediaItem, setSelectedMediaItem] = useState<MediaItem | null>(null);
   const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
+  const editMediaOpener = useRef<HTMLButtonElement | null>(null);
   const [activeTab, setActiveTab] = useState<"events" | "media" | "analytics">("events");
   const [eventSearch, setEventSearch] = useState("");
 
@@ -141,32 +142,35 @@ export default function CreatorDashboard() {
           </TabsContent>
 
           <TabsContent value="media" className="mt-6">
-            <div className="flex justify-between items-center mb-8">
+            <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
               <h2 className="text-2xl font-bold">My Media</h2>
-              <div className="flex gap-2">
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-end">
                 {sortedEvents.length > 0 && (
-                  <select 
-                    className="border rounded p-2 bg-background text-foreground"
-                    onChange={(e) => {
-                      const id = parseInt(e.target.value);
-                      if (!isNaN(id)) {
-                        setSelectedEventId(id);
-                      } else {
-                        setSelectedEventId(null);
-                      }
-                    }}
-                    value={selectedEventId || ""}
-                  >
-                    <option value="">Select Event...</option>
-                    {sortedEvents.map(event => (
-                      <option key={event.id} value={event.id}>{event.title}</option>
-                    ))}
-                  </select>
+                  <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium sm:w-64">
+                    <span>Select event</span>
+                    <select
+                      className="h-11 w-full min-w-0 rounded border border-border bg-background px-3 text-foreground"
+                      onChange={(e) => {
+                        const id = parseInt(e.target.value);
+                        if (!isNaN(id)) {
+                          setSelectedEventId(id);
+                        } else {
+                          setSelectedEventId(null);
+                        }
+                      }}
+                      value={selectedEventId || ""}
+                    >
+                      <option value="">Choose an event…</option>
+                      {sortedEvents.map(event => (
+                        <option key={event.id} value={event.id}>{event.title}</option>
+                      ))}
+                    </select>
+                  </label>
                 )}
                 {selectedEventId && (
                   <Button
                     onClick={() => setMediaUploadModalOpen(true)}
-                    className="bg-primary text-black hover:bg-primary/90"
+                    className="min-h-11 shrink-0 bg-primary text-black hover:bg-primary/90"
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Upload Media
@@ -212,24 +216,12 @@ export default function CreatorDashboard() {
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {eventMediaItems.map((item) => (
                           <Card key={item.id} className="overflow-hidden group">
-                            <div className="aspect-video relative">
+                            <div className="relative aspect-video">
                               <img 
                                 src={item.thumbnail} 
                                 alt={item.caption || "Media thumbnail"} 
                                 className="object-cover w-full h-full"
                               />
-                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                <Button 
-                                  size="sm" 
-                                  variant="outline"
-                                  onClick={() => {
-                                    setSelectedMediaItem(item);
-                                    setEditMediaModalOpen(true);
-                                  }}
-                                >
-                                  <PenLine className="h-4 w-4 mr-1" /> Edit
-                                </Button>
-                              </div>
                             </div>
                             <CardContent className="p-3">
                               <p className="text-sm truncate">{item.caption || "No caption"}</p>
@@ -240,6 +232,21 @@ export default function CreatorDashboard() {
                                 <p className="text-xs text-muted-foreground">
                                   {item.downloadCount || 0} downloads
                                 </p>
+                              </div>
+                              <div className="mt-3 border-t border-border pt-3">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="min-h-11 w-full justify-center focus-visible:ring-2"
+                                  aria-label={`Edit media: ${item.caption || `Media ${item.id}`}`}
+                                  onClick={(event) => {
+                                    editMediaOpener.current = event.currentTarget;
+                                    setSelectedMediaItem(item);
+                                    setEditMediaModalOpen(true);
+                                  }}
+                                >
+                                  <PenLine className="mr-2 h-4 w-4" />Edit media
+                                </Button>
                               </div>
                             </CardContent>
                           </Card>
@@ -311,6 +318,12 @@ export default function CreatorDashboard() {
           open={editMediaModalOpen}
           onOpenChange={setEditMediaModalOpen}
           mediaItem={selectedMediaItem}
+          onCloseAutoFocus={(event) => {
+            if (editMediaOpener.current?.isConnected) {
+              event.preventDefault();
+              editMediaOpener.current.focus();
+            }
+          }}
         />
       )}
     </div>

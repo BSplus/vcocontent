@@ -76,6 +76,7 @@ export default function EventCard({ event }: EventCardProps) {
           </time>
         </p>
         {event.description && <p className="line-clamp-2 text-sm leading-relaxed text-foreground/75">{event.description}</p>}
+        {isUpcoming && <p className="mt-3 text-xs text-foreground/70">Calendar information only · No gallery available yet.</p>}
       </CardContent>
 
       {!isUpcoming && (

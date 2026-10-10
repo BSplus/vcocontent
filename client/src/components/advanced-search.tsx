@@ -116,7 +116,7 @@ export function AdvancedSearch({
             id="media-search"
             type="search"
             aria-describedby="media-search-help"
-            placeholder="Search in media..."
+            placeholder="Search media..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 min-h-11"
@@ -232,7 +232,7 @@ export function AdvancedSearch({
         </Sheet>
 
         <Button type="submit" className="min-h-11">
-          Search
+          Search media
         </Button>
       </div>
 

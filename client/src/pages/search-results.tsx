@@ -48,7 +48,7 @@ export default function SearchResults() {
             Back to Home
           </Link>
         </Button>
-        <h1 className="text-2xl md:text-4xl font-bold">Media Search</h1>
+        <h1 className="text-2xl md:text-4xl font-bold">Search media</h1>
         {initialQuery && (
           <p className="text-muted-foreground mt-2">
             Search results for: "{initialQuery}"

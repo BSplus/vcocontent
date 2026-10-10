@@ -141,7 +141,7 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
     try {
       const event = await managed(req,res); if (!event) return;
       const doc = await document(event,req.params.refId); if (!doc) return res.status(404).json({error:"Reference not found"});
-      const values = z.object({rows:rowsSchema, title:z.string().trim().min(1).max(160).optional(),session:z.string().trim().max(120).nullable().optional()}).parse(req.body);
+      const values = z.object({rows:rowsSchema, title:z.string().trim().min(1).max(160).optional(),session:z.string().trim().max(120).nullable().optional()}).strict().parse(req.body);
       const identityKey=hash(JSON.stringify([doc.scope,doc.scope==="season"?doc.seriesId:doc.eventId,
         doc.ownerId,doc.seasonYear,doc.kind,values.session===undefined?doc.session:values.session,
         (values.title || doc.title).toLowerCase()]));

@@ -20,11 +20,13 @@ import { Badge } from "@/components/ui/badge";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import type { MediaIdentification } from "@/hooks/use-media-analysis";
+import { parseEditableTags, reconcileAnalysisTags } from "@/lib/reconcile-analysis-tags";
 
 interface EditMediaModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mediaItem: MediaItem;
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 // Type for form data
@@ -54,6 +56,7 @@ export default function EditMediaModal({
   open,
   onOpenChange,
   mediaItem,
+  onCloseAutoFocus,
 }: EditMediaModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -63,8 +66,11 @@ export default function EditMediaModal({
   const appliedGeneration = useRef<string | null>(null);
   const syncedIdentificationGeneration = useRef<string | null>(null);
   const observedPending = useRef(false);
+  const tagsAtAnalysisStart = useRef<string[]>([]);
   const identificationEdited = useRef(false);
   const tagsEdited = useRef(false);
+  const sessionEdited = useRef(false);
+  const [recognitionSession, setRecognitionSession] = useState("");
   const savedTagSnapshot = useRef<string[]>([]);
   const [captionPreview, setCaptionPreview] = useState<CaptionPreview | null>(null);
   const [selectedScene, setSelectedScene] = useState<CaptionScene | null>(null);
@@ -84,6 +90,8 @@ export default function EditMediaModal({
     setIdentification(Array.isArray((mediaItem as any).identification) ? (mediaItem as any).identification : []);
     identificationEdited.current = false;
     tagsEdited.current = false;
+    sessionEdited.current = false;
+    setRecognitionSession(mediaItem.recognitionSession || "");
     observedPending.current = false;
     savedTagSnapshot.current = (mediaItem.tags || []).map(tag => tag.trim()).filter(Boolean);
     setCaptionPreview(null);
@@ -147,6 +155,7 @@ export default function EditMediaModal({
     let current = true;
     void analysis.refetch().then(result => {
       if (!current || !result.data) return;
+      if (!sessionEdited.current) setRecognitionSession(result.data.recognitionSession || "");
       if (Array.isArray(result.data.tags)) {
         savedTagSnapshot.current = result.data.tags.map(tag => tag.trim()).filter(Boolean);
         if (!tagsEdited.current) form.setValue("tags", savedTagSnapshot.current.join(", "), { shouldDirty: false });
@@ -159,8 +168,12 @@ export default function EditMediaModal({
     return () => { current = false; };
   }, [open, mediaItem.id, mediaItem.type]);
   useEffect(() => {
+    if (!open) return;
     setIsAnalyzing(analysisPending(analysis.data?.status));
-    if (analysisPending(analysis.data?.status)) observedPending.current = true;
+    if (analysisPending(analysis.data?.status) && !observedPending.current) {
+      tagsAtAnalysisStart.current = parseEditableTags(form.getValues("tags"));
+      observedPending.current = true;
+    }
     const identificationGeneration = `${mediaItem.id}:${analysis.data?.generation ?? "legacy"}`;
     if (!identificationEdited.current && analysis.data?.identification &&
       syncedIdentificationGeneration.current !== identificationGeneration) {
@@ -174,14 +187,12 @@ export default function EditMediaModal({
     appliedGeneration.current = generationKey;
     setCategory(analysis.data.category || null);
     const latestSavedTags = (analysis.data.tags || []).map(tag => tag.trim()).filter(Boolean);
-    const snapshot = new Set(savedTagSnapshot.current.map(tag => tag.toLocaleLowerCase()));
-    const newlySavedTags = latestSavedTags.filter(tag => !snapshot.has(tag.toLocaleLowerCase()));
-    const locallyEditedTags = form.getValues("tags").split(",").map(tag => tag.trim()).filter(Boolean);
-    form.setValue("tags", Array.from(new Set([...locallyEditedTags, ...newlySavedTags])).join(", "), { shouldDirty: true });
+    form.setValue("tags", reconcileAnalysisTags(parseEditableTags(form.getValues("tags")),
+      tagsAtAnalysisStart.current, latestSavedTags).join(", "), { shouldDirty: true });
     savedTagSnapshot.current = latestSavedTags;
     queryClient.invalidateQueries({ predicate: query =>
       String(query.queryKey[0]).startsWith(`/api/events/${mediaItem.eventId}/media`) });
-  }, [analysis.data?.status, analysis.data?.generation, analysis.data?.generatedTags, analysis.data?.identification, analysis.data?.identificationManual, mediaItem.id]);
+  }, [open, analysis.data?.status, analysis.data?.generation, analysis.data?.tags, analysis.data?.identification, analysis.data?.identificationManual, mediaItem.id]);
   const analysisMutation = useMutation({
     mutationFn: (mode: "start" | "retry" | "reanalyse") => requestAnalysis(
       mediaItem.id,
@@ -195,6 +206,7 @@ export default function EditMediaModal({
         description: "You can close this dialog; your media is already saved." });
     },
     onError: () => {
+      observedPending.current = false;
       toast({
         title: "Analysis unavailable",
         description: "Analysis could not be completed. Please try again.",
@@ -205,6 +217,8 @@ export default function EditMediaModal({
   });
 
   const handleAIAnalysis = async (mode: "start" | "retry" | "reanalyse") => {
+    tagsAtAnalysisStart.current = parseEditableTags(form.getValues("tags"));
+    observedPending.current = true;
     setIsAnalyzing(true);
     try {
       await analysisMutation.mutateAsync(mode);
@@ -226,7 +240,7 @@ export default function EditMediaModal({
             : [],
         } : {}),
         ...(identificationEdited.current ? { identification } : {}),
-        recognitionSession: analysis.data?.recognitionSession ?? null,
+        ...(sessionEdited.current ? { recognitionSession: recognitionSession.trim() || null } : {}),
         // Include category if provided by AI
         ...(category && { category })
       });
@@ -237,7 +251,7 @@ export default function EditMediaModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-       <DialogContent className="max-h-[90vh] overflow-y-auto">
+       <DialogContent onCloseAutoFocus={onCloseAutoFocus} className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Media</DialogTitle>
         </DialogHeader>
@@ -427,6 +441,13 @@ export default function EditMediaModal({
           </div>
 
           <section className="space-y-3 rounded-md border p-3" aria-label="Recognized entry details">
+            <div className="space-y-1">
+              <Label htmlFor="recognition-session">Reference session</Label>
+              <Input id="recognition-session" maxLength={120} value={recognitionSession}
+                placeholder="Optional, e.g. Race 1"
+                onChange={event => { sessionEdited.current = true; setRecognitionSession(event.target.value); }} />
+              <p className="text-xs text-muted-foreground">Save a changed session before reanalysing to use its reference lists.</p>
+            </div>
             <div>
               <h3 className="text-sm font-semibold">Entry identification</h3>
               <p className="text-xs text-muted-foreground">Drivers are the official entry lineup, not individually identified people.</p>
@@ -443,17 +464,17 @@ export default function EditMediaModal({
                       <Label htmlFor={`identification-${index}-${field}`}>{label}</Label>
                       <Input id={`identification-${index}-${field}`} value={entry[field] || ""}
                         onChange={event => { identificationEdited.current = true; setIdentification(current => current.map((item, row) =>
-                          row === index ? { ...item, [field]: event.target.value } : item)); }} />
+                          row === index ? { ...item, [field]: event.target.value, source: "manual" } : item)); }} />
                     </div>
                   ))}
                 </div>
-                {identification.length > 1 && <Button type="button" size="sm" variant="ghost"
-                  onClick={() => { identificationEdited.current = true; setIdentification(current => current.filter((_, row) => row !== index)); }}>Remove vehicle</Button>}
+                <Button type="button" size="sm" variant="ghost"
+                  onClick={() => { identificationEdited.current = true; setIdentification(current => current.filter((_, row) => row !== index)); }}>Remove vehicle</Button>
               </div>
             ))}
             <Button type="button" size="sm" variant="outline" onClick={() => { identificationEdited.current = true; setIdentification(current => [
               ...current, { number: "", team: "", drivers: "", vehicle: "", manufacturer: "", racingClass: "", discipline: "", source: "manual" },
-            ]); }}>Add vehicle</Button>
+            ]); }} disabled={identification.length >= 12}>Add vehicle</Button>
           </section>
 
            <div className="flex flex-wrap justify-end gap-2">

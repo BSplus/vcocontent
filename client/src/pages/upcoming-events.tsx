@@ -29,7 +29,7 @@ export default function UpcomingEventsPage() {
               <h1 className="text-3xl font-bold tracking-wide text-foreground sm:text-4xl">Upcoming events</h1>
             </div>
           </div>
-          <p className="max-w-sm text-sm leading-relaxed text-foreground/75">See what is coming up across the VCO and creator calendars.</p>
+          <p className="max-w-sm text-sm leading-relaxed text-foreground/75">Calendar information only: upcoming race dates and event listings, not links to media galleries.</p>
         </div>
 
         {isLoading ? (
@@ -47,7 +47,7 @@ export default function UpcomingEventsPage() {
             {upcomingEvents.map((event, index) => {
               const date = new Date(event.date);
               return (
-                <li key={event.id} className="grid grid-cols-[1fr_auto] items-center gap-4 py-5 sm:gap-6">
+                <li key={event.id} className="flex min-w-0 flex-wrap items-center justify-between gap-4 py-5 sm:gap-6">
                   <div className="min-w-0">
                     <h2 className="truncate text-lg font-bold tracking-wide sm:text-xl"><EventTitle title={event.title} /></h2>
                     <p className="mt-1 flex items-center gap-2 text-sm text-foreground/75">
@@ -56,7 +56,7 @@ export default function UpcomingEventsPage() {
                     </p>
                     {event.description && <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-relaxed text-foreground/70">{event.description}</p>}
                   </div>
-                  <span className="text-xs font-semibold uppercase tracking-widest text-foreground/45 sm:text-right">
+                  <span className="text-xs font-semibold uppercase tracking-widest text-foreground/60">
                     {index === 0 ? "Next event" : "Scheduled"}
                   </span>
                 </li>
@@ -69,7 +69,7 @@ export default function UpcomingEventsPage() {
             <h2 className="mt-4 text-xl font-bold">No events on the calendar</h2>
             <p className="mx-auto mt-2 max-w-md text-sm text-foreground/75">Take a look through recent galleries while the next race weekend takes shape.</p>
             <div className="mt-5 flex justify-center gap-3">
-              <Button asChild variant="outline"><Link href="/current-events">Current events</Link></Button>
+              <Button asChild variant="outline"><Link href="/current-events">Recent events</Link></Button>
               <Button asChild><Link href="/search"><Search className="mr-2 h-4 w-4" />Search media</Link></Button>
             </div>
           </div>

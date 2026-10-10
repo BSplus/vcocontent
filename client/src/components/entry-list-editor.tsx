@@ -462,17 +462,17 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
               </p>
             )}
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2"><FileText className="h-4 w-4" />
+              <div className="flex min-w-0 flex-wrap items-center gap-2"><FileText className="h-4 w-4" />
                 <Input aria-label="Document title" value={document.title} onChange={event => setReferences(current => current.map(item => item.id === document.id ? { ...item, title: event.target.value } : item))} className="max-w-sm" />
                 <span className="text-xs text-muted-foreground">{document.kind === "entry" ? "Entry list" : "Result list"} · {document.scope === "season" ? `Season ${document.seasonYear}` : "Event"}{document.inherited ? " · inherited" : ""} · {document.rows.length} imported {document.rows.length === 1 ? "entry" : "entries"}</span>
               </div>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {document.downloadUrl && <Button type="button" size="sm" variant="ghost" asChild><a href={document.downloadUrl} target="_blank" rel="noreferrer"><Download className="mr-1 h-4 w-4" />Source</a></Button>}
-                {!document.inherited && <Button type="button" size="sm" variant="outline" disabled={referenceBusy} onClick={() => {
+                <Button type="button" size="sm" variant="outline" disabled={referenceBusy} onClick={() => {
                   setReimportTarget(document);
                   referenceFileRef.current?.click();
-                }}><Upload className="mr-1 h-4 w-4" />Reimport</Button>}
-                {!document.inherited && <Button type="button" size="sm" variant="ghost" className="text-destructive" disabled={referenceBusy} onClick={() => void removeReference(document)}><Trash2 className="h-4 w-4" /><span className="sr-only">Remove reference</span></Button>}
+                }}><Upload className="mr-1 h-4 w-4" />Reimport</Button>
+                <Button type="button" size="sm" variant="ghost" className="text-destructive" disabled={referenceBusy} onClick={() => void removeReference(document)}><Trash2 className="h-4 w-4" /><span className="sr-only">Remove reference</span></Button>
               </div>
             </div>
             <details className="rounded border px-3" onToggle={event => setExpandedReferenceIds(current => {

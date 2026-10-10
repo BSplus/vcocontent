@@ -40,8 +40,9 @@ function mockAI(work = async () => {}) {
   globalThis.fetch = async (url, options) => {
     if (!String(url).startsWith("https://queue-test.example.invalid/")) return realFetch(url, options);
     await work();
+    const structured = String(options?.body || "").includes("classReadable");
     return new Response(JSON.stringify({ id: "test", object: "chat.completion", created: 0, model: "gpt-4.1-mini",
-      choices: [{ index: 0, message: { role: "assistant", content: JSON.stringify({tags:["Day","Front View"],vehicles:[]}) }, finish_reason: "stop" }] }),
+      choices: [{ index: 0, message: { role: "assistant", content: structured ? JSON.stringify({tags:["Day","Front View"],vehicles:[]}) : "Day, Front View" }, finish_reason: "stop" }] }),
       { headers: { "content-type": "application/json" } });
   };
 }

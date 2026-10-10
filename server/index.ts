@@ -5,6 +5,7 @@ import { setupAuth } from "./auth";
 import session from "express-session";
 import { storage } from "./storage";
 import { publicSiteUrl } from "./seo";
+import { verifyRecognitionSchema } from "./recognition-schema-readiness";
 
 const app = express();
 
@@ -101,6 +102,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 (async () => {
+  if (isProduction) await verifyRecognitionSchema();
   app.get("/robots.txt", (_req, res) => {
     const base = publicSiteUrl();
     res.type("text/plain").send(base
