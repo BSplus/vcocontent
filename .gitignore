@@ -5,3 +5,5 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+/generated-artifacts/
+/attached_assets/*179161417330*.jpeg
