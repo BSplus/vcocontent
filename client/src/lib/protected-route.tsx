@@ -49,8 +49,11 @@ export function ProtectedRoute({
           return <Redirect to="/" />;
         }
         
-        if (requireCreator && !(user.isCreator || user.isAdmin || user.creatorStatus === 'approved')) {
-          console.log(`Redirecting from ${path} to /creator/apply - Not a creator`);
+        const creatorAccessBlocked =
+          Boolean((user as typeof user & { suspended?: boolean }).suspended) ||
+          user.creatorStatus === "rejected";
+        if (requireCreator && (creatorAccessBlocked || !(user.isCreator || user.isAdmin || user.creatorStatus === 'approved'))) {
+          console.log(`Redirecting from ${path} to /creator/apply - Creator access unavailable`);
           return <Redirect to="/creator/apply" />;
         }
         

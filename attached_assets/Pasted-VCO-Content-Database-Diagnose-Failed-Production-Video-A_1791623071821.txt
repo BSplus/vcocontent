@@ -1,0 +1,55 @@
+VCO Content Database – Diagnose Failed Production Video Analysis
+
+The production smoke test confirmed successful image analysis and background worker execution, but video analysis failed after three attempts.
+
+Please investigate the existing failure before making infrastructure changes.
+
+1. Read-Only Diagnosis First
+
+Inspect the available production logs and existing application code.
+
+Determine:
+
+* The exact failure stage: file access, FFmpeg execution, frame extraction, AI request, result parsing or database persistence.
+* The error messages and failure codes for all three attempts, where available.
+* Whether FFmpeg and the required codecs are available in the deployed environment.
+* Whether the failure was caused by resource limits, timeouts, missing files, provider errors or application logic.
+* Whether retries repeated the same deterministic error unnecessarily.
+
+Do not assume the VM is undersized without evidence.
+
+2. Identify the Smallest Fix
+
+If the cause is found, propose the smallest targeted correction.
+
+Reuse the existing video analysis architecture.
+
+Do not introduce new services, additional workers or AI providers.
+
+Avoid changing queue persistence, image analysis or upload functionality unless directly necessary.
+
+3. Improve Failure Handling
+
+Review whether deterministic failures, such as missing FFmpeg binaries or unsupported media formats, can be detected without three identical provider attempts.
+
+Preserve the existing retry mechanism for transient failures.
+
+Ensure failed analysis never affects the uploaded original video.
+
+4. Report Before Changes
+
+Provide a concise report:
+
+1. Root cause or most likely cause, with supporting evidence
+2. Whether the issue is application code, deployment configuration or insufficient resources
+3. Proposed minimal fix
+4. Whether additional production testing is necessary
+5. Expected additional costs, if any
+
+Do not perform new production uploads, restarts, deployment changes or paid provider tests.
+
+Do not request another production access token at this stage.
+
+Start with the existing logs and code. Ask for approval before any further production operation.
+
+Priority: Fix the actual video analysis failure, not the infrastructure around it.

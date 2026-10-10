@@ -11,7 +11,7 @@ test("parallel event reservations enforce byte limits and pages remain bounded",
   const suffix = randomUUID();
   const [user] = await db.insert(users).values({
     username: `budget_${suffix}`, email: `budget_${suffix}@example.invalid`,
-    password: "test-not-a-login", isCreator: true,
+    password: "test-not-a-login", isCreator: true,isAdmin:true,
   }).returning();
   const [event] = await db.insert(events).values({
     title: "Budget test", description: "Temporary test event", date: new Date(), creatorId: user.id,
@@ -20,7 +20,7 @@ test("parallel event reservations enforce byte limits and pages remain bounded",
     const size = Math.floor(mediaPolicy.eventBytes * 0.6);
     const ids = [randomUUID(), randomUUID()];
     const results = await Promise.allSettled(ids.map(id =>
-      storage.reserveMedia(id, event.id, user.id, size, `media-${id}.webp`, `thumb-${id}.webp`)));
+      storage.reserveMedia(id, event.id, user.id, size, `media-${id}.webp`, `thumb-${id}.webp`,true)));
     assert.equal(results.filter(result => result.status === "fulfilled").length, 1);
     assert.ok(results.some(result => result.status === "rejected" && result.reason instanceof MediaLimitError));
     for (let i = 0; i < 5; i++) {

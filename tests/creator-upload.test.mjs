@@ -46,10 +46,10 @@ async function freePort() {
   return port;
 }
 
-async function startServer(port) {
-  const child = spawn(process.execPath, ["--import", "tsx", "server/index.ts"], {
+async function startServer(port,suffix) {
+  const child = spawn(process.execPath, ["--import", "tsx", "--import", "./tests/helpers/beta-provider-preload.mjs", "server/index.ts"], {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: String(port), NODE_ENV: "development" },
+    env: { ...process.env, PORT: String(port), NODE_ENV: "development",CREATOR_UPLOAD_TEST_SUFFIX:suffix },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
@@ -128,7 +128,7 @@ function multipart(bytes, filename, mime, type) {
   return form;
 }
 
-test("creator image/video uploads, delivery and ownership", async () => {
+test("verified creator photo uploads, video rejection, delivery and ownership", async () => {
   assert.ok(process.env.DATABASE_URL, "DATABASE_URL is required for isolated upload fixtures");
   const image = await sharp({
     create: { width: 2, height: 2, channels: 3, background: "#6688aa" },
@@ -147,7 +147,7 @@ test("creator image/video uploads, delivery and ownership", async () => {
   let server;
 
   try {
-    server = await startServer(port);
+    server = await startServer(port,suffix);
     for (const [request, role] of [[owner, "owner"], [outsider, "outsider"]]) {
       const username = `upload_smoke_${role}_${suffix}`;
       const user = await json(await request("/api/register", {
@@ -162,7 +162,7 @@ test("creator image/video uploads, delivery and ownership", async () => {
     // returned by this run, and leave every existing account untouched.
     for (const account of accounts) {
       const result = await pool.query(
-        "UPDATE users SET is_creator = true, creator_status = 'approved' WHERE id = $1 AND username = $2 RETURNING id",
+        "UPDATE users SET is_creator = true, creator_status = 'approved', email_verified_at = now() WHERE id = $1 AND username = $2 RETURNING id",
         [account.id, account.username],
       );
       assert.equal(result.rowCount, 1);
@@ -223,9 +223,10 @@ test("creator image/video uploads, delivery and ownership", async () => {
     }), 200);
 
     const uploaded = [];
+    await json(await owner(`/api/events/${eventId}/publish`,{method:"POST",json:true,body:{published:true}}),200);
+    await json(await owner(`/api/events/${eventId}/media/upload`,{method:"POST",body:multipart(video,"tiny.mp4","video/mp4","video")}),413);
     for (const [bytes, filename, mime, type] of [
       [image, "tiny.png", "image/png", "image"],
-      [video, "tiny.mp4", "video/mp4", "video"],
     ]) {
       const media = await json(await owner(`/api/events/${eventId}/media/upload`, {
         method: "POST",
@@ -237,6 +238,21 @@ test("creator image/video uploads, delivery and ownership", async () => {
       assert.match(media.url, objectKey);
       assert.match(media.thumbnail, objectKey);
 
+      // Automatic tags can briefly invalidate the first safety version.
+      // Assert public delivery only after the background job and its new
+      // safety version have settled, not in the deliberate private window.
+      let settled=false;
+      let finalState;
+      for (let attempt=0;attempt<60;attempt++) {
+        const analysis=await json(await owner(`/api/media/${media.id}/analysis`),200);
+        const current=(await json(await owner("/api/creator/media"),200)).find(item=>item.id===media.id);
+        assert.ok(current,"Private owner metadata must remain available during safety review");
+        finalState={job:analysis.status,jobError:analysis.error,safety:current.safetyStatus,reason:current.safetyReason,version:current.contentVersion,checkedVersion:current.safetyVersion};
+        if (analysis.status==="completed" && current.safetyStatus==="approved" &&
+          current.safetyVersion===current.contentVersion) { settled=true;break; }
+        await new Promise(resolve=>setTimeout(resolve,200));
+      }
+      assert.ok(settled,`Automatic tags and their safety version must complete: ${JSON.stringify(finalState)}`);
       const thumbnail = await anonymous(media.thumbnail);
       assert.equal(thumbnail.status, 200);
       assert.match(thumbnail.headers.get("content-type") ?? "", /^image\/webp/);
@@ -256,7 +272,13 @@ test("creator image/video uploads, delivery and ownership", async () => {
       }
     }
 
-    const listing = await json(await anonymous(`/api/events/${eventId}/media`), 200);
+    // Automatic tags are a public metadata edit and must pass their own check.
+    let listing=[];
+    for (let attempt=0;attempt<40;attempt++) {
+      listing=await json(await anonymous(`/api/events/${eventId}/media`),200);
+      if(uploaded.every(item=>listing.some(row=>row.id===item.id))) break;
+      await new Promise(resolve=>setTimeout(resolve,200));
+    }
     assert.deepEqual(
       new Set(listing.map((item) => item.id)),
       new Set(uploaded.map((item) => item.id)),
@@ -315,12 +337,12 @@ test("creator image/video uploads, delivery and ownership", async () => {
     const beforeTemp = await temporaryFiles();
     const beforeRows = await pool.query("SELECT id FROM media_items WHERE event_id = $1", [eventId]);
     for (const [label, bytes, filename, mime, type, status] of [
-      ["corrupt image", Buffer.from("not a PNG"), "broken.png", "image/png", "image", 502],
-      ["truncated image", image.subarray(0, 40), "truncated.png", "image/png", "image", 502],
-      ["corrupt video", Buffer.from("not an MP4"), "broken.mp4", "video/mp4", "video", 502],
+      ["corrupt image", Buffer.from("not a PNG"), "broken.png", "image/png", "image", 400],
+      ["truncated image", image.subarray(0, 40), "truncated.png", "image/png", "image", 400],
+      ["corrupt video", Buffer.from("not an MP4"), "broken.mp4", "video/mp4", "video", 413],
       ["wrong image MIME", image, "wrong.jpg", "image/jpeg", "image", 502],
-      ["wrong video MIME", video, "wrong.webm", "video/webm", "video", 502],
-      ["wrong selected type", image, "wrong.png", "image/png", "video", 502],
+      ["wrong video MIME", video, "wrong.webm", "video/webm", "video", 413],
+      ["wrong selected type", image, "wrong.png", "image/png", "video", 413],
       ["unsupported MIME", image, "wrong.txt", "text/plain", "image", 400],
     ]) {
       const response = await owner(`/api/events/${eventId}/media/upload`, {

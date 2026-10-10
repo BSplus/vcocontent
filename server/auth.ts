@@ -7,6 +7,10 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { log } from "./vite";
+import { checkContent } from "./content-safety";
+import { sendVerification, registerVerificationRoutes } from "./email-verification";
+import { takeBetaRate } from "./beta-policy";
+import { createHash } from "crypto";
 
 // Extend Express User type for TypeScript
 declare global {
@@ -48,9 +52,11 @@ async function comparePasswords(supplied: string, stored: string) {
 // Main function to set up authentication
 export function setupAuth(app: Express) {
   log('Setting up authentication', 'auth');
+  app.use("/api",(_req,res,next)=>{res.setHeader("Cache-Control","private, no-store");next();});
 
   app.use(passport.initialize());
   app.use(passport.session());
+  registerVerificationRoutes(app);
 
   passport.serializeUser((user: Express.User, done) => done(null, user.id));
 
@@ -80,7 +86,7 @@ export function setupAuth(app: Express) {
         }
 
         const isValid = await comparePasswords(password, user.password);
-        return done(null, isValid ? toSafeUser(user) : false,
+        return done(null, isValid && !user.suspended ? toSafeUser(user) : false,
           isValid ? undefined : { message: 'Invalid username or password' });
       } catch (error) {
         log("Login failed due to an internal error", "auth");
@@ -154,6 +160,9 @@ export function setupAuth(app: Express) {
   app.post("/api/register", async (req, res, next) => {
     try {
       const body = req.body;
+      if (!await takeBetaRate(`register:${createHash("sha256").update(req.ip || "").digest("hex")}`,10,3600000))
+        return res.status(429).json({error:"Too many registrations. Please try later."});
+      if (body?.profileImage) return res.status(400).json({error:"External profile images are not available during the beta."});
       if (
         !body ||
         typeof body !== "object" ||
@@ -180,6 +189,10 @@ export function setupAuth(app: Express) {
       }
 
       const { username, email, password, bio, profileImage } = parsedUser.data;
+      const safety = await checkContent(JSON.stringify({username,bio}));
+      if (safety.status!=="approved") return res.status(safety.status==="error"?503:400).json({
+        error:"Your public username and biography could not be approved. Please use neutral wording or try later.",
+      });
       const existingUser = await storage.getUserByUsername(username);
       if (existingUser) {
         return res.status(400).json({ error: "Username already exists" });
@@ -196,6 +209,9 @@ export function setupAuth(app: Express) {
         password: hashedPassword,
         requestCreator: isCreatorRequest,
       });
+      const verification = await sendVerification(user).catch(()=>({
+        status:503,sent:false,error:"Verification email could not be sent. Please try again from your account.",
+      }));
 
       req.login(user, (err) => {
         if (err) {
@@ -209,7 +225,7 @@ export function setupAuth(app: Express) {
             return res.status(500).json({ error: "Failed to save session" });
           }
           
-          res.status(201).json(user);
+          res.status(201).json({...user,verificationSent:verification.sent===true,verificationError:verification.error});
         });
       });
     } catch (error) {

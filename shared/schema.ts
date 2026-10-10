@@ -13,10 +13,15 @@ export const users = pgTable("users", {
   creatorStatus: text("creator_status").default('pending'), // pending, approved, rejected
   credits: decimal("credits").notNull().default('0'),
   profileImage: text("profile_image"),
+  profileImagePublic: boolean("profile_image_public").notNull().default(false),
   bio: text("bio"),
   stripeCustomerId: text("stripe_customer_id").unique(),
   stripeSubscriptionId: text("stripe_subscription_id").unique(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  emailVerifiedAt: timestamp("email_verified_at"),
+  suspended: boolean("suspended").notNull().default(false),
+  quotaException: boolean("quota_exception").notNull().default(false),
+  analysisLastServedAt: timestamp("analysis_last_served_at"),
 });
 
 export const series = pgTable("series", {
@@ -45,6 +50,13 @@ export const events = pgTable("events", {
   viewCount: integer("view_count").notNull().default(0),
   referenceRevision: integer("reference_revision").notNull().default(0),
   referenceSeasonYear: integer("reference_season_year"),
+  visibility: text("visibility").notNull().default("published"),
+  adminHidden: boolean("admin_hidden").notNull().default(false),
+  contentVersion: integer("content_version").notNull().default(0),
+  safetyVersion: integer("safety_version").notNull().default(0),
+  safetyStatus: text("safety_status").notNull().default("legacy"),
+  safetyPolicy: text("safety_policy"),
+  safetyReason: text("safety_reason"),
 });
 
 export const eventEntries = pgTable("event_entries", {
@@ -97,6 +109,7 @@ export const referenceDocuments = pgTable("reference_documents", {
   identityKey: text("identity_key").notNull().unique(),
   rows: jsonb("rows").$type<EntryRow[]>().notNull(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  storedBytes: bigint("stored_bytes", { mode: "number" }),
 }, table => [index("reference_scope_idx").on(table.seriesId, table.seasonYear, table.ownerId),
   index("reference_event_idx").on(table.eventId)]);
 
@@ -123,6 +136,11 @@ export const mediaItems = pgTable("media_items", {
   recognitionSession: text("recognition_session"),
   suppressedAITags: text("suppressed_ai_tags").array().notNull().default([]),
   manualTags: text("manual_tags").array().notNull().default([]),
+  contentVersion: integer("content_version").notNull().default(0),
+  safetyVersion: integer("safety_version").notNull().default(0),
+  safetyStatus: text("safety_status").notNull().default("legacy"),
+  safetyPolicy: text("safety_policy"),
+  safetyReason: text("safety_reason"),
 }, (table) => [
   index("media_event_page_idx").on(table.eventId, table.id),
   index("media_url_idx").on(table.url).where(sql`${table.url} like '/api/media/files/%'`),
@@ -135,6 +153,7 @@ export const mediaReservations = pgTable("media_reservations", {
   eventId: integer("event_id").notNull(),
   creatorId: integer("creator_id"),
   reservedBytes: bigint("reserved_bytes", { mode: "number" }).notNull(),
+  replacesReferenceId: integer("replaces_reference_id"),
   storageKey: text("storage_key").notNull(),
   thumbnailKey: text("thumbnail_key").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -142,8 +161,43 @@ export const mediaReservations = pgTable("media_reservations", {
 
 export const mediaCleanup = pgTable("media_cleanup", {
   key: text("key").primaryKey(),
+  creatorId: integer("creator_id").references(() => users.id, {onDelete:"set null"}),
+  storedBytes: bigint("stored_bytes", {mode:"number"}),
+  photoToken: text("photo_token"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   lastError: text("last_error"),
+});
+
+export const emailVerifications = pgTable("email_verifications", {
+  userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  sentAt: timestamp("sent_at").notNull().defaultNow(),
+  usedAt: timestamp("used_at"),
+});
+
+export const betaRateLimits = pgTable("beta_rate_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull().default(0),
+  resetAt: timestamp("reset_at").notNull(),
+});
+
+export const safetyResults = pgTable("safety_results", {
+  fingerprint: text("fingerprint").primaryKey(),
+  status: text("status").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const safetyReviews = pgTable("safety_reviews", {
+  id: serial("id").primaryKey(),
+  resource: text("resource").notNull(),
+  resourceId: integer("resource_id").notNull(),
+  version: integer("version").notNull(),
+  adminId: integer("admin_id").notNull().references(() => users.id),
+  decision: text("decision").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const nextcloudJobs = pgTable("nextcloud_jobs", {
@@ -218,7 +272,7 @@ export const insertEventSchema = createInsertSchema(events).extend({
   isPremium: z.boolean().optional(),
   creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),
   referenceSeasonYear:z.number().int().min(1990).max(2100).nullable().optional(),
-}).omit({referenceRevision:true});
+}).omit({referenceRevision:true,visibility:true,adminHidden:true,contentVersion:true,safetyVersion:true,safetyStatus:true,safetyPolicy:true,safetyReason:true});
 
 export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   eventId: z.number(),
@@ -232,7 +286,7 @@ export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   identification: z.array(identificationSchema).max(12).optional(),
   isPremium: z.boolean().optional(),
   creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),
-});
+}).omit({contentVersion:true,safetyVersion:true,safetyStatus:true,safetyPolicy:true,safetyReason:true});
 
 // Export types
 export type InsertUser = z.infer<typeof insertUserSchema>;

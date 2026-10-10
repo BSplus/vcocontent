@@ -131,6 +131,7 @@ export default function EditMediaModal({
       return res.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/creator/media"] });
       queryClient.invalidateQueries({ predicate: query =>
         String(query.queryKey[0]).startsWith(`/api/events/${mediaItem.eventId}/media`) });
       onOpenChange(false);

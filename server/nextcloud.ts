@@ -233,6 +233,8 @@ type Manifest = { sources: { base: string; root: string; auth: string }[];
   files: (Omit<Found, "href"> & { href: string })[] };
 
 export async function startImport(eventId: number, inputs: SourceInput[]): Promise<void> {
+  const target = await storage.getEvent(eventId);
+  if (!target || target.creatorId) throw new NextcloudError("Nextcloud imports are available for official VCO galleries only.");
   const { sources, files, skipped } = await discover(inputs);
   const manifest = encryptManifest({
     sources: sources.map(s => ({ base: s.base.href, root: s.root.href, auth: s.auth })),
@@ -327,6 +329,11 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
   const started = Date.now();
   let failed = 0, downloaded = 0;
   const owned = and(eq(nextcloudJobs.eventId, eventId), eq(nextcloudJobs.workerToken, workerToken));
+  const target = await storage.getEvent(eventId);
+  if (!target || target.creatorId) {
+    await db.update(nextcloudJobs).set({status:"failed",workerToken:null,error:"Only official VCO galleries support this import."}).where(owned);
+    return true;
+  }
   const heartbeat = setInterval(() => {
     void db.update(nextcloudJobs).set({ updatedAt: new Date() }).where(owned).catch(() => {});
   }, 10000);

@@ -215,6 +215,7 @@ export default function UploadModal({
           ...data,
           date: new Date(data.date),
           isPremium: false,
+          visibility: "draft",
           creatorId,
           ...(entryDraft.rows ? { entryRows: entryDraft.rows } : {}),
         }),
@@ -228,8 +229,10 @@ export default function UploadModal({
       return res.json();
     },
     onSuccess: async (event: Event) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/creator/usage"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/events"] });
       setCreatedEventId(event.id);
       const reference = pendingEventReferenceRef.current;
       if (reference) await importCreatedEventReference(event.id, reference);
@@ -279,6 +282,7 @@ export default function UploadModal({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/events"] });
       if (eventId) {
         queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}`] });
       }

@@ -1,7 +1,7 @@
 import { formatDate } from "@/lib/utils";
 import React, { useEffect, useState, type ReactNode } from "react";
 import { Event, MediaItem } from "@shared/schema";
-import { Image as ImageIcon, Film } from "lucide-react";
+import { Image as ImageIcon, Film, EyeOff, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import EventTitle from "@/components/event-title";
@@ -27,28 +27,28 @@ interface DashboardEventListProps {
   title: string;
   events: Event[];
   mediaItems: MediaItem[];
+  eventCounts?: Map<number,{photos:number;videos:number;downloads:number}>;
   search: string;
   emptyMessage: string;
-  showPremium?: boolean;
   actions: (event: Event) => ReactNode;
 }
 
 export default function DashboardEventList({
-  title, events, mediaItems, search, emptyMessage, showPremium = false, actions,
+  title, events, mediaItems, eventCounts, search, emptyMessage, actions,
 }: DashboardEventListProps) {
   const [page, setPage] = useState(1);
   useEffect(() => setPage(1), [search]);
   const { matches, pageCount, currentPage, visible } = getEventPage(events, search, page);
-  const counts = new Map<number, { photos: number; videos: number; premium: number; downloads: number }>();
+  const counts = new Map<number, { photos: number; videos: number; downloads: number }>();
   for (const item of mediaItems) {
     if (item.eventId === null) continue;
-    const count = counts.get(item.eventId) ?? { photos: 0, videos: 0, premium: 0, downloads: 0 };
+    const count = counts.get(item.eventId) ?? { photos: 0, videos: 0, downloads: 0 };
     if (item.type === "image") count.photos++;
     if (item.type === "video") count.videos++;
-    if (item.isPremium) count.premium++;
     count.downloads += item.downloadCount || 0;
     counts.set(item.eventId, count);
   }
+  eventCounts?.forEach((stats,id)=>counts.set(id,stats));
 
   return (
     <section aria-label={title} className="min-w-0">
@@ -60,16 +60,19 @@ export default function DashboardEventList({
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border bg-card">
           {visible.map(event => {
-            const stats = counts.get(event.id) ?? { photos: 0, videos: 0, premium: 0, downloads: 0 };
+            const stats = counts.get(event.id) ?? { photos: 0, videos: 0, downloads: 0 };
             return (
               <li key={event.id} className="flex min-w-0 flex-col gap-2 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
                   <p className="break-words font-semibold leading-tight"><EventTitle title={event.title} /></p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     <time dateTime={new Date(event.date).toISOString()}>{formatDate(event.date)}</time>
+                    {(event as Event & { visibility?: string }).visibility !== "published" && <Badge variant="outline">Draft</Badge>}
+                    {(event as Event & { adminHidden?: boolean }).adminHidden && <Badge variant="destructive" className="gap-1"><EyeOff className="h-3 w-3" />Hidden by admin</Badge>}
+                    {["review", "error", "blocked"].includes((event as Event & { safetyStatus?: string }).safetyStatus || "") &&
+                      <Badge variant="outline" className="gap-1"><ShieldAlert className="h-3 w-3" />Safety: {(event as Event & { safetyStatus?: string }).safetyStatus}</Badge>}
                     <Badge variant="secondary" className="gap-1"><ImageIcon className="h-3 w-3" />{stats.photos} Photos</Badge>
                     <Badge variant="secondary" className="gap-1"><Film className="h-3 w-3" />{stats.videos} Videos</Badge>
-                    {showPremium && <span>{stats.premium} Premium</span>}
                     <span>{stats.downloads} Downloads</span>
                   </div>
                 </div>

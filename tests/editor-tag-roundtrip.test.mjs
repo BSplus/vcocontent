@@ -17,9 +17,10 @@ test("image/video editors preserve removed tags and refresh completed identifica
     const path = new URL(request.url).pathname;
     let body = [];
     if (path === "/api/user") body = user;
+    else if (path === "/api/creator/usage") body = {bytes:0,galleries:1,photos:1,limits:{bytes:500000000,galleries:5,photos:1000,imageBytes:5000000},exception:false};
     else if (path === "/api/events" || path === "/api/creator/events") body = [event];
     else if (path === `/api/events/${event.id}`) body = event;
-    else if (path === "/api/media" || path === `/api/events/${event.id}/media`) body = [media];
+    else if (path === "/api/media" || path === "/api/creator/media" || path === `/api/events/${event.id}/media`) body = [media];
     else if (path === `/api/media/${media.id}` && request.method === "PUT") {
       const changes = JSON.parse(request.postData);
       writes.push(changes);

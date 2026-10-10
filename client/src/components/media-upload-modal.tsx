@@ -30,6 +30,7 @@ import { InsertMediaItem, MediaItem, insertMediaItemSchema } from "@shared/schem
 import { Loader2, Upload, X, Info } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { analysisPending, requestAnalysis, type AnalysisState } from "@/hooks/use-media-analysis";
+import { useAuth } from "@/hooks/use-auth";
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -49,7 +50,7 @@ interface FileUpload {
   aiStatus?: AnalysisState["status"];
 }
 
-const IMAGE_LIMIT = 32 * 1024 * 1024;
+const IMAGE_LIMIT = 5_000_000;
 export default function MediaUploadModal({
   open,
   onOpenChange,
@@ -57,11 +58,13 @@ export default function MediaUploadModal({
 }: MediaUploadModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: limits } = useQuery<{ imageBytes: number; videoBytes: number; maxPixels: number; zipCount: number; zipBytes: number }>({
+  const { user } = useAuth();
+  const { data: limits } = useQuery<{ imageBytes: number; videoBytes: number; maxPixels: number; zipCount: number; zipBytes: number; community: boolean }>({
     queryKey: ["/api/media/policy"],
   });
   const imageLimit = limits?.imageBytes ?? IMAGE_LIMIT;
-  const videoLimit = limits?.videoBytes ?? VIDEO_LIMIT;
+  const videoLimit = limits?.videoBytes ?? (user?.isAdmin ? VIDEO_LIMIT : 0);
+  const community = limits?.community ?? !user?.isAdmin;
   const [uploads, setUploads] = useState<FileUpload[]>([]);
   const previewUrls = useRef(new Set<string>());
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -201,7 +204,7 @@ export default function MediaUploadModal({
 
   const handleFilesChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
-    const maxSize = form.getValues("type") === "video" ? videoLimit : imageLimit;
+      const maxSize = form.getValues("type") === "video" ? videoLimit : imageLimit;
     const newUploads: FileUpload[] = [];
 
     for (const file of files) {
@@ -286,6 +289,9 @@ export default function MediaUploadModal({
       return res.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/creator/usage"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/creator/media"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
       queryClient.invalidateQueries({ predicate: query =>
         String(query.queryKey[0]).startsWith(`/api/events/${eventId}/media`) });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/media-usage"] });
@@ -387,12 +393,12 @@ export default function MediaUploadModal({
         <form onSubmit={(e) => { e.preventDefault(); handleBulkUpload(); }} className="space-y-4">
           <div className="space-y-2">
              <div className="flex flex-wrap items-center justify-between gap-1">
-              <Label htmlFor="type">Type</Label>
+              <Label htmlFor="type">Media type</Label>
               <span className="text-xs text-muted-foreground">
-                 Maximum file size: {mediaType === "video" ? `${videoLimit / 1048576} MiB` : `${imageLimit / 1048576} MiB · ${((limits?.maxPixels ?? 40000000) / 1000000).toFixed(0)} MP`}
+                 Maximum file size: {mediaType === "video" ? `${(videoLimit / 1048576).toFixed(0)} MiB` : `${(imageLimit / (community ? 1000000 : 1048576)).toFixed(0)} ${community ? "MB" : "MiB"} · ${((limits?.maxPixels ?? 40000000) / 1000000).toFixed(0)} MP`}
               </span>
             </div>
-            <Select
+            {!community && <Select
               onValueChange={(value) => {
                  const type = value as "image" | "video";
                  setMediaType(type);
@@ -406,9 +412,10 @@ export default function MediaUploadModal({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="image">Image</SelectItem>
-                <SelectItem value="video">Video</SelectItem>
+                {videoLimit > 0 && <SelectItem value="video">Video</SelectItem>}
               </SelectContent>
-            </Select>
+            </Select>}
+            {community && <p className="text-sm text-muted-foreground">Community galleries accept photos only, up to 5 MB per image.</p>}
           </div>
 
           <Input
@@ -537,7 +544,8 @@ export default function MediaUploadModal({
            <div className="flex flex-wrap items-center gap-2">
             <Switch 
               id="auto-tag" 
-              checked={autoTagEnabled}
+              checked={community || autoTagEnabled}
+              disabled={community}
               onCheckedChange={setAutoTagEnabled}
             />
             <Label htmlFor="auto-tag" className="text-sm font-medium">
@@ -557,7 +565,7 @@ export default function MediaUploadModal({
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Videos are analyzed automatically after upload. The AI tagging switch applies to images only. An analysis issue will not prevent your files from being saved.
+            {community ? "Photo tagging runs automatically in the background. New files stay private until their safety check passes." : "Videos are analyzed automatically after upload. The AI tagging switch applies to images only. An analysis issue will not prevent your files from being saved."}
           </p>
 
            <div className="flex flex-wrap justify-end gap-2">

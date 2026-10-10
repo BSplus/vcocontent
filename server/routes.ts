@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, entryRowSchema, identificationSchema, users, mediaAnalysisJobs, mediaItems, type EntryRow } from "@shared/schema";
+import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, entryRowSchema, identificationSchema, users, events as eventsTable, mediaAnalysisJobs, mediaItems, type EntryRow } from "@shared/schema";
 import express from "express";
 import path from "path";
 import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
@@ -17,17 +17,23 @@ import { mediaUpload, uploadMedia, createMediaKeys, readMediaStream, getMediaCon
 import { analysisImageInput, recognitionImageInput } from "./image-analysis";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { randomUUID } from "crypto";
+import { readFile } from "fs/promises";
 import sharp from "sharp";
 import { z } from "zod";
 import { discover, importStatus, startImport, startImportWorker, resumeImport, NextcloudError } from "./nextcloud";
 import { downloadAccess } from "./download-access";
 import { downloadStream } from "./media-delivery";
-import { enqueueAnalysis, analysisStatus, startAnalysisWorker, kickAnalysisWorker, AnalysisUnavailable, analysisFingerprint } from "./analysis-jobs";
+import { enqueueAnalysis, analysisStatus, startAnalysisWorker, kickAnalysisWorker as kickWorker, AnalysisUnavailable, analysisFingerprint } from "./analysis-jobs";
 import { identifyEntries } from "./reference-matching";
 import { pipeline } from "stream/promises";
 import { withVisionBudget } from "./ai-budget";
 import { MediaBusyError } from "./media-work-budget";
 import { registerReferenceRoutes } from "./reference-routes";
+import { canManage, eventPublic, mediaPublic, visibleEvents } from "./beta-access";
+import { communityLimits, creatorAllowed, safeState, safetyRetryAllowed, takeBetaRate } from "./beta-policy";
+import { registerBetaRoutes } from "./beta-routes";
+import { checkContent, reviewEventSafety, reviewMediaSafety } from "./content-safety";
+import { verificationConfigured } from "./email-verification";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -46,9 +52,10 @@ function mediaPage(value: unknown): number | null {
   return Number.isSafeInteger(n) && n > 0 && n <= 100000 ? n : null;
 }
 const canManageEvent = (user: Express.User | undefined, creatorId: number | null) =>
-  !!user && (user.isAdmin || (user.isCreator && creatorId === user.id));
-const publicMedia = <T extends { id: number; isPremium: boolean; url: string; thumbnail: string }>(item: T): T => ({
+  canManage(user,{creatorId});
+const publicMedia = <T extends { id: number; isPremium: boolean; url: string; thumbnail: string; safetyStatus:string; safetyPolicy:string|null;contentVersion:number;safetyVersion:number }>(item: T): T => ({
   ...item,
+  safetyRetryAllowed:safetyRetryAllowed(item),
   url: item.isPremium ? "" : item.url.startsWith("data:")
     ? `/api/media/legacy/${item.id}/file` : item.url,
   thumbnail: item.isPremium && item.thumbnail.startsWith("data:")
@@ -56,7 +63,11 @@ const publicMedia = <T extends { id: number; isPremium: boolean; url: string; th
     : item.thumbnail.startsWith("data:") ? `/api/media/legacy/${item.id}/thumbnail` : item.thumbnail,
 });
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express, options: {workers?: boolean} = {}): Promise<Server> {
+  const kickAnalysisWorker = options.workers===false ? async()=>false : kickWorker;
+  // All API data and protected previews must be re-authorized on each request.
+  app.use("/api",(_req,res,next)=>{res.setHeader("Cache-Control","private, no-store");next();});
+  registerBetaRoutes(app);
   registerReferenceRoutes(app, requireCreator);
   const openAITestCooldowns = new Map<number, number>();
   const captionDetections = new Map<number, { thumbnail: string; expires: number; result: Promise<Awaited<ReturnType<typeof detectRaceNumbers>>> }>();
@@ -72,7 +83,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Events route - different behavior based on auth status
   app.get("/api/events", async (req, res) => {
     try {
-      const events = await storage.getEvents();
+      const events = await visibleEvents(await storage.getEvents());
       
       // Remove heavy base64 thumbnails from the list to improve performance
       // Thumbnails will be loaded lazily by the frontend when needed
@@ -102,14 +113,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         creatorId: req.user.id,
         isPremium: false,
       });
-
+      if (eventData.coverImage || eventData.customThumbnail)
+        return res.status(400).json({error:"Upload photos first, then select a checked photo as the gallery cover."});
+      if (!req.user.isAdmin && !await takeBetaRate(`gallery:${req.user.id}`,10,3600000))
+        return res.status(429).json({error:"Too many gallery requests. Please try later."});
       const event = await storage.createEvent(eventData, creationEntries(req.body));
-      res.status(201).json(event);
+      if (event.creatorId) await reviewEventSafety(event.id,event.creatorId);
+      res.status(201).json(await storage.getEvent(event.id));
     } catch (error) {
       console.error('Error creating creator event:', error);
       res.status(400).json({ 
-        error: error instanceof Error && error.message.startsWith("Entry List:") ? error.message : "Failed to create event",
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof MediaLimitError || error instanceof Error && error.message.startsWith("Entry List:") ? error.message : "Failed to create event",
       });
     }
   });
@@ -146,11 +160,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { creatorId: _ignoredCreatorId, ...eventChanges } = insertEventSchema.partial().parse(req.body);
+      if (event.creatorId) {
+        for (const field of ["coverImage","customThumbnail"] as const) if (eventChanges[field]) {
+          const match = /^\/api\/media\/files\/(thumb-[0-9a-f-]{36}\.webp)$/.exec(eventChanges[field]!);
+          const cover = match ? await storage.findMediaByKey(match[1]) : undefined;
+          if (!cover || cover.eventId!==event.id || cover.safetyStatus!=="approved" || !safeState(cover))
+            return res.status(400).json({error:"Select an approved photo from this gallery; external images are not allowed."});
+        }
+      }
+      if (!req.user!.isAdmin) {
+        delete eventChanges.isPremium;
+        delete eventChanges.creditCost;
+      }
       const updatedEvent = await storage.updateEvent(eventId, {
         ...eventChanges,
-        isPremium: false,
       });
-      res.json(updatedEvent);
+      if (event.creatorId && ["title","description","round","track"].some(field=>field in eventChanges)) {
+        await reviewEventSafety(eventId,event.creatorId);
+      }
+      res.json(await storage.getEvent(eventId));
     } catch (error) {
       console.error('Error updating event:', error);
       res.status(400).json({ error: "Failed to update event" });
@@ -238,6 +266,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { action } = req.body;
 
       switch (action) {
+        case 'suspend_creator':
+        case 'restore_creator':
+          if (userId===req.user!.id) return res.status(400).json({error:"You cannot suspend your own admin account."});
+          await db.update(users).set({suspended:action==="suspend_creator"}).where(eq(users.id,userId));
+          break;
+        case 'quota_exception':
+          if (typeof req.body.enabled!=="boolean") return res.status(400).json({error:"Choose whether the exception is enabled."});
+          await db.update(users).set({quotaException:req.body.enabled}).where(eq(users.id,userId));
+          break;
         case 'approve_creator':
           await storage.updateUserCreatorStatus(userId, 'approved');
           break;
@@ -293,6 +330,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const event = mediaItem.eventId ? await storage.getEvent(mediaItem.eventId) : undefined;
       if (!event) return res.status(404).json({ error: "Event not found" });
+      if (!await mediaPublic(mediaItem,event)) return res.status(404).json({error:"Media not found"});
       const access = downloadAccess(mediaItem, event, quality, req.isAuthenticated());
       if (access !== 200) return res.status(access).json({
         error: access === 403 ? BETA_NOTICE : access === 400
@@ -315,6 +353,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const item = await storage.getMediaItem(id);
       const event = item?.eventId ? await storage.getEvent(item.eventId) : undefined;
       if (!item || !event) return res.status(404).json({ error: "Media not found" });
+      if (!await mediaPublic(item,event)) return res.status(404).json({error:"Media not found"});
       const access = downloadAccess(item, event, quality, req.isAuthenticated());
       if (access !== 200) return res.status(access).json({ error: "Download not permitted" });
       const { stream, contentType, filename } = await downloadStream(item, quality);
@@ -338,9 +377,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Use JSON parser for all other routes
   app.use(express.json());
-  app.get("/api/media/policy", (_req, res) => res.json({
-    imageBytes: mediaPolicy.imageBytes,
-    videoBytes: mediaPolicy.videoBytes,
+  app.get("/api/media/policy", (req, res) => res.json({
+    community:!req.user?.isAdmin,
+    imageBytes: req.user?.isAdmin ? mediaPolicy.imageBytes : communityLimits.imageBytes,
+    videoBytes: req.user?.isAdmin ? mediaPolicy.videoBytes : 0,
     maxPixels: mediaPolicy.maxPixels,
     displayEdge: mediaPolicy.displayEdge,
     thumbnailEdge: mediaPolicy.thumbnailEdge,
@@ -438,7 +478,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const item = await storage.getMediaItem(id);
       const event = item?.eventId ? await storage.getEvent(item.eventId) : undefined;
-      if (!item || !event || item.isPremium || event.isPremium) return res.status(404).json({ error: "Media not found" });
+      if (!item || !event || item.isPremium || event.isPremium || !await mediaPublic(item,event)) return res.status(404).json({ error: "Media not found" });
       res.json(publicMedia(item));
     } catch (error) {
       console.error("Failed to fetch media:", error);
@@ -448,7 +488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/events/:id", async (req, res) => {
     try {
       const event = await storage.getEvent(parseInt(req.params.id));
-      if (!event) {
+      if (!event || (!canManage(req.user,event) && !await eventPublic(event))) {
         return res.status(404).json({ error: "Event not found" });
       }
       res.json(event);
@@ -465,9 +505,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!page) return res.status(400).json({ error: "Invalid page" });
       const event = await storage.getEvent(parseInt(req.params.id));
       if (!event) return res.status(404).json({ error: "Event not found" });
+      const manager = canManage(req.user,event);
+      if (!manager && !await eventPublic(event)) return res.status(404).json({error:"Event not found"});
       if (event.isPremium) return res.json([]);
-      const media = await storage.getMediaItems(parseInt(req.params.id), page);
-      res.json(media.map(publicMedia));
+      const media = manager ? await storage.getMediaItems(event.id,page)
+        : await storage.getPublicEventMediaItems(event.id,page);
+      res.json(manager ? media : media.map(publicMedia));
     } catch (error) {
       console.error('Error fetching event media:', error);
       res.status(500).json({ error: "Failed to fetch event media" });
@@ -508,6 +551,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const record = await storage.getMediaItem(id);
       if (!record) return res.status(404).end();
+      const owningEvent = record.eventId ? await storage.getEvent(record.eventId) : undefined;
+      if (!owningEvent || (!canManage(req.user,owningEvent) && !await mediaPublic(record,owningEvent))) return res.status(404).end();
       if (variant === "file") {
         const event = record.eventId ? await storage.getEvent(record.eventId) : undefined;
         if (!req.isAuthenticated() || record.isPremium || event?.isPremium)
@@ -526,7 +571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .webp({ quality: 72 }).toBuffer();
       }
       res.setHeader("Content-Type", variant === "thumbnail" ? "image/webp" : match[1]);
-      res.setHeader("Cache-Control", variant === "file" ? "private, no-store" : "public, max-age=3600");
+      res.setHeader("Cache-Control", "private, no-store");
       res.setHeader("X-Content-Type-Options", "nosniff");
       return res.send(body);
     } catch (error) {
@@ -545,12 +590,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const record = await storage.findMediaByKey(key);
       if (!record) return res.status(404).end();
       const event = record.eventId ? await storage.getEvent(record.eventId) : undefined;
+      if (!event || (!canManage(req.user,event) && !await mediaPublic(record,event))) return res.status(404).end();
       const isOriginal = record.url === `/api/media/files/${key}`;
       if (isOriginal && (!req.isAuthenticated() || record.isPremium || event?.isPremium)) {
         return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Original not available" });
       }
       res.setHeader("Content-Type", getMediaContentType(key));
-      res.setHeader("Cache-Control", isOriginal ? "private, no-store" : "public, max-age=3600");
+      res.setHeader("Cache-Control", "private, no-store");
       res.setHeader("X-Content-Type-Options", "nosniff");
       const stream = readMediaStream(key);
       stream.on("error", () => {
@@ -584,12 +630,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
             tags: z.string().max(1500).optional(),
             autoTag: z.enum(["true", "false"]).optional(),
           }).parse(req.body);
+          const community = !!event.creatorId && !req.user!.isAdmin;
+          if (community) {
+            if (metadata.type!=="image" || !req.file.mimetype.startsWith("image/")) throw new MediaLimitError("Video uploads are not available for Community Creators.");
+            if (req.file.size>communityLimits.imageBytes) throw new MediaLimitError("Images must be no larger than 5 MB.");
+            const info = await sharp(req.file.path,{animated:true,limitInputPixels:mediaPolicy.maxPixels}).metadata().catch(()=>undefined);
+            if (!info) return res.status(400).json({error:"Choose a valid, readable photo."});
+            const source=await readFile(req.file.path);
+            if ((info.pages || 1)>1 || (info.format==="png" && source.includes(Buffer.from("acTL"))) ||
+              (info.format==="webp" && source.includes(Buffer.from("ANIM"))))
+              throw new MediaLimitError("Animated or multi-frame images are not available for Community Creators.");
+          }
+          if (!req.user!.isAdmin && !await takeBetaRate(`upload:${req.user!.id}`,120,3600000))
+            throw new MediaLimitError("Too many uploads. Please try again later.");
           if (req.file.size > (metadata.type === "image" ? mediaPolicy.imageBytes : mediaPolicy.videoBytes))
             throw new MediaLimitError(`${metadata.type === "image" ? "Image" : "Video"} exceeds the ${metadata.type === "image" ? mediaPolicy.imageBytes / 1048576 : mediaPolicy.videoBytes / 1048576} MiB limit`);
           const keys = createMediaKeys(req.file.mimetype);
           reservationId = randomUUID();
-          await storage.reserveMedia(reservationId, eventId, event.creatorId, metadata.type === "image" ? 4 * 1048576 + 100 * 1024 : req.file.size + 100 * 1024, keys.storageKey, keys.thumbnailKey);
-          const saved = await uploadMedia(req.file, metadata.type, keys);
+          const saved = await uploadMedia(req.file, metadata.type, keys,async bytes=>{
+            await storage.reserveMedia(reservationId!,eventId,event.creatorId,bytes,keys.storageKey,keys.thumbnailKey,req.user!.isAdmin);
+          });
           const item = await storage.finishMedia(reservationId, insertMediaItemSchema.parse({
             eventId,
             type: saved.mediaType,
@@ -611,11 +671,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 })()
               : [],
             isPremium: false,
-          }), undefined, undefined, metadata.type === "video" || metadata.autoTag === "true");
-          res.status(201).json(item);
-          if (metadata.type === "video" || metadata.autoTag === "true") void kickAnalysisWorker();
+          }), undefined, undefined, community || metadata.type === "video" || metadata.autoTag === "true",!!event.creatorId);
+          if (event.creatorId) await reviewMediaSafety(item.id,event.creatorId);
+          res.status(201).json(await storage.getMediaItem(item.id));
+          if (community || metadata.type === "video" || metadata.autoTag === "true") void kickAnalysisWorker();
         } catch (error) {
-          console.error("Media upload failed:", error);
+          console.error("Media upload failed");
           if (reservationId) await storage.abandonMedia(reservationId).catch(cleanupError => console.error("Upload cleanup pending:", cleanupError));
           res.status(error instanceof MediaBusyError ? 503 : error instanceof MediaLimitError ? 413 : error instanceof z.ZodError ? 400 : 502).json({
             error: error instanceof MediaBusyError || error instanceof MediaLimitError ? error.message : error instanceof z.ZodError ? "Invalid upload details" : "Could not store media",
@@ -708,6 +769,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       captionDetections.forEach((value, key) => { if (value.expires < now) captionDetections.delete(key); });
       let cached = captionDetections.get(id);
       if (!stored && (!cached || cached.thumbnail !== media.thumbnail)) {
+        if (!req.user!.isAdmin && !await takeBetaRate(`analysis:${req.user!.id}`,12,3600000))
+          return res.status(429).json({error:"You have reached the hourly analysis limit. Please try later."});
         if (captionDetections.size >= 100) captionDetections.delete(captionDetections.keys().next().value!);
         const result = recognitionImageInput(media).then(input => withVisionBudget(() => detectRaceNumbers(input)));
         cached = { thumbnail: media.thumbnail, expires: now + 5 * 60_000, result };
@@ -758,6 +821,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...(current.tags || []).filter(tag=>!changes.tags!.includes(tag))])).filter(tag=>!changes.tags!.includes(tag))
           : current.suppressedAITags;
         const [result] = await tx.update(mediaItems).set({ ...changes, suppressedAITags,
+          ...(event.creatorId ? {contentVersion:sql`${mediaItems.contentVersion}+1`,safetyStatus:"error",safetyReason:"Safety check pending."} : {}),
           ...(changes.tags ? {manualTags:changes.tags} : {}),
           identification: identificationChanged ? changes.identification!.map(i=>({...i,source:"manual" as const})) : current.identification,
           identificationManual: current.identificationManual || identificationChanged }).where(eq(mediaItems.id,id)).returning();
@@ -765,8 +829,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await tx.update(mediaAnalysisJobs).set({referenceRevision:-1}).where(eq(mediaAnalysisJobs.mediaId,id));
         return result;
       });
+      if (event.creatorId) await reviewMediaSafety(id,event.creatorId);
       void kickAnalysisWorker();
-      return res.json(updated);
+      return res.json(await storage.getMediaItem(id));
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ error: "Ungültige Medienangaben (Caption max. 1000 Zeichen)." });
       return res.status(500).json({ error: "Medium konnte nicht aktualisiert werden." });
@@ -801,6 +866,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   const previewEntryFile = (req: express.Request, res: express.Response) => {
     entryUpload(req, res, async error => {
+      if (!req.user!.isAdmin && !await takeBetaRate(`reference:${req.user!.id}`,20,3600000))
+        return res.status(429).json({error:"Too many reference analyses. Please try later."});
       if (error) return res.status(413).json({ error: "Entry List zu groß oder ungültig (maximal 8 MiB)." });
       if (!req.file) return res.status(400).json({ error: "Bitte eine Datei auswählen." });
       try {
@@ -854,7 +921,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/series", async (req, res) => {
     try {
       const seriesData = await storage.getSeries();
-      res.json(seriesData);
+      const records = Array.isArray(seriesData)?seriesData:[];
+      res.json((await Promise.all(records.map(async record=>{
+        const owner=record.creatorId?await storage.getUser(record.creatorId):undefined;
+        return record.creatorId && (!owner || owner.suspended || owner.creatorStatus==="rejected")?null:record;
+      }))).filter(Boolean));
     } catch (error) {
       console.error('Error fetching series:', error);
       res.status(500).json({ error: "Failed to fetch series" });
@@ -868,6 +939,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!seriesData) {
         return res.status(404).json({ error: "Series not found" });
       }
+      const owner = !Array.isArray(seriesData) && seriesData.creatorId ? await storage.getUser(seriesData.creatorId) : undefined;
+      if (owner?.suspended || owner?.creatorStatus==="rejected") return res.status(404).json({error:"Series not found"});
       res.json(seriesData);
     } catch (error) {
       console.error('Error fetching series:', error);
@@ -878,10 +951,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create series
   app.post("/api/series", requireCreator, async (req, res) => {
     try {
+      if (!req.user!.isAdmin && (!req.user!.emailVerifiedAt || !verificationConfigured()))
+        return res.status(403).json({error:"Verify your email before publishing a community series."});
       const seriesData = insertSeriesSchema.parse({
         ...req.body,
         creatorId: req.user?.isAdmin ? null : req.user?.id,
       });
+      if (!req.user!.isAdmin && (seriesData.logo || (await checkContent(JSON.stringify({name:seriesData.name,description:seriesData.description}))).status!=="approved"))
+        return res.status(400).json({error:"Use neutral series text without external logos."});
       const series = await storage.createSeries(seriesData);
       res.status(201).json(series);
     } catch (error) {
@@ -897,6 +974,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!seriesRecord || Array.isArray(seriesRecord)) return res.status(404).json({ error: "Series not found" });
       if (!canManageEvent(req.user, seriesRecord.creatorId)) return res.status(403).json({ error: "Forbidden" });
       const { creatorId: _ignored, ...seriesData } = insertSeriesSchema.partial().parse(req.body);
+      if (seriesRecord.creatorId && (!req.user!.emailVerifiedAt || !verificationConfigured()))
+        return res.status(403).json({error:"Verify your email before updating a public community series."});
+      if (seriesRecord.creatorId && (seriesData.logo || (await checkContent(JSON.stringify({...seriesRecord,...seriesData}))).status!=="approved"))
+        return res.status(400).json({error:"Use neutral series text without external logos."});
       const series = await storage.updateSeries(parseInt(req.params.id), seriesData);
       res.json(series);
     } catch (error) {
@@ -932,7 +1013,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = parseInt(req.params.id);
       const user = await storage.getUser(userId);
       
-      if (!user) {
+      if (!user || user.suspended || user.creatorStatus==="rejected") {
         return res.status(404).json({ error: "User not found" });
       }
       
@@ -942,7 +1023,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         username: user.username,
         isCreator: user.isCreator,
         creatorStatus: user.creatorStatus,
-        profileImage: user.profileImage,
+        profileImage: user.profileImagePublic ? user.profileImage : null,
         bio: user.bio
       };
       
@@ -995,7 +1076,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/creator/request", requireAuth, async (req, res) => {
     try {
-      const user = await storage.updateUserCreatorStatus(req.user!.id, 'pending');
+      if (!verificationConfigured() || !req.user!.emailVerifiedAt)
+        return res.status(403).json({error:"Verify your email address before activating Creator access."});
+      if (req.user!.creatorStatus==="rejected" || req.user!.suspended)
+        return res.status(403).json({error:"Creator access has been blocked. Contact an administrator."});
+      // Legacy public profile images are left unchanged, not silently approved.
+      // New registrations cannot provide external imagery; self-activation
+      // does not upload or replace a historical picture.
+      const safety = await checkContent(JSON.stringify({username:req.user!.username,bio:req.user!.bio}));
+      if (safety.status!=="approved") return res.status(403).json({error:"Your public profile text could not be approved."});
+      const [activated] = await db.update(users).set({isCreator:true,creatorStatus:"approved"})
+        .where(sql`${users.id}=${req.user!.id} and not ${users.suspended} and coalesce(${users.creatorStatus},'pending')<>'rejected' and ${users.emailVerifiedAt} is not null`).returning();
+      if (!activated) return res.status(403).json({error:"Creator activation is blocked."});
+      const {password,...user} = activated;
       res.json(user);
     } catch (error) {
       console.error('Error requesting creator status:', error);
@@ -1003,16 +1096,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/creator/events", requireCreator, async (req, res) => {
-    try {
-      const events = await storage.getEventsByCreator(req.user!.id);
-      res.json(events);
-    } catch (error) {
-      console.error('Error fetching creator events:', error);
-      res.status(500).json({ error: "Failed to fetch creator events" });
-    }
-  });
-  
   // Get events by creator ID (public endpoint)
   app.get("/api/events/creator/:id", async (req, res) => {
     try {
@@ -1021,7 +1104,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid creator ID" });
       }
       
-      const events = await storage.getEventsByCreator(creatorId);
+      const events = await visibleEvents(await storage.getEventsByCreator(creatorId));
       res.json(events);
     } catch (error) {
       console.error('Error fetching creator events:', error);
@@ -1030,32 +1113,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/creator/earnings", requireCreator, async (req, res) => {
-    try {
-      const earnings = await storage.getCreatorEarnings(req.user!.id);
-      res.json(earnings);
-    } catch (error) {
-      console.error('Error fetching creator earnings:', error);
-      res.status(500).json({ error: "Failed to fetch creator earnings" });
-    }
-  });
-
-  app.post("/api/creator/events", requireCreator, async (req, res) => {
-    try {
-      const eventData = insertEventSchema.parse({
-        ...req.body,
-        creatorId: req.user!.id,
-        isPremium: false,
-      });
-      console.log('Creating event as creator:', eventData);
-      const event = await storage.createEvent(eventData, creationEntries(req.body));
-      res.status(201).json(event);
-    } catch (error) {
-      console.error('Error creating event as creator:', error);
-      res.status(400).json({ 
-        error: "Failed to create event", 
-        details: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
+    res.status(503).json({error:BETA_NOTICE});
   });
 
   app.post("/api/events", requireAdmin, async (req, res) => {
@@ -1127,8 +1185,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
-  startAnalysisWorker();
-  startImportWorker();
+  if (options.workers!==false) {
+    startAnalysisWorker();
+    startImportWorker();
+  }
 
   return httpServer;
 }

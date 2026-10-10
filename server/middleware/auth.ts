@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
+import { creatorAllowed } from "../beta-policy";
 
 // Middleware to check if user is authenticated
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
     return res.status(401).json({ error: "Authentication required" });
   }
+  if (req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
   next();
 }
 
@@ -15,7 +17,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ error: "Authentication required" });
   }
   
-  if (!req.user?.isAdmin) {
+  if (!req.user?.isAdmin || req.user.suspended) {
     return res.status(403).json({ error: "Admin access required" });
   }
   next();
@@ -32,7 +34,7 @@ export function requireCreator(req: Request, res: Response, next: NextFunction) 
     return res.status(401).json({ error: "Authentication required" });
   }
 
-  if (!user.isCreator && !user.isAdmin && user.creatorStatus !== 'approved') {
+  if (!creatorAllowed(user)) {
     return res.status(403).json({ error: "Creator access required" });
   }
 
@@ -45,6 +47,7 @@ export function requireOwnershipOrAdmin(resourceCreatorIdField: string) {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ error: "Authentication required" });
     }
+    if (!creatorAllowed(req.user)) return res.status(403).json({error:"Creator access is blocked."});
 
     // Allow admins to access all resources
     if (req.user?.isAdmin) {

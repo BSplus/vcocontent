@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, Plus, Trash2, FileText, Download } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useQueryClient } from "@tanstack/react-query";
 
 export interface EventEntryRow {
   number: string;
@@ -83,6 +84,7 @@ interface EntryListEditorProps {
 }
 
 export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraftChange, onReferenceSelection, refreshReferencesToken = 0 }: EntryListEditorProps) {
+  const queryClient=useQueryClient();
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const referenceFileRef = useRef<HTMLInputElement>(null);
@@ -181,6 +183,7 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
       const response = await fetch(`/api/events/${id}/references`, { method: "POST", credentials: "include", body });
       if (!response.ok) throw new Error(await responseError(response, "Could not import reference document."));
       await loadReferences(id);
+      void queryClient.invalidateQueries({queryKey:["/api/creator/usage"]});
       toast({ title: replacing ? "Reference reimported" : "Reference imported", description: "The source document and parsed entries are now available." });
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "Could not import reference document.";
@@ -237,6 +240,7 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
       const response = await fetch(`/api/events/${eventId}/references/${document.id}`, { method: "DELETE", credentials: "include" });
       if (!response.ok) throw new Error(await responseError(response, "Could not remove reference document."));
       await loadReferences(eventId);
+      void queryClient.invalidateQueries({queryKey:["/api/creator/usage"]});
     } catch (reason) {
       setReferenceError(reason instanceof Error ? reason.message : "Could not remove reference document.");
     } finally {

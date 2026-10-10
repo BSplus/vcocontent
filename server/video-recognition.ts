@@ -3,6 +3,7 @@ import type { Identification } from "@shared/schema";
 import { parseRecognition } from "./utils/motorsport-recognition";
 import { getOpenAIClient, TAG_MODEL, controlledTags } from "./utils/ai-tagger";
 import type { VideoFrame } from "./video-sampling";
+import { VideoAnalysisFailure, classifyVideoFailure } from "./video-failures";
 
 export type FrameEvidence = { hash: string; timestamp: number; tags: string[]; vehicles: Identification[] };
 export type VideoEvidence = {
@@ -16,9 +17,9 @@ export type VideoEvidence = {
 
 export async function recognizeVideoBatch(frames: VideoFrame[]) {
   if (!frames.length || frames.length > 4 || frames.some(f => f.image.length > 700000))
-    throw new Error("Video batch exceeds provider budget");
+    throw new VideoAnalysisFailure("ai_request","AI_BATCH_LIMIT",false);
   const client = getOpenAIClient();
-  if (!client) throw new Error("AI recognition unavailable");
+  if (!client) throw new VideoAnalysisFailure("ai_request","AI_UNAVAILABLE",false);
   const response = await client.chat.completions.create({
     model: TAG_MODEL, response_format: { type: "json_object" }, max_tokens: 2400,
     messages: [{ role: "system", content: `Extract only visible evidence from each timestamp-labeled frame, independently.
@@ -33,20 +34,23 @@ Multiple vehicles may appear. Never apply one vehicle's identity to another or t
       { type: "text" as const, text: `Frame ${index}, timestamp ${frame.timestamp.toFixed(3)} seconds` },
       { type: "image_url" as const, image_url: { url: frame.image, detail: "high" as const } },
     ]) }],
-  }, { timeout: 25000, maxRetries: 0 });
+  }, { timeout: 25000, maxRetries: 0 }).catch(error=>{throw classifyVideoFailure(error,"ai_request");});
+  try {
   const raw = response.choices[0]?.message?.content;
   if (!raw || raw.length > 24000 || response.choices[0]?.finish_reason !== "stop")
-    throw new Error("Invalid video recognition output");
+    throw new VideoAnalysisFailure("result_parsing","AI_OUTPUT_INVALID",true);
   const parsed = z.object({ frames: z.array(z.object({
     index: z.number().int().min(0).max(frames.length - 1),
     tags: z.array(z.string()).max(40), vehicles: z.array(z.unknown()).max(12),
   })).length(frames.length) }).parse(JSON.parse(raw));
-  if (new Set(parsed.frames.map(f => f.index)).size !== frames.length) throw new Error("Missing frame evidence");
+  if (new Set(parsed.frames.map(f => f.index)).size !== frames.length)
+    throw new VideoAnalysisFailure("result_parsing","AI_OUTPUT_INVALID",true);
   return {
     frames: parsed.frames.map(f => ({ ...parseRecognition(JSON.stringify(f)),
       timestamp: frames[f.index].timestamp, hash: frames[f.index].hash })),
     usage: response.usage ? { prompt: response.usage.prompt_tokens, completion: response.usage.completion_tokens } : null,
   };
+  } catch (error) { throw classifyVideoFailure(error,"result_parsing"); }
 }
 
 /** Global conflicting labels require a clear majority. Vehicle fields require consensus. */

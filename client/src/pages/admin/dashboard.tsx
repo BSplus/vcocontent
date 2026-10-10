@@ -29,9 +29,12 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import DashboardEventList from "@/components/dashboard-event-list";
+import { apiRequest } from "@/lib/queryClient";
+import { ShieldCheck, ShieldAlert, EyeOff } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -44,12 +47,58 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("events");
   const [mediaPage, setMediaPage] = useState(1);
   const [eventSearch, setEventSearch] = useState("");
+  const [reviewSelection, setReviewSelection] = useState<{
+    kind: "media" | "events";
+    id: number;
+    decision: "approve" | "block";
+    version: number | string;
+    policy: unknown;
+  } | null>(null);
+  const [reviewReason, setReviewReason] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const safetyQuery = useQuery<{ media: MediaItem[]; events: Event[] }>({ queryKey: ["/api/admin/safety"] });
+  const visibilityMutation = useMutation({
+    mutationFn: async ({ id, hidden }: { id: number; hidden: boolean }) =>
+      (await apiRequest("PATCH", `/api/admin/events/${id}/visibility`, { hidden })).json(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["/api/admin/events"] });
+      toast({ title: "Event visibility updated" });
+    },
+    onError: (error: Error) => toast({ title: "Visibility update failed", description: error.message, variant: "destructive" }),
+  });
+  const reviewSafety = async (selection: NonNullable<typeof reviewSelection>) => {
+    if (!reviewReason.trim()) return;
+    try {
+      await apiRequest("POST", `/api/admin/safety/${selection.kind}/${selection.id}/review`, {
+        decision: selection.decision,
+        reason: reviewReason.trim(),
+        version: selection.version,
+        policy: selection.policy,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/safety"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/events"] });
+      setReviewSelection(null);
+      setReviewReason("");
+      toast({ title: selection.decision === "approve" ? "Item approved" : "Item blocked" });
+    } catch (error) {
+      toast({ title: "Review failed", description: error instanceof Error ? error.message : "Could not save review.", variant: "destructive" });
+    }
+  };
+  const retryEventSafety = useMutation({
+    mutationFn: async (id: number) =>
+      (await apiRequest("POST", `/api/events/${id}/publish`, { published: true })).json(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/safety"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/events"] });
+      toast({ title: "Event safety check retried", description: "The event was submitted through the publish workflow." });
+    },
+    onError: (error: Error) => toast({ title: "Event retry failed", description: error.message, variant: "destructive" }),
+  });
 
   // Load events with better error handling
   const { data: events = [], isLoading: eventsLoading, error: eventsError, refetch: retryEvents } = useQuery<Event[]>({
-    queryKey: ["/api/events"],
+    queryKey: ["/api/admin/events"],
     staleTime: 0,
     retry: 1, // Only retry once on failure 
   });
@@ -99,7 +148,7 @@ export default function AdminDashboard() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/media"] });
       toast({
         title: "Success",
@@ -125,7 +174,6 @@ export default function AdminDashboard() {
     return {
       photos: photos.length,
       videos: videos.length,
-      premiumCount: eventMedia.filter(item => item.isPremium).length,
       totalDownloads: eventMedia.reduce((sum, item) => sum + (item.downloadCount || 0), 0)
     };
   };
@@ -193,6 +241,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="events">Events</TabsTrigger>
             <TabsTrigger value="media">Media Management</TabsTrigger>
             <TabsTrigger value="series">Race Series</TabsTrigger>
+            <TabsTrigger value="safety">Safety review</TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
@@ -215,12 +264,20 @@ export default function AdminDashboard() {
                   <Button size="sm" variant="outline" onClick={() => { setSelectedEventId(event.id); setUploadModalOpen(true); }}><Edit className="mr-1 h-4 w-4" />Edit Event</Button>
                   <Button size="sm" variant="secondary" onClick={() => { setSelectedEventId(event.id); setMediaUploadModalOpen(true); }}><Plus className="mr-1 h-4 w-4" />Upload Media</Button>
                   <Button size="sm" variant="outline" onClick={() => switchToMediaTab(event.id)}><Eye className="mr-1 h-4 w-4" />Manage Media</Button>
+                  <Button size="sm" variant="outline" disabled={visibilityMutation.isPending}
+                    onClick={() => visibilityMutation.mutate({ id: event.id, hidden: !(event as Event & { adminHidden?: boolean }).adminHidden })}>
+                    <EyeOff className="mr-1 h-4 w-4" />{(event as Event & { adminHidden?: boolean }).adminHidden ? "Unhide" : "Hide"}
+                  </Button>
                   <Button size="sm" variant="destructive" aria-label={`Delete event ${event.title}`} onClick={() => setEventToDelete(event)}><Trash2 className="mr-1 h-4 w-4" />Delete Event</Button>
                 </>
               )} />
-              <DashboardEventList title="Creator Events" events={creatorEvents} mediaItems={mediaItemsArray} search={eventSearch} emptyMessage="No creator events yet." showPremium actions={event => (
+              <DashboardEventList title="Creator Events" events={creatorEvents} mediaItems={mediaItemsArray} search={eventSearch} emptyMessage="No creator events yet." actions={event => (
                 <>
                   <Button size="sm" variant="outline" onClick={() => switchToMediaTab(event.id)}><Eye className="mr-1 h-4 w-4" />Manage Media</Button>
+                  <Button size="sm" variant="outline" disabled={visibilityMutation.isPending}
+                    onClick={() => visibilityMutation.mutate({ id: event.id, hidden: !(event as Event & { adminHidden?: boolean }).adminHidden })}>
+                    <EyeOff className="mr-1 h-4 w-4" />{(event as Event & { adminHidden?: boolean }).adminHidden ? "Unhide" : "Hide"}
+                  </Button>
                   <Button size="sm" variant="destructive" aria-label={`Delete event ${event.title}`} onClick={() => setEventToDelete(event)}><Trash2 className="mr-1 h-4 w-4" />Delete Event</Button>
                 </>
               )} />
@@ -232,9 +289,13 @@ export default function AdminDashboard() {
               <Card className="mb-6">
                 <CardContent className="pt-5 space-y-3 break-words">
                   <h3 className="font-semibold">Storage usage</h3>
-                  <p>{Number(usage.total.bytes).toLocaleString()} bytes in {usage.total.count} items;
-                    {" "}{usage.total.legacy} older items have unknown object sizes (about {Number(usage.total.legacyTextBytes).toLocaleString()} bytes of database text).
+                  <p>{(Number(usage.total.bytes) / 1048576).toFixed(1)} MiB across {usage.total.count} measured items;
                     {" "}{usage.cleanupCount} objects await cleanup.</p>
+                  {Number(usage.total.legacy) > 0 && (
+                    <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+                      {usage.total.legacy} older media item{Number(usage.total.legacy) === 1 ? " has" : "s have"} unknown stored file size. Check object storage before relying on the byte totals.
+                    </p>
+                  )}
                   <p className="text-sm text-muted-foreground">Warning at {usage.warningFraction * 100}% of budget. Unmeasured older media is not included in byte totals.</p>
                   {usage.byCreator.map(row => (
                     <p key={row.creatorId} className={Number(row.bytes) >= usage.policy.creatorBytes * usage.warningFraction || Number(row.count) >= usage.policy.creatorCount * usage.warningFraction ? "text-amber-600" : ""}>
@@ -341,11 +402,6 @@ export default function AdminDashboard() {
                                 alt={item.caption || "Media thumbnail"} 
                                 className="object-cover w-full h-full"
                               />
-                              {item.isPremium && (
-                                <Badge className="absolute top-2 right-2 bg-primary text-black">
-                                  Premium
-                                </Badge>
-                              )}
                             </div>
                             <CardContent className="p-3">
                               <p className="text-sm truncate">{item.caption || "No caption"}</p>
@@ -387,7 +443,111 @@ export default function AdminDashboard() {
           <TabsContent value="series" className="mt-6">
             <SeriesManager />
           </TabsContent>
+          <TabsContent value="safety" className="mt-6 space-y-6">
+            {safetyQuery.isLoading ? <Card><CardContent className="py-8">Loading pending safety reviews…</CardContent></Card> :
+              safetyQuery.isError ? <Card><CardContent className="flex flex-wrap items-center gap-3 py-6"><p role="alert">Safety queue could not be loaded.</p><Button variant="outline" onClick={() => void safetyQuery.refetch()}>Retry</Button></CardContent></Card> :
+                <>
+                  <Card>
+                    <CardContent className="pt-5">
+                      <h2 className="mb-4 text-lg font-semibold"><ShieldAlert className="mr-2 inline h-5 w-5" />Media awaiting review ({safetyQuery.data?.media.length || 0})</h2>
+                      {!safetyQuery.data?.media.length && <p className="text-sm text-muted-foreground">No media requires review.</p>}
+                      <div className="space-y-4">{safetyQuery.data?.media.map(item => {
+                        const media = item as MediaItem & {
+                          safetyStatus?: string;
+                          photographer?: string | null;
+                          contentVersion: number | string;
+                          safetyPolicy: unknown;
+                        };
+                        const tags = Array.isArray(item.tags) ? item.tags : [];
+                        return (
+                          <article key={item.id} className="grid min-w-0 gap-4 rounded border border-border p-3 sm:grid-cols-[minmax(180px,280px)_minmax(0,1fr)] sm:p-4">
+                            <div className="overflow-hidden rounded border border-border bg-black/20">
+                              <img
+                                src={item.thumbnail || item.url}
+                                alt={item.caption || `Safety review preview for media ${item.id}`}
+                                loading="lazy"
+                                className="aspect-video h-full max-h-64 w-full object-contain"
+                              />
+                            </div>
+                            <div className="min-w-0 space-y-2">
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <h3 className="font-semibold">{item.caption || "Untitled media"}</h3>
+                                <span className="text-xs text-muted-foreground">Media #{item.id} · Event #{item.eventId ?? "unassigned"}</span>
+                                <span className="text-xs text-muted-foreground">Safety: {media.safetyStatus || "unknown"}</span>
+                              </div>
+                              <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
+                                <dt className="text-muted-foreground">Photographer</dt><dd className="break-words">{media.photographer || "Not provided"}</dd>
+                                <dt className="text-muted-foreground">Tags</dt><dd className="break-words">{tags.length ? tags.join(", ") : "No tags"}</dd>
+                                <dt className="text-muted-foreground">Type</dt><dd>{item.type}</dd>
+                              </dl>
+                              {media.safetyStatus === "review" && (
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                  <Button size="sm" onClick={() => { setReviewReason(""); setReviewSelection({ kind: "media", id: item.id, decision: "approve", version: media.contentVersion, policy: media.safetyPolicy }); }}><ShieldCheck className="mr-1 h-4 w-4" />Approve</Button>
+                                  <Button size="sm" variant="destructive" onClick={() => { setReviewReason(""); setReviewSelection({ kind: "media", id: item.id, decision: "block", version: media.contentVersion, policy: media.safetyPolicy }); }}>Block</Button>
+                                </div>
+                              )}
+                            </div>
+                          </article>
+                        );
+                      })}</div>
+                    </CardContent>
+                  </Card>
+                  <Card><CardContent className="pt-5">
+                    <h2 className="mb-4 text-lg font-semibold"><ShieldAlert className="mr-2 inline h-5 w-5" />Events awaiting review ({safetyQuery.data?.events.length || 0})</h2>
+                    {!safetyQuery.data?.events.length && <p className="text-sm text-muted-foreground">No events require review.</p>}
+                    <div className="space-y-3">{safetyQuery.data?.events.map(event => {
+                      const details = event as Event & {
+                        safetyStatus?: string;
+                        round?: string | number | null;
+                        track?: string | null;
+                        contentVersion: number | string;
+                        safetyPolicy: unknown;
+                      };
+                      return (
+                        <article key={event.id} className="space-y-3 rounded border border-border p-3 sm:p-4">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <h3 className="font-semibold">{event.title}</h3>
+                            <p className="text-xs text-muted-foreground">Event #{event.id} · Safety: {details.safetyStatus || "unknown"}</p>
+                          </div>
+                          <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{event.description || "No description provided."}</p>
+                          <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
+                            <div className="flex gap-2"><dt className="text-muted-foreground">Round</dt><dd>{details.round || "—"}</dd></div>
+                            <div className="flex gap-2"><dt className="text-muted-foreground">Track</dt><dd>{details.track || "—"}</dd></div>
+                          </dl>
+                          <div className="flex flex-wrap gap-2">
+                            {details.safetyStatus === "review" && <>
+                              <Button size="sm" onClick={() => { setReviewReason(""); setReviewSelection({ kind: "events", id: event.id, decision: "approve", version: details.contentVersion, policy: details.safetyPolicy }); }}><ShieldCheck className="mr-1 h-4 w-4" />Approve</Button>
+                              <Button size="sm" variant="destructive" onClick={() => { setReviewReason(""); setReviewSelection({ kind: "events", id: event.id, decision: "block", version: details.contentVersion, policy: details.safetyPolicy }); }}>Block</Button>
+                            </>}
+                            {details.safetyStatus === "error" && <Button size="sm" variant="outline" disabled={retryEventSafety.isPending} onClick={() => retryEventSafety.mutate(event.id)}>Retry event safety check</Button>}
+                          </div>
+                        </article>
+                      );
+                    })}</div>
+                  </CardContent></Card>
+                </>}
+          </TabsContent>
         </Tabs>
+        <Dialog open={!!reviewSelection} onOpenChange={(open) => { if (!open) setReviewSelection(null); }}>
+          <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{reviewSelection?.decision === "block" ? "Block this item" : "Approve this item"}</DialogTitle>
+              <DialogDescription>Record the reason for this safety decision. The item will leave the pending review queue after it is saved.</DialogDescription>
+            </DialogHeader>
+            <label htmlFor="safety-review-reason" className="text-sm font-medium">Review reason</label>
+            <Textarea id="safety-review-reason" value={reviewReason} onChange={event => setReviewReason(event.target.value)} maxLength={2000} className="min-h-28" />
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" onClick={() => setReviewSelection(null)}>Cancel</Button>
+              <Button
+                variant={reviewSelection?.decision === "block" ? "destructive" : "default"}
+                disabled={!reviewSelection || !reviewReason.trim()}
+                onClick={() => reviewSelection && void reviewSafety(reviewSelection)}
+              >
+                {reviewSelection?.decision === "block" ? "Save block decision" : "Save approval"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
 
       <UploadModal

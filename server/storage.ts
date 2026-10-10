@@ -8,6 +8,7 @@ import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { deleteMediaObject } from "./media-storage";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
+import { creatorUsage, lockedCreatorBudget, publicEventPredicate, publicMediaPredicate } from "./beta-policy";
 
 type SafeUser = Omit<User, "password">;
 function objectKeys(item: { url: string; thumbnail: string }): string[] {
@@ -56,6 +57,7 @@ interface IStorage {
   // Media management
   getAllMediaItems(): Promise<MediaItem[]>;
   getMediaItems(eventId: number, page?: number, limit?: number): Promise<MediaItem[]>;
+  getPublicEventMediaItems(eventId: number, page?: number, limit?: number): Promise<MediaItem[]>;
   getMediaItem(id: number): Promise<MediaItem | undefined>;
   createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem>;
   updateMediaItem(id: number, mediaItem: Partial<InsertMediaItem>): Promise<MediaItem>;
@@ -166,13 +168,11 @@ class DatabaseStorage implements IStorage {
   }
 
   async createEvent(event: InsertEvent, entries?: EntryRow[]): Promise<Event> {
-    if (!entries?.length) {
-      const result = await db.insert(events).values(event).returning();
-      return result[0];
-    }
     return db.transaction(async tx => {
-      const [created] = await tx.insert(events).values(event).returning();
-      await tx.insert(eventEntries).values(entries.map(row => ({ ...row, eventId: created.id })));
+      if (event.creatorId) await lockedCreatorBudget(tx,event.creatorId,0,0,1);
+      const [created] = await tx.insert(events).values({...event,
+        ...(event.creatorId ? {visibility:"draft",safetyStatus:"error",safetyReason:"Safety check pending."} : {})}).returning();
+      if (entries?.length) await tx.insert(eventEntries).values(entries.map(row => ({ ...row, eventId: created.id })));
       return created;
     });
   }
@@ -191,7 +191,11 @@ class DatabaseStorage implements IStorage {
     }
     const result = await db
       .update(events)
-      .set({...event,...(changed?{referenceRevision:sql`${events.referenceRevision}+1`}:{})})
+      .set({...event,...(changed?{referenceRevision:sql`${events.referenceRevision}+1`}:{}),
+        ...(["title","description","round","track"].some(key=>key in event) ? {
+          contentVersion:sql`${events.contentVersion}+1`,safetyStatus:sql`case when ${events.creatorId} is not null then 'error' else ${events.safetyStatus} end`,
+          safetyReason:sql`case when ${events.creatorId} is not null then 'Safety check pending.' else ${events.safetyReason} end`,
+        } : {})})
       .where(eq(events.id, id))
       .returning();
 
@@ -226,14 +230,16 @@ class DatabaseStorage implements IStorage {
       }
 
       await db.transaction(async tx => {
+        if (eventExists[0].creatorId) await tx.execute(sql`select id from users where id=${eventExists[0].creatorId} for update`);
         await tx.execute(sql`select id from events where id = ${id} for update`);
-        const documents = await tx.select({key:referenceDocuments.sourceKey}).from(referenceDocuments)
+        const documents = await tx.select({key:referenceDocuments.sourceKey,bytes:referenceDocuments.storedBytes}).from(referenceDocuments)
           .where(eq(referenceDocuments.eventId,id));
-        for (const doc of documents) if (doc.key) await tx.insert(mediaCleanup).values({key:doc.key}).onConflictDoNothing();
-        const keys = await tx.select({ url: mediaItems.url, thumbnail: mediaItems.thumbnail })
+        for (const doc of documents) if (doc.key) await tx.insert(mediaCleanup).values({key:doc.key,creatorId:eventExists[0].creatorId,storedBytes:doc.bytes}).onConflictDoNothing();
+        const keys = await tx.select({ id:mediaItems.id,type:mediaItems.type,url: mediaItems.url, thumbnail: mediaItems.thumbnail,highBytes:mediaItems.highBytes,lowBytes:mediaItems.lowBytes })
           .from(mediaItems).where(eq(mediaItems.eventId, id));
         for (const row of keys) for (const key of objectKeys(row)) {
-          await tx.insert(mediaCleanup).values({ key }).onConflictDoNothing();
+          await tx.insert(mediaCleanup).values({ key,creatorId:eventExists[0].creatorId,storedBytes:row.url.endsWith(key)?row.highBytes:row.lowBytes,
+            photoToken:row.type==="image"?`item:${row.id}`:null }).onConflictDoNothing();
         }
         await tx.delete(mediaItems).where(eq(mediaItems.eventId, id));
         await tx.delete(events).where(eq(events.id, id));
@@ -308,6 +314,7 @@ class DatabaseStorage implements IStorage {
     return db.select(mediaListColumns).from(mediaItems)
       .leftJoin(events, eq(mediaItems.eventId, events.id))
       .where(and(
+        publicEventPredicate(), publicMediaPredicate(),
         or(eq(events.isPremium, false), sql`${events.id} is null`),
         ...(type ? [eq(mediaItems.type, type)] : []),
         ...terms.map(term=>or(
@@ -330,6 +337,14 @@ class DatabaseStorage implements IStorage {
       .where(eq(mediaItems.eventId, eventId)).orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit);
   }
 
+  async getPublicEventMediaItems(eventId: number, page = 1, limit = 48): Promise<MediaItem[]> {
+    return db.select(mediaListColumns).from(mediaItems)
+      .innerJoin(events,eq(mediaItems.eventId,events.id))
+      .where(and(eq(mediaItems.eventId,eventId),eq(events.isPremium,false),
+        publicEventPredicate(),publicMediaPredicate()))
+      .orderBy(desc(mediaItems.id)).limit(limit).offset((page-1)*limit);
+  }
+
   async getMediaItem(id: number): Promise<MediaItem | undefined> {
     const result = await db
       .select()
@@ -340,14 +355,20 @@ class DatabaseStorage implements IStorage {
   }
 
   async createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem> {
-    const result = await db.insert(mediaItems).values(mediaItem).returning();
+    const event = mediaItem.eventId ? await this.getEvent(mediaItem.eventId) : undefined;
+    const result = await db.insert(mediaItems).values({...mediaItem,
+      ...(event?.creatorId?{safetyStatus:"error",safetyReason:"Safety check pending."}:{})}).returning();
     return result[0];
   }
 
   async updateMediaItem(id: number, mediaItem: Partial<InsertMediaItem>): Promise<MediaItem> {
     const result = await db
       .update(mediaItems)
-      .set(mediaItem)
+      .set({...mediaItem,
+        contentVersion:sql`${mediaItems.contentVersion}+1`,
+        safetyStatus:sql`case when exists(select 1 from events e where e.id=${mediaItems.eventId} and e.creator_id is not null) then 'error' else ${mediaItems.safetyStatus} end`,
+        safetyReason:sql`case when exists(select 1 from events e where e.id=${mediaItems.eventId} and e.creator_id is not null) then 'Safety check pending.' else ${mediaItems.safetyReason} end`,
+      })
       .where(eq(mediaItems.id, id))
       .returning();
 
@@ -362,8 +383,11 @@ class DatabaseStorage implements IStorage {
     await db.transaction(async tx => {
       const [item] = await tx.select().from(mediaItems).where(eq(mediaItems.id, id));
       if (!item) return;
+      const event = item.eventId ? await tx.select().from(events).where(eq(events.id,item.eventId)).then(rows=>rows[0]) : undefined;
+      if (event?.creatorId) await tx.execute(sql`select id from users where id=${event.creatorId} for update`);
       if (item.eventId) await tx.execute(sql`select id from events where id = ${item.eventId} for update`);
-      for (const key of objectKeys(item)) await tx.insert(mediaCleanup).values({ key }).onConflictDoNothing();
+      for (const key of objectKeys(item)) await tx.insert(mediaCleanup).values({ key,creatorId:event?.creatorId,storedBytes:item.url.endsWith(key)?item.highBytes:item.lowBytes,
+        photoToken:item.type==="image"?`item:${item.id}`:null }).onConflictDoNothing();
       await tx.delete(mediaItems).where(eq(mediaItems.id, id));
     });
     void this.cleanupObjects().catch(error => console.error("Media cleanup failed:", error));
@@ -380,18 +404,20 @@ class DatabaseStorage implements IStorage {
   async topMedia(limit: number, creator?: number | null): Promise<MediaItem[]> {
     return db.select(mediaListColumns).from(mediaItems)
       .leftJoin(events, eq(mediaItems.eventId, events.id))
-      .where(and(eq(mediaItems.isPremium, false), or(eq(events.isPremium, false), sql`${events.id} is null`),
+      .where(and(publicEventPredicate(), publicMediaPredicate(), eq(mediaItems.isPremium, false), or(eq(events.isPremium, false), sql`${events.id} is null`),
         ...(creator === null ? [sql`${events.creatorId} is null`] : creator === undefined ? [sql`${events.creatorId} is not null`] : [eq(events.creatorId, creator)])))
       .orderBy(desc(mediaItems.downloadCount), desc(mediaItems.id)).limit(limit);
   }
 
-  async reserveMedia(id: string, eventId: number, creatorId: number | null, bytes: number, storageKey: string, thumbnailKey: string): Promise<void> {
+  async reserveMedia(id: string, eventId: number, creatorId: number | null, bytes: number, storageKey: string, thumbnailKey: string, adminUpload = false): Promise<void> {
     await db.transaction(async tx => {
       // Lock the creator first, then the event. Serializes budgets across events
       // and across app instances; the reservation remains until commit/failure.
       if (creatorId) await tx.execute(sql`select id from users where id = ${creatorId} for update`);
-      const event = await tx.execute(sql`select id from events where id = ${eventId} for update`);
+      if (creatorId && !adminUpload) await lockedCreatorBudget(tx,creatorId,bytes,1);
+      const event = await tx.execute(sql`select id,creator_id from events where id = ${eventId} for update`);
       if (!event.rows.length) throw new Error("Event no longer exists");
+      if ((event.rows[0].creator_id ?? null)!==creatorId) throw new Error("Event owner changed before upload");
       const usage = async (scope: "event" | "creator") => {
         const filter = scope === "event" ? sql`m.event_id = ${eventId}` : sql`e.creator_id = ${creatorId}`;
         const pending = scope === "event" ? sql`event_id = ${eventId}` : sql`creator_id = ${creatorId}`;
@@ -408,7 +434,7 @@ class DatabaseStorage implements IStorage {
       const eventUsage = await usage("event");
       if (eventUsage.bytes + bytes > mediaPolicy.eventBytes || eventUsage.count + 1 > mediaPolicy.eventCount)
         throw new MediaLimitError("Event storage budget exceeded. Remove media or contact an administrator.");
-      if (creatorId) {
+      if (creatorId && adminUpload) {
         const creatorUsage = await usage("creator");
         if (creatorUsage.bytes + bytes > mediaPolicy.creatorBytes || creatorUsage.count + 1 > mediaPolicy.creatorCount)
           throw new MediaLimitError("Creator storage budget exceeded. Remove media or contact an administrator.");
@@ -417,7 +443,7 @@ class DatabaseStorage implements IStorage {
     });
   }
 
-  async finishMedia(id: string, mediaItem: InsertMediaItem, nextcloudFileId?: number, workerToken?: string, requestAnalysis = false): Promise<MediaItem> {
+  async finishMedia(id: string, mediaItem: InsertMediaItem, nextcloudFileId?: number, workerToken?: string, requestAnalysis = false, _community = false): Promise<MediaItem> {
     return db.transaction(async tx => {
       if (workerToken) {
         const [owner] = await tx.select().from(nextcloudJobs)
@@ -427,11 +453,19 @@ class DatabaseStorage implements IStorage {
       await tx.execute(sql`select id from media_reservations where id = ${id} for update`);
       const [reservation] = await tx.select().from(mediaReservations).where(eq(mediaReservations.id, id));
       if (!reservation) throw new Error("Upload reservation has expired");
-      const [item] = await tx.insert(mediaItems).values(mediaItem).returning();
+      if (mediaItem.eventId!==reservation.eventId) throw new Error("Upload event does not match its reservation");
+      const community = !!reservation.creatorId;
+      const [item] = await tx.insert(mediaItems).values({...mediaItem,
+        manualTags:mediaItem.tags || [],
+        ...(community ? {safetyStatus:"error",safetyReason:"Safety check pending."} : {})}).returning();
       if (requestAnalysis) {
         await tx.execute(sql`select pg_advisory_xact_lock(761020)`);
         const pending = await tx.execute(sql`select count(*)::int as count from media_analysis_jobs where status in ('queued','running')`);
-        const ready = isAITaggingConfigured() && Number(pending.rows[0]?.count) < 1000;
+        const ownedPending = reservation.creatorId ? await tx.execute(sql`select count(*)::int as count
+          from media_analysis_jobs j join media_items m on m.id=j.media_id join events e on e.id=m.event_id
+          where e.creator_id=${reservation.creatorId} and j.status in ('queued','running')`) : undefined;
+        const ready = isAITaggingConfigured() && Number(pending.rows[0]?.count) < 1000 &&
+          (!ownedPending || Number(ownedPending.rows[0]?.count)<100);
         // Saving media and requesting analysis commit together. A full queue or
         // unavailable provider must not discard a successful transfer.
         await tx.insert(mediaAnalysisJobs).values({ mediaId: item.id,
@@ -454,7 +488,8 @@ class DatabaseStorage implements IStorage {
       const [reservation] = await tx.select().from(mediaReservations).where(eq(mediaReservations.id, id));
       if (!reservation) return;
       for (const key of [reservation.storageKey, reservation.thumbnailKey])
-        await tx.insert(mediaCleanup).values({ key }).onConflictDoNothing();
+        await tx.insert(mediaCleanup).values({ key,creatorId:reservation.creatorId,
+          photoToken:reservation.storageKey.endsWith(".webp")?`reservation:${reservation.id}`:null }).onConflictDoNothing();
       await tx.delete(mediaReservations).where(eq(mediaReservations.id, id));
     });
   }
@@ -465,13 +500,15 @@ class DatabaseStorage implements IStorage {
       .where(eq(mediaItems.id, id));
   }
 
-  async cleanupObjects(): Promise<void> {
+  async cleanupObjects(creatorIds?: readonly number[]): Promise<void> {
+    if (creatorIds?.length===0) return;
+    const scope = creatorIds ? sql`creator_id in (${sql.join(creatorIds.map(id=>sql`${id}`),sql`,`)})` : undefined;
     // Expired uploads are marked for cleanup after an hour. No successful
     // upload may still use the reservation by then (see route timeout policy).
     const expired = await db.select().from(mediaReservations)
-      .where(lt(mediaReservations.createdAt, new Date(Date.now() - 60 * 60 * 1000))).limit(100);
+      .where(and(lt(mediaReservations.createdAt, new Date(Date.now() - 60 * 60 * 1000)),scope)).limit(100);
     for (const reservation of expired) await this.abandonMedia(reservation.id);
-    const pending = await db.select().from(mediaCleanup).orderBy(mediaCleanup.createdAt).limit(100);
+    const pending = await db.select().from(mediaCleanup).where(scope).orderBy(mediaCleanup.createdAt).limit(100);
     for (const item of pending) {
       try {
         await db.transaction(async tx => {

@@ -6,6 +6,7 @@ import session from "express-session";
 import { storage } from "./storage";
 import { publicSiteUrl } from "./seo";
 import { verifyRecognitionSchema } from "./recognition-schema-readiness";
+import { visibleEvents, eventPublic, mediaPublic } from "./beta-access";
 
 const app = express();
 
@@ -113,10 +114,10 @@ process.on('unhandledRejection', (reason) => {
     const base = publicSiteUrl();
     if (!base) return res.status(404).end();
     try {
-      const events = (await storage.getEvents()).filter(event => !event.isPremium);
+      const events = (await visibleEvents(await storage.getEvents())).filter(event => !event.isPremium);
       const paths = ["/sitemap-pages.xml", ...events.map(event => `/sitemap-media/${event.id}.xml`)];
       const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths.map(p => `  <sitemap><loc>${base}${p}</loc></sitemap>`).join("\n")}\n</sitemapindex>`;
-      res.setHeader("Cache-Control", "public, max-age=600");
+      res.setHeader("Cache-Control", "private, no-store");
       res.type("application/xml").send(xml);
     } catch (error) {
       console.error("Sitemap generation failed:", error);
@@ -128,8 +129,8 @@ process.on('unhandledRejection', (reason) => {
     if (!base) return res.status(404).end();
     try {
       const paths = ["/", "/current-events", "/upcoming-events", "/archive-events",
-        ...(await storage.getEvents()).filter(event => !event.isPremium).map(event => `/events/${event.id}`)];
-      res.setHeader("Cache-Control", "public, max-age=600");
+        ...(await visibleEvents(await storage.getEvents())).filter(event => !event.isPremium).map(event => `/events/${event.id}`)];
+      res.setHeader("Cache-Control", "private, no-store");
       res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths.map(p => `  <url><loc>${base}${p}</loc></url>`).join("\n")}\n</urlset>`);
     } catch (error) {
       console.error("Page sitemap generation failed:", error);
@@ -143,14 +144,14 @@ process.on('unhandledRejection', (reason) => {
     if (!Number.isSafeInteger(id) || id < 1) return res.status(404).end();
     try {
       const event = await storage.getEvent(id);
-      if (!event || event.isPremium) return res.status(404).end();
+      if (!event || event.isPremium || !await eventPublic(event)) return res.status(404).end();
       const paths: string[] = [];
       for (let page = 1; page <= 105; page++) {
         const items = await storage.getMediaItems(id, page);
-        for (const item of items) if (item.type === "image" && !item.isPremium) paths.push(`/media/${item.id}`);
+        for (const item of items) if (item.type === "image" && !item.isPremium && await mediaPublic(item,event)) paths.push(`/media/${item.id}`);
         if (items.length < 48) break;
       }
-      res.setHeader("Cache-Control", "public, max-age=600");
+      res.setHeader("Cache-Control", "private, no-store");
       res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths.map(p => `  <url><loc>${base}${p}</loc></url>`).join("\n")}\n</urlset>`);
     } catch (error) {
       console.error("Media sitemap generation failed:", error);

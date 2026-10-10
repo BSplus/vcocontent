@@ -16,8 +16,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect } from "react";
-import { Checkbox } from "@/components/ui/checkbox";
+import { useEffect, useRef, useState } from "react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 // Create schemas for login/register
 const loginSchema = z.object({
@@ -29,7 +29,6 @@ const registerSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
   email: z.string().email("Invalid email format"),
   password: z.string().min(8, "Password must be at least 8 characters long"),
-  requestCreator: z.boolean().optional(),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -38,6 +37,10 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 export default function AuthPage() {
   const { user, loginMutation, registerMutation } = useAuth();
   const { toast } = useToast();
+  const [verificationMessage, setVerificationMessage] = useState("");
+  const [verificationBusy, setVerificationBusy] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
+  const verificationInProgress = useRef(false);
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -46,19 +49,52 @@ export default function AuthPage() {
 
   const registerForm = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { 
-      username: "", 
-      email: "", 
-      password: "", 
-      requestCreator: false 
-    }
+    defaultValues: { username: "", email: "", password: "" }
   });
+
+  // Verification tokens are intentionally POSTed, never consumed through a GET link.
+  useEffect(() => {
+    const match = window.location.hash.match(/(?:^#|&)verify=([^&]+)/);
+    if (!match) return;
+    verificationInProgress.current = true;
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    setVerificationBusy(true);
+    let token: string;
+    try {
+      token = decodeURIComponent(match[1]);
+    } catch {
+      setVerificationMessage("The verification link is invalid. Request a new email confirmation link.");
+      setVerificationBusy(false);
+      return;
+    }
+    apiRequest("POST", "/api/email-verification/confirm", { token })
+      .then(async response => {
+        const result = await response.json().catch(() => ({}));
+        setVerificationMessage(result.message || "Email verified. You can now request creator access.");
+        void queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      })
+      .catch(error => setVerificationMessage(error instanceof Error ? error.message : "Email verification failed."))
+      .finally(() => setVerificationBusy(false));
+  }, []);
+
+  const sendVerification = async () => {
+    setVerificationBusy(true);
+    setVerificationMessage("");
+    try {
+      await apiRequest("POST", "/api/email-verification/send");
+      setVerificationMessage("Verification email sent. Check your inbox for the confirmation link.");
+    } catch (error) {
+      setVerificationMessage(error instanceof Error ? error.message : "Could not send verification email.");
+    } finally {
+      setVerificationBusy(false);
+    }
+  };
 
   // Reload after authentication so the destination reads the established session.
   useEffect(() => {
     let redirectTimeout: NodeJS.Timeout;
     
-    if (user) {
+    if (user && !verificationInProgress.current) {
       const destination = returnAfterAuth(new URLSearchParams(window.location.search).get("next"), user);
       redirectTimeout = setTimeout(() => {
         window.location.replace(destination);
@@ -88,19 +124,10 @@ export default function AuthPage() {
   };
 
   const onRegisterSubmit = async (formData: RegisterFormData) => {
-    console.log('Register form submitted:', { 
-      username: formData.username, 
-      requestCreator: formData.requestCreator 
-    });
     try {
-      console.log('Starting registration mutation...');
       await registerMutation.mutateAsync(formData);
-      if (formData.requestCreator) {
-        toast({
-          title: "Creator Account Pending",
-          description: "Your creator account request has been submitted and is pending approval.",
-        });
-      }
+      setVerificationEmail(formData.email);
+      setVerificationMessage("Account created. Verify your email before requesting creator access.");
     } catch (error) {
       console.error('Registration error:', error);
       toast({
@@ -118,7 +145,7 @@ export default function AuthPage() {
           <CardHeader>
             <CardTitle>VCO Media Platform</CardTitle>
             <CardDescription>
-              Discover sim racing media or apply to become a creator
+          Discover VCO racing media or publish your community photos
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -225,27 +252,6 @@ export default function AuthPage() {
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center space-x-2 mt-4">
-                    <Checkbox 
-                      id="request-creator" 
-                      {...registerForm.register("requestCreator")}
-                      disabled={registerMutation.isPending}
-                    />
-                    <Label htmlFor="request-creator" className="font-normal">
-                      Register as Content Creator
-                    </Label>
-                  </div>
-                  {registerForm.watch("requestCreator") && (
-                    <div className="p-3 rounded-md bg-muted text-sm">
-                      <p>Creator benefits:</p>
-                      <ul className="list-disc pl-5 mt-1 space-y-1">
-                        <li>Upload photos and videos from racing events</li>
-                        <li>Share your work with the sim racing community</li>
-                        <li>Get recognized in the sim racing community</li>
-                      </ul>
-                      <p className="mt-2 text-muted-foreground text-xs">Your creator application will be reviewed by VCO admins.</p>
-                    </div>
-                  )}
                   <Button 
                     type="submit" 
                     className="w-full"
@@ -257,14 +263,23 @@ export default function AuthPage() {
                         Registering...
                       </>
                     ) : (
-                      registerForm.watch("requestCreator") 
-                        ? 'Register as Creator' 
-                        : 'Register as User'
+                      'Create account'
                     )}
                   </Button>
                 </form>
               </TabsContent>
             </Tabs>
+            {(verificationBusy || verificationMessage || (user && !user.emailVerifiedAt)) && (
+              <div className="mt-5 space-y-3 rounded-md border border-primary/30 bg-primary/5 p-4" role="status">
+                <p className="text-sm">{verificationMessage || (verificationBusy ? "Confirming your email…" : "Verify your email to continue to creator access.")}</p>
+                {user && !user.emailVerifiedAt && (
+                  <Button type="button" variant="outline" disabled={verificationBusy} onClick={() => void sendVerification()}>
+                    {verificationBusy ? "Working…" : "Send verification email"}
+                  </Button>
+                )}
+                {verificationEmail && <p className="text-xs text-muted-foreground">Sent to {verificationEmail}</p>}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

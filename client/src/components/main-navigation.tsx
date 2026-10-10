@@ -16,6 +16,8 @@ export default function MainNavigation() {
   const { user, logoutMutation } = useAuth();
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const betaUser = user as (typeof user & { suspended?: boolean }) | null;
+  const creatorAccessAvailable = Boolean(betaUser && !betaUser.suspended && betaUser.creatorStatus !== "rejected");
   const isActive = (href: string) => location === href;
   const itemClasses = (href: string) =>
     `relative inline-flex min-h-11 items-center text-xs font-bold uppercase tracking-[0.09em] transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
@@ -40,7 +42,7 @@ export default function MainNavigation() {
               {location === link.href && <span className="absolute inset-x-0 bottom-1 h-0.5 bg-primary" />}
             </Link>
           ))}
-          {(user?.isCreator || user?.isAdmin || user?.creatorStatus === "approved") && <Link href="/creator/dashboard" className={itemClasses("/creator/dashboard")}>Creator dashboard</Link>}
+          {creatorAccessAvailable && (user?.isCreator || user?.isAdmin || user?.creatorStatus === "approved") && <Link href="/creator/dashboard" className={itemClasses("/creator/dashboard")}>Creator dashboard</Link>}
           {user?.isAdmin && (
             <>
               <Link href="/admin/dashboard" className={itemClasses("/admin/dashboard")}><Settings className="mr-1.5 h-4 w-4" />Admin</Link>
@@ -59,7 +61,7 @@ export default function MainNavigation() {
             </Button>
           ) : (
             <>
-              {!user.isCreator && !user.isAdmin && user.creatorStatus !== "pending" && user.creatorStatus !== "approved" && (
+              {!user.isCreator && !user.isAdmin && user.creatorStatus !== "approved" && (
                 <Button variant="outline" asChild className="h-10 border-accent/60 text-accent hover:bg-accent/10">
                   <Link href="/creator/apply">Become a creator</Link>
                 </Button>
@@ -97,7 +99,7 @@ export default function MainNavigation() {
                 {link.label}{location === link.href && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />}
               </Link>
             ))}
-            {(user?.isCreator || user?.isAdmin || user?.creatorStatus === "approved") && <Link href="/creator/dashboard" onClick={closeMenu} className={`${itemClasses("/creator/dashboard")} col-span-2`}>Creator dashboard</Link>}
+            {creatorAccessAvailable && (user?.isCreator || user?.isAdmin || user?.creatorStatus === "approved") && <Link href="/creator/dashboard" onClick={closeMenu} className={`${itemClasses("/creator/dashboard")} col-span-2`}>Creator dashboard</Link>}
             {user?.isAdmin && (
               <>
                 <Link href="/admin/dashboard" onClick={closeMenu} className={`${itemClasses("/admin/dashboard")} col-span-2`}><Settings className="mr-2 h-4 w-4" />Admin dashboard</Link>
@@ -106,7 +108,7 @@ export default function MainNavigation() {
             )}
             <div className="col-span-2 flex flex-wrap gap-2 pt-3">
               {!user && <Button asChild variant="outline" onClick={closeMenu}><Link href="/auth">Sign in / Register</Link></Button>}
-              {user && !user.isCreator && !user.isAdmin && user.creatorStatus !== "pending" && user.creatorStatus !== "approved" && <Button asChild variant="outline" onClick={closeMenu}><Link href="/creator/apply">Become a creator</Link></Button>}
+              {user && !user.isCreator && !user.isAdmin && user.creatorStatus !== "approved" && <Button asChild variant="outline" onClick={closeMenu}><Link href="/creator/apply">Become a creator</Link></Button>}
               {user && <Button variant="ghost" onClick={() => { closeMenu(); logoutMutation.mutate(); }} disabled={logoutMutation.isPending}>{logoutMutation.isPending ? "Signing out…" : "Log out"}</Button>}
             </div>
           </div>

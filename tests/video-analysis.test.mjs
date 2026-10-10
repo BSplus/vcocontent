@@ -15,12 +15,13 @@ import { mediaAnalysisJobs, events, referenceDocuments } from "../shared/schema.
 import { frameTarget, sampleVideo, cleanupVideoTemps, videoTool } from "../server/video-sampling.ts";
 import { mediaPolicy } from "../server/media-policy.ts";
 import { aggregateVideo, recognizeVideoBatch } from "../server/video-recognition.ts";
-import { enqueueAnalysis, analysisStatus, drainAnalysisQueue, stopAnalysisWorker, itemAnalysisFingerprint } from "../server/analysis-jobs.ts";
+import { enqueueAnalysis, analysisStatus, drainAnalysisQueue, stopAnalysisWorker, itemAnalysisFingerprint, setAnalysisQueueTestScope } from "../server/analysis-jobs.ts";
 import sharp from "sharp";
 
 const execute = promisify(execFile);
 const directory = await mkdtemp(path.join(tmpdir(), "video-test-"));
 const albums = [];
+const ownedMediaIds = [];
 const realFetch = globalThis.fetch;
 const originalReader = Client.prototype.downloadAsStream;
 const previousBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
@@ -69,10 +70,14 @@ async function media() {
   const album = await storage.createEvent({ title: "Disposable video test", description: "Synthetic clip",
     date: new Date(), isPremium: false });
   albums.push(album.id);
-  return storage.createMediaItem({ eventId: album.id, type: "video", url: url(), thumbnail: "generic-poster",
+  const item=await storage.createMediaItem({ eventId: album.id, type: "video", url: url(), thumbnail: "generic-poster",
     caption: "Approved caption", tags: ["manual"], isPremium: false });
+  ownedMediaIds.push(item.id);
+  setAnalysisQueueTestScope([],ownedMediaIds);
+  return item;
 }
 test.before(() => {
+  setAnalysisQueueTestScope([]);
   Client.prototype.downloadAsStream = () => Readable.from([videoBytes]);
   mockProvider();
 });
@@ -169,6 +174,24 @@ test("aggregation retains multiple numbers, clears contradictory identities and 
   assert.ok(!result.tags.includes("Dry Track"));
   const agreed = aggregateVideo([frame(["Day"], [observation("089")]), frame(["Day"], [observation("89")])]);
   assert.equal(agreed.vehicles.length, 1); assert.equal(agreed.vehicles[0].drivers, "");
+});
+test("a deterministic corrupt original fails once without AI calls or changing its original/manual metadata", async () => {
+  videoBytes=Buffer.from("not a decodable container");
+  const item=await media();
+  const before=requests;
+  await enqueueAnalysis(item);
+  await until(async()=> (await analysisStatus(item.id)).status==="failed");
+  const job=await analysisStatus(item.id);
+  assert.equal(job.attempts,1);
+  assert.match(job.error,/probe \(INPUT_UNSUPPORTED\)/);
+  assert.equal(requests,before,"decoder rejection must not call the provider");
+  assert.equal(await drainAnalysisQueue(),false,"permanent failure must not be retried automatically");
+  const saved=await storage.getMediaItem(item.id);
+  assert.equal(saved.url,item.url);
+  assert.equal(saved.thumbnail,item.thumbnail);
+  assert.equal(saved.caption,item.caption);
+  assert.deepEqual(saved.tags,item.tags);
+  assert.deepEqual(videoBytes,Buffer.from("not a decodable container"));
 });
 test("provider batches preserve timestamps, token usage and readability gates", async () => {
   videoBytes = await clip(20);

@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/use-auth";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,19 +19,26 @@ export default function CreatorApplicationPage() {
   const { user } = useAuth();
   const [_, setLocation] = useLocation();
   const { toast } = useToast();
+  const [verificationBusy, setVerificationBusy] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState("");
+  useEffect(()=>{
+    if (user?.emailVerifiedAt && !user.suspended && user.creatorStatus!=="rejected" &&
+      (user.isCreator || user.isAdmin || user.creatorStatus==="approved")) setLocation("/creator/dashboard");
+  },[user,setLocation]);
 
   const applyMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/creator/request");
       return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (activatedUser) => {
+      // Update the role before entering a guarded route, not after a refetch.
+      queryClient.setQueryData(["/api/user"],activatedUser);
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
       toast({
-        title: "Application Submitted",
-        description: "Your creator application has been submitted for review.",
+        title: "Creator access activated",
+        description: "Your account can now create photo galleries for the VCO community archive.",
       });
-      setLocation("/");
     },
     onError: (error: Error) => {
       toast({
@@ -45,11 +53,40 @@ export default function CreatorApplicationPage() {
     setLocation("/auth");
     return null;
   }
+  const sendVerification = async () => {
+    setVerificationBusy(true);
+    setVerificationMessage("");
+    try {
+      await apiRequest("POST", "/api/email-verification/send");
+      setVerificationMessage("Verification email sent. Check your inbox for the confirmation link.");
+    } catch (error) {
+      setVerificationMessage(error instanceof Error ? error.message : "Could not send verification email.");
+    } finally {
+      setVerificationBusy(false);
+    }
+  };
+  const betaUser = user as typeof user & { emailVerifiedAt?: string | null; creatorStatus?: string; suspended?: boolean };
+  if (!betaUser.emailVerifiedAt) {
+    return (
+      <div className="min-h-[100dvh] bg-background px-4 py-10">
+        <Card className="mx-auto max-w-xl">
+          <CardHeader><CardTitle>Verify your email first</CardTitle><CardDescription>Creator access is available after your email address is confirmed.</CardDescription></CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">Confirm your email before activating creator access. We can send a new confirmation link to your account email.</p>
+            <Button variant="outline" disabled={verificationBusy} onClick={() => void sendVerification()}>
+              {verificationBusy ? "Sending…" : "Resend verification email"}
+            </Button>
+            {verificationMessage && <p role="status" className="text-sm">{verificationMessage}</p>}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
       <main className="container mx-auto px-4 py-8">
-        <Button variant="ghost" asChild className="mb-8">
+          <Button variant="ghost" asChild className="mb-8">
           <Link href="/">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Home
@@ -60,36 +97,35 @@ export default function CreatorApplicationPage() {
           <CardHeader>
             <CardTitle>Become a VCO Creator</CardTitle>
             <CardDescription>
-              Join our community of creators and share your sim racing content with the world.
+              Contribute community racing photography to the VCO archive.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="prose prose-invert">
-              <h3>Creator Benefits</h3>
-              <ul>
-                <li>Share your sim racing content with a dedicated audience</li>
-                <li>Share your photos and videos with the sim racing community</li>
-                <li>Build your personal brand in the sim racing community</li>
-                <li>Access advanced analytics and insights</li>
-              </ul>
-
-              <h3>Requirements</h3>
-              <ul>
-                <li>High-quality sim racing content (photos or videos)</li>
-                <li>Regular content uploads</li>
-                <li>Professional conduct and community engagement</li>
-              </ul>
+            <div className="space-y-5 text-sm">
+              <p>Creator access lets you upload and manage your own community event galleries. New galleries remain private drafts until you publish them.</p>
+              <div className="rounded-md border border-border bg-muted/40 p-4">
+                <h3 className="mb-2 text-base">Public beta limits</h3>
+                <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                  <li>500 MB storage</li><li>5 galleries</li><li>1,000 photos total</li><li>5 MB per photo</li><li>Photos only; video uploads are unavailable</li>
+                </ul>
+              </div>
+              <p className="text-muted-foreground">Future creator earnings are planned. No dates or pricing have been announced.</p>
+              {(betaUser.creatorStatus === "rejected" || betaUser.suspended) && (
+                <p role="alert" className="rounded border border-destructive/40 bg-destructive/5 p-3 text-destructive">
+                  {betaUser.suspended ? "Creator access is currently suspended. Contact VCO support for assistance." : "This creator request was declined. Please contact VCO support if you believe this is an error."}
+                </p>
+              )}
             </div>
 
             <Button 
               className="w-full"
               onClick={() => applyMutation.mutate()}
-              disabled={applyMutation.isPending}
+              disabled={applyMutation.isPending || betaUser.creatorStatus === "rejected" || betaUser.suspended}
             >
               {applyMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                'Apply Now'
+                'Activate creator access'
               )}
             </Button>
           </CardContent>

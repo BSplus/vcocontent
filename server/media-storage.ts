@@ -167,14 +167,16 @@ export async function uploadMedia(
   file: Express.Multer.File,
   type?: MediaType,
   keys?: { storageKey: string; thumbnailKey: string },
+  beforePersist?: (bytes: number) => Promise<void>,
 ): Promise<StoredMedia> {
-  return withMediaWorkBudget(() => performUploadMedia(file, type, keys));
+  return withMediaWorkBudget(() => performUploadMedia(file, type, keys,beforePersist));
 }
 
 async function performUploadMedia(
   file: Express.Multer.File,
   type?: MediaType,
   keys?: { storageKey: string; thumbnailKey: string },
+  beforePersist?: (bytes: number) => Promise<void>,
 ): Promise<StoredMedia> {
   const tempPaths = new Set<string>([file.path]);
   let generatedKeys: { storageKey: string; thumbnailKey: string } | undefined;
@@ -222,9 +224,11 @@ async function performUploadMedia(
       if (!thumb.length || thumb.length >= 100 * 1024) throw new MediaLimitError("Thumbnail cannot fit the 100 KiB budget");
       await writeFile(thumbnailPath, thumb);
       thumbnailBytes = thumb.length;
+      if (beforePersist) await beforePersist(storedBytes+thumbnailBytes);
       await uploadFromFilename(storageKey, displayPath);
       await uploadFromFilename(thumbnailKey, thumbnailPath);
     } else {
+      if (beforePersist) await beforePersist(file.size+100*1024);
       await uploadFromFilename(storageKey, file.path);
       // There is no video-frame extractor in this app yet. Save a small,
       // generic poster rather than falsely presenting an analyzed frame.

@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
+import { takeBetaRate } from "./beta-policy";
+import { reviewMediaSafety } from "./content-safety";
 import { mediaAnalysisJobs, mediaItems, events } from "@shared/schema";
 import { analysisImageInput, recognitionImageInput } from "./image-analysis";
 import { categorizeContent, generateTagsForImage, isAITaggingConfigured } from "./utils/ai-tagger";
@@ -9,6 +11,7 @@ import { identifyEntries } from "./reference-matching";
 import { withVisionBudget, VisionBusy } from "./ai-budget";
 import { sampleVideo, SAMPLING_VERSION, cleanupVideoTemps } from "./video-sampling";
 import { aggregateVideo, recognizeVideoBatch, type VideoEvidence } from "./video-recognition";
+import { classifyVideoFailure, videoFailureRecord, type VideoFailureStage } from "./video-failures";
 
 // Database-wide budget, including multiple server processes. SDK retries are
 // disabled: only this queue owns retry/backoff and the persisted attempt count.
@@ -54,6 +57,19 @@ export async function enqueueAnalysis(item: Item, options: boolean | { retry?: b
     if (existing && (existing.status === "queued" || existing.status === "running")) return;
     if (existing?.fingerprint === fingerprint && !settings.reanalyse &&
         (!settings.retry || existing.status !== "failed")) return;
+    const creator = await tx.execute(sql`select e.creator_id,u.is_admin from media_items m join events e on e.id=m.event_id
+      left join users u on u.id=e.creator_id where m.id=${item.id}`);
+    const owner = creator.rows[0];
+    if (owner?.creator_id && !owner.is_admin) {
+      const hourly = Number(process.env.BETA_MANUAL_ANALYSES_PER_HOUR || 12);
+      if (!Number.isSafeInteger(hourly) || hourly<1) throw new AnalysisUnavailable("Analysis fair-use policy is invalid.");
+      if (!await takeBetaRate(`analysis:${owner.creator_id}`,hourly,3600000))
+        throw new AnalysisUnavailable("You have reached the hourly analysis limit. Please try later.");
+      const ownedPending = await tx.execute(sql`select count(*)::int as count from media_analysis_jobs j
+        join media_items m on m.id=j.media_id join events e on e.id=m.event_id
+        where e.creator_id=${owner.creator_id} and j.status in ('queued','running')`);
+      if (Number(ownedPending.rows[0]?.count)>=100) throw new AnalysisUnavailable("Your photo analyses are still queued. Please retry later.");
+    }
     const pending = await tx.execute(sql`select count(*)::int as count from media_analysis_jobs
       where status in ('queued', 'running')`);
     if (Number(pending.rows[0]?.count) >= MAX_PENDING)
@@ -71,15 +87,30 @@ export async function enqueueAnalysis(item: Item, options: boolean | { retry?: b
   return analysisStatus(item.id);
 }
 
+let testCreatorNames: readonly string[] | undefined;
+let testMediaIds: readonly number[] = [];
+/** Restricts disposable provider-mocked servers; never available in production. */
+export function setAnalysisQueueTestScope(names: readonly string[], mediaIds: readonly number[] = []) {
+  if (process.env.NODE_ENV==="production") throw new Error("Test queue scope is forbidden in production");
+  if (names.some(name=>!/^[A-Za-z0-9_-]{1,100}$/.test(name))) throw new Error("Invalid test creator name");
+  if (mediaIds.some(id=>!Number.isSafeInteger(id)||id<1)) throw new Error("Invalid test media ID");
+  testCreatorNames=[...names];
+  testMediaIds=[...mediaIds];
+}
 async function claimAnalysis() {
-  return db.transaction(async tx => {
+  // Bind one PostgreSQL array value, not Drizzle's SQL list interpolation.
+  const testNamesArray=`{${(testCreatorNames||[]).join(",")}}`;
+  const testIdsArray=`{${testMediaIds.join(",")}}`;
+  const claimed = await db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(${LOCK})`);
     // Expired attempts are recoverable after process termination, but have a
     // finite budget. Fencing below prevents a late response from winning.
     await tx.execute(sql`update media_analysis_jobs set status = case when attempts >= ${MAX_ATTEMPTS}
       then 'failed' else 'queued' end, worker_token = null,
       error = 'Analysis was interrupted. Retry is available.', available_at = now()
-      where status = 'running' and updated_at < now() - interval '90 seconds'`);
+       where status = 'running' and updated_at < now() - interval '90 seconds'
+       and ${testCreatorNames===undefined?sql`true`:sql`(media_analysis_jobs.media_id=any(${testIdsArray}::int[]) or exists(select 1 from media_items sm join events se on se.id=sm.event_id
+         join users su on su.id=se.creator_id where sm.id=media_analysis_jobs.media_id and su.username=any(${testNamesArray}::text[])))`}`);
     const active = await tx.execute(sql`select count(*)::int as count from media_analysis_jobs where status='running'`);
     if (Number(active.rows[0]?.count) >= MAX_ACTIVE) return undefined;
     const token = randomUUID();
@@ -90,9 +121,17 @@ async function claimAnalysis() {
       status='running', worker_token=${token}, updated_at=now()
       where media_id = (select j.media_id from media_analysis_jobs j
         left join media_items m on m.id=j.media_id left join events e on e.id=m.event_id
-        where (j.status='queued' and j.available_at<=now()) or
-          (j.status='completed' and j.recognition is not null and e.reference_revision>j.reference_revision)
-        order by case when j.status='queued' then 0 else 1 end,j.available_at,j.media_id
+        left join users u on u.id=e.creator_id
+        where ((j.status='queued' and j.available_at<=now()) or
+          (j.status='completed' and j.recognition is not null and e.reference_revision>j.reference_revision))
+        and ${testCreatorNames===undefined?sql`true`:sql`(j.media_id=any(${testIdsArray}::int[]) or u.username=any(${testNamesArray}::text[]))`}
+        and (e.creator_id is null or (not u.suspended and coalesce(u.creator_status,'none')<>'rejected'
+          and not exists(select 1 from media_analysis_jobs r join media_items rm on rm.id=r.media_id
+            join events re on re.id=rm.event_id where r.status='running' and re.creator_id=e.creator_id)))
+        order by coalesce(u.analysis_last_served_at,case when e.creator_id is null then
+          (select max(oj.updated_at) from media_analysis_jobs oj join media_items om on om.id=oj.media_id
+            join events oe on oe.id=om.event_id where oe.creator_id is null and oj.status in ('running','completed')) end,
+          timestamp '1970-01-01'),case when j.status='queued' then 0 else 1 end,j.available_at,j.media_id
         for update of j skip locked limit 1)
        returning media_id, fingerprint, attempts, reference_only, recognition, generated_tags, video_evidence`);
     const row = result.rows[0];
@@ -102,6 +141,11 @@ async function claimAnalysis() {
        generatedTags: row.generated_tags as string[] | null,
        videoEvidence: row.video_evidence as VideoEvidence | null, token } : undefined;
   });
+  // Quota/reference transactions lock the owner before the queue. Do not
+  // invert that order by holding the queue lock while waiting for the owner.
+  if (claimed) await db.execute(sql`update users set analysis_last_served_at=now()
+    where id=(select e.creator_id from events e join media_items m on m.event_id=e.id where m.id=${claimed.mediaId})`);
+  return claimed;
 }
 
 // Exported to permit deterministic worker tests (including restart recovery).
@@ -116,6 +160,8 @@ export async function drainAnalysisQueue() {
       .where(and(eq(mediaAnalysisJobs.mediaId, claimed.mediaId), eq(mediaAnalysisJobs.workerToken, claimed.token)))
       .catch(() => {});
   }, 15000);
+  let videoStage: VideoFailureStage = "database_read";
+  const videoJob = claimed.fingerprint.startsWith("video:");
   try {
     const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, claimed.mediaId));
     if (!item) return true;
@@ -127,11 +173,14 @@ export async function drainAnalysisQueue() {
       claimed.fingerprint = fingerprint;
       claimed.videoEvidence = null;
       claimed.referenceOnly = false;
+      videoStage="database_persistence";
       await db.update(mediaAnalysisJobs).set({fingerprint:claimed.fingerprint, videoEvidence: null, referenceOnly: false})
         .where(and(eq(mediaAnalysisJobs.mediaId,item.id),eq(mediaAnalysisJobs.workerToken,claimed.token)));
+      videoStage="database_read";
     }
     let videoResult: ReturnType<typeof aggregateVideo> | undefined;
     if (item.type === "video" && !claimed.referenceOnly) {
+      videoStage="file_access";
       await sampleVideo(item, async sample => {
         let evidence = claimed.videoEvidence;
         if (!evidence || evidence.sourceHash !== sample.sourceHash) evidence = {
@@ -140,14 +189,18 @@ export async function drainAnalysisQueue() {
           promptTokens: null, completionTokens: null, usageUnavailableRequests: 0, cost: null,
         };
         const persist = async () => {
+          const previousStage=videoStage;
+          videoStage="database_persistence";
           const saved = await db.update(mediaAnalysisJobs).set({videoEvidence: evidence, updatedAt: new Date()})
             .where(and(eq(mediaAnalysisJobs.mediaId, item.id), eq(mediaAnalysisJobs.workerToken, claimed.token)))
             .returning({ id: mediaAnalysisJobs.mediaId });
           if (!saved.length) throw new Error("Analysis lease expired");
+          videoStage=previousStage;
         };
         await persist();
         const pending = sample.frames.filter(f => !evidence!.frames.some(done => done.hash === f.hash));
         for (let i = 0; i < pending.length; i += 4) {
+          videoStage="ai_request";
           await withVisionBudget(async () => {
             evidence!.providerRequests++;
             evidence!.usageUnavailableRequests = (evidence!.usageUnavailableRequests || 0) + 1;
@@ -163,6 +216,7 @@ export async function drainAnalysisQueue() {
             await persist();
           });
         }
+        videoStage="result_parsing";
         videoResult = aggregateVideo(evidence.frames);
       });
     }
@@ -173,6 +227,7 @@ export async function drainAnalysisQueue() {
         ? { tags: await withVisionBudget(async () => generateTagsForImage(await analysisImageInput(item.thumbnail))), vehicles: null }
         : await withVisionBudget(async () => recognizeMotorsportImage(await recognitionImageInput(item)));
     const tags = result.tags;
+    videoStage="database_persistence";
     await db.transaction(async tx => {
       const [owned] = await tx.select().from(mediaAnalysisJobs)
         .where(and(eq(mediaAnalysisJobs.mediaId, item.id), eq(mediaAnalysisJobs.workerToken, claimed.token))).for("update");
@@ -194,21 +249,34 @@ export async function drainAnalysisQueue() {
       const merged = claimed.referenceOnly ? current.tags || [] : Array.from(new Set([...manualTags,...freshTags])).slice(0,100);
       const identification = current.identificationManual || !result.vehicles ? current.identification : event
         ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx) : result.vehicles;
+      const category = claimed.referenceOnly ? current.category : await categorizeContent(merged);
+      const publicChanged = JSON.stringify([current.tags,current.identification,current.category]) !==
+        JSON.stringify([merged,identification,category]);
       await tx.update(mediaItems).set({ tags: merged, identification,
+        ...(event?.creatorId && publicChanged ? {
+          contentVersion:sql`${mediaItems.contentVersion}+1`,safetyStatus:"error",safetyReason:"Safety check pending.",
+        }:{}),
         ...(claimed.referenceOnly ? {} : {manualTags}),
-        ...(claimed.referenceOnly ? {} : {category:await categorizeContent(merged)}) }).where(eq(mediaItems.id,item.id));
+        ...(claimed.referenceOnly ? {} : {category}) }).where(eq(mediaItems.id,item.id));
       await tx.update(mediaAnalysisJobs).set({ status: "completed", generatedTags: tags,
         recognition: result.vehicles, referenceRevision: event?.referenceRevision || 0, referenceOnly: false,
         workerToken: null, error: null, updatedAt: new Date(), durationMs: Date.now() - started })
         .where(eq(mediaAnalysisJobs.mediaId, item.id));
     });
+    videoStage="database_read";
+    const [safeItem] = await db.select().from(mediaItems).where(eq(mediaItems.id,item.id));
+    const [safeEvent] = safeItem?.eventId ? await db.select().from(events).where(eq(events.id,safeItem.eventId)) : [];
+    if (safeEvent?.creatorId && safeItem.safetyStatus!=="legacy") await reviewMediaSafety(item.id,safeEvent.creatorId);
   } catch (error) {
     const busy = error instanceof VisionBusy;
-    const terminal = !busy && claimed.attempts >= MAX_ATTEMPTS;
+    const failure=videoJob && !busy ? classifyVideoFailure(error,videoStage) : undefined;
+    if (failure) console.warn("[video-analysis]",JSON.stringify(videoFailureRecord(claimed.mediaId,claimed.attempts,failure)));
+    const terminal = !busy && (claimed.attempts >= MAX_ATTEMPTS || failure?.retryable===false);
     await db.update(mediaAnalysisJobs).set({
       status: terminal ? "failed" : "queued", workerToken: null,
       attempts: busy ? claimed.attempts - 1 : claimed.attempts,
-      error: terminal ? "AI analysis failed. Your media and manual tags are safe; retry is available."
+      error: failure ? `Video analysis ${terminal?"failed":"will retry"} at ${failure.stage} (${failure.code}). Your original and manual tags are safe.`
+        : terminal ? "AI analysis failed. Your media and manual tags are safe; retry is available."
         : "AI temporarily unavailable. Retrying in the background.",
       availableAt: new Date(Date.now() + (busy ? 5000 : 15000 * claimed.attempts)),
       updatedAt: new Date(), durationMs: Date.now() - started,

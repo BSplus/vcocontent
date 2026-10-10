@@ -1,8 +1,33 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import express from "express";
+import session from "express-session";
+import {once} from "node:events";
+import {createHash} from "node:crypto";
+await import("./helpers/beta-provider-preload.mjs");
+const {setupAuth}=await import("../server/auth.ts");
+const {registerRoutes}=await import("../server/routes.ts");
+const {db,pool}=await import("../server/db.ts");
+const {SAFETY_POLICY}=await import("../server/beta-policy.ts");
+const {users,betaRateLimits,safetyResults}=await import("../shared/schema.ts");
+const {eq}=await import("drizzle-orm");
+const app=express();app.set("trust proxy",1);app.use(express.json());
+app.use(session({secret:"synthetic-session-secret",resave:false,saveUninitialized:false}));
+setupAuth(app);await registerRoutes(app,{workers:false});
+const server=app.listen(0,"127.0.0.1");await once(server,"listening");
 import { randomUUID } from "node:crypto";
 
-const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5000";
+const base = `http://127.0.0.1:${server.address().port}`;
+const fixtureIp=`198.18.${Math.floor(Math.random()*250)}.${Math.floor(Math.random()*250)+1}`;
+let fixtureId, fixtureName;
+test.after(async()=>{
+  if(fixtureId) await db.delete(users).where(eq(users.id,fixtureId));
+  await db.delete(betaRateLimits).where(eq(betaRateLimits.key,`register:${createHash("sha256").update(fixtureIp).digest("hex")}`));
+  // The cache contains no content, but remove this run's neutral registration result.
+  if(fixtureName) await db.delete(safetyResults).where(eq(safetyResults.fingerprint,
+    createHash("sha256").update(SAFETY_POLICY).update("gpt-4.1-mini").update(JSON.stringify({username:fixtureName,bio:null})).digest("hex")));
+  await new Promise(resolve=>server.close(resolve));await pool.end();
+});
 
 test("registration, session, role boundaries and disabled purchases", async () => {
   const name = `beta_smoke_${randomUUID().slice(0, 12)}`;
@@ -13,6 +38,7 @@ test("registration, session, role boundaries and disabled purchases", async () =
     const response = await fetch(new URL(path, base), {
       method,
       headers: {
+        "X-Forwarded-For":fixtureIp,
         ...(cookie ? { Cookie: cookie } : {}),
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
@@ -35,6 +61,7 @@ test("registration, session, role boundaries and disabled purchases", async () =
     credits: 9999,
   });
   assert.equal(registered.status, 201);
+  fixtureId=registered.data.id;fixtureName=name;
   assert.equal(registered.data.isAdmin, false);
   assert.equal(registered.data.isCreator, false);
   assert.equal(registered.data.credits, "0");

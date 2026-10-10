@@ -35,7 +35,7 @@ const api = (path, role = "owner", body, method = body === undefined ? "GET" : "
     ...(body && { body: body instanceof FormData ? body : JSON.stringify(body) }) });
 async function album() {
   const value = await storage.createEvent({ title: "Video ingestion fixture", description: "Disposable",
-    date: new Date(), isPremium: false, creatorId: owner.id });
+    date: new Date(), isPremium: false, creatorId: null });
   albums.push(value.id); return value;
 }
 function upload(bytes, type = "video", extra = {}) {
@@ -56,7 +56,7 @@ test.before(async () => {
   for (const role of ["owner", "outsider", "admin"]) {
     const [user] = await db.insert(users).values({ username: `video-${randomUUID()}`,
       email: `${randomUUID()}@example.invalid`, password: "not-a-login-password",
-      isCreator: true, creatorStatus: "approved", isAdmin: role === "admin" }).returning();
+      isCreator: true, creatorStatus: "approved", isAdmin: role === "admin" || role === "owner" }).returning();
     accounts.push(user.id); if (role === "owner") owner = user; else if (role === "outsider") outsider = user; else admin = user;
   }
   Client.prototype.uploadFromFilename = async (key, filename) => { objects.set(key, await readFile(filename)); return { ok: true }; };
@@ -103,7 +103,7 @@ test.after(async () => {
     if (value === undefined) delete process.env[key]; else process.env[key] = value;
   await pool.end(); await rm(temp, { recursive: true, force: true });
 });
-test("video upload saves promptly before AI, permissions apply to status/retry/batch, images stay opt-in", async () => {
+test("authorized official video upload saves promptly before AI, permissions apply to status/retry/batch, official images stay opt-in", async () => {
   const event = await album();
   assert.equal((await api(`/api/events/${event.id}/media/upload`, null, upload(clip))).status, 401);
   assert.equal((await api(`/api/events/${event.id}/media/upload`, "outsider", upload(clip))).status, 403);

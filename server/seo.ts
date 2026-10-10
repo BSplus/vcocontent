@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import { storage } from "./storage";
+import { eventPublic, mediaPublic } from "./beta-access";
 
 const defaultTitle = "VCO Media Database | Esports Racing Photos";
 const defaultDescription = "Explore VCO esports racing photos, event galleries and creator media.";
@@ -40,7 +41,7 @@ export async function seoHtml(req: Request, html: string): Promise<{ html: strin
   const mediaMatch = /^\/media\/([1-9]\d*)\/?$/.exec(pathname);
   if (eventMatch) {
     const event = await storage.getEvent(Number(eventMatch[1]));
-    if (!event || event.isPremium) status = 404;
+    if (!event || event.isPremium || !await eventPublic(event)) status = 404;
     else {
       title = `${event.title} | VCO Media Database`;
       description = summary(event.description || `Photos and media from ${event.title}.`);
@@ -49,7 +50,7 @@ export async function seoHtml(req: Request, html: string): Promise<{ html: strin
   } else if (mediaMatch) {
     const item = await storage.getMediaItem(Number(mediaMatch[1]));
     const event = item?.eventId ? await storage.getEvent(item.eventId) : undefined;
-    if (!item || !event || item.isPremium || event.isPremium) status = 404;
+    if (!item || !event || item.isPremium || event.isPremium || !await mediaPublic(item,event)) status = 404;
     else {
       title = `${summary(item.caption || `${event.title} photo`, 100)} | VCO Media Database`;
       description = summary(`${item.caption || event.title}. ${item.photographer ? `Photo by ${item.photographer}.` : ""} VCO esports media.`);

@@ -7,4 +7,4 @@ Zum Start bevorzugt der Nutzer ein einfaches, offenes Creator-Modell: Account an
 
 **Why:** Der Nutzer möchte zunächst offen starten und anhand der Nutzung entscheiden, statt von Beginn an ein komplexes Bezahlmodell einzuführen.
 
-**How to apply:** Dies ist die geäußerte Präferenz, keine bereits implementierte Umstellung. Konkrete kostenlose Bild-, Speicher- und gegebenenfalls Galeriegrenzen sind noch nicht festgelegt. Bei der Anfrage wurde zunächst nur eine Zusammenfassung des bisherigen Stands gewünscht.
+**How to apply:** Die Public-Beta-Spezifikation konkretisiert den kostenlosen Fototarif. Keine aktive Monetarisierung oder zusätzliche Pflicht-Onboardingabläufe einführen; geplante Verdienstmöglichkeiten nur sekundär und ohne Preise, Termine oder Einkommensversprechen erwähnen.

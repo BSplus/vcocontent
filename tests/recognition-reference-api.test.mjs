@@ -67,7 +67,8 @@ test.before(async () => {
   for (const role of ["owner", "other", "admin"]) {
     const [user] = await db.insert(users).values({ username: `fixture-${randomUUID()}`,
       email: `${randomUUID()}@example.invalid`, password: "not-a-login-password",
-      isCreator: role !== "admin", creatorStatus: "approved", isAdmin: role === "admin" }).returning();
+      isCreator: role !== "admin", creatorStatus: "approved", isAdmin: role === "admin",
+      quotaException:role==="owner" }).returning();
     ownedUsers.push(user.id);
     if (role === "owner") owner = user; else if (role === "other") other = user; else admin = user;
   }
@@ -87,6 +88,11 @@ test.before(async () => {
   process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "test-only";
   globalThis.fetch = async (url, options) => {
     if (!String(url).startsWith("https://recognition-test.example.invalid/")) return realFetch(url, options);
+    if (JSON.parse(options.body).messages[0]?.content?.includes("publication safety reviewer")) {
+      return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify({
+        sexualized:"clear",pornography:"clear",racistOrDehumanizing:"clear",hateSymbolsOrGlorification:"clear",visibleTextAndSymbolsReviewed:true,
+      })}}]}),{headers:{"Content-Type":"application/json"}});
+    }
     providerCalls++;
     if (gate) await gate;
     return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: JSON.stringify(providerResult) }, finish_reason: "stop" }] }),
@@ -139,7 +145,8 @@ test("caption/tag/identification edits persist with ownership and strict field v
   assert.equal(row.identificationManual, true); assert.equal(row.recognitionSession, "Race 1");
   const search = await api("/api/media?q=Manual%20team&fields=identification", null);
   assert.equal(search.status, 200);
-  assert.ok((await search.json()).some(media => media.id === item.id));
+  assert.ok(!(await search.json()).some(media => media.id === item.id),
+    "Changed creator text remains private until its independent safety check succeeds");
   const captionOnly = await api("/api/media?q=Manual%20team&fields=caption", null);
   assert.equal(captionOnly.status, 200);
   assert.equal((await captionOnly.json()).some(media => media.id === item.id), false);

@@ -14,6 +14,8 @@ import { withVisionBudget } from "./ai-budget";
 import { kickAnalysisWorker } from "./analysis-jobs";
 import { readMediaStream } from "./media-storage";
 import { withMediaWorkBudget } from "./media-work-budget";
+import { lockedCreatorBudget, takeBetaRate } from "./beta-policy";
+import { MediaLimitError } from "./media-policy";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1048576, files: 1, fields: 8, parts: 9 } }).single("file");
 const rowsSchema = z.array(entryRowSchema).max(500);
@@ -65,6 +67,7 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
       if (failure || !req.file) return res.status(400).json({ error: "Choose one reference file, maximum 8 MiB" });
       let key: string | undefined;
       let reservation: string | undefined;
+      let replacementCredit=0, sourceWritten=false;
       try {
         const options = z.object({ scope: z.enum(["event","season"]).default("event"),
           kind: z.enum(["entry","result"]).default("entry"),
@@ -82,6 +85,8 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
           title=target.title;
         }
         const contextEvent = { ...event, referenceSeasonYear: options.seasonYear };
+        if (!req.user!.isAdmin && !await takeBetaRate(`reference:${req.user!.id}`,20,3600000))
+          return res.status(429).json({error:"Too many reference imports. Please try later."});
         const fingerprint = hash(req.file.buffer);
         const existing = await db.select().from(referenceDocuments).where(applicableDocuments(contextEvent));
         const session = options.session || null;
@@ -106,22 +111,46 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
         reservation=randomUUID();
         // Reuse crash recovery: cleanup must not delete an in-flight source.
         await db.transaction(async tx=>{
+          if (event.creatorId) await tx.execute(sql`select id from users where id=${event.creatorId} for update`);
+          let credit = 0;
+          if (target) {
+            const [current] = await tx.select().from(referenceDocuments).where(eq(referenceDocuments.id,target.id)).for("update");
+            if (!current || current.sourceKey!==target.sourceKey) throw new Error("Reference changed during import");
+            const pending = await tx.select().from(mediaReservations).where(eq(mediaReservations.replacesReferenceId,target.id));
+            if (pending.length) throw new MediaLimitError("A replacement for this reference is already in progress.");
+            if (target.sourceKey && current.storedBytes!==null) {
+              const shared = await tx.execute(sql`select 1 from reference_documents where source_key=${target.sourceKey}
+                and id<>${target.id} union all select 1 from media_items
+                where url=${`/api/media/files/${target.sourceKey}`} or thumbnail=${`/api/media/files/${target.sourceKey}`} limit 1`);
+              if (!shared.rows.length) credit = current.storedBytes;
+            }
+          }
+          const reservedBytes = Math.max(0,req.file!.size-credit);
+          replacementCredit=credit;
+          if (event.creatorId && !req.user!.isAdmin) await lockedCreatorBudget(tx,event.creatorId,reservedBytes,0,0,credit);
           await tx.insert(mediaReservations).values({id:reservation!,eventId:event.id,creatorId:event.creatorId,
-            reservedBytes:req.file!.size,storageKey:key!,thumbnailKey:key!});
-          await tx.insert(mediaCleanup).values({key:key!}).onConflictDoNothing();
+            reservedBytes,replacesReferenceId:target?.id,storageKey:key!,thumbnailKey:key!});
+          await tx.insert(mediaCleanup).values({key:key!,creatorId:event.creatorId}).onConflictDoNothing();
         });
         const saved = await withMediaWorkBudget(()=>new Client().uploadFromBytes(key!, req.file!.buffer, { compress: false }));
         if (!saved.ok) throw new Error("Storage failed");
+        sourceWritten=true;
         const sourceKey = key;
         const result = await db.transaction(async tx => {
+          if (event.creatorId) await tx.execute(sql`select id from users where id=${event.creatorId} for update`);
           await tx.execute(sql`select id from media_reservations where id=${reservation!} for update`);
+          if (event.creatorId && !req.user!.isAdmin && replacementCredit)
+            await lockedCreatorBudget(tx,event.creatorId,0,0,0,replacementCredit);
           const [previous] = await tx.select().from(referenceDocuments).where(eq(referenceDocuments.identityKey,identityKey)).for("update");
+          if (target && (!previous || previous.id!==target.id || previous.sourceKey!==target.sourceKey))
+            throw new Error("Reference changed during import");
           const values = { eventId: options.scope === "event" ? event.id : null, seriesId: event.seriesId,
             ownerId: event.creatorId, seasonYear: options.seasonYear, scope: options.scope, kind: options.kind,
-            session, title, sourceKey, fingerprint, identityKey, rows, updatedAt: new Date() };
+            session, title, sourceKey, fingerprint, identityKey, rows, storedBytes:req.file!.size,updatedAt: new Date() };
           const [doc] = await tx.insert(referenceDocuments).values(values).onConflictDoUpdate({
             target: referenceDocuments.identityKey, set: values }).returning();
-          if (previous?.sourceKey && previous.sourceKey !== sourceKey) await tx.insert(mediaCleanup).values({key:previous.sourceKey}).onConflictDoNothing();
+          if (previous?.sourceKey && previous.sourceKey !== sourceKey) await tx.insert(mediaCleanup).values({
+            key:previous.sourceKey,creatorId:event.creatorId,storedBytes:previous.storedBytes}).onConflictDoNothing();
           await tx.update(events).set({referenceSeasonYear:options.seasonYear}).where(eq(events.id,event.id));
           await bump(contextEvent,options.scope,options.seasonYear,tx);
           await tx.delete(mediaReservations).where(eq(mediaReservations.id,reservation!));
@@ -130,10 +159,15 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
         });
         key = undefined; reservation=undefined; void kickAnalysisWorker(); void storage.cleanupObjects();
         res.status(201).json({ id: result.id, rows:result.rows, issues:parsed.issues });
-      } catch {
-        if (reservation) await db.delete(mediaReservations).where(eq(mediaReservations.id,reservation)).catch(()=>undefined);
-        if (key) { await db.insert(mediaCleanup).values({key}).onConflictDoNothing(); void storage.cleanupObjects(); }
-        res.status(400).json({error:"Reference import failed. Check the file or use a searchable CSV/XLSX/PDF."});
+      } catch (error) {
+        if (key || reservation) await db.transaction(async tx=>{
+          if (event.creatorId) await tx.execute(sql`select id from users where id=${event.creatorId} for update`);
+          if (key) await tx.insert(mediaCleanup).values({key,creatorId:event.creatorId,storedBytes:sourceWritten?req.file!.size:null})
+            .onConflictDoUpdate({target:mediaCleanup.key,set:{creatorId:event.creatorId,storedBytes:sourceWritten?req.file!.size:null}});
+          if (reservation) await tx.delete(mediaReservations).where(eq(mediaReservations.id,reservation));
+        });
+        if (key) void storage.cleanupObjects();
+        res.status(error instanceof MediaLimitError?413:400).json({error:error instanceof MediaLimitError?error.message:"Reference import failed. Check the file or use a searchable CSV/XLSX/PDF."});
       }
     });
   });
@@ -162,8 +196,9 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
       const event = await managed(req,res); if (!event) return;
       const doc = await document(event,req.params.refId); if (!doc) return res.status(404).json({error:"Reference not found"});
       await db.transaction(async tx => {
+        if (event.creatorId) await tx.execute(sql`select id from users where id=${event.creatorId} for update`);
         await tx.delete(referenceDocuments).where(eq(referenceDocuments.id,doc.id));
-        if (doc.sourceKey) await tx.insert(mediaCleanup).values({key:doc.sourceKey}).onConflictDoNothing();
+        if (doc.sourceKey) await tx.insert(mediaCleanup).values({key:doc.sourceKey,creatorId:event.creatorId,storedBytes:doc.storedBytes}).onConflictDoNothing();
         await bump(event,doc.scope,doc.seasonYear,tx);
       });
       void kickAnalysisWorker(); void storage.cleanupObjects(); res.json({success:true});

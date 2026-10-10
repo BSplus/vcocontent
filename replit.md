@@ -150,3 +150,11 @@ Preferred communication style: Simple, everyday language.
 - ESBuild for production bundling
 - TypeScript compiler for type checking
 - Drizzle Kit for database migrations
+
+## Public beta configuration
+
+- `RESEND_API_KEY` belongs in Replit Secrets. Set `RESEND_FROM` to a verified sender email address and `PUBLIC_SITE_URL` to the trusted HTTPS root origin of the environment running this code. No paths, queries or credentials. Never print keys or verification tokens.
+- Missing mail configuration or email verification prevents new community publication. Missing managed image-safety configuration prevents new releases and administrative safety approval.
+- Development additive setup: `node --import tsx scripts/apply-dev-process-schema.mjs`. Production migration/release requires separate approval; ensure every public reader uses the new visibility and safety gates before enabling beta writes. Do not assume the development and production databases are isolated.
+- Historical public images remain unreviewed legacy content. New public image/profile/cover/text versions require the applicable gate. Changing safety prompts/categories requires a safety policy version bump.
+- Tests must mock mail and AI, use synthetic images, isolate queue consumers and clean only their own storage objects. Do not send real verification mail during routine tests.

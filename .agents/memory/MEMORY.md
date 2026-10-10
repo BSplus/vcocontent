@@ -27,3 +27,7 @@
 - [VCO evaluation permission](vco-media-authorization.md) — user authorized all photos on the VCO photo site for this project's recognition evaluation.
 - [Media worker hosting](media-worker-hosting.md) — prefer one combined VM; cost and compatibility confirmation must precede explicit hosting-change approval.
 - [Creator launch preference](creator-launch-intent.md) — prefer open, free self-service photo galleries with limits; paid expansion later, not yet implemented.
+- [Beta safety transition](beta-safety-transition.md) — preserve unreviewed history; new files and public edits must pass independent safety checks, even in existing public galleries.
+- [Drizzle array interpolation](drizzle-array-interpolation.md) — raw SQL array interpolation can expand into lists; bind PostgreSQL arrays explicitly.
+- [FFmpeg failure codes](ffmpeg-failure-codes.md) — nonzero exit statuses vary across versions; preserve actual codes rather than assuming exit 1.
+- [Beta mail setup](beta-launch-setup.md) — user deferred Resend setup; document it as open, without bypassing verification or authorizing publication.
