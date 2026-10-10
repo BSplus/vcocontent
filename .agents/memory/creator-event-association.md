@@ -12,7 +12,8 @@ Altbestandszuordnung. Beim Löschen des offiziellen Events entfällt nur die Zuo
 
 **Why:** Der Betreiber hat die einfache Zuordnung und diese Regeln ausdrücklich gewählt.
 
-**How to apply:** Für künftige Umsetzung die bestätigte Semantik in
+**How to apply:** Für künftige Arbeit die bestätigte Semantik in
 `docs/creator-event-association-decision.md` beachten. Genehmigt wurde nur der Vorschlag
-einer separaten Umsetzungsaufgabe; daraus keine Implementierungs-, Veröffentlichungs-
-oder Produktionsmigrationsfreigabe ableiten.
+einer separaten Umsetzungsaufgabe; anschließend hat der Betreiber ausdrücklich
+„Ja, in Entwicklung umsetzen – keine Produktionsänderungen“ freigegeben.
+Keine Veröffentlichungs- oder Produktionsmigrationsfreigabe daraus ableiten.

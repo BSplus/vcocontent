@@ -20,6 +20,11 @@ import MediaUploadModal from "@/components/media-upload-modal";
 import EditMediaModal from "@/components/edit-media-modal";
 import EventTitle from "@/components/event-title";
 import DashboardEventList from "@/components/creator-gallery-cards";
+import CreatorGalleryAssociation, {
+  creatorAssociationsKey,
+  creatorOfficialEventsKey,
+  invalidateCommunityGalleryQueries,
+} from "@/components/creator-gallery-association";
 import { Badge } from "@/components/ui/badge";
 import ProfileSettings from "@/components/profile-settings";
 
@@ -61,6 +66,9 @@ export default function CreatorDashboard() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      void queryClient.invalidateQueries({ queryKey: creatorOfficialEventsKey });
+      void queryClient.invalidateQueries({ queryKey: creatorAssociationsKey });
+      void invalidateCommunityGalleryQueries(queryClient);
       toast({ title: "Gallery updated", description: "Visibility changes have been saved." });
     },
     onError: (error: Error) => toast({ title: "Could not update gallery", description: error.message, variant: "destructive" }),
@@ -270,6 +278,7 @@ export default function CreatorDashboard() {
                         onClick={() => publishMutation.mutate({ id: event.id, published: (event as Event & { visibility?: string }).visibility !== "published" })}>
                         {(event as Event & { visibility?: string }).visibility === "published" ? "Unpublish" : "Publish"}
                       </Button>
+                      <CreatorGalleryAssociation galleryId={event.id} />
                    </>
                  )} />
                </>

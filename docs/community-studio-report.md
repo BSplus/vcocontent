@@ -23,11 +23,10 @@ Stand: 10 October 2026. Entwicklungsumgebung, keine Veröffentlichung oder Produ
 
 Eine Galerie ist weiterhin das bestehende Event. Like-/Favoritenaktionen auf „Galerie“ und
 „Event“ zählen dieselbe Einheit, nicht doppelt. Creator besitzen eigene Eventgalerien;
-mehrere unabhängig veröffentlichte Creatorgalerien *unter einem offiziellen Event* sind
-mit diesem Modell nicht abbildbar. Dafür wurde kein zweites Modell eingeführt. Eine
-Betreiberentscheidung liegt inzwischen vor: Bestehende Creator-Galerien sollen eine
-lose Zuordnung zum offiziellen Event erhalten, ohne ein getrenntes Event-/Galeriemodell
-einzuführen. Die Zuordnung ist noch nicht implementiert.
+mehrere unabhängig veröffentlichte Creatorgalerien werden nun über eine additive
+lose Zuordnung bei einem offiziellen Event angezeigt. Dafür wurde kein zweites
+Event-/Galeriemodell eingeführt. Die Umsetzung wurde ausschließlich in Entwicklung
+freigegeben; Eigentum und Veröffentlichung der Galerien bleiben unabhängig.
 Die bestätigten Regeln und Freigabegrenzen stehen in
 [Creator-Eventzuordnung – Betreiberentscheidung](creator-event-association-decision.md).
 
@@ -88,6 +87,12 @@ Aufbewahrung/Backups bewerten. Es gibt keine neuen Frist-, Lizenz-, Einnahmen- o
 Rechtskonformitätszusagen. Der Earningshinweis nennt ausschließlich inaktive Funktionen.
 
 ## Schema und Betrieb
+
+Eigene Galerien können nun lose einem offiziellen Event zugeordnet werden, ohne
+Modelltrennung oder Rechte-/Medienübertragung. Umsetzung ausschließlich in Entwicklung
+freigegeben. Details zu Sichtbarkeit, additiver Migration, Anwendung und Rücknahme:
+`docs/creator-event-association-rollout.md`; Modellentscheidung:
+`docs/creator-event-association-decision.md`.
 
 Additive Migration: `migrations/community-studio.sql`. Ausschließlich lokal über den
 bestehenden Dev-Schemaablauf angewendet; Deployment führt keine ungefragte DDL aus.

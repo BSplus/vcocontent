@@ -35,6 +35,7 @@ import { registerBetaRoutes } from "./beta-routes";
 import { checkContent, reviewEventSafety, reviewMediaSafety } from "./content-safety";
 import { verificationConfigured } from "./email-verification";
 import { registerCommunityRoutes, issueDownloadOperation, validDownloadOperation, recordDownload } from "./community";
+import { registerCreatorEventAssociationRoutes } from "./creator-event-association";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -70,6 +71,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   app.use("/api",(_req,res,next)=>{res.setHeader("Cache-Control","private, no-store");next();});
   registerBetaRoutes(app);
   registerCommunityRoutes(app);
+  registerCreatorEventAssociationRoutes(app);
   registerReferenceRoutes(app, requireCreator);
   const openAITestCooldowns = new Map<number, number>();
   const captionDetections = new Map<number, { thumbnail: string; expires: number; result: Promise<Awaited<ReturnType<typeof detectRaceNumbers>>> }>();

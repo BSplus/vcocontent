@@ -26,6 +26,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { eventCreateRoute } from "@/lib/event-create-route";
 import EntryListEditor, { type EventEntryRow, type PendingEventReference } from "@/components/entry-list-editor";
 import LegalLinks from "@/components/legal-links";
+import { creatorAssociationsKey } from "@/components/creator-gallery-association";
 
 interface UploadModalProps {
   open: boolean;
@@ -233,6 +234,7 @@ export default function UploadModal({
       queryClient.invalidateQueries({ queryKey: ["/api/creator/usage"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
+      queryClient.invalidateQueries({ queryKey: creatorAssociationsKey });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/events"] });
       setCreatedEventId(event.id);
       const reference = pendingEventReferenceRef.current;

@@ -49,6 +49,7 @@ test("mobile verified creator activation, gallery/photo upload and publication n
     await delay(300);
     assert.ok(requests.some(r=>r.path==="/api/creator/request"&&r.method==="POST"),JSON.stringify({requests,user}));
     await browser.wait("location.pathname==='/creator/dashboard' && document.body.innerText.includes('500 MB')");
+    await click("My Galleries");
     await click("Create New Event");
     await browser.wait("!!document.querySelector('[role=dialog]')");
     await browser.evaluate(`for(const [name,value] of [['title','Synthetic mobile gallery'],['description','Neutral racing photography'],['date','2026-10-10']]){
@@ -58,7 +59,7 @@ test("mobile verified creator activation, gallery/photo upload and publication n
     }`);
     await browser.evaluate("document.querySelector('[role=dialog] form').requestSubmit()");
     await click("Done");
-    await browser.wait("!document.querySelector('[role=dialog]') && document.body.innerText.includes('Synthetic mobile gallery')");
+    await browser.wait("!document.querySelector('[role=dialog]') && document.body.textContent.includes('Synthetic mobile gallery')");
     // Use the gallery's existing upload control, not an additional onboarding step.
     await browser.evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Upload Media')).click()");
     await browser.wait("!!document.querySelector('[role=dialog] input[type=file]')");

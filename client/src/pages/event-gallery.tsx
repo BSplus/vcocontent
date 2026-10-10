@@ -13,6 +13,7 @@ import EventTitle from "@/components/event-title";
 import { formatDate } from "@/lib/utils";
 import CommunityActions from "@/components/community-actions";
 import { ShareMenu } from "@/components/share-menu";
+import CommunityGalleries from "@/components/community-galleries";
 
 export default function EventGallery() {
   const [, params] = useRoute<{ id: string }>("/events/:id");
@@ -131,6 +132,7 @@ export default function EventGallery() {
             </div>
           </>
         )}
+        {!event.creatorId && <CommunityGalleries officialEventId={event.id} />}
       </main>
       <Footer />
     </div>

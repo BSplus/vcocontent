@@ -1,6 +1,7 @@
 # Creator-Eventzuordnung – Betreiberentscheidung
 
-Status: Vom Betreiber bestätigt; noch nicht implementiert.
+Status: Modellentscheidung bestätigt; Umsetzung in Entwicklung ausdrücklich freigegeben
+und umgesetzt. Keine Produktionsmigrations- oder Veröffentlichungsfreigabe.
 
 ## Modellentscheidung
 
@@ -33,8 +34,11 @@ Der Betreiber hat ausdrücklich zugestimmt, eine **separate Umsetzungsaufgabe
 vorzuschlagen**. Diese Entscheidung beauftragt noch keine Implementierung,
 Veröffentlichung oder Produktionsmigration.
 
-Die Entscheidungsaufgabe verändert ausschließlich Dokumentation. Anwendungscode,
-Datenbankschema und Daten bleiben unverändert.
+Die ursprüngliche Entscheidungsaufgabe veränderte ausschließlich Dokumentation.
+Der Betreiber hat anschließend die Umsetzung ausdrücklich mit
+„Ja, in Entwicklung umsetzen – keine Produktionsänderungen“ freigegeben.
+Die Freigabe gilt nur für Entwicklung; der kontrollierte Ablauf ist in
+`docs/creator-event-association-rollout.md` beschrieben.
 
 Eine spätere Umsetzung soll die bestätigte Semantik durchgängig in Creator-Verwaltung,
 offizieller Eventseite, Zugriffsschutz und Tests abbilden. Die konkrete additive

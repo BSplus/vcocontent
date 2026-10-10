@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, boolean, decimal, bigint, index, uniqueIndex, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, decimal, bigint, index, uniqueIndex, jsonb, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
@@ -70,6 +70,15 @@ export const eventEntries = pgTable("event_entries", {
   racingClass: text("racing_class").notNull().default(""),
   discipline: text("discipline").notNull().default(""),
 }, table => [index("event_entries_event_idx").on(table.eventId)]);
+
+// A link only: neither ownership nor media/personal references move to the target.
+export const creatorEventAssociations = pgTable("creator_event_associations", {
+  galleryId: integer("gallery_id").primaryKey().references(() => events.id, { onDelete: "cascade" }),
+  officialEventId: integer("official_event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+}, table => [
+  index("creator_event_associations_target_idx").on(table.officialEventId),
+  check("creator_event_associations_distinct", sql`${table.galleryId} <> ${table.officialEventId}`),
+]);
 
 export const entryRowSchema = z.object({
   number: z.string().trim().regex(/^[0-9]{0,4}$/, "Race number must contain up to four digits"),
