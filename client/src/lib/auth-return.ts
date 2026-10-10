@@ -1,12 +1,5 @@
 import type { User } from "@shared/schema";
 
-const protectedPaths = new Set([
-  "/admin/dashboard",
-  "/admin/users",
-  "/creator/dashboard",
-  "/creator/apply",
-]);
-
 export function authRedirectForCurrentPage(): string {
   const next = window.location.pathname + window.location.search + window.location.hash;
   return `/auth?${new URLSearchParams({ next }).toString()}`;
@@ -18,7 +11,7 @@ export function returnAfterAuth(next: string | null, user: User): string {
 
   try {
     const url = new URL(next, window.location.origin);
-    if (url.origin !== window.location.origin || !protectedPaths.has(url.pathname)) return "/";
+    if (url.origin !== window.location.origin || url.pathname === "/auth" || url.pathname.startsWith("/auth/")) return "/";
     if (url.pathname.startsWith("/admin/") && !user.isAdmin) return "/";
     if (url.pathname === "/creator/dashboard" &&
         !(user.isCreator || user.isAdmin || user.creatorStatus === "approved")) return "/";

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Event, MediaItem } from "@shared/schema";
+import { ShareMenu } from "@/components/share-menu";
 import { Loader2, ArrowLeft, Calendar, Star } from "lucide-react";
 import EventCard from "@/components/event-card";
 import { useToast } from "@/hooks/use-toast";
@@ -93,6 +94,7 @@ export default function CreatorProfile() {
               <h1 className="text-2xl md:text-4xl font-bold text-foreground break-words">
                 {creator.username}
               </h1>
+              <div className="mt-3"><ShareMenu url={window.location.href} title={creator.username} /></div>
               {creator.bio && (
                 <p className="mt-2 text-muted-foreground max-w-2xl">
                   {creator.bio}

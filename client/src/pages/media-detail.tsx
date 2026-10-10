@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import MainNavigation from "@/components/main-navigation";
 import Footer from "@/components/footer";
 import MediaRightsNotice from "@/components/media-rights-notice";
+import CommunityActions from "@/components/community-actions";
+import { ShareMenu } from "@/components/share-menu";
 
 export default function MediaDetail() {
   const [, params] = useRoute("/media/:id");
@@ -39,6 +41,7 @@ export default function MediaDetail() {
       {isLoading ? <p>Loading media…</p> : isError || !item ? <p>Media not found.</p> : <>
         <Link href={`/events/${item.eventId}`} className="text-primary underline">Back to event gallery</Link>
         <h1 className="mt-5 text-2xl font-bold">{item.caption || "Esports racing media"}</h1>
+        {item.type === "image" && <div className="mt-4"><CommunityActions kind="media" id={item.id} title={item.caption || "photo"} /></div>}
         <div className="mt-6 flex justify-center rounded-lg bg-black/40 p-3">
           {item.type === "video" && user && item.url
             ? <video controls preload="none" poster={item.thumbnail} src={item.url} className="max-h-[75vh] max-w-full" />
@@ -47,6 +50,7 @@ export default function MediaDetail() {
         {item.type === "video" && !user && <p className="mt-3">Sign in to watch this video.</p>}
         {item.photographer && <p className="mt-4">Photographer: {item.photographer}</p>}
         <div className="mt-6 flex flex-wrap gap-3">
+          <ShareMenu url={window.location.href} title={item.caption || "VCO photo"} />
           {user
             ? <Button onClick={() => download("high")}>{downloadOptionLabel(item, "high")}</Button>
             : <Button asChild><Link href="/auth">{downloadOptionLabel(item, "high")} · Register or sign in</Link></Button>}

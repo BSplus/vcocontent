@@ -24,7 +24,7 @@ Preferred communication style: Simple, everyday language.
 
 **Design Decisions:**
 - Component-based architecture with reusable UI elements
-- Explicit media-editor analysis can match entry/result references. Automatic upload tagging stays tag-only; captions and manual entry corrections are never automatically replaced. Reference sources are private App Storage objects with authenticated owner/Admin access and durable cleanup.
+- Explicit media-editor analysis can match entry/result references. Automatic upload tagging stays tag-only for identity. New Community photos without existing text may receive a conservative context-only caption after processing, followed by independent publication safety review; manual, IPTC/import and historical captions are never automatically replaced. Official photos and video caption behaviour stay unchanged. Reference sources are private App Storage objects with authenticated owner/Admin access and durable cleanup.
 - Analysis completion in the editor must reconcile against effective saved tags, not raw generated tags, preserving suppression and draft removals. Production startup verifies schema readiness read-only and refuses to serve an unmigrated database; no startup DDL is allowed.
 - Custom theme system using CSS variables and JSON configuration for brand consistency
 - Responsive design optimized for both desktop and mobile viewing

@@ -32,3 +32,5 @@
 - [FFmpeg failure codes](ffmpeg-failure-codes.md) — nonzero exit statuses vary across versions; preserve actual codes rather than assuming exit 1.
 - [Beta mail setup](beta-launch-setup.md) — user deferred Resend setup; document it as open, without bypassing verification or authorizing publication.
 - [Legal release boundaries](legal-release-boundaries.md) — free downloads do not determine reuse licences; creator terms and rights require explicit operator approval.
+- [Communitycaption-Ausnahme](community-caption-boundary.md) — automatische Captions nur für neue leere Communityfotos; Moderation und geschützte Texte bleiben unabhängig.
+- [Optimistische Browseraktionen](optimistic-browser-actions.md) — neuer sichtbarer Zustand beweist keine abgeschlossene Mutation; vor Folgeaktionen auf aktive Buttons warten.

@@ -8,6 +8,7 @@ import { ArrowUpRight, CalendarDays, ImagePlus, User as UserIcon } from "lucide-
 import { useAuth } from "@/hooks/use-auth";
 import EventTitle from "@/components/event-title";
 import { formatDate } from "@/lib/utils";
+import CommunityActions from "@/components/community-actions";
 
 interface EventCardProps {
   event: Event;
@@ -81,6 +82,7 @@ export default function EventCard({ event }: EventCardProps) {
 
       {!isUpcoming && (
         <CardFooter className="flex flex-col gap-2 border-t border-foreground/10 p-4 pt-3 sm:p-5 sm:pt-3">
+          <div className="w-full"><CommunityActions kind="event" id={event.id} title={event.title} /></div>
           <Button asChild className="vco-button min-h-11 w-full bg-primary text-primary-foreground hover:bg-primary/90">
             <Link href={galleryUrl}>View gallery <ArrowUpRight className="ml-2 h-4 w-4" /></Link>
           </Button>

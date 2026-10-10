@@ -37,6 +37,10 @@ test("click targets on desktop and touch with isolated API fixtures (no database
       };
     } else if (path === "/api/events") body = events;
     else if (path === "/api/creator/events") body = [events[1]];
+    else if (path === "/api/creator/usage") body = {bytes:120000,galleries:1,photos:1,unknown:0,adminExempt:false,
+      limits:{bytes:500000000,galleries:5,photos:1000},eventStats:[{eventId:64002,photos:1,videos:0,downloads:7}]};
+    else if (path === "/api/creator/recent-media") body = [media[1]];
+    else if (path.startsWith("/api/community/")) body = {count:0,liked:false,saved:false};
     else if (path === "/api/media/top-shots") body = [media[0], media[2]];
     else if (path === "/api/media/creator-top") body = [media[1]];
     else if (path === "/api/media") body = media;
@@ -175,7 +179,9 @@ test("click targets on desktop and touch with isolated API fixtures (no database
       assert.match(await browser.evaluate(`document.querySelector('main h1').innerText`), /Fixture race photo/i);
       await visit("/creator/dashboard", `location.pathname === '/auth' && !!document.querySelector('#login-username')`);
       role = "creator";
-      await visit("/creator/dashboard", `!!document.querySelector('[role="tab"][data-state="active"]')`);
+      await visit("/creator/dashboard", `!!document.querySelector('nav[aria-label="Creator Studio sections"]')`);
+      await browser.evaluate(`[...document.querySelectorAll('nav[aria-label="Creator Studio sections"] button')].find(button=>button.textContent==='My Galleries').click()`);
+      await browser.wait(`!!document.querySelector('[role="tab"][data-state="active"]')`);
       // Keyboard activates Radix tabs and also verifies their keyboard reachability.
       await browser.evaluate(`document.querySelectorAll('[role="tab"]')[1].focus()`);
       await browser.command("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });

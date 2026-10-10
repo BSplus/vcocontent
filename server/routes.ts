@@ -34,6 +34,7 @@ import { communityLimits, creatorAllowed, safeState, safetyRetryAllowed, takeBet
 import { registerBetaRoutes } from "./beta-routes";
 import { checkContent, reviewEventSafety, reviewMediaSafety } from "./content-safety";
 import { verificationConfigured } from "./email-verification";
+import { registerCommunityRoutes, issueDownloadOperation, validDownloadOperation, recordDownload } from "./community";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -68,6 +69,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   // All API data and protected previews must be re-authorized on each request.
   app.use("/api",(_req,res,next)=>{res.setHeader("Cache-Control","private, no-store");next();});
   registerBetaRoutes(app);
+  registerCommunityRoutes(app);
   registerReferenceRoutes(app, requireCreator);
   const openAITestCooldowns = new Map<number, number>();
   const captionDetections = new Map<number, { thumbnail: string; expires: number; result: Promise<Awaited<ReturnType<typeof detectRaceNumbers>>> }>();
@@ -332,12 +334,14 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (!event) return res.status(404).json({ error: "Event not found" });
       if (!await mediaPublic(mediaItem,event)) return res.status(404).json({error:"Media not found"});
       const access = downloadAccess(mediaItem, event, quality, req.isAuthenticated());
+      if (req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
       if (access !== 200) return res.status(access).json({
         error: access === 403 ? BETA_NOTICE : access === 400
           ? "Low resolution is available for images only" : "Sign in to download this media",
       });
 
-      res.json({ success: true, url: `/api/media/${mediaId}/download?quality=${quality}` });
+      const operation=req.user ? await issueDownloadOperation(req.user.id,mediaId,quality) : undefined;
+      res.json({ success: true, url: `/api/media/${mediaId}/download?quality=${quality}${operation?`&operation=${operation}`:""}` });
     } catch (error) {
       console.error('Error processing download:', error);
       res.status(500).json({ error: "Failed to process download" });
@@ -355,7 +359,11 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (!item || !event) return res.status(404).json({ error: "Media not found" });
       if (!await mediaPublic(item,event)) return res.status(404).json({error:"Media not found"});
       const access = downloadAccess(item, event, quality, req.isAuthenticated());
+      if (req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
       if (access !== 200) return res.status(access).json({ error: "Download not permitted" });
+      if (req.query.operation!==undefined && (!req.user || !await validDownloadOperation(req.query.operation,req.user.id,id,quality)))
+        return res.status(400).json({error:"Download authorization expired. Please request a new download."});
+      const operation=typeof req.query.operation==="string"?req.query.operation:randomUUID();
       const { stream, contentType, filename } = await downloadStream(item, quality);
       res.setHeader("Content-Type", contentType);
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -367,7 +375,10 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
         await pipeline(stream, res);
         // Counts complete server deliveries, not authorization requests, and
         // cannot confirm whether the recipient saved the file on their device.
-        await storage.incrementDownloadCount(id);
+        try {
+          if (req.user) await recordDownload(req.user.id,id,quality,operation);
+          else await storage.incrementDownloadCount(id);
+        } catch { console.error("Completed download statistics could not be recorded; do not retry file delivery."); }
       } finally { res.off("close", cancel); }
     } catch {
       console.error("Media download delivery failed");
@@ -554,6 +565,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const owningEvent = record.eventId ? await storage.getEvent(record.eventId) : undefined;
       if (!owningEvent || (!canManage(req.user,owningEvent) && !await mediaPublic(record,owningEvent))) return res.status(404).end();
       if (variant === "file") {
+        if (req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
         const event = record.eventId ? await storage.getEvent(record.eventId) : undefined;
         if (!req.isAuthenticated() || record.isPremium || event?.isPremium)
           return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Original not available" });
@@ -592,6 +604,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const event = record.eventId ? await storage.getEvent(record.eventId) : undefined;
       if (!event || (!canManage(req.user,event) && !await mediaPublic(record,event))) return res.status(404).end();
       const isOriginal = record.url === `/api/media/files/${key}`;
+      if (isOriginal && req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
       if (isOriginal && (!req.isAuthenticated() || record.isPremium || event?.isPremium)) {
         return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Original not available" });
       }
@@ -821,6 +834,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
           ...(current.tags || []).filter(tag=>!changes.tags!.includes(tag))])).filter(tag=>!changes.tags!.includes(tag))
           : current.suppressedAITags;
         const [result] = await tx.update(mediaItems).set({ ...changes, suppressedAITags,
+          ...("caption" in changes ? {captionSource:"manual"} : {}),
           ...(event.creatorId ? {contentVersion:sql`${mediaItems.contentVersion}+1`,safetyStatus:"error",safetyReason:"Safety check pending."} : {}),
           ...(changes.tags ? {manualTags:changes.tags} : {}),
           identification: identificationChanged ? changes.identification!.map(i=>({...i,source:"manual" as const})) : current.identification,

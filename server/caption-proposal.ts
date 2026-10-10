@@ -26,10 +26,16 @@ export function proposeCaption(
   const numbers = Array.from(new Set(observedNumbers.filter(number => /^[0-9]{1,4}$/.test(number)))).slice(0, 12);
   const matches = entries.filter(entry => numbers.some(number => normalizeNumber(number) === normalizeNumber(entry.number)));
   const safeMatch = numbers.length === 1 && matches.length === 1 ? matches[0] : null;
-  const date = new Date(event.date).toLocaleDateString("de-DE", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" });
+  const date = new Date(event.date).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
   const context = [event.title, event.round, event.track, date].filter(Boolean).join(" · ");
   const suggestion = safeMatch
     ? `${context} — #${safeMatch.number} ${safeMatch.team}, ${safeMatch.car}, ${safeMatch.drivers}`
     : `${context}${scene ? ` — ${scene}` : ""}`;
   return { numbers, matches, ambiguous: numbers.length !== 1 || matches.length !== 1, suggestion: suggestion.slice(0, 1000) };
+}
+
+/** Conservative automatic captions never turn tags or registered lineups into
+ * evidence of who appears in a photograph. Event context is sufficient. */
+export function communityCaption(event: Pick<Event,"title"|"date"|"round"|"track">) {
+  return proposeCaption(event,[],[],null).suggestion;
 }

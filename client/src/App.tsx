@@ -22,6 +22,7 @@ import CreatorProfile from "@/pages/creator-profile";
 import Imprint from "@/pages/imprint";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import CreditsPage from "@/pages/credits";
+import AccountPage from "@/pages/account";
 import { useEffect } from "react";
 import React from 'react';
 
@@ -84,6 +85,7 @@ function Router() {
       <Route path="/archive-events" component={ArchiveEvents} />
       <Route path="/events/:id" component={EventGallery} />
       <Route path="/media/:id" component={MediaDetail} />
+      <ProtectedRoute path="/account" component={AccountPage} />
       <Route path="/creator-events" component={CreatorEvents} />
       <Route path="/imprint" component={Imprint} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />

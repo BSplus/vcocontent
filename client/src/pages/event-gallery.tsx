@@ -11,6 +11,8 @@ import MainNavigation from "@/components/main-navigation";
 import Footer from "@/components/footer";
 import EventTitle from "@/components/event-title";
 import { formatDate } from "@/lib/utils";
+import CommunityActions from "@/components/community-actions";
+import { ShareMenu } from "@/components/share-menu";
 
 export default function EventGallery() {
   const [, params] = useRoute<{ id: string }>("/events/:id");
@@ -102,6 +104,8 @@ export default function EventGallery() {
             {event.description && (
               <p className="max-w-2xl text-lg">{event.description}</p>
             )}
+            <CommunityActions kind="event" id={event.id} title={event.title} />
+            <ShareMenu url={`${window.location.origin}/events/${event.id}`} title={event.title} />
           </div>
         </div>
       </header>

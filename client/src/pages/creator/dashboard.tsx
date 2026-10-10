@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Event, MediaItem } from "@shared/schema";
 import { 
-  ArrowLeft, Loader2, Plus, Edit, Eye, PenLine
+  ArrowLeft, Plus, Edit, Eye, PenLine, Images, UserRound, BarChart3, ArrowUpRight, Image as ImageIcon
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -19,7 +19,9 @@ import Footer from "@/components/footer";
 import MediaUploadModal from "@/components/media-upload-modal";
 import EditMediaModal from "@/components/edit-media-modal";
 import EventTitle from "@/components/event-title";
-import DashboardEventList from "@/components/dashboard-event-list";
+import DashboardEventList from "@/components/creator-gallery-cards";
+import { Badge } from "@/components/ui/badge";
+import ProfileSettings from "@/components/profile-settings";
 
 export default function CreatorDashboard() {
   const queryClient = useQueryClient();
@@ -32,17 +34,18 @@ export default function CreatorDashboard() {
   const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
   const editMediaOpener = useRef<HTMLButtonElement | null>(null);
   const [activeTab, setActiveTab] = useState<"events" | "media" | "analytics">("events");
+  const [section, setSection] = useState<"studio" | "galleries" | "account">("studio");
   const [eventSearch, setEventSearch] = useState("");
 
   // Load creator's events
   const { data: events = [], isLoading: eventsLoading, error: eventsError } = useQuery<Event[]>({
-    queryKey: ["/api/creator/events"],
+    queryKey: ["/api/creator/events", user?.id ?? "signed-out"],
     staleTime: 0,
   });
 
-  // Load all media items to calculate stats
+  // Reuse the same owned metadata for cover cards, recent photos and the editor.
   const { data: mediaItems = [], isLoading: mediaLoading, error: mediaError } = useQuery<MediaItem[]>({
-    queryKey: ["/api/creator/media"],
+    queryKey: ["/api/creator/media", user?.id ?? "signed-out"],
     staleTime: 0,
   });
   const { data: usage, isLoading: usageLoading, error: usageError, refetch: retryUsage } = useQuery<{
@@ -50,7 +53,8 @@ export default function CreatorDashboard() {
     limits: { bytes: number; galleries: number; photos: number; imageBytes: number };
     exception: boolean; adminExempt:boolean;
     eventStats: {eventId:number;photos:number;videos:number;downloads:number}[];
-  }>({ queryKey: ["/api/creator/usage"] });
+  }>({ queryKey: ["/api/creator/usage", user?.id ?? "signed-out"] });
+  const recentMedia = [...mediaItems].sort((a,b)=>b.id-a.id).slice(0,12);
   const publishMutation = useMutation({
     mutationFn: async ({ id, published }: { id: number; published: boolean }) =>
       (await apiRequest("POST", `/api/events/${id}/publish`, { published })).json(),
@@ -72,7 +76,7 @@ export default function CreatorDashboard() {
   const [mediaPage, setMediaPage] = useState(1);
   useEffect(() => setMediaPage(1), [selectedEventId]);
   const { data: eventMediaItems = [] } = useQuery<MediaItem[]>({
-    queryKey: [`/api/events/${selectedEventId}/media?page=${mediaPage}`],
+    queryKey: [`/api/events/${selectedEventId}/media?page=${mediaPage}`, user?.id ?? "signed-out"],
     enabled: !!selectedEventId,
     refetchInterval:activeTab==="media"?5000:false,
   });
@@ -92,8 +96,15 @@ export default function CreatorDashboard() {
 
   if (eventsLoading || mediaLoading || usageLoading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="min-h-[100dvh] bg-background px-5 py-8 sm:px-8" role="status" aria-label="Loading Creator Studio">
+        <div className="mx-auto max-w-6xl animate-pulse space-y-8">
+          <div className="h-3 w-40 bg-secondary" />
+          <div className="h-12 w-72 max-w-full bg-secondary" />
+          <div className="flex gap-3 border-b border-border pb-4"><div className="h-10 w-28 bg-secondary" /><div className="h-10 w-36 bg-secondary" /><div className="h-10 w-24 bg-secondary" /></div>
+          <div className="grid gap-4 sm:grid-cols-3">{[0, 1, 2].map(item => <div key={item} className="h-28 border border-border bg-card" />)}</div>
+          <div className="h-56 border border-border bg-card" />
+          <span className="sr-only">Loading creator events and usage</span>
+        </div>
       </div>
     );
   }
@@ -108,8 +119,9 @@ export default function CreatorDashboard() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-primary/20">
         <div className="container mx-auto px-4 py-6">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            CREATOR DASHBOARD
+          <p className="vco-kicker">VCO · Creator workspace</p>
+          <h1 className="mt-3 text-4xl font-bold sm:text-5xl">
+            Creator Studio
           </h1>
           <LegalLinks />
           <div className="flex gap-2 mt-4">
@@ -130,6 +142,75 @@ export default function CreatorDashboard() {
             <Button asChild variant="outline"><Link href="/creator/apply">Verify email</Link></Button>
           </CardContent></Card>
         )}
+        <nav aria-label="Creator Studio sections" className="mb-7 flex flex-wrap gap-2 border-b border-border pb-3">
+          {([
+            ["studio", "Studio", BarChart3],
+            ["galleries", "My Galleries", Images],
+            ["account", "Account", UserRound],
+          ] as const).map(([value, label, Icon]) => <button key={value} type="button" onClick={() => setSection(value)} aria-current={section === value ? "page" : undefined}
+            className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-4 text-sm font-bold uppercase tracking-wider transition-colors ${section === value ? "border-primary text-primary" : "border-transparent text-foreground/65 hover:text-foreground"}`}>
+            <Icon className="h-4 w-4" />{label}
+          </button>)}
+        </nav>
+
+        {section === "studio" && <section className="space-y-8">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="border border-border bg-card p-5"><p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Galleries</p><p className="mt-3 text-4xl font-bold text-foreground">{usage?.galleries ?? "—"}<span className="ml-2 text-sm font-normal text-muted-foreground">{usage && !usage.adminExempt ? `/ ${usage.limits.galleries}` : ""}</span></p></div>
+            <div className="border border-border bg-card p-5"><p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Photos</p><p className="mt-3 text-4xl font-bold text-foreground">{usage?.photos ?? "—"}<span className="ml-2 text-sm font-normal text-muted-foreground">{usage && !usage.adminExempt ? `/ ${usage.limits.photos}` : ""}</span></p></div>
+            <div className="border border-border bg-card p-5"><p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Storage in use</p><p className="mt-3 text-4xl font-bold text-foreground">{usage ? `${(usage.bytes / 1000000).toFixed(1)} MB` : "—"}</p><p className="mt-1 text-xs text-muted-foreground">{usage?.adminExempt ? "Admin-managed storage" : usage ? `of ${(usage.limits.bytes / 1000000).toFixed(0)} MB` : "Usage details unavailable"}</p></div>
+          </div>
+          {usageError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border border-destructive/35 bg-card px-4 py-3 text-sm"><span>Usage details could not be loaded.</span><Button size="sm" variant="outline" className="min-h-11" onClick={() => void retryUsage()}>Retry usage</Button></div>}
+          <div className="flex flex-wrap items-center justify-between gap-4 border border-primary/25 bg-primary/[0.045] p-5 sm:p-7">
+            <div><p className="vco-kicker">Your latest work</p><h2 className="mt-3 text-3xl">Keep the archive moving.</h2><p className="mt-2 max-w-xl text-foreground/70">Publish a new event gallery or add photos to one already in progress.</p></div>
+            <div className="flex flex-wrap gap-2">
+              <Button className="vco-button min-h-11 bg-primary text-primary-foreground" onClick={() => { setSelectedEventId(null); setUploadModalOpen(true); }}><Plus className="mr-2 h-4 w-4" />Create gallery</Button>
+              <Button variant="outline" className="min-h-11" onClick={() => setSection("galleries")}>Manage galleries<ArrowUpRight className="ml-2 h-4 w-4" /></Button>
+            </div>
+          </div>
+          <div className="grid gap-8 lg:grid-cols-[1.3fr_.7fr]">
+            <section aria-labelledby="recent-photos-heading">
+              <div className="mb-4 flex items-end justify-between gap-3"><div><p className="vco-kicker">Recently uploaded</p><h2 id="recent-photos-heading" className="mt-2 text-2xl">Your latest photos</h2></div><button type="button" className="min-h-11 text-sm text-primary underline underline-offset-4" onClick={() => { setSection("galleries"); setActiveTab("media"); }}>All media</button></div>
+              {recentMedia.filter(item => item.type === "image").length ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{recentMedia.filter(item => item.type === "image").slice(0, 6).map(item => <button key={item.id} type="button" onClick={() => { setSelectedEventId(item.eventId); setSection("galleries"); setActiveTab("media"); }} className="group relative aspect-[4/3] overflow-hidden border border-border bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                  <img src={item.thumbnail} alt={item.caption || "Recent photo"} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]" />
+                  <span className="absolute inset-x-0 bottom-0 truncate bg-background/85 px-3 py-2 text-sm">{item.caption || "Untitled photo"}</span>
+                </button>)}</div>
+                : <div className="flex min-h-48 flex-col items-center justify-center border border-dashed border-border bg-card/50 p-6 text-center"><ImageIcon className="h-8 w-8 text-primary/70" /><p className="mt-3 font-semibold">No photos yet</p><p className="mt-1 text-sm text-muted-foreground">Your newest uploads will appear here.</p><Button variant="outline" className="mt-4 min-h-11" onClick={() => setSection("galleries")}>Choose a gallery</Button></div>}
+            </section>
+            <aside className="border-l border-border pl-0 lg:pl-7">
+              <p className="vco-kicker">Recent galleries</p><h2 className="mt-2 text-2xl">At a glance</h2>
+              {sortedEvents.length ? <div className="mt-4 divide-y divide-border border-y border-border">{sortedEvents.slice(0, 4).map(event => {
+                const stats = getEventStats(event.id);
+                const visibility = (event as Event & { visibility?: string }).visibility;
+                return <button key={event.id} type="button" onClick={() => { setSelectedEventId(event.id); setSection("galleries"); setActiveTab("media"); }} className="flex min-h-16 w-full items-center justify-between gap-3 py-3 text-left">
+                  <span className="min-w-0"><span className="block truncate font-semibold">{event.title}</span><span className="mt-1 block text-xs text-muted-foreground">{stats.photos} photos · {stats.totalDownloads} downloads</span></span>
+                  <Badge variant="outline">{visibility === "published" ? "Live" : "Draft"}</Badge>
+                </button>;
+              })}</div> : <p className="mt-4 border border-dashed border-border p-5 text-sm text-muted-foreground">Your galleries will be listed here.</p>}
+              <p className="mt-5 text-xs leading-relaxed text-muted-foreground">Creator earnings features are not active in this public beta. No payout or revenue tools are available.</p>
+            </aside>
+          </div>
+        </section>}
+
+        {section === "account" && <section className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
+          <div className="space-y-6">
+            {user && <ProfileSettings user={user} />}
+            <Card><CardHeader><CardTitle>Account & public profile</CardTitle><CardDescription>Creator identity and personal community activity</CardDescription></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-4 border-b border-border pb-5"><div className="flex h-14 w-14 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-xl font-bold text-primary">{user?.username?.slice(0,1).toUpperCase()}</div><div><p className="font-semibold">{user?.username}</p><p className="text-sm text-muted-foreground">{user?.email}</p></div></div>
+                <p className="text-sm leading-relaxed text-foreground/75">Public creator information and galleries remain subject to the existing moderation and visibility checks.</p>
+                <div className="flex flex-wrap gap-3"><Button asChild variant="outline" className="min-h-11"><Link href={`/creator/${user?.id}`}>View public profile<ArrowUpRight className="ml-2 h-4 w-4" /></Link></Button><Button asChild className="min-h-11 bg-primary text-primary-foreground"><Link href="/account">My downloads & favorites</Link></Button></div>
+              </CardContent>
+            </Card>
+          </div>
+          <Card className="self-start"><CardHeader><CardTitle>Studio statistics</CardTitle><CardDescription>Live beta usage for your galleries</CardDescription></CardHeader><CardContent className="space-y-3 text-sm">
+            <p className="flex justify-between gap-4 border-b border-border pb-3"><span>Photos</span><strong>{usage?.photos ?? "—"}</strong></p>
+            <p className="flex justify-between gap-4 border-b border-border pb-3"><span>Galleries</span><strong>{usage?.galleries ?? "—"}</strong></p>
+            <p className="flex justify-between gap-4 border-b border-border pb-3"><span>Downloads</span><strong>{usage?.eventStats?.reduce((total, row) => total + row.downloads, 0) ?? "—"}</strong></p>
+            <p className="pt-1 text-xs leading-relaxed text-muted-foreground">These are completed beta download counts. Earnings and payout tools are not enabled.</p>
+          </CardContent></Card>
+        </section>}
+
+        {section === "galleries" && <>
         <Card className="mb-6">
           <CardHeader><CardTitle>Public beta usage</CardTitle><CardDescription>Your community-photo allowance</CardDescription></CardHeader>
           <CardContent className="grid gap-2 text-sm sm:grid-cols-3">
@@ -145,9 +226,9 @@ export default function CreatorDashboard() {
         </Card>
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "events" | "media" | "analytics")}>
           <TabsList>
-            <TabsTrigger value="events">My Events</TabsTrigger>
-            <TabsTrigger value="media">My Media</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="events">Galleries</TabsTrigger>
+            <TabsTrigger value="media">Manage Media</TabsTrigger>
+            <TabsTrigger value="analytics">Performance</TabsTrigger>
           </TabsList>
 
           <TabsContent value="events" className="mt-6">
@@ -354,6 +435,7 @@ export default function CreatorDashboard() {
             </div>
           </TabsContent>
         </Tabs>
+        </>}
       </main>
       <Footer />
 

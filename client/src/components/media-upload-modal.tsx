@@ -91,6 +91,7 @@ export default function MediaUploadModal({
     }));
     queryClient.invalidateQueries({ predicate: query =>
       String(query.queryKey[0]).startsWith(`/api/events/${eventId}/media`) ||
+      String(query.queryKey[0]).startsWith("/api/creator/media") ||
       String(query.queryKey[0]).startsWith("/api/media") });
   }, [jobQuery.data, eventId]);
   const retryTags = async (upload: FileUpload) => {
@@ -203,7 +204,7 @@ export default function MediaUploadModal({
     }
   };
 
-  const handleFilesChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFilesChange = async (event: {target:{files:FileList|null}}) => {
     const files = Array.from(event.target.files || []);
       const maxSize = form.getValues("type") === "video" ? videoLimit : imageLimit;
     const newUploads: FileUpload[] = [];
@@ -490,6 +491,8 @@ export default function MediaUploadModal({
             ) : (
                <button type="button"
                  onClick={() => mediaInputRef.current?.click()}
+                 onDragOver={event=>{event.preventDefault();event.dataTransfer.dropEffect="copy";}}
+                 onDrop={event=>{event.preventDefault();if (!uploading) void handleFilesChange({target:{files:event.dataTransfer.files}});}}
                  className="w-full border-2 border-dashed rounded-lg p-4 sm:p-8 text-center cursor-pointer hover:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary transition-colors"
               >
                 <div className="flex flex-col items-center gap-2">

@@ -365,6 +365,7 @@ class DatabaseStorage implements IStorage {
     const result = await db
       .update(mediaItems)
       .set({...mediaItem,
+        ...("caption" in mediaItem ? {captionSource:"manual"} : {}),
         contentVersion:sql`${mediaItems.contentVersion}+1`,
         safetyStatus:sql`case when exists(select 1 from events e where e.id=${mediaItems.eventId} and e.creator_id is not null) then 'error' else ${mediaItems.safetyStatus} end`,
         safetyReason:sql`case when exists(select 1 from events e where e.id=${mediaItems.eventId} and e.creator_id is not null) then 'Safety check pending.' else ${mediaItems.safetyReason} end`,
@@ -456,6 +457,7 @@ class DatabaseStorage implements IStorage {
       if (mediaItem.eventId!==reservation.eventId) throw new Error("Upload event does not match its reservation");
       const community = !!reservation.creatorId;
       const [item] = await tx.insert(mediaItems).values({...mediaItem,
+        captionSource:community && mediaItem.type==="image" && !mediaItem.caption ? "auto_pending" : "preserved",
         manualTags:mediaItem.tags || [],
         ...(community ? {safetyStatus:"error",safetyReason:"Safety check pending."} : {})}).returning();
       if (requestAnalysis) {

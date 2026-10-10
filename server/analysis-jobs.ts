@@ -12,6 +12,7 @@ import { withVisionBudget, VisionBusy } from "./ai-budget";
 import { sampleVideo, SAMPLING_VERSION, cleanupVideoTemps } from "./video-sampling";
 import { aggregateVideo, recognizeVideoBatch, type VideoEvidence } from "./video-recognition";
 import { classifyVideoFailure, videoFailureRecord, type VideoFailureStage } from "./video-failures";
+import { communityCaption } from "./caption-proposal";
 
 // Database-wide budget, including multiple server processes. SDK retries are
 // disabled: only this queue owns retry/backoff and the persisted attempt count.
@@ -250,9 +251,12 @@ export async function drainAnalysisQueue() {
       const identification = current.identificationManual || !result.vehicles ? current.identification : event
         ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx) : result.vehicles;
       const category = claimed.referenceOnly ? current.category : await categorizeContent(merged);
+      const caption = event?.creatorId && current.type==="image" && current.captionSource==="auto_pending" && !current.caption
+        ? communityCaption(event) : undefined;
       const publicChanged = JSON.stringify([current.tags,current.identification,current.category]) !==
-        JSON.stringify([merged,identification,category]);
+        JSON.stringify([merged,identification,category]) || caption!==undefined;
       await tx.update(mediaItems).set({ tags: merged, identification,
+        ...(caption!==undefined ? {caption,captionSource:"automatic"} : {}),
         ...(event?.creatorId && publicChanged ? {
           contentVersion:sql`${mediaItems.contentVersion}+1`,safetyStatus:"error",safetyReason:"Safety check pending.",
         }:{}),

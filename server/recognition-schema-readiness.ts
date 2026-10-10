@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName } from "drizzle-orm";
-import { events, eventEntries, mediaItems, mediaAnalysisJobs, referenceDocuments, users, emailVerifications, betaRateLimits, safetyResults, safetyReviews, mediaReservations, mediaCleanup } from "@shared/schema";
+import { events, eventEntries, mediaItems, mediaAnalysisJobs, referenceDocuments, users, emailVerifications, betaRateLimits, safetyResults, safetyReviews, mediaReservations, mediaCleanup, communityLikes, communityFavorites, downloadOperations, downloadHistory } from "@shared/schema";
 
-export const recognitionSchemaRequirements = [events, eventEntries, mediaItems, mediaAnalysisJobs, referenceDocuments, users, emailVerifications, betaRateLimits, safetyResults, safetyReviews, mediaReservations, mediaCleanup]
+export const recognitionSchemaRequirements = [events, eventEntries, mediaItems, mediaAnalysisJobs, referenceDocuments, users, emailVerifications, betaRateLimits, safetyResults, safetyReviews, mediaReservations, mediaCleanup, communityLikes, communityFavorites, downloadOperations, downloadHistory]
   .flatMap(table => Object.values(getTableColumns(table)).map(column => ({
     table: getTableName(table), column: column.name,
   })));

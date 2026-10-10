@@ -19,6 +19,25 @@ Secrets ausgelesen. „Implementiert“ bedeutet nicht „live konfiguriert“.
 
 ## Tatsächliche Verarbeitung
 
+### Ergänzung Community & Creator Studio
+
+Neue Community-Verarbeitungen (10 October 2026), zur Betreiber-/Rechtsnachprüfung,
+ohne parallele Neufassung veröffentlichter Rechtstexte:
+
+| Prozess | Daten und Zugriff | Zweck / Prüfbedarf |
+|---|---|---|
+| Likes | Konto-ID, Foto-/Event-ID, Erstellzeit. Öffentlich nur Anzahl, persönlich eigener Zustand. | Gewünschte Communityfunktion; Rechtsgrundlage, Auskunft und Löschablauf bestätigen. Keine Rangliste/Like-Nutzerliste. |
+| Favoriten | Private Konto-/Inhaltsverknüpfungen und Zeit, keine kopierten Dateien. Nur eigene Session, aktuelle Inhaltsfreigabe zusätzlich erforderlich. | Gewünschtes persönliches Archiv; Aufbewahrung, Kontolöschung/Backups und Auskunft prüfen. |
+| Downloadhistorie | Konto, Medium, Qualität, Operation, Zeitpunkt erfolgreicher Serverlieferung. Nur eigene Session; verborgene Inhalte werden nicht angezeigt. | Gewünschte persönliche Historie, keine Behauptung lokalen Speicherns. Fristen und Auskunft/Löschung offen; keine Tracking-/Werbezwecke daraus ableiten. |
+| Kurzlebige Downloadoperation | Zufällige ID mit Nutzer-/Medien-/Qualitätsbindung; Gültigkeit eine Stunde. | Idempotente Lieferung, nicht Historienretention. Operationsbereinigung separat von Historienlöschung. |
+| Profiländerungen | Eigenes Username/Bio/Bild, normalisierte Bilddaten, bestehende unabhängige Safetyverarbeitung. | Öffentlicher Creatorauftritt; gleiche Moderationsempfänger wie Beta. Keine eigenen Rollen-/E-Mail-/Zahlungsänderungen. |
+| Automatische Communitycaption | Bestätigter Galerie-/Circuit-/Datums-/Serienkontext, bestehender Verarbeitungsabschluss, Text-Safetyprüfung. | Konservative Beschreibung ohne neue Identitätsannahmen oder zusätzliche Caption-KI-Abfrage. Empfänger, Safetycache und bestehende KI-Dokumentation rechtlich nachprüfen. |
+
+Löschung von Nutzer/Medium/Event entfernt Verknüpfungen technisch per Fremdschlüssel.
+Das ersetzt weder eine freigegebene Kontolöschoberfläche noch einen Betreiberprozess
+für Auskunft, Backups oder gesetzliche Aufbewahrung. Konkrete Fristen wurden nicht
+festgelegt. Details und Schema-/Betriebsgrenzen: `docs/community-studio-report.md`.
+
 | Prozess / Codebeleg | Daten, Zugang und Empfänger | Zweck / vorgeschlagene Grundlage | Aufbewahrung / Betriebsbestätigung |
 |---|---|---|---|
 | HTTP, `server/index.ts`, `server/vite.ts` | IP, Request-/Browserdaten, Referrer/Status; Server und Hosting. Diagnosen können Fehlerdaten enthalten. | Auslieferung/Sicherheit, Art. 6 (1) (f). | Logfelder, Zugriffsrechte, Infrastrukturfristen und Backupfristen live offen. |

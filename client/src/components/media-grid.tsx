@@ -33,6 +33,7 @@ import { ShareMenu } from "./share-menu";
 import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
 import { Link } from "wouter";
 import MediaRightsNotice from "@/components/media-rights-notice";
+import CommunityActions from "@/components/community-actions";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -233,6 +234,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               <p className="text-sm font-medium line-clamp-2 min-h-5">{item.caption || (item.type === 'video' ? 'Video' : 'Photo')}</p>
               {item.photographer && <p className="text-sm text-foreground/75">By {item.photographer}</p>}
               <div className="flex flex-wrap items-center gap-2 pt-2">
+                {item.type === "image" && <CommunityActions kind="media" id={item.id} title={item.caption || "photo"} compact />}
                 <Button variant="outline" size="sm" className="min-h-11" onClick={(event) => openItem(item, index, event.currentTarget)}>Preview</Button>
                 <Link href={`/media/${item.id}`} className="inline-flex min-h-11 items-center rounded border border-border px-3 py-2 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Media details</Link>
                 <DropdownMenu>
@@ -334,6 +336,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
+                {selectedItem?.type === "image" && <CommunityActions kind="media" id={selectedItem.id} title={selectedItem.caption || "photo"} />}
                 {user?.isAdmin && (
                   <Button
                     variant="outline"

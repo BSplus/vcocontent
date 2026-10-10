@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Loader2, Menu, Search, Settings, Users, X } from "lucide-react";
+import { Loader2, Menu, Search, Settings, Users, X, CircleUserRound } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 const links = [
@@ -42,7 +42,8 @@ export default function MainNavigation() {
               {location === link.href && <span className="absolute inset-x-0 bottom-1 h-0.5 bg-primary" />}
             </Link>
           ))}
-          {creatorAccessAvailable && (user?.isCreator || user?.isAdmin || user?.creatorStatus === "approved") && <Link href="/creator/dashboard" className={itemClasses("/creator/dashboard")}>Creator dashboard</Link>}
+          {creatorAccessAvailable && (user?.isCreator || user?.isAdmin || user?.creatorStatus === "approved") && <Link href="/creator/dashboard" className={itemClasses("/creator/dashboard")}>Creator Studio</Link>}
+          {user && <Link href="/account" className={itemClasses("/account")}><CircleUserRound className="mr-1.5 h-4 w-4" />My account</Link>}
           {user?.isAdmin && (
             <>
               <Link href="/admin/dashboard" className={itemClasses("/admin/dashboard")}><Settings className="mr-1.5 h-4 w-4" />Admin</Link>
@@ -99,7 +100,8 @@ export default function MainNavigation() {
                 {link.label}{location === link.href && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />}
               </Link>
             ))}
-            {creatorAccessAvailable && (user?.isCreator || user?.isAdmin || user?.creatorStatus === "approved") && <Link href="/creator/dashboard" onClick={closeMenu} className={`${itemClasses("/creator/dashboard")} col-span-2`}>Creator dashboard</Link>}
+            {creatorAccessAvailable && (user?.isCreator || user?.isAdmin || user?.creatorStatus === "approved") && <Link href="/creator/dashboard" onClick={closeMenu} className={`${itemClasses("/creator/dashboard")} col-span-2`}>Creator Studio</Link>}
+            {user && <Link href="/account" onClick={closeMenu} className={`${itemClasses("/account")} col-span-2`}><CircleUserRound className="mr-2 h-4 w-4" />My account</Link>}
             {user?.isAdmin && (
               <>
                 <Link href="/admin/dashboard" onClick={closeMenu} className={`${itemClasses("/admin/dashboard")} col-span-2`}><Settings className="mr-2 h-4 w-4" />Admin dashboard</Link>

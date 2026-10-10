@@ -149,7 +149,17 @@ test("reference corrections reuse persisted observations without provider calls 
   await drainAnalysisQueue();
   saved=await storage.getMediaItem(media.id);
   assert.equal(saved.identification[0].drivers,"Editorial correction");assert.equal(providerCalls,before);
+  // enqueueAnalysis kicks a consumer immediately. Hold its mocked request
+  // before changing attempt state rather than racing the automatic consumer.
+  let reached,release;
+  const entered=new Promise(resolve=>{reached=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  mockAI(async()=>{providerCalls++;reached();await gate;throw new Error("Controlled provider failure");});
   await enqueueAnalysis(saved,false,true);
+  await entered;
+  await db.update(mediaAnalysisJobs).set({attempts:2,availableAt:new Date()}).where(eq(mediaAnalysisJobs.mediaId,media.id));
+  release();
+  await until(async()=>(await analysisStatus(media.id)).status==="queued");
   await db.update(mediaAnalysisJobs).set({attempts:2,availableAt:new Date()}).where(eq(mediaAnalysisJobs.mediaId,media.id));
   mockAI(async()=>{providerCalls++;throw new Error("Controlled provider failure");});await drainAnalysisQueue();
   assert.equal((await analysisStatus(media.id)).status,"failed");

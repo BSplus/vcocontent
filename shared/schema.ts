@@ -120,6 +120,7 @@ export const mediaItems = pgTable("media_items", {
   url: text("url").notNull(),
   thumbnail: text("thumbnail").notNull(),
   caption: text("caption"),
+  captionSource: text("caption_source").notNull().default("preserved"),
   photographer: text("photographer"),
   tags: text("tags").array(),
   category: text("category"),
@@ -147,6 +148,36 @@ export const mediaItems = pgTable("media_items", {
   index("media_thumbnail_idx").on(table.thumbnail).where(sql`${table.thumbnail} like '/api/media/files/%'`),
   index("media_popular_idx").on(table.downloadCount),
 ]);
+
+export const communityLikes = pgTable("community_likes", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, {onDelete:"cascade"}),
+  mediaId: integer("media_id").references(() => mediaItems.id, {onDelete:"cascade"}),
+  eventId: integer("event_id").references(() => events.id, {onDelete:"cascade"}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, t => [uniqueIndex("likes_user_media").on(t.userId,t.mediaId),uniqueIndex("likes_user_event").on(t.userId,t.eventId)]);
+export const communityFavorites = pgTable("community_favorites", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, {onDelete:"cascade"}),
+  mediaId: integer("media_id").references(() => mediaItems.id, {onDelete:"cascade"}),
+  eventId: integer("event_id").references(() => events.id, {onDelete:"cascade"}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, t => [uniqueIndex("favorites_user_media").on(t.userId,t.mediaId),uniqueIndex("favorites_user_event").on(t.userId,t.eventId)]);
+export const downloadOperations = pgTable("download_operations", {
+  id: text("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id,{onDelete:"cascade"}),
+  mediaId: integer("media_id").notNull().references(() => mediaItems.id,{onDelete:"cascade"}),
+  quality: text("quality").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export const downloadHistory = pgTable("download_history", {
+  id: serial("id").primaryKey(),
+  operationId: text("operation_id").notNull().unique(),
+  userId: integer("user_id").notNull().references(() => users.id,{onDelete:"cascade"}),
+  mediaId: integer("media_id").notNull().references(() => mediaItems.id,{onDelete:"cascade"}),
+  quality: text("quality").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, t=>[index("downloads_user_date").on(t.userId,t.createdAt)]);
 
 export const mediaReservations = pgTable("media_reservations", {
   id: text("id").primaryKey(),
@@ -286,7 +317,7 @@ export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   identification: z.array(identificationSchema).max(12).optional(),
   isPremium: z.boolean().optional(),
   creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),
-}).omit({contentVersion:true,safetyVersion:true,safetyStatus:true,safetyPolicy:true,safetyReason:true});
+}).omit({captionSource:true,contentVersion:true,safetyVersion:true,safetyStatus:true,safetyPolicy:true,safetyReason:true});
 
 // Export types
 export type InsertUser = z.infer<typeof insertUserSchema>;
