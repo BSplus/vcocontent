@@ -28,3 +28,17 @@ mtime_ms = 1791585985260
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/a19daa94-c1d0-4f86-8b65-74bac4c503bf/a95c2135-c67e-4937-a16d-d186aabadcd6"
 storage_version_token = "1791585998834008"
 content_type = "text/plain"
+
+[[outputs]]
+id = "PhBwThV8bTjldTTaIPkC0"
+uri = "file://generated-artifacts/video-review/editorial-review.html"
+type = "html"
+title = "VCO video recognition — editorial review"
+description = "Five authorized clips: saved tags and identities, sampled views, reference-scope caveats and actual token usage. Mark results correct, incorrect or uncertain and export a CSV; all verdicts start pending."
+logical_id = "5d2067de-61b6-470f-b6b0-81fc752254f5"
+content_hash = "sha256:afbf08b5ce7dd1ab384ca4649bf1924f1d837f78573d60fe668f08185a308c0a"
+size = 374551
+mtime_ms = 1791616448679
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/5d2067de-61b6-470f-b6b0-81fc752254f5/7bd7801b-75c9-4e98-855a-c8d1bc09fa3b"
+storage_version_token = "1791616547539573"
+content_type = "text/html"

@@ -1,0 +1,1342 @@
+{
+  "date": "2026-10-10T07:11:13.256Z",
+  "model": "gpt-4.1-mini",
+  "provider": "existing managed OpenAI",
+  "editorialStatus": "unreviewed",
+  "validatedAccuracy": null,
+  "billingCost": null,
+  "referenceScope": "None: no verified clip/event/season association; no global number matching",
+  "method": "Real production queue with local original reader; saved database values exported before disposable fixture cleanup",
+  "results": [
+    {
+      "file": "0_Finish_edit_1791615863174.mp4",
+      "bytes": 67048257,
+      "status": "excluded",
+      "reason": "Exceeds unchanged video byte policy"
+    },
+    {
+      "file": "1_196_imsa_round_1_006_1791615863174.mp4",
+      "bytes": 59829558,
+      "status": "excluded",
+      "reason": "Exceeds unchanged video byte policy"
+    },
+    {
+      "file": "2_BS+_imsa_round_1_007_1791615863174.mp4",
+      "bytes": 42530987,
+      "status": "completed",
+      "attempts": 1,
+      "elapsedMs": 21319,
+      "tags": [
+        "Front View",
+        "Race Track",
+        "Day",
+        "GT Car",
+        "Dry Track",
+        "Rear 3/4",
+        "Front 3/4",
+        "Wide Shot"
+      ],
+      "identification": [
+        {
+          "team": "Mahle",
+          "number": "31",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Race Car",
+          "discipline": "",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "",
+          "number": "110",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Race Car",
+          "discipline": "",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "",
+          "number": "112",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Race Car",
+          "discipline": "",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "HRE",
+          "number": "196",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Race Car",
+          "discipline": "GT",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "Mahle",
+          "number": "",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "",
+          "discipline": "GT",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "",
+          "number": "105",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "",
+          "discipline": "GT",
+          "racingClass": "",
+          "manufacturer": ""
+        }
+      ],
+      "rawRecognition": [
+        {
+          "team": "Mahle",
+          "number": "31",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Race Car",
+          "discipline": "",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "",
+          "number": "110",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Race Car",
+          "discipline": "",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "",
+          "number": "112",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Race Car",
+          "discipline": "",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "HRE",
+          "number": "196",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Race Car",
+          "discipline": "GT",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "Mahle",
+          "number": "",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "",
+          "discipline": "GT",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "",
+          "number": "105",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "",
+          "discipline": "GT",
+          "racingClass": "",
+          "manufacturer": ""
+        }
+      ],
+      "evidence": {
+        "cost": null,
+        "frames": [
+          {
+            "hash": "88b285fa4a92419160fe387a81fc882968f59a9f4406f24e73a03ce6a2485f73",
+            "tags": [
+              "Front View",
+              "Race Track",
+              "Day",
+              "GT Car",
+              "Dry Track"
+            ],
+            "vehicles": [
+              {
+                "team": "Mahle",
+                "number": "31",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "",
+                "number": "110",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "",
+                "number": "112",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 0
+          },
+          {
+            "hash": "c912003023475f871bb20e04feeb6bfd0f0a94ff6dfb0c396c0e4fcb3ff00aff",
+            "tags": [
+              "Front View",
+              "Race Track",
+              "Day",
+              "GT Car",
+              "Dry Track"
+            ],
+            "vehicles": [
+              {
+                "team": "Mahle",
+                "number": "31",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "HRE",
+                "number": "196",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "",
+                "number": "110",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "",
+                "number": "112",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 1.68331042
+          },
+          {
+            "hash": "50472dd169ba8f0d058358e441cf5fe989bdb4782de59a530b7f87f2273bddbe",
+            "tags": [
+              "Front View",
+              "Race Track",
+              "Day",
+              "GT Car",
+              "Dry Track"
+            ],
+            "vehicles": [
+              {
+                "team": "Mahle",
+                "number": "31",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "HRE",
+                "number": "196",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "",
+                "number": "110",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "",
+                "number": "112",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 3.3666859000000002
+          },
+          {
+            "hash": "f203925474d1d4e8f5dc0767d19255354fcf6288d5faa63bd99dfaab0e19729e",
+            "tags": [
+              "Front View",
+              "Race Track",
+              "Day",
+              "GT Car",
+              "Dry Track"
+            ],
+            "vehicles": [
+              {
+                "team": "Mahle",
+                "number": "31",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "HRE",
+                "number": "196",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "",
+                "number": "110",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "",
+                "number": "112",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 5.03332969
+          },
+          {
+            "hash": "c6c5ff984f895e1f7ecb1789b7a24f087500f8b66ff75183d38fec4a3a8c7d5f",
+            "tags": [
+              "Day",
+              "Race Track",
+              "GT Car",
+              "Rear 3/4",
+              "Front 3/4",
+              "Wide Shot"
+            ],
+            "vehicles": [
+              {
+                "team": "Mahle",
+                "number": "",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "GT",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "",
+                "number": "196",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "GT",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "",
+                "number": "105",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "GT",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 6.7166401
+          }
+        ],
+        "duration": 8.384,
+        "samplingMs": 12617,
+        "sourceHash": "1b3339dec28efd7e1d77c1bbef9021b59098d013127193191bc1a98b0f61a836",
+        "timestamps": [
+          0,
+          1.68331042,
+          3.3666859000000002,
+          5.03332969,
+          6.7166401
+        ],
+        "promptTokens": 4902,
+        "analyzedFrames": 5,
+        "completionTokens": 1190,
+        "providerRequests": 2,
+        "usageUnavailableRequests": 0
+      },
+      "caption": "",
+      "referenceScope": "None; no reference documents attached; registered drivers intentionally unresolved",
+      "editorialReview": {
+        "tags": "pending",
+        "identifications": "pending"
+      }
+    },
+    {
+      "file": "3_Snippet__99_1_9_16_1791615863174.mp4",
+      "bytes": 16191445,
+      "status": "completed",
+      "attempts": 1,
+      "elapsedMs": 7346,
+      "tags": [
+        "Side View",
+        "Race Track",
+        "Day",
+        "Race Car",
+        "Front 3/4",
+        "Front View",
+        "Dry Track",
+        "Stock Car"
+      ],
+      "identification": [
+        {
+          "team": "bremotion-tuning.de",
+          "number": "99",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Race Car",
+          "discipline": "",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "",
+          "number": "9",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Stock Car",
+          "discipline": "Stock Car",
+          "racingClass": "",
+          "manufacturer": "Chevrolet"
+        }
+      ],
+      "rawRecognition": [
+        {
+          "team": "bremotion-tuning.de",
+          "number": "99",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Race Car",
+          "discipline": "",
+          "racingClass": "",
+          "manufacturer": ""
+        },
+        {
+          "team": "",
+          "number": "9",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Stock Car",
+          "discipline": "Stock Car",
+          "racingClass": "",
+          "manufacturer": "Chevrolet"
+        }
+      ],
+      "evidence": {
+        "cost": null,
+        "frames": [
+          {
+            "hash": "dccc67e25b2302e76ac44fd0f1141f2406db51e7ffca64dfae043cfb6a744e96",
+            "tags": [
+              "Side View",
+              "Race Track",
+              "Day",
+              "Race Car"
+            ],
+            "vehicles": [
+              {
+                "team": "",
+                "number": "99",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 0.0333333
+          },
+          {
+            "hash": "5fe869d2ea2ba3c0f890d0ad239649a656558de7eb662edb30e7c2ced4657cb1",
+            "tags": [
+              "Front 3/4",
+              "Race Track",
+              "Day",
+              "Race Car"
+            ],
+            "vehicles": [
+              {
+                "team": "",
+                "number": "99",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 1.7666666
+          },
+          {
+            "hash": "dc9170160c4468dbc6ff13f91826be78aef231fcc525736cca7c6239216bc39a",
+            "tags": [
+              "Front View",
+              "Race Track",
+              "Day",
+              "Race Car"
+            ],
+            "vehicles": [
+              {
+                "team": "",
+                "number": "99",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 3.1333332
+          },
+          {
+            "hash": "ac37b65fc84acf79964726b2a6547a4cbd805de37d7b0d08d38211208da5f866",
+            "tags": [
+              "Side View",
+              "Race Track",
+              "Day",
+              "Race Car"
+            ],
+            "vehicles": [
+              {
+                "team": "bremotion-tuning.de",
+                "number": "99",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Race Car",
+                "discipline": "",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 5.3666668
+          },
+          {
+            "hash": "9ca0da18863fda2d841b0c62fb650b20c15eb99b9c65d81db8c13b9d1ba0c667",
+            "tags": [
+              "Side View",
+              "Race Track",
+              "Day",
+              "Dry Track",
+              "Stock Car"
+            ],
+            "vehicles": [
+              {
+                "team": "",
+                "number": "9",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Stock Car",
+                "discipline": "Stock Car",
+                "racingClass": "",
+                "manufacturer": "Chevrolet"
+              }
+            ],
+            "timestamp": 6.3666664
+          }
+        ],
+        "duration": 7.833333,
+        "samplingMs": 3405,
+        "sourceHash": "150abf4f74658dd77008b59719416566da550152b0c11e0979ef6ecfba39aa2c",
+        "timestamps": [
+          0.0333333,
+          1.7666666,
+          3.1333332,
+          5.3666668,
+          6.3666664
+        ],
+        "promptTokens": 4902,
+        "analyzedFrames": 5,
+        "completionTokens": 485,
+        "providerRequests": 2,
+        "usageUnavailableRequests": 0
+      },
+      "caption": "",
+      "referenceScope": "None; no reference documents attached; registered drivers intentionally unresolved",
+      "editorialReview": {
+        "tags": "pending",
+        "identifications": "pending"
+      }
+    },
+    {
+      "file": "4_Gran_Turismo™_7_20260509130051_1791615863174.mp4",
+      "bytes": 45023232,
+      "status": "completed",
+      "attempts": 1,
+      "elapsedMs": 11890,
+      "tags": [
+        "Side View",
+        "Race Track",
+        "Day",
+        "Dry Track",
+        "Group",
+        "Race Car",
+        "Rear View",
+        "Rear 3/4",
+        "Battle",
+        "GT Car",
+        "Race Action"
+      ],
+      "identification": [
+        {
+          "team": "VITALITY",
+          "number": "48",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "",
+          "discipline": "",
+          "racingClass": "GT2",
+          "manufacturer": ""
+        }
+      ],
+      "rawRecognition": [
+        {
+          "team": "VITALITY",
+          "number": "48",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "",
+          "discipline": "",
+          "racingClass": "GT2",
+          "manufacturer": ""
+        }
+      ],
+      "evidence": {
+        "cost": null,
+        "frames": [
+          {
+            "hash": "f6105f88da875cd1fc0068dec1e59653baae86e5c1181832617655f47d133dad",
+            "tags": [
+              "Side View",
+              "Race Track",
+              "Day",
+              "Dry Track",
+              "Group",
+              "Race Car"
+            ],
+            "vehicles": [
+              {
+                "team": "VITALITY",
+                "number": "48",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "Race Car",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "ARTASANA",
+                "number": "65",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "Race Car",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 0
+          },
+          {
+            "hash": "e91fec3e6f0636af980b1edc47b058c19234b858866d806d844301e1fdccbf73",
+            "tags": [
+              "Rear View",
+              "Race Track",
+              "Day",
+              "Dry Track",
+              "Group",
+              "Race Car"
+            ],
+            "vehicles": [
+              {
+                "team": "VITALITY",
+                "number": "48",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "Race Car",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 3.9372666
+          },
+          {
+            "hash": "f0fccc758722c28dc39a512b76e5f4aeab0de607e9c6c3dd788dd89d588fcf97",
+            "tags": [
+              "Rear 3/4",
+              "Race Track",
+              "Day",
+              "Dry Track",
+              "Group",
+              "Race Car",
+              "Battle"
+            ],
+            "vehicles": [
+              {
+                "team": "ARTASANA",
+                "number": "65",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "Race Car",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "VITALITY",
+                "number": "48",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "Race Car",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 7.8745332
+          },
+          {
+            "hash": "436d45e16aa7a62412b8f928505f097bfd0069babcd97a6062e17af763881adf",
+            "tags": [
+              "Side View",
+              "Race Track",
+              "Day",
+              "Dry Track",
+              "Group",
+              "Race Car"
+            ],
+            "vehicles": [
+              {
+                "team": "ARTASANA",
+                "number": "65",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "Race Car",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "VITALITY",
+                "number": "48",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "Race Car",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 11.8117998
+          },
+          {
+            "hash": "e7beeefb4a981c3ee174669dda1d3752d76137b8c610bc162662af7d03efced3",
+            "tags": [
+              "Side View",
+              "Day",
+              "Race Track",
+              "GT Car",
+              "Race Action"
+            ],
+            "vehicles": [
+              {
+                "team": "ATLASIAN",
+                "number": "65",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "Gran Turismo",
+                "racingClass": "GT2",
+                "manufacturer": ""
+              },
+              {
+                "team": "VITALITY",
+                "number": "48",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "Gran Turismo",
+                "racingClass": "GT2",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 15.7490664
+          }
+        ],
+        "duration": 19.686333,
+        "samplingMs": 6083,
+        "sourceHash": "0cff7bc1938247a9def959fbe6782ef9ddaf521ffddbfc141417a812de7436fc",
+        "timestamps": [
+          0,
+          3.9372666,
+          7.8745332,
+          11.8117998,
+          15.7490664
+        ],
+        "promptTokens": 4902,
+        "analyzedFrames": 5,
+        "completionTokens": 787,
+        "providerRequests": 2,
+        "usageUnavailableRequests": 0
+      },
+      "caption": "",
+      "referenceScope": "None; no reference documents attached; registered drivers intentionally unresolved",
+      "editorialReview": {
+        "tags": "pending",
+        "identifications": "pending"
+      }
+    },
+    {
+      "file": "5_BSSebring_Clip_16_1791615863175.mov",
+      "bytes": 9609473,
+      "status": "completed",
+      "attempts": 1,
+      "elapsedMs": 7347,
+      "tags": [
+        "Front View",
+        "Race Track",
+        "Day",
+        "Prototype",
+        "Dry Track",
+        "Front 3/4",
+        "Side View",
+        "Rear View",
+        "Real Motorsport"
+      ],
+      "identification": [
+        {
+          "team": "bürosüd",
+          "number": "16",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Prototype",
+          "discipline": "Race",
+          "racingClass": "",
+          "manufacturer": ""
+        }
+      ],
+      "rawRecognition": [
+        {
+          "team": "bürosüd",
+          "number": "16",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Prototype",
+          "discipline": "Race",
+          "racingClass": "",
+          "manufacturer": ""
+        }
+      ],
+      "evidence": {
+        "cost": null,
+        "frames": [
+          {
+            "hash": "d77eec7ade6ca905f45ba269367b93db57126af6a785d0a0517af623e649f54e",
+            "tags": [
+              "Front View",
+              "Race Track",
+              "Day",
+              "Prototype",
+              "Dry Track"
+            ],
+            "vehicles": [
+              {
+                "team": "",
+                "number": "16",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Prototype",
+                "discipline": "Race",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 0
+          },
+          {
+            "hash": "012a96d5e9463285548f51b3f3ce1daeb49802f1c11b7a169567d1a306f02b44",
+            "tags": [
+              "Front 3/4",
+              "Day",
+              "Race Track",
+              "Prototype",
+              "Dry Track"
+            ],
+            "vehicles": [
+              {
+                "team": "",
+                "number": "16",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Prototype",
+                "discipline": "Race",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 1.4583171
+          },
+          {
+            "hash": "00f0859b374faa44551aaaee7bc757be08486227d4bbb4fd379b896ffd421fbe",
+            "tags": [
+              "Side View",
+              "Day",
+              "Race Track",
+              "Prototype",
+              "Dry Track"
+            ],
+            "vehicles": [
+              {
+                "team": "bürosüd",
+                "number": "16",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Prototype",
+                "discipline": "Race",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 2.9166342
+          },
+          {
+            "hash": "6efffd673d9ff13d043b8580db4262d73a9671b3e1ac30df32610208466ab3a7",
+            "tags": [
+              "Rear View",
+              "Day",
+              "Race Track",
+              "Prototype",
+              "Dry Track"
+            ],
+            "vehicles": [
+              {
+                "team": "",
+                "number": "16",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Prototype",
+                "discipline": "Race",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 4.3333661
+          },
+          {
+            "hash": "351c9e41ec935e79507d4b5d8844fcc0c8f6c267b14f1a52e72d4d30253acd05",
+            "tags": [
+              "Rear View",
+              "Day",
+              "Race Track",
+              "Prototype",
+              "Real Motorsport"
+            ],
+            "vehicles": [
+              {
+                "team": "",
+                "number": "",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Prototype",
+                "discipline": "Real Motorsport",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 5.7500165
+          }
+        ],
+        "duration": 7.166667,
+        "samplingMs": 3011,
+        "sourceHash": "6dddec2d4e44e9e64e08387ec860ef0f046992afacac63d0d8242295ceb9dfcf",
+        "timestamps": [
+          0,
+          1.4583171,
+          2.9166342,
+          4.3333661,
+          5.7500165
+        ],
+        "promptTokens": 4902,
+        "analyzedFrames": 5,
+        "completionTokens": 437,
+        "providerRequests": 2,
+        "usageUnavailableRequests": 0
+      },
+      "caption": "",
+      "referenceScope": "None; no reference documents attached; registered drivers intentionally unresolved",
+      "editorialReview": {
+        "tags": "pending",
+        "identifications": "pending"
+      }
+    },
+    {
+      "file": "6_Top_of_the_hill_GTDs_slow_mo_1791615863175.mp4",
+      "bytes": 39067782,
+      "status": "completed",
+      "attempts": 1,
+      "elapsedMs": 11168,
+      "tags": [
+        "Front View",
+        "Race Track",
+        "Day",
+        "GT Car",
+        "Battle",
+        "Rear 3/4",
+        "Race Action",
+        "Overtaking"
+      ],
+      "identification": [
+        {
+          "team": "LiVERiES",
+          "number": "",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "McLaren",
+          "discipline": "Real Motorsport",
+          "racingClass": "",
+          "manufacturer": "McLaren"
+        },
+        {
+          "team": "LiVERiES",
+          "number": "16",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "McLaren",
+          "discipline": "Real Motorsport",
+          "racingClass": "",
+          "manufacturer": "McLaren"
+        },
+        {
+          "team": "BMW Motorsport",
+          "number": "",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "BMW",
+          "discipline": "Real Motorsport",
+          "racingClass": "",
+          "manufacturer": "BMW"
+        },
+        {
+          "team": "BMW Motorsport",
+          "number": "199",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "BMW",
+          "discipline": "Real Motorsport",
+          "racingClass": "",
+          "manufacturer": "BMW"
+        },
+        {
+          "team": "AMG",
+          "number": "144",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Mercedes AMG",
+          "discipline": "",
+          "racingClass": "",
+          "manufacturer": "Mercedes-Benz"
+        }
+      ],
+      "rawRecognition": [
+        {
+          "team": "LiVERiES",
+          "number": "",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "McLaren",
+          "discipline": "Real Motorsport",
+          "racingClass": "",
+          "manufacturer": "McLaren"
+        },
+        {
+          "team": "LiVERiES",
+          "number": "16",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "McLaren",
+          "discipline": "Real Motorsport",
+          "racingClass": "",
+          "manufacturer": "McLaren"
+        },
+        {
+          "team": "BMW Motorsport",
+          "number": "",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "BMW",
+          "discipline": "Real Motorsport",
+          "racingClass": "",
+          "manufacturer": "BMW"
+        },
+        {
+          "team": "BMW Motorsport",
+          "number": "199",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "BMW",
+          "discipline": "Real Motorsport",
+          "racingClass": "",
+          "manufacturer": "BMW"
+        },
+        {
+          "team": "AMG",
+          "number": "144",
+          "source": "visual",
+          "drivers": "",
+          "vehicle": "Mercedes AMG",
+          "discipline": "",
+          "racingClass": "",
+          "manufacturer": "Mercedes-Benz"
+        }
+      ],
+      "evidence": {
+        "cost": null,
+        "frames": [
+          {
+            "hash": "2568f6ad994b668280abe8bf85ce62e1052b10265155419c02bb424df07fbb63",
+            "tags": [
+              "Front View",
+              "Race Track",
+              "Day",
+              "GT Car",
+              "Battle"
+            ],
+            "vehicles": [
+              {
+                "team": "LiVERiES",
+                "number": "",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "McLaren",
+                "discipline": "Real Motorsport",
+                "racingClass": "",
+                "manufacturer": "McLaren"
+              }
+            ],
+            "timestamp": 0
+          },
+          {
+            "hash": "d1310ff6038f91009d459b1295dfba53372a02db3a79ee1573e4dbd053f5735f",
+            "tags": [
+              "Front View",
+              "Race Track",
+              "Day",
+              "GT Car",
+              "Battle"
+            ],
+            "vehicles": [
+              {
+                "team": "LiVERiES",
+                "number": "",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "McLaren",
+                "discipline": "Real Motorsport",
+                "racingClass": "",
+                "manufacturer": "McLaren"
+              }
+            ],
+            "timestamp": 3.0833629499999997
+          },
+          {
+            "hash": "434dc5275814377fe52bdd59c8ae6a8bf0c3df5ea759d02f04e9f5286418f834",
+            "tags": [
+              "Rear 3/4",
+              "Race Track",
+              "Day",
+              "GT Car",
+              "Battle"
+            ],
+            "vehicles": [
+              {
+                "team": "LiVERiES",
+                "number": "16",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "McLaren",
+                "discipline": "Real Motorsport",
+                "racingClass": "",
+                "manufacturer": "McLaren"
+              },
+              {
+                "team": "BMW Motorsport",
+                "number": "",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "BMW",
+                "discipline": "Real Motorsport",
+                "racingClass": "",
+                "manufacturer": "BMW"
+              }
+            ],
+            "timestamp": 6.1666608
+          },
+          {
+            "hash": "8acd79febe1b2c15e84c5fb6fff8f8461deea51e4f687f823b8d6d32731c8e50",
+            "tags": [
+              "Rear 3/4",
+              "Race Track",
+              "Day",
+              "GT Car",
+              "Battle"
+            ],
+            "vehicles": [
+              {
+                "team": "BMW Motorsport",
+                "number": "199",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "BMW",
+                "discipline": "Real Motorsport",
+                "racingClass": "",
+                "manufacturer": "BMW"
+              },
+              {
+                "team": "AMG",
+                "number": "144",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "Mercedes AMG",
+                "discipline": "Real Motorsport",
+                "racingClass": "",
+                "manufacturer": "Mercedes-Benz"
+              }
+            ],
+            "timestamp": 9.23335709
+          },
+          {
+            "hash": "899c89fd1c2e21b011a49959e32890134ac2898b1ecf89ba33ce3e15c89e61c0",
+            "tags": [
+              "Rear 3/4",
+              "Race Track",
+              "Day",
+              "GT Car",
+              "Race Action",
+              "Battle",
+              "Overtaking"
+            ],
+            "vehicles": [
+              {
+                "team": "",
+                "number": "144",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "GT",
+                "racingClass": "",
+                "manufacturer": ""
+              },
+              {
+                "team": "",
+                "number": "",
+                "source": "visual",
+                "drivers": "",
+                "vehicle": "",
+                "discipline": "GT",
+                "racingClass": "",
+                "manufacturer": ""
+              }
+            ],
+            "timestamp": 12.3166549
+          }
+        ],
+        "duration": 15.381333,
+        "samplingMs": 5384,
+        "sourceHash": "66ccfabfcb6289cfa5a19f5c0923e913c731c81666b410cc61fa53ca5d23339e",
+        "timestamps": [
+          0,
+          3.0833629499999997,
+          6.1666608,
+          9.23335709,
+          12.3166549
+        ],
+        "promptTokens": 4902,
+        "analyzedFrames": 5,
+        "completionTokens": 741,
+        "providerRequests": 2,
+        "usageUnavailableRequests": 0
+      },
+      "caption": "",
+      "referenceScope": "None; no reference documents attached; registered drivers intentionally unresolved",
+      "editorialReview": {
+        "tags": "pending",
+        "identifications": "pending"
+      }
+    }
+  ]
+}

@@ -42,3 +42,9 @@ Run shared-database worker tests with exclusive queue consumers, serializing tes
 **Why:** Parallel processes can claim another test's durable job, bypass that process's network mock, and consume shared provider slots. Failures then look like retry or lease bugs despite correct worker behavior.
 
 **How to apply:** Keep focused worker verification isolated from the running app; do not weaken global concurrency or fencing to make process-local mocks pass.
+
+For video validation, a dedicated human-annotated benchmark must not become a prerequisite. Use a small authorized existing clip selection and an ordinary compact editorial review table.
+
+**Why:** The user explicitly prioritized pragmatic validation and a working, efficient video tagging system over a benchmark management system.
+
+**How to apply:** Separate technical completion and provisional AI results from validated accuracy. Leave editorial verdicts pending, do not invent expectations, and withhold reference matches without verified event/session/season scope.
