@@ -25,3 +25,4 @@
 - [JSZip stream compatibility](jszip-stream-compatibility.md) — legacy nodeStream results need a native Readable wrapper for bounded async iteration.
 - [Video sampling bounds](video-sampling-bounds.md) — constrain FFmpeg input windows; requested seeks and actual frame presentation times can differ.
 - [VCO evaluation permission](vco-media-authorization.md) — user authorized all photos on the VCO photo site for this project's recognition evaluation.
+- [Media worker hosting](media-worker-hosting.md) — prefer one combined VM; cost and compatibility confirmation must precede explicit hosting-change approval.

@@ -13,7 +13,12 @@ import { aggregateVideo, recognizeVideoBatch, type VideoEvidence } from "./video
 // Database-wide budget, including multiple server processes. SDK retries are
 // disabled: only this queue owns retry/backoff and the persisted attempt count.
 const LOCK = 761020;
-const MAX_ACTIVE = 2;
+// Operators may lower (never raise) the database-wide job budget on a small VM.
+// All processes sharing this queue must use the same setting.
+const MAX_ACTIVE = Number(process.env.MEDIA_ANALYSIS_CONCURRENCY ?? "2");
+if (![1, 2].includes(MAX_ACTIVE)) {
+  throw new Error("MEDIA_ANALYSIS_CONCURRENCY must be 1 or 2");
+}
 const MAX_PENDING = 1000;
 const MAX_ATTEMPTS = 3;
 const VERSION = "recognition-v2";

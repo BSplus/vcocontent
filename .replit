@@ -6,7 +6,7 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 channel = "stable-24_05"
 
 [deployment]
-deploymentTarget = "autoscale"
+deploymentTarget = "vm"
 run = ["npm", "run", "start"]
 build = ["npm", "run", "build"]
 
@@ -74,3 +74,8 @@ defaultBucketID = "replit-objstore-c9661f01-9e76-4212-a69c-b86c38672c09"
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 180000
+
+[userenv]
+
+[userenv.production]
+MEDIA_ANALYSIS_CONCURRENCY = "1"

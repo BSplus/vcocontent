@@ -162,5 +162,10 @@ prompts and automatic image defaults were not changed.
 - Editorial review is pending. AI results are not human-reviewed ground truth;
   no validated accuracy or broad recognition claim is made.
 - Actual provider billing information was not available. Cost is stored as `null` (unavailable), never estimated as actual billing.
-- This task does not change autoscale behavior or guarantee work continues while an instance is idle. The durable queue resumes when a worker runs again.
+- The operator-approved single Reserved VM target and production one-job setting
+  are prepared, but no publishing or live hosting change was performed.
+  Development-only hard-restart/resource checks are documented in
+  [media-worker-hosting.md](media-worker-hosting.md). Select the 0.5 vCPU / 2 GiB
+  machine size in Publishing and publish to activate the configuration; these
+  checks are not an actual production VM measurement.
 - Development schema changes were applied using the existing additive script. No production schema changes or deployment were performed.
