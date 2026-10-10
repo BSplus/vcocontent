@@ -6,6 +6,13 @@ oder Creator-Auszahlungen; die betreffenden Server-Endpunkte sind gesperrt.
 
 ## Vor der Freigabe
 
+**Rechtstexte:** Lokales Impressum und Privacy Policy sind für die integrierte
+Galerie-/Creator-Beta angepasst, aber nicht abschließend juristisch freigegeben.
+Vor öffentlichem Start die P0-Punkte in `docs/legal-change-and-gap-report.md`
+entscheiden und nachweisen (Verträge/Transfers, Rechte, Alter, Löschung,
+DSA und menschliche Überprüfung). `docs/gallery-creator-terms-review.md`
+ist nur ein unverbindlicher Reviewentwurf, keine bereits akzeptierten AGB.
+
 1. Im Replit-Projekt unter **Tools → App Storage** einen Bucket für dieses Projekt
    erstellen bzw. zuordnen. Der private Bucket muss sowohl in der Entwicklung als
    auch in der veröffentlichten App verfügbar sein. Neue Uploads werden dort

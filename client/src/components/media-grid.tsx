@@ -32,6 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ShareMenu } from "./share-menu";
 import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
 import { Link } from "wouter";
+import MediaRightsNotice from "@/components/media-rights-notice";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -385,6 +386,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                 ))}
               </div>
             )}
+            <MediaRightsNotice />
           </div>
         </DialogContent>
       </Dialog>

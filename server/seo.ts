@@ -65,6 +65,10 @@ export async function seoHtml(req: Request, html: string): Promise<{ html: strin
     title = "Search Esports Racing Photos | VCO Media Database";
   } else if (pathname === "/imprint") {
     title = "Imprint | VCO Media Database";
+    description = "Company information and media rights for the VCO Media Database.";
+  } else if (pathname === "/privacy-policy") {
+    title = "Privacy Policy | VCO Media Database";
+    description = "Privacy information for VCO galleries, accounts, creator uploads and AI processing.";
   }
   const base = publicSiteUrl();
   const url = base && indexable && status === 200 ? `${base}${pathname === "/" ? "/" : pathname.replace(/\/$/, "")}` : null;

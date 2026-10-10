@@ -8,6 +8,7 @@ import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
 import { Button } from "@/components/ui/button";
 import MainNavigation from "@/components/main-navigation";
 import Footer from "@/components/footer";
+import MediaRightsNotice from "@/components/media-rights-notice";
 
 export default function MediaDetail() {
   const [, params] = useRoute("/media/:id");
@@ -51,7 +52,7 @@ export default function MediaDetail() {
             : <Button asChild><Link href="/auth">{downloadOptionLabel(item, "high")} · Register or sign in</Link></Button>}
           {item.type === "image" && <Button variant="outline" onClick={() => download("low")}>{downloadOptionLabel(item, "low")}</Button>}
         </div>
-        <p className="mt-4 text-sm text-muted-foreground">Copyright remains with its respective owner. Download availability does not grant publication rights.</p>
+        <div className="mt-4"><MediaRightsNotice /></div>
       </>}
     </main>
     <Footer />

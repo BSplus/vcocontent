@@ -20,6 +20,7 @@ import CreatorApplication from "@/pages/creator/apply";
 import CreatorEvents from "@/pages/creator-events";
 import CreatorProfile from "@/pages/creator-profile";
 import Imprint from "@/pages/imprint";
+import PrivacyPolicy from "@/pages/privacy-policy";
 import CreditsPage from "@/pages/credits";
 import { useEffect } from "react";
 import React from 'react';
@@ -85,6 +86,7 @@ function Router() {
       <Route path="/media/:id" component={MediaDetail} />
       <Route path="/creator-events" component={CreatorEvents} />
       <Route path="/imprint" component={Imprint} />
+      <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/credits" component={CreditsPage} />
       <ProtectedRoute path="/admin/dashboard" component={AdminDashboard} requireAdmin />
       <ProtectedRoute path="/admin/users" component={AdminUsers} requireAdmin />

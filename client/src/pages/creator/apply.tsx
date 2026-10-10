@@ -14,6 +14,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Link } from "wouter";
+import LegalLinks from "@/components/legal-links";
+import MediaRightsNotice from "@/components/media-rights-notice";
 
 export default function CreatorApplicationPage() {
   const { user } = useAuth();
@@ -77,6 +79,7 @@ export default function CreatorApplicationPage() {
               {verificationBusy ? "Sending…" : "Resend verification email"}
             </Button>
             {verificationMessage && <p role="status" className="text-sm">{verificationMessage}</p>}
+             <LegalLinks />
           </CardContent>
         </Card>
       </div>
@@ -109,7 +112,10 @@ export default function CreatorApplicationPage() {
                   <li>500 MB storage</li><li>5 galleries</li><li>1,000 photos total</li><li>5 MB per photo</li><li>Photos only; video uploads are unavailable</li>
                 </ul>
               </div>
-              <p className="text-muted-foreground">Future creator earnings are planned. No dates or pricing have been announced.</p>
+              <p className="text-muted-foreground">The beta is free; purchases, subscriptions and payouts are inactive. Future creator earnings are planned, with no dates or pricing announced.</p>
+              <p>Only upload material you are entitled to share, respecting copyright and the rights of people shown or named. New public text and photos undergo separate automated safety checks; failed checks keep content private. The Privacy Policy explains the processing of media and private references.</p>
+              <MediaRightsNotice />
+              <LegalLinks />
               {(betaUser.creatorStatus === "rejected" || betaUser.suspended) && (
                 <p role="alert" className="rounded border border-destructive/40 bg-destructive/5 p-3 text-destructive">
                   {betaUser.suspended ? "Creator access is currently suspended. Contact VCO support for assistance." : "This creator request was declined. Please contact VCO support if you believe this is an error."}

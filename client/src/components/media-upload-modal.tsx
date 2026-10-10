@@ -31,6 +31,7 @@ import { Loader2, Upload, X, Info } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { analysisPending, requestAnalysis, type AnalysisState } from "@/hooks/use-media-analysis";
 import { useAuth } from "@/hooks/use-auth";
+import LegalLinks from "@/components/legal-links";
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -541,6 +542,12 @@ export default function MediaUploadModal({
             />
           </div>
 
+           <div className="space-y-2 text-sm leading-relaxed">
+             <p>Only upload media you are entitled to share, including the rights of people shown or named.
+               Media and metadata may be sent to Replit-managed OpenAI for tagging and a separate publication safety check.
+               Failed or uncertain checks keep new content private. Private reference documents may also be processed by AI.</p>
+             <LegalLinks />
+           </div>
            <div className="flex flex-wrap items-center gap-2">
             <Switch 
               id="auto-tag" 

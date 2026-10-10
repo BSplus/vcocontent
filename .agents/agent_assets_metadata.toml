@@ -42,3 +42,17 @@ mtime_ms = 1791616448679
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/5d2067de-61b6-470f-b6b0-81fc752254f5/7bd7801b-75c9-4e98-855a-c8d1bc09fa3b"
 storage_version_token = "1791616547539573"
 content_type = "text/html"
+
+[[outputs]]
+id = "0LP34xnARTQdRouNx6dXn"
+uri = "file://generated-artifacts/vco-legal-review.html"
+type = "html"
+title = "VCO Rechtstexte – Reviewpaket"
+description = "Änderungs-/Lückenbericht, englischer unverbindlicher Galerie-/Creator-Entwurf und Quellen-/Verarbeitungsverzeichnis. Keine rechtliche oder öffentliche Launch-Freigabe."
+logical_id = "fa5b4ee3-52df-4217-b68e-450803a83a07"
+content_hash = "sha256:3cc3ed357779167c30e0beb766a5a023861bfdd62dddc55432aa6cb0c86127bc"
+size = 26402
+mtime_ms = 1791637327848
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/fa5b4ee3-52df-4217-b68e-450803a83a07/9d8ab1c7-64de-4c84-95a6-40077b3bc0d8"
+storage_version_token = "1791637344682345"
+content_type = "text/html"

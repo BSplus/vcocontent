@@ -14,6 +14,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import UploadModal from "@/components/upload-modal";
+import LegalLinks from "@/components/legal-links";
+import Footer from "@/components/footer";
 import MediaUploadModal from "@/components/media-upload-modal";
 import EditMediaModal from "@/components/edit-media-modal";
 import EventTitle from "@/components/event-title";
@@ -109,6 +111,7 @@ export default function CreatorDashboard() {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             CREATOR DASHBOARD
           </h1>
+          <LegalLinks />
           <div className="flex gap-2 mt-4">
             <Button asChild variant="outline">
               <Link href="/">
@@ -352,6 +355,7 @@ export default function CreatorDashboard() {
           </TabsContent>
         </Tabs>
       </main>
+      <Footer />
 
       <UploadModal
         open={uploadModalOpen}

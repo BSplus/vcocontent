@@ -18,6 +18,7 @@ import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import LegalLinks from "@/components/legal-links";
 
 // Create schemas for login/register
 const loginSchema = z.object({
@@ -280,6 +281,10 @@ export default function AuthPage() {
                 {verificationEmail && <p className="text-xs text-muted-foreground">Sent to {verificationEmail}</p>}
               </div>
             )}
+            <div className="mt-6 border-t border-border pt-4">
+              <p className="text-sm leading-relaxed">Our Privacy Policy explains account data, email verification and automated safety checks of public profile text. It is information, not a consent requirement.</p>
+              <LegalLinks />
+            </div>
           </CardContent>
         </Card>
       </div>

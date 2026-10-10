@@ -31,3 +31,4 @@
 - [Drizzle array interpolation](drizzle-array-interpolation.md) — raw SQL array interpolation can expand into lists; bind PostgreSQL arrays explicitly.
 - [FFmpeg failure codes](ffmpeg-failure-codes.md) — nonzero exit statuses vary across versions; preserve actual codes rather than assuming exit 1.
 - [Beta mail setup](beta-launch-setup.md) — user deferred Resend setup; document it as open, without bypassing verification or authorizing publication.
+- [Legal release boundaries](legal-release-boundaries.md) — free downloads do not determine reuse licences; creator terms and rights require explicit operator approval.

@@ -1,76 +1,31 @@
-import { Link } from "wouter";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
-import MainNavigation from "@/components/main-navigation";
+import LegalPage from "@/components/legal-page";
+import MediaRightsNotice from "@/components/media-rights-notice";
 
 export default function ImprintPage() {
-  return (
-    <div className="min-h-screen bg-background">
-      <MainNavigation />
-      <div className="container mx-auto px-4 py-8">
-        <Button variant="ghost" asChild className="mb-8">
-          <Link href="/">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Home
-          </Link>
-        </Button>
-
-        <div className="prose prose-invert max-w-4xl">
-          <h1>IMPRINT</h1>
-
-          <h2>INFORMATION PURSUANT TO § 5 TMG</h2>
-          <p>
-            Virtual Competition Organisation GmbH<br />
-            Lindwurmstrasse 88<br />
-            80337 Munich
-          </p>
-
-          <h3>MANAGING DIRECTORS</h3>
-          <p>
-            Florian Haasper<br />
-            Andreas Pavelic
-          </p>
-
-          <h3>Contact</h3>
-          <p>
-            Phone: +49 (0) 89 / 45 23 509 – 11<br />
-            Email: info@vco-esports.com<br />
-            Tax number: 143/190/4186
-          </p>
-
-          <h3>REGISTER ENTRY</h3>
-          <p>
-            Handelsregister: HRB 255920<br />
-            Register court: Amtsgericht München
-          </p>
-
-          <h2>DISCLAIMER</h2>
-
-          <h3>LIABILITY FOR CONTENTS</h3>
-          <p>
-            As service providers, we are liable for own contents of these websites according to Sec. 7, paragraph 1 German Telemedia Act (TMG). However, according to Sec. 8 to 10 German Telemedia Act (TMG), service providers are not obligated to permanently monitor submitted or stored information or to search for evidences that indicate illegal activities.
-          </p>
-          <p>
-            Legal obligations to removing information or to blocking the use of information remain unchallenged. In this case, liability is only possible at the time of knowledge about a specific violation of law. Illegal contents will be removed immediately at the time we get knowledge of them.
-          </p>
-
-          <h3>LIABILITY FOR LINKS</h3>
-          <p>
-            Our offer includes links to external third party websites. We have no influence on the contents of those websites, therefore we cannot guarantee for those contents. Providers or administrators of linked websites are always responsible for their own contents.
-          </p>
-          <p>
-            The linked websites had been checked for possible violations of law at the time of the establishment of the link. Illegal contents were not detected at the time of the linking. A permanent monitoring of the contents of linked websites cannot be imposed without reasonable indications that there has been a violation of law. Illegal links will be removed immediately at the time we get knowledge of them.
-          </p>
-
-          <h3>COPYRIGHT</h3>
-          <p>
-            Contents and compilations published on these websites by the providers are subject to German copyright laws. Reproduction, editing, distribution as well as the use of any kind outside the scope of the copyright law require a written permission of the author or originator. Downloads and copies of these websites are permitted for private use only.
-          </p>
-          <p>
-            The commercial use of our contents without permission of the originator is prohibited. Copyright laws of third parties are respected as long as the contents on these websites do not originate from the provider. Contributions of third parties on this site are indicated as such. However, if you notice any violations of copyright law, please inform us. Such contents will be removed immediately.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  return <LegalPage title="Imprint">
+    <section><h2>Information pursuant to § 5 DDG</h2>
+      <p>Virtual Competition Organisation GmbH<br />Lindwurmstraße 88<br />80337 München<br />Germany</p>
+      <p>Phone: <a href="tel:+4989452350911">+49 (0) 89 / 45 23 509 – 11</a><br />
+        Email: <a href="mailto:info@vco-esports.com">info@vco-esports.com</a></p>
+    </section>
+    <section><h2>Managing directors</h2><p>Florian Haasper<br />Andreas Pavelic</p></section>
+    <section><h2>Commercial register</h2><p>Register court: Amtsgericht München<br />Register number: HRB 255920</p></section>
+    <section><h2>VAT identification number</h2><p>VAT identification number pursuant to § 27a UStG: DE331164657</p></section>
+    <section><h2>Editorial responsibility</h2>
+      <p>Responsible for editorial content pursuant to § 18 (2) MStV:</p>
+      <p>Florian Haasper<br />c/o Virtual Competition Organisation GmbH<br />Lindwurmstraße 88<br />80337 München<br />Germany</p>
+    </section>
+    <section><h2>Consumer dispute resolution</h2>
+      <p>Virtual Competition Organisation GmbH is neither obliged nor willing to participate in dispute resolution proceedings before a consumer arbitration board.</p>
+    </section>
+    <section><h2>Content &amp; external links</h2>
+      <p>We are responsible for our own content in accordance with applicable law. We prepare the information in this media gallery with care, but cannot guarantee that all information is complete or up to date. Statutory liability remains unaffected.</p>
+      <p>Linked websites are operated by third parties who are responsible for their own content. If you become aware of unlawful gallery content or a linked page, please notify us using the contact details above, including the relevant URL and your reasons. We will assess the report and remove unlawful content or links where required.</p>
+    </section>
+    <section><h2>Copyright &amp; media downloads</h2>
+      <p>Texts, photographs, videos, graphics and other content in the VCO Media Database may be protected by copyright and related rights.</p>
+      <MediaRightsNotice />
+      <p>No additional private, editorial or commercial usage licence is granted by registration, creator activation or a download button.</p>
+    </section>
+  </LegalPage>;
 }

@@ -25,6 +25,7 @@ import { Loader2, Upload, Image as ImageIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { eventCreateRoute } from "@/lib/event-create-route";
 import EntryListEditor, { type EventEntryRow, type PendingEventReference } from "@/components/entry-list-editor";
+import LegalLinks from "@/components/legal-links";
 
 interface UploadModalProps {
   open: boolean;
@@ -457,6 +458,11 @@ export default function UploadModal({
             onReferenceSelection={onReferenceSelection}
             refreshReferencesToken={referenceRefreshToken}
           />
+          <div className="text-sm leading-relaxed">
+            <p>Only provide reference documents you are entitled to use. Source files stay private to the owner and authorised administrators;
+              image/scanned document extraction may use Replit-managed OpenAI, and derived driver/team details can appear in public media metadata.</p>
+            <LegalLinks />
+          </div>
           {referenceImportRecovery && (
             <div className={`rounded-md border p-3 text-sm ${referenceImportRecovery.status === "failed" ? "border-destructive/40 bg-destructive/5" : "border-border"}`}
               role={referenceImportRecovery.status === "failed" ? "alert" : "status"}>
