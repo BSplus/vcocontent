@@ -1,0 +1,786 @@
+# VCO Content Database – Community & Creator Studio
+
+## 1. Objective
+
+Evolve the existing VCO Content Database into a modern,
+visually appealing media and community platform.
+
+The primary purpose remains:
+
+Make official VCO photos, videos, events and historical
+media easily accessible, searchable and downloadable.
+
+Introduce two complementary experiences:
+
+1. VCO Community – for registered users
+2. VCO Creator Studio – for photographers and content creators
+
+The platform should gradually develop community and
+monetization capabilities without becoming overly complex.
+
+CORE PRINCIPLES:
+- VCO content remains the primary focus.
+- Excellent usability is more important than feature quantity.
+- The interface should feel modern, premium and engaging.
+- Reuse existing functionality wherever possible.
+- Avoid unnecessary architectural changes.
+- Preserve all existing data and working features.
+- Do not modify production hosting or publish automatically.
+
+
+## 2. Audit Existing Implementation First
+
+Before implementing anything, inspect the current application.
+
+Identify existing functionality for:
+
+- User registration and authentication
+- Email verification
+- User roles and permissions
+- Creator accounts and dashboards
+- Public Creator profiles
+- Galleries and events
+- Photo and video uploads
+- AI tagging and metadata
+- Automatic caption generation
+- Favorites, likes and social interactions
+- Sharing functionality
+- Download permissions and tracking
+- Download history
+- Storage quotas
+- Credit balances and transactions
+- Stripe integration
+- Premium media and payment infrastructure
+- Admin moderation
+
+Classify each component as:
+
+- Fully implemented
+- Partially implemented
+- Implemented but inactive
+- Missing
+
+Reuse existing components.
+
+Do not duplicate existing systems.
+
+Actual code and database structures take precedence
+over outdated documentation.
+
+
+## 3. User Types & Permissions
+
+Use one shared account system.
+
+Distinguish between:
+
+### A. Public Visitors
+
+Visitors can:
+
+- Browse official VCO content
+- Explore events and galleries
+- Search photos and videos
+- View public Creator profiles
+- View optimized image previews
+- Share public content links
+
+Visitors cannot:
+
+- Download original high-resolution files
+- Like or favorite content
+- Access personal collections
+- Upload media
+
+Browsing must not require registration.
+
+### B. Registered Users
+
+Registered users receive:
+
+- Access to permitted high-resolution downloads
+- Personal download history
+- Likes
+- Favorites
+- Personal account area
+- Future access to Credit purchases
+
+Registration should be free and simple.
+
+### C. Community Creators
+
+Creators receive all regular user functionality plus:
+
+- Creator Studio
+- Personal public Creator profile
+- Gallery creation and management
+- Photo uploads
+- Automatic AI tagging
+- Automatic caption suggestions
+- Storage usage overview
+- Future monetization capabilities
+
+A registered user should be able to activate Creator
+access without creating another account.
+
+Preserve existing account restrictions and suspensions.
+
+
+## 4. Community Features
+
+Introduce a small number of meaningful social features.
+
+Do not build a complete social network.
+
+### 4.1 Likes
+
+Registered users should be able to like:
+
+- Individual photos
+- Galleries
+- Events
+
+Creator profiles should support a simple Follow feature
+if this can be implemented using existing infrastructure.
+
+Requirements:
+
+- One active like per user and object
+- Users can remove their likes
+- Display like counts where appropriate
+- Use a familiar heart interaction
+- Update the interface immediately
+- Enforce authentication and uniqueness server-side
+
+Visitors may see like counts but must sign in to like.
+
+Keep the interaction lightweight.
+
+### 4.2 Favorites
+
+Registered users can save:
+
+- Individual photos
+- Galleries
+
+Provide a personal Favorites section.
+
+Requirements:
+
+- One-click save/remove
+- Clear visual feedback
+- Attractive image grid
+- Links to original galleries
+- Preserve access permissions
+
+Do not duplicate media files when saving favorites.
+
+### 4.3 Personal Account Area
+
+Create or improve a compact personal account area.
+
+Suggested sections:
+
+- My Downloads
+- My Favorites
+- Account Settings
+
+Download history should display:
+
+- Image thumbnail
+- Image or gallery title
+- Event
+- Download date
+- Link to the original media
+
+Track authenticated downloads server-side.
+
+Only record a successful authorized download,
+not merely a button click.
+
+Avoid duplicate records caused by retries where practical.
+
+Respect applicable privacy and retention requirements.
+
+Do not expose personal download histories publicly.
+
+### 4.4 Existing Sharing
+
+Preserve the existing sharing functionality.
+
+Allow users to share public links to:
+
+- Photos
+- Galleries
+- Events
+- Creator profiles
+
+Do not introduce another sharing system if one exists.
+
+### 4.5 Features Explicitly Out of Scope
+
+Do not implement:
+
+- Comments
+- Private messaging
+- Social feeds
+- User-generated posts
+- Complex notifications
+- Community rankings
+- Gamification systems
+
+Focus on a few excellent features.
+
+
+## 5. Creator Studio – UX & Design
+
+The Creator Studio is a major UX component.
+
+It must NOT look like a conventional administration panel.
+
+Design direction:
+
+A modern, premium and visually engaging creative workspace.
+
+Think of the clarity and visual appeal of modern creator
+platforms, while maintaining the established VCO identity.
+
+The interface should encourage photographers to upload
+and present their work.
+
+### Design Principles
+
+- Clean, modern layout
+- Strong visual hierarchy
+- Generous image previews
+- Attractive gallery covers
+- Elegant typography
+- Consistent VCO design language
+- Subtle animations and transitions
+- Responsive desktop and mobile layouts
+- Clear primary actions
+- Minimal technical complexity
+
+Avoid:
+
+- Dense administrative tables
+- Excessive settings
+- Unnecessary confirmation dialogs
+- Complex multi-step onboarding
+- Technical terminology
+- Too many navigation items
+
+The Creator Studio should feel like a creative product,
+not a traditional CMS.
+
+Reuse existing design tokens and components.
+
+Do not introduce an unrelated visual design system.
+
+
+## 6. Creator Studio Navigation
+
+Keep navigation extremely simple.
+
+Suggested structure:
+
+### Studio
+
+The main Creator dashboard.
+
+Show:
+
+- Welcome message
+- Prominent Upload Photos action
+- Recent galleries
+- Recent uploaded photos
+- Storage usage
+- Gallery count
+
+Example:
+
+245 MB / 500 MB used
+3 / 5 galleries
+
+Use attractive cards rather than administrative tables.
+
+### My Galleries
+
+Display galleries as visual cards.
+
+Each card should include:
+
+- Cover image
+- Gallery title
+- Event, if assigned
+- Photo count
+- Publication status
+- Edit action
+
+Provide a prominent Create Gallery button.
+
+### Account
+
+Include:
+
+- Profile image
+- Creator display name
+- Short biography
+- Account settings
+- Storage usage
+- Public profile link
+
+Reserve space for future monetization features,
+but do not activate payments yet.
+
+Avoid unnecessary additional navigation sections.
+
+
+## 7. Gallery Creation & Upload Flow
+
+The primary Creator workflow should be:
+
+Create Gallery
+→ Add basic information
+→ Upload photos
+→ Automatic AI processing
+→ Review if desired
+→ Publish
+
+The experience should be fast and intuitive.
+
+### Gallery Information
+
+Use existing event and gallery structures.
+
+Where available, allow Creators to select:
+
+- Event
+- Racing series
+- Circuit
+- Event date
+
+Avoid requiring Creators to enter information that
+already exists in the VCO database.
+
+Use sensible defaults.
+
+### Upload Experience
+
+Provide:
+
+- Drag-and-drop upload
+- Multi-image selection
+- Upload progress
+- Image previews
+- Clear success/error states
+- Automatic AI processing
+
+Do not require manual AI processing steps.
+
+The Creator should be able to publish a gallery
+without manually editing every image.
+
+### Free Creator Limits
+
+Maintain the agreed limits:
+
+- 500 MB total storage
+- Maximum 5 galleries
+- Maximum 1,000 photos
+- Maximum 5 MB per image
+- No video uploads
+- Automatic AI tagging included
+
+Use decimal units:
+
+500 MB = 500,000,000 bytes
+5 MB = 5,000,000 bytes
+
+Enforce limits server-side, including concurrent uploads.
+
+Preserve existing Creator content even if current usage
+exceeds the new limits.
+
+Official VCO uploads must remain unaffected.
+
+Keep quotas configurable for future paid tiers.
+
+
+## 8. Automatic AI Tagging & Captions
+
+Creators should benefit from the existing VCO AI
+analysis capabilities.
+
+Reuse the current AI infrastructure.
+
+### Automatic Tagging
+
+Continue identifying relevant visual information,
+where supported:
+
+- Vehicle manufacturer
+- Vehicle model
+- Racing number
+- Racing team
+- Driver
+- Racing series
+- Other relevant motorsport characteristics
+
+Use available event metadata to improve accuracy.
+
+Do not infer unsupported identities.
+
+### Automatic Captions
+
+Investigate whether automatic caption generation
+already exists.
+
+If available, reuse and improve it.
+
+If missing, propose the smallest practical extension
+to the existing AI workflow.
+
+Captions should primarily be generated from structured
+metadata and reliable visual recognition results.
+
+Potential information:
+
+- Event
+- Racing series
+- Circuit
+- Date
+- Vehicle manufacturer
+- Vehicle model
+- Racing number
+- Team
+- Driver
+
+Only include information that is actually known
+or sufficiently verified.
+
+Do not invent missing details.
+
+### Example Caption
+
+"Porsche 911 GT3 R, car #911, Manthey Racing,
+Nürburgring Langstrecken-Serie, Nürburgring."
+
+This is an illustrative format, not verified event data.
+
+### Caption Editing
+
+Automatically generated captions should:
+
+- Be editable
+- Be available immediately after processing
+- Not require mandatory manual confirmation
+- Preserve manual changes
+- Avoid overwriting Creator edits during reanalysis
+
+If reliable information is insufficient,
+generate a shorter caption rather than guessing.
+
+Prioritize practical usability over unnecessary precision.
+
+Avoid introducing a separate mandatory caption approval
+workflow.
+
+
+## 9. Public Creator Profiles
+
+Creators should have attractive public profiles.
+
+Suggested content:
+
+- Profile image
+- Creator name
+- Short biography
+- Published galleries
+- Photo thumbnails
+- Follow functionality, if implemented
+
+Public profiles should visually integrate with
+the VCO Content Database.
+
+Do not build a separate social platform.
+
+Keep Creator profiles discoverable through
+existing galleries and media attribution.
+
+Creators must only manage their own content.
+
+
+## 10. Downloads & Permissions
+
+Maintain a clear distinction between:
+
+- Public previews
+- Free authorized downloads
+- Premium content
+- Future Credit-based downloads
+
+Visitors can browse public content.
+
+Registered users can download media that is
+explicitly available for free download.
+
+Existing premium access restrictions must remain intact.
+
+Do not automatically convert premium media to free media.
+
+Ensure that protected original files cannot be
+downloaded through direct storage URLs or API endpoints.
+
+Preserve existing download permissions.
+
+Implement or reuse authenticated download tracking.
+
+Download statistics should support future analysis
+of media popularity and usage.
+
+
+## 11. Future Credits & Monetization
+
+The platform should be prepared for future monetization.
+
+Potential future workflow:
+
+1. A registered user purchases Credits.
+2. A Creator marks selected photos as paid content.
+3. The Creator defines a Credit price.
+4. A user purchases access using Credits.
+5. The platform records the transaction.
+6. Creator earnings are calculated.
+7. VCO retains an agreed commission.
+8. Creator payouts are processed later.
+
+This is a future product vision.
+
+Do not activate this workflow during Phase 1.
+
+### Preserve Existing Infrastructure
+
+Inspect and preserve:
+
+- Stripe integration
+- Credit balances
+- Credit transaction records
+- Premium media flags
+- Checkout infrastructure
+- Payment webhooks
+- Revenue-sharing structures
+- Creator payout structures
+- Subscription-related database fields
+
+Do not remove existing functionality.
+
+Do not introduce destructive migrations.
+
+Do not rebuild Stripe or Credits unnecessarily.
+
+### Creator Free Tier
+
+Creators should automatically receive the
+free Creator tier.
+
+No Stripe account connection is required.
+
+No payment method is required.
+
+No automatic zero-euro invoice is required.
+
+Keep tier limits configurable.
+
+### Future Stripe Integration
+
+Preserve existing Stripe functionality.
+
+Consider future compatibility with:
+
+- Stripe Checkout
+- Stripe Billing
+- Stripe Connect
+
+Stripe Connect may eventually support Creator payouts.
+
+Do not implement a new Stripe Connect onboarding flow now.
+
+Do not introduce paid subscriptions or Credit purchases
+during Phase 1.
+
+Do not activate existing commercial functionality
+without explicit approval.
+
+### Future Monetization Messaging
+
+A subtle message may appear in the Creator account area:
+
+"Coming later: Earn money with your photography."
+
+Communicate monetization as a future plan.
+
+Do not promise specific earnings or launch dates.
+
+Do not make monetization the primary homepage message.
+
+
+## 12. UX Priorities
+
+Prioritize these user journeys:
+
+### Visitor Journey
+
+Open platform
+→ Discover event
+→ Browse photos
+→ Select image
+→ Register to download
+→ Download authorized image
+
+### Registered User Journey
+
+Sign in
+→ Browse content
+→ Like or favorite images
+→ Download media
+→ Access download history
+
+### Creator Journey
+
+Register
+→ Activate Creator access
+→ Open Creator Studio
+→ Create gallery
+→ Upload photos
+→ Automatic AI processing
+→ Publish
+
+A new Creator should ideally be able to create
+a gallery and start uploading within three minutes.
+
+Avoid unnecessary steps.
+
+Do not require Stripe onboarding.
+
+Do not require manual administrator approval
+for ordinary Creator activation.
+
+Preserve account suspension and moderation controls.
+
+
+## 13. Implementation Priorities
+
+Use the following order:
+
+Priority 1:
+Audit existing implementation and identify reusable components.
+
+Priority 2:
+Implement missing registered-user functionality:
+likes, favorites and personal download history.
+
+Priority 3:
+Improve the Creator Studio UX and visual presentation.
+
+Priority 4:
+Verify and improve automatic caption generation.
+
+Priority 5:
+Ensure future compatibility with existing Credit,
+Stripe and monetization infrastructure.
+
+Do not create a second authentication system.
+
+Do not create a separate Creator application.
+
+Do not duplicate existing media, gallery or event models.
+
+Avoid unnecessary database migrations.
+
+Keep the implementation focused and maintainable.
+
+
+## 14. Validation
+
+Test the relevant workflows.
+
+### Community
+
+- Public browsing without login
+- Login required for protected downloads
+- Likes can be added and removed
+- Duplicate likes are prevented
+- Favorites work correctly
+- Download history is user-specific
+- Private media remains protected
+
+### Creator Studio
+
+- Creator activation
+- Gallery creation
+- Photo uploads
+- Storage quota enforcement
+- Automatic tagging
+- Caption generation
+- Manual caption editing
+- Gallery publication
+- Ownership permissions
+
+### Monetization Safety
+
+- Existing Credit records preserved
+- Existing Stripe functionality preserved
+- Premium content remains protected
+- No active Creator payouts
+- No mandatory payment onboarding
+- No public paid upgrade flow
+
+Keep tests proportionate to the changes.
+
+Do not run production uploads, restarts or paid provider
+tests without explicit authorization.
+
+
+## 15. Final Report
+
+After implementation, provide:
+
+1. Existing functionality discovered
+2. Components reused
+3. New functionality implemented
+4. Creator Studio UX improvements
+5. AI captioning status
+6. Community feature status
+7. Preserved Stripe/Credit infrastructure
+8. Test results
+9. Remaining limitations or decisions
+
+If a requirement would require substantial architectural
+changes, explain the issue before expanding scope.
+
+Do not change production hosting.
+
+Do not publish automatically.
+
+
+## Success Criteria
+
+The VCO Content Database remains primarily a premium,
+searchable media platform for official VCO content.
+
+Registered users receive meaningful community benefits
+without unnecessary complexity.
+
+Creators receive a visually attractive, intuitive
+workspace that makes publishing photography enjoyable.
+
+Existing Stripe and Credit functionality remains
+available for future monetization.
+
+The platform is prepared for future growth without
+prematurely implementing a complex marketplace.
+
+Above all:
+
+PRIORITIZE USER EXPERIENCE, SIMPLICITY AND REUSE.
