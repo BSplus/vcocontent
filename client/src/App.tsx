@@ -23,6 +23,7 @@ import Imprint from "@/pages/imprint";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import CreditsPage from "@/pages/credits";
 import AccountPage from "@/pages/account";
+import NavigationScroll from "@/components/navigation-scroll";
 import { useEffect } from "react";
 import React from 'react';
 
@@ -116,6 +117,7 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <NavigationScroll />
           <Router />
           <Toaster />
         </AuthProvider>

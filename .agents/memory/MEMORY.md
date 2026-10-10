@@ -6,6 +6,7 @@
 - [Browser role assertions](browser-role-assertions.md) — a route's static text can appear before the auth query settles; wait for role-specific UI before asserting navigation.
 - [Fetch mocks and object storage](fetch-mocks-object-storage.md) — Nextcloud network mocks must delegate unrelated requests or they also intercept App Storage's sidecar calls.
 - [Browser route checks](browser-route-checks.md) — unrelated API failures can arrive after navigation; keep route assertions separate from data-loading checks.
+- [Navigation behavior](navigation-behavior.md) — new pages open at the top; preserve browser history positions, query-only reading context, and fragment links.
 - [Preview process ownership](preview-process-ownership.md) — a workflow restart may leave an earlier listener; verify the process actually owning the preview port.
 - [Vite module interception](vite-module-interception.md) — browser mocks for Vite entry modules need URL patterns that include cache-busting query strings.
 - [Managed OpenAI testing](openai-managed-testing.md) — the OpenAI SDK captures default fetch at import time; inject transport to mock requests later.

@@ -8,6 +8,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Keep centered layouts still when a route gains or loses its scrollbar. */
+html {
+  scrollbar-gutter: stable;
+}
+
+@supports not (scrollbar-gutter: stable) {
+  html {
+    overflow-y: scroll;
+  }
+}
+
 @layer base {
   :root {
     color-scheme: dark;

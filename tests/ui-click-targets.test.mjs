@@ -54,7 +54,10 @@ test("click targets on desktop and touch with isolated API fixtures (no database
       requestId, responseCode: status,
       responseHeaders: [{ name: "Content-Type", value: "application/json" }],
       body: Buffer.from(JSON.stringify(body)).toString("base64"),
-    }).catch(error => mockErrors.push(String(error)));
+    }).catch(error => {
+      // Page changes can cancel an intercepted request before it is fulfilled.
+      if (!String(error).includes("Invalid InterceptionId")) mockErrors.push(String(error));
+    });
   });
   await browser.command("Fetch.enable", { patterns: [{ urlPattern: "*/api/*", requestStage: "Request" }] });
   const visit = async (path, ready) => {

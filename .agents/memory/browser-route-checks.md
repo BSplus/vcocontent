@@ -8,3 +8,9 @@ When testing login redirects or role boundaries in a browser, assert the final r
 **Why:** Multiple route checks initially appeared to fail for different reasons because media queries depended on a development schema column not yet present. Network failures from previous pages also arrived during subsequent visits.
 
 **How to apply:** Preserve independent API/data checks where relevant. For route-only checks, establish the destination path and role behavior first; if a known schema mismatch exists, scope any exception precisely and only while that mismatch is confirmed.
+
+Chromium can cancel an intercepted request during navigation before the mock fulfills it, producing `Fetch.fulfillRequest: Invalid InterceptionId`.
+
+**Why:** This occurred in multiple navigation-heavy browser checks even though their interaction assertions passed; an invalid interception ID describes a canceled browser request, not an application failure.
+
+**How to apply:** Ignore only this specific cancellation in interception handlers. Continue reporting all other mock errors and runtime exceptions; do not broadly suppress network failures.
