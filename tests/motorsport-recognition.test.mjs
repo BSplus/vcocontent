@@ -5,10 +5,128 @@ import { parseEntryFile } from "../server/entry-list.ts";
 import { parseRecognition } from "../server/utils/motorsport-recognition.ts";
 import { matchReferences } from "../server/reference-matching.ts";
 import { pool } from "../server/db.ts";
+import { readFile, readdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { fixtures, review } from "./fixtures/motorsport/reviewed.mjs";
+import { evaluateRecognition, compareReviewedRuns } from "./helpers/recognition-evaluation.mjs";
+import { recognizeMotorsportImage } from "../server/utils/motorsport-recognition.ts";
+import { TAG_MODEL } from "../server/utils/ai-tagger.ts";
 after(()=>pool.end());
 const visible = (number="89") => ({number,team:"",drivers:"",vehicle:"Race Car",manufacturer:"",racingClass:"",discipline:"",source:"visual"});
 const row = (fields={}) => ({number:"89",team:"Season Team",car:"Stock Car",drivers:"Listed A, Listed B",...fields});
 const doc = (rows, extras={}) => ({scope:"season",kind:"entry",session:null,updatedAt:new Date(),rows,...extras});
+test("authorized reviewed photo inputs are complete, immutable and cover the requested scenes", async () => {
+  assert.match(review.authorization, /authorized EVERYTHING/);
+  assert.match(review.reviewer, /visual inspection/);
+  assert.equal(fixtures.length, 16);
+  assert.equal(new Set(fixtures.map(f => f.id)).size, fixtures.length);
+  const coverage = new Set(fixtures.flatMap(f => f.coverage));
+  for (const required of ["cockpit", "standalone-helmet", "standalone-paddock", "gt3-body", "gt4-body",
+    "prototype-body", "stock-body", "multiple-readable", "partial-number", "obscured-numbers"])
+    assert.ok(coverage.has(required), `Missing coverage: ${required}`);
+  const files = (await readdir(new URL("./fixtures/motorsport/", import.meta.url))).filter(f => f.endsWith(".webp"));
+  assert.deepEqual(files.sort(), fixtures.map(f => f.file).sort());
+  for (const f of fixtures) {
+    const bytes = await readFile(new URL(`./fixtures/motorsport/${f.file}`, import.meta.url));
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), f.sha256, `${f.id} needs a fresh visual review`);
+    assert.ok(bytes.length < 512 * 1024, `${f.id} must remain a small recognition input`);
+    assert.ok(f.evidence && f.source);
+    assert.ok(f.expected.unknownFields.includes("drivers"));
+  }
+});
+test("reviewed expectations exercise parser/reference contracts, NOT live recognition accuracy", () => {
+  for (const f of fixtures) {
+    // Hand-authored responses constructed from reviewed expectations are test
+    // transports, never passed off as actual model output.
+    const count = f.expected.vehicleCount?.min ?? Math.max(1, f.expected.numbers.length);
+    const observations = Array.from({ length: count }, (_, i) => ({
+      number: f.expected.numbers[i] || "", numberReadable: !!f.expected.numbers[i],
+      vehicle: "Race Car", drivers: "Forbidden physical-driver guess",
+      racingClass: "GT3", classReadable: false,
+    }));
+    const result = parseRecognition(JSON.stringify({
+      tags: f.expected.requiredTagGroups.map(group => group[0]), vehicles: observations,
+    }));
+    assert.deepEqual(evaluateRecognition(f, result), [], f.id);
+    const matched = matchReferences(result.vehicles, [doc([row({ number: "107", drivers: "Registered One; Registered Two" }),
+      row({ number: "5", drivers: "Registered Three" }), row()])], null);
+    assert.ok(matched.every(v => v.number || !v.drivers), `${f.id}: no lineup from helmet/team alone`);
+    assert.ok(matched.every(v => v.source === "reference" || v.drivers === ""));
+    if (f.id === "multiple-readable") {
+      assert.equal(matched[0].drivers, "Registered One; Registered Two");
+      assert.equal(matched[1].drivers, "Registered Three");
+    }
+    if (f.id === "gt4-front") assert.equal(matched[0].drivers, "", "unmatched entry stays unknown");
+  }
+});
+test("the evaluator catches visible omissions, unsupported classes and physical identity claims", () => {
+  const f = fixtures.find(f => f.id === "partial-number");
+  const result = { tags: ["GT3"], vehicles: [{ ...visible("10"), drivers: "Identified Person", racingClass: "GT3", source: "reference" }] };
+  const issues = evaluateRecognition(f, result).join("; ");
+  for (const required of ["Missing visible tag", "Unsupported tag", "Numbers differ", "number must remain unknown",
+    "drivers must remain unknown", "racingClass must remain unknown", "source must be visual"])
+    assert.ok(issues.includes(required), required);
+  assert.ok(evaluateRecognition(fixtures.find(f => f.id === "helmet-detail"),
+    { tags: ["Helmet"], vehicles: [visible()] }).some(issue => issue.includes("Vehicle count")));
+});
+test("prompt/model comparisons cannot change reviewed targets, pixels or fixture membership", () => {
+  const previous = { model: TAG_MODEL, reviewedManifestSha256: "reviewed",
+    samples: [{ id: "one", imageSha256: "pixels", passed: false, issues: ["Missing visible tag: Helmet"] }] };
+  const current = { ...previous, samples: [{ ...previous.samples[0], passed: true, issues: [] }] };
+  assert.deepEqual(compareReviewedRuns(previous, current).changes[0].resolvedIssues, ["Missing visible tag: Helmet"]);
+  assert.throws(() => compareReviewedRuns(previous, { ...current, reviewedManifestSha256: "changed" }), /different reviewed/);
+  assert.throws(() => compareReviewedRuns(previous, { ...current, samples: [] }), /incomplete/);
+  assert.throws(() => compareReviewedRuns(previous, { ...current, samples: [{ ...current.samples[0], imageSha256: "changed" }] }), /changed images/);
+  assert.throws(() => compareReviewedRuns(previous, { ...current, samples: [{ ...current.samples[0], id: "changed" }] }), /changed images/);
+  const duplicate = { ...previous, samples: [previous.samples[0], previous.samples[0]] };
+  assert.throws(() => compareReviewedRuns(duplicate, duplicate), /duplicate/);
+});
+test("number and class evidence gates retain unknowns and strip identity claims per vehicle", () => {
+  const result = parseRecognition(JSON.stringify({
+    tags: ["GT3", "GT4", "Helmet"], vehicles: [
+      { number: "10", numberReadable: true, numberObscured: true, racingClass: "GT3", classReadable: false, vehicle: "GT Car", drivers: "Physical Person" },
+      { number: "007", numberReadable: true, racingClass: "GT4", classReadable: true, vehicle: "GT Car", person: { name: "Helmet Person" } },
+      { number: "9?", numberReadable: true, vehicle: "Race Car" },
+      { number: "23", vehicle: "Race Car", racingClass: "GT3" },
+    ],
+  }));
+  assert.deepEqual(result.vehicles.map(v => v.number), ["", "007", "", ""]);
+  assert.deepEqual(result.vehicles.map(v => v.racingClass), ["", "GT4", "", ""]);
+  assert.deepEqual(result.tags, ["GT4", "Helmet"]);
+  for (const v of result.vehicles) {
+    assert.equal(v.drivers, ""); assert.equal(v.source, "visual"); assert.ok(!("person" in v));
+    assert.ok(!("numberReadable" in v)); assert.ok(!("numberObscured" in v));
+  }
+  assert.deepEqual(parseRecognition('{"tags":["Helmet"],"vehicles":[{}]}').vehicles, []);
+  assert.throws(() => parseRecognition('{"tags":[],"vehicles":[{"numberReadable":"true"}]}'));
+  assert.throws(() => parseRecognition(JSON.stringify({ tags: [], vehicles: Array(13).fill({}) })));
+});
+test("managed recognition request keeps evidence instructions, limits and identity boundaries", async () => {
+  const originalFetch = globalThis.fetch;
+  let request;
+  // No credential reads or replacement provider: the test intercepts only the
+  // already-configured client's transport before any network activity.
+  globalThis.fetch = async (_url, options) => {
+    request = JSON.parse(options.body);
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: '{"tags":["Helmet"],"vehicles":[{"vehicle":"Race Car","drivers":"Guessed Identity"}]}' } }],
+    }), { headers: { "content-type": "application/json" } });
+  };
+  try {
+    const result = await recognizeMotorsportImage("data:image/webp;base64,AAAA");
+    assert.equal(result.vehicles[0].drivers, "");
+    assert.equal(request.model, TAG_MODEL);
+    assert.equal(request.max_tokens, 1000);
+    assert.deepEqual(request.response_format, { type: "json_object" });
+    assert.equal(request.messages[1].content[0].image_url.detail, "high");
+    for (const rule of ["ONLY if clearly readable", "never complete an obscured number", "No drivers, faces, helmet identity",
+      "specific racing-class marking is readable", "Multiple cars can have different entries"])
+      assert.ok(request.messages[0].content.includes(rule), rule);
+    globalThis.fetch = async () => { throw new Error("Sensitive provider detail"); };
+    await assert.rejects(recognizeMotorsportImage("data:image/webp;base64,AAAA"),
+      { message: "AI recognition could not be completed" });
+  } finally { globalThis.fetch = originalFetch; }
+});
 test("recognition rejects guessed numbers, driver identities and uncontrolled synonyms",()=>{
   const result=parseRecognition(JSON.stringify({tags:["Stock Car","Wet Track","Dry Track","Night","Day","Driver A"],
     vehicles:[{number:"89",numberReadable:true,vehicle:"Stock Car",drivers:"Guessed Person"},

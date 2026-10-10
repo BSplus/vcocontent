@@ -9,6 +9,16 @@ Keep model/provider changes conditional on reviewed VCO quality results, not onl
 
 **How to apply:** Keep number/class readability gates and unknown values conservative. Reuse observations for local reference corrections without another provider call. Extend the reviewed photo set before claiming broad recognition accuracy or changing providers; a generic Race Car label is safer than an unsupported specific class.
 
+Do not choose a recognition prompt by aggregate pass count alone.
+
+**Why:** A reviewed photo comparison improved subject-tag coverage while
+introducing a false dashboard race number and an unsupported racing class.
+
+**How to apply:** Compare safety regressions separately from tag omissions,
+using fixed independently inspected expectations. Reject newly invented numbers
+or classes even when the total number of passing samples increases. Explicit
+obscuration flags are defensive hints, not proof that the model saw the full panel.
+
 Explicit analysis requested from the media editor may extract structured entry details and match reference lists; automatic upload tagging must remain tag-only. Do not automatically generate or replace captions, and preserve manual entry corrections.
 
 For videos, automatic structured recognition and reference matching are explicitly authorized. This is a video-only exception; automatic image tagging remains tag-only.

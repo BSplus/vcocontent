@@ -24,3 +24,4 @@
 - [Reference-list scope](reference-scope-decisions.md) — user chose season reuse; keep private owner boundaries and distinguish registered lineups from physical driver identity.
 - [JSZip stream compatibility](jszip-stream-compatibility.md) — legacy nodeStream results need a native Readable wrapper for bounded async iteration.
 - [Video sampling bounds](video-sampling-bounds.md) — constrain FFmpeg input windows; requested seeks and actual frame presentation times can differ.
+- [VCO evaluation permission](vco-media-authorization.md) — user authorized all photos on the VCO photo site for this project's recognition evaluation.

@@ -5,6 +5,10 @@ import { getOpenAIClient, parseTagResponse, TAG_MODEL } from "./ai-tagger";
 const vehicle = z.object({
   number: z.string().max(4).default(""),
   numberReadable: z.boolean().default(false),
+  // Defensive, backward-compatible gate for providers reporting an obstruction.
+  // This cannot independently prove readability from pixels: reviewed live
+  // checks are still required before changing the prompt or model.
+  numberObscured: z.boolean().default(false),
   classReadable:z.boolean().default(false),
   team: z.string().max(160).default(""),
   vehicle: z.string().max(160).default(""),
@@ -19,7 +23,7 @@ export function parseRecognition(raw: string): { tags: string[]; vehicles: Ident
   if (tags.includes("Sunset")) tags = tags.filter(t => t !== "Day" && t !== "Night");
   if (tags.includes("Wet Track") || tags.includes("Rain")) tags = tags.filter(t => t !== "Dry Track");
   const vehicles = parsed.vehicles.map(v => identificationSchema.parse({
-    ...v, number: v.numberReadable && /^\d{1,4}$/.test(v.number.trim().replace(/^#\s*/,"")) ? v.number.trim().replace(/^#\s*/,"") : "",
+    ...v, number: v.numberReadable && !v.numberObscured && /^\d{1,4}$/.test(v.number.trim().replace(/^#\s*/,"")) ? v.number.trim().replace(/^#\s*/,"") : "",
     racingClass:v.classReadable ? v.racingClass : "",
     drivers: "", source: "visual",
   }));
