@@ -1,0 +1,151 @@
+VCO Content Database – Efficient AI Video Tagging
+
+Extend the existing AI image tagging and motorsport content recognition to uploaded videos.
+
+Main priority: efficient processing, low AI costs and excellent usability.
+
+Reuse the existing OpenAI connection, taxonomy, Entry List / Result List matching, metadata and background job infrastructure wherever possible.
+
+Do not build a separate video AI system.
+
+1. Automatic Video Analysis
+
+When a video is uploaded, automatically analyze representative frames in the background.
+
+Use FFmpeg or existing video processing infrastructure to extract a limited number of frames.
+
+Suggested initial strategy:
+
+* Short videos: 3–5 frames
+* Medium videos: 6–8 frames
+* Long videos: maximum 12 frames
+
+Prefer meaningful scene changes and distribute samples across the video. Avoid duplicate or nearly identical frames.
+
+Use low-resolution analysis frames sufficient for visual recognition. Preserve the original video unchanged.
+
+Do not analyze every frame or send complete video files to the AI provider.
+
+2. Reuse Existing AI Recognition
+
+Analyze selected frames using the existing vision-capable AI connection.
+
+Recognize:
+
+* Race numbers
+* Teams and matching entries
+* Listed drivers from Entry Lists / Result Lists
+* Vehicle types and classes
+* Camera perspectives (Front, Rear, Side, Aerial, Cockpit, Onboard)
+* Locations (Race Track, Pit Lane, Garage, Paddock, Podium)
+* Subjects (Car, Driver, Helmet, Crowd, Trophy)
+* Actions and atmosphere (Race Action, Overtaking, Celebration, Atmosphere)
+* Conditions (Day, Night, Rain, Wet Track)
+
+Reuse the existing controlled taxonomy.
+
+Do not create separate video-specific versions of existing tags.
+
+3. Aggregate Results
+
+Combine frame analysis results into one set of video metadata.
+
+* Remove duplicate tags.
+* Avoid contradictory classifications.
+* Prefer repeated or clearly supported visual evidence.
+* Match recognized race numbers against the associated event’s Entry List / Result List.
+* Multiple teams and race numbers may occur within one video.
+* Do not assume that a vehicle or team appearing in one frame represents the entire video.
+* Do not invent driver identities.
+* Preserve manually edited metadata.
+
+If a specific identity is uncertain, omit it.
+
+4. Optional Timestamp Metadata
+
+Retain the timestamps of analyzed frames internally.
+
+This allows future functionality such as finding scenes within longer videos.
+
+Do not build a timeline editor, automatic clipping tool or scene search interface in this phase.
+
+5. Efficiency & Cost Control
+
+This is critical.
+
+* Limit extracted and analyzed frames.
+* Avoid near-duplicate frames.
+* Prefer batched AI analysis where supported by the existing provider.
+* Reuse existing completed analysis results.
+* Never repeat successful analysis unnecessarily.
+* Keep AI processing asynchronous.
+* Apply sensible limits for processing time, concurrency and provider usage.
+* Clean up temporary extracted frames after processing.
+* Do not generate permanent additional video files.
+
+Video duration must not lead to uncontrolled AI costs.
+
+If FFmpeg or equivalent infrastructure is already available, reuse it.
+
+6. User Experience
+
+Keep the existing media upload workflow.
+
+* Video upload automatically triggers AI tagging.
+* Users can continue working while analysis runs.
+* Display simple status messages such as “Video wird analysiert”, “Tags hinzugefügt” and “Analyse fehlgeschlagen”.
+* Show generated tags in the existing media editor.
+* Allow manual editing and removal.
+* Do not require users to review individual frames.
+* Do not add additional mandatory steps.
+* Keep status information fresh when reopening the editor.
+* Keep the UI language consistent.
+
+The user should not need to understand how video sampling works.
+
+7. Reliability
+
+* Failed AI analysis must not affect the uploaded video.
+* Allow retry without creating duplicate jobs.
+* Preserve successful results if reanalysis fails.
+* Do not overwrite manually confirmed tags or identification metadata.
+* Respect existing media permissions.
+* Do not automatically reprocess the entire existing video library.
+
+8. Focused Validation
+
+Test with a small number of authorized videos of different lengths.
+
+Verify:
+
+* Automatic background analysis
+* Correct frame extraction
+* Reasonable AI usage
+* Useful aggregated tags
+* Entry List matching where possible
+* Preservation of manual metadata
+* Retry and status updates
+
+Report the number of frames analyzed and actual provider usage where available.
+
+9. Scope
+
+Before implementing, briefly inspect existing video processing and AI tagging components.
+
+Reuse existing architecture and make the smallest necessary extension.
+
+Do not introduce:
+
+* New AI providers
+* Full video understanding models
+* Audio transcription
+* Automatic video editing
+* Clip generation
+* Complex timeline interfaces
+* New dashboards
+
+If existing infrastructure cannot support efficient frame extraction, explain the smallest viable addition before implementing it.
+
+Success criterion:
+
+A user uploads a video, AI automatically generates useful motorsport metadata using a small number of representative frames, and the video becomes searchable without any additional user interaction.
