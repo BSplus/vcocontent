@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 
 export const TAG_MODEL = "gpt-4.1-mini";
-const allowedTags = new Set([
+export const controlledTags = [
   "Front View", "Rear View", "Aerial View", "Side View", "Onboard View",
   "Group", "Crash", "Atmosphere", "Day", "Night", "Rain", "Wet Track",
   "Dry Track", "GT Car", "Formula Car", "Prototype", "Vintage",
@@ -12,7 +12,8 @@ const allowedTags = new Set([
   "Battle", "Overtaking", "Pit Stop", "Celebration", "Podium Ceremony", "Portrait",
   "Behind the Scenes", "Sunset", "Sim Racing", "Real Motorsport", "Esports",
   "GT3", "GT4", "Stock Car", "Touring Car", "Rally",
-]);
+];
+const allowedTags = new Set(controlledTags);
 
 export function parseTagResponse(text: string): string[] {
   return Array.from(new Set(text.split(',').map(tag => tag.trim()).filter(tag => allowedTags.has(tag))));
@@ -108,14 +109,6 @@ export async function detectRaceNumbers(imageUrl: string): Promise<{ numbers: st
     return { numbers: Array.from(new Set(value.numbers)) as string[], scene: value.scene as "Race Action" | "Start" | "Finish" | null };
   } catch {
     throw new Error("Image number detection failed");
-  }
-}
-
-export async function generateTagsForVideo(videoUrl: string, thumbnailUrl: string): Promise<string[]> {
-  try {
-    return await generateTagsForImage(thumbnailUrl);
-  } catch (error) {
-    throw error;
   }
 }
 

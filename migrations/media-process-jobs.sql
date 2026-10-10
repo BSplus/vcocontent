@@ -16,3 +16,4 @@ CREATE TABLE IF NOT EXISTS media_analysis_jobs (
   duration_ms integer
 );
 CREATE INDEX IF NOT EXISTS media_analysis_ready_idx ON media_analysis_jobs(status, available_at);
+ALTER TABLE media_analysis_jobs ADD COLUMN IF NOT EXISTS video_evidence jsonb;

@@ -7,6 +7,8 @@ import { categorizeContent, generateTagsForImage, isAITaggingConfigured } from "
 import { recognizeMotorsportImage } from "./utils/motorsport-recognition";
 import { identifyEntries } from "./reference-matching";
 import { withVisionBudget, VisionBusy } from "./ai-budget";
+import { sampleVideo, SAMPLING_VERSION, cleanupVideoTemps } from "./video-sampling";
+import { aggregateVideo, recognizeVideoBatch, type VideoEvidence } from "./video-recognition";
 
 // Database-wide budget, including multiple server processes. SDK retries are
 // disabled: only this queue owns retry/backoff and the persisted attempt count.
@@ -17,7 +19,10 @@ const MAX_ATTEMPTS = 3;
 const VERSION = "recognition-v2";
 export const analysisFingerprint = (thumbnail: string) =>
   createHash("sha256").update(`${VERSION}:${thumbnail}`).digest("hex");
-type Item = { id: number; type: string; thumbnail: string };
+type Item = { id: number; type: string; thumbnail: string; url: string };
+export const itemAnalysisFingerprint = (item: Item, recognition = false) => item.type === "video"
+  ? "video:" + createHash("sha256").update(`${SAMPLING_VERSION}:recognition-v1:${item.url}`).digest("hex")
+  : (recognition ? "recognition:" : "tags:") + analysisFingerprint(item.thumbnail);
 export class AnalysisUnavailable extends Error {}
 
 export async function analysisStatus(mediaId: number) {
@@ -35,9 +40,9 @@ export async function analysisStatus(mediaId: number) {
 
 export async function enqueueAnalysis(item: Item, options: boolean | { retry?: boolean; reanalyse?: boolean; recognition?: boolean } = false, legacyReanalyse = false) {
   const settings = typeof options === "boolean" ? { retry: options, reanalyse: legacyReanalyse } : options;
-  if (item.type !== "image") throw new AnalysisUnavailable("Video frame analysis is not available");
+  if (!["image", "video"].includes(item.type)) throw new AnalysisUnavailable("Unsupported media type");
   if (!isAITaggingConfigured()) throw new AnalysisUnavailable("AI tagging is not configured");
-  const fingerprint = (settings.recognition ? "recognition:" : "tags:") + analysisFingerprint(item.thumbnail);
+  const fingerprint = itemAnalysisFingerprint(item, settings.recognition);
   await db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(${LOCK})`);
     const [existing] = await tx.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id));
@@ -52,8 +57,9 @@ export async function enqueueAnalysis(item: Item, options: boolean | { retry?: b
       workerToken: null, generatedTags: existing?.generatedTags || null, recognition: existing?.recognition || null,
       referenceOnly: false, generation: (existing?.generation || 0) + 1, error: null, durationMs: null,
       availableAt: new Date(), updatedAt: new Date() };
-    await tx.insert(mediaAnalysisJobs).values(values).onConflictDoUpdate({
-      target: mediaAnalysisJobs.mediaId, set: values,
+    const videoEvidence = existing?.fingerprint === fingerprint && !settings.reanalyse ? existing.videoEvidence : null;
+    await tx.insert(mediaAnalysisJobs).values({ ...values, videoEvidence }).onConflictDoUpdate({
+      target: mediaAnalysisJobs.mediaId, set: { ...values, videoEvidence },
     });
   });
   void kickAnalysisWorker();
@@ -83,12 +89,13 @@ async function claimAnalysis() {
           (j.status='completed' and j.recognition is not null and e.reference_revision>j.reference_revision)
         order by case when j.status='queued' then 0 else 1 end,j.available_at,j.media_id
         for update of j skip locked limit 1)
-      returning media_id, fingerprint, attempts, reference_only, recognition, generated_tags`);
+       returning media_id, fingerprint, attempts, reference_only, recognition, generated_tags, video_evidence`);
     const row = result.rows[0];
     return row ? { mediaId: Number(row.media_id), fingerprint: String(row.fingerprint),
       attempts: Number(row.attempts), referenceOnly: Boolean(row.reference_only),
       recognition: row.recognition as import("@shared/schema").Identification[] | null,
-      generatedTags: row.generated_tags as string[] | null, token } : undefined;
+       generatedTags: row.generated_tags as string[] | null,
+       videoEvidence: row.video_evidence as VideoEvidence | null, token } : undefined;
   });
 }
 
@@ -97,19 +104,66 @@ export async function drainAnalysisQueue() {
   const claimed = await claimAnalysis();
   if (!claimed) return false;
   const started = Date.now();
+  // Every bounded extraction/request is shorter than the 90s lease. Renew while
+  // processing several batches; fencing also protects persisted partial results.
+  const heartbeat = setInterval(() => {
+    void db.update(mediaAnalysisJobs).set({ updatedAt: new Date() })
+      .where(and(eq(mediaAnalysisJobs.mediaId, claimed.mediaId), eq(mediaAnalysisJobs.workerToken, claimed.token)))
+      .catch(() => {});
+  }, 15000);
   try {
     const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, claimed.mediaId));
     if (!item) return true;
     const tagOnly = claimed.fingerprint.startsWith("tags:");
     const prefix = tagOnly ? "tags:" : claimed.fingerprint.startsWith("recognition:") ? "recognition:" : "";
-    if (claimed.fingerprint !== prefix + analysisFingerprint(item.thumbnail)) {
+    const fingerprint = item.type === "video" ? itemAnalysisFingerprint(item) : prefix + analysisFingerprint(item.thumbnail);
+    if (claimed.fingerprint !== fingerprint) {
       // Upgrade only jobs already requested, never mass-retag completed media.
-      claimed.fingerprint = prefix + analysisFingerprint(item.thumbnail);
-      await db.update(mediaAnalysisJobs).set({fingerprint:claimed.fingerprint})
+      claimed.fingerprint = fingerprint;
+      claimed.videoEvidence = null;
+      claimed.referenceOnly = false;
+      await db.update(mediaAnalysisJobs).set({fingerprint:claimed.fingerprint, videoEvidence: null, referenceOnly: false})
         .where(and(eq(mediaAnalysisJobs.mediaId,item.id),eq(mediaAnalysisJobs.workerToken,claimed.token)));
+    }
+    let videoResult: ReturnType<typeof aggregateVideo> | undefined;
+    if (item.type === "video" && !claimed.referenceOnly) {
+      await sampleVideo(item, async sample => {
+        let evidence = claimed.videoEvidence;
+        if (!evidence || evidence.sourceHash !== sample.sourceHash) evidence = {
+          sourceHash: sample.sourceHash, duration: sample.duration, samplingMs: sample.samplingMs,
+          timestamps: sample.frames.map(f => f.timestamp), frames: [], providerRequests: 0, analyzedFrames: 0,
+          promptTokens: null, completionTokens: null, usageUnavailableRequests: 0, cost: null,
+        };
+        const persist = async () => {
+          const saved = await db.update(mediaAnalysisJobs).set({videoEvidence: evidence, updatedAt: new Date()})
+            .where(and(eq(mediaAnalysisJobs.mediaId, item.id), eq(mediaAnalysisJobs.workerToken, claimed.token)))
+            .returning({ id: mediaAnalysisJobs.mediaId });
+          if (!saved.length) throw new Error("Analysis lease expired");
+        };
+        await persist();
+        const pending = sample.frames.filter(f => !evidence!.frames.some(done => done.hash === f.hash));
+        for (let i = 0; i < pending.length; i += 4) {
+          await withVisionBudget(async () => {
+            evidence!.providerRequests++;
+            evidence!.usageUnavailableRequests = (evidence!.usageUnavailableRequests || 0) + 1;
+            await persist(); // Count requests even when the response is lost.
+            const batch = await recognizeVideoBatch(pending.slice(i, i + 4));
+            evidence!.frames.push(...batch.frames);
+            evidence!.analyzedFrames = evidence!.frames.length;
+            if (batch.usage) {
+              evidence!.usageUnavailableRequests--;
+              evidence!.promptTokens = (evidence!.promptTokens || 0) + batch.usage.prompt;
+              evidence!.completionTokens = (evidence!.completionTokens || 0) + batch.usage.completion;
+            }
+            await persist();
+          });
+        }
+        videoResult = aggregateVideo(evidence.frames);
+      });
     }
     const result = claimed.referenceOnly && claimed.recognition
       ? { tags: claimed.generatedTags || [], vehicles: claimed.recognition }
+      : videoResult ? videoResult
       : tagOnly
         ? { tags: await withVisionBudget(async () => generateTagsForImage(await analysisImageInput(item.thumbnail))), vehicles: null }
         : await withVisionBudget(async () => recognizeMotorsportImage(await recognitionImageInput(item)));
@@ -119,12 +173,13 @@ export async function drainAnalysisQueue() {
         .where(and(eq(mediaAnalysisJobs.mediaId, item.id), eq(mediaAnalysisJobs.workerToken, claimed.token))).for("update");
       if (!owned || owned.fingerprint !== claimed.fingerprint) return;
       const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,item.id)).for("update");
-      if (!current || prefix + analysisFingerprint(current.thumbnail) !== claimed.fingerprint) return;
+      if (!current || (current.type === "video" ? itemAnalysisFingerprint(current) :
+        prefix + analysisFingerprint(current.thumbnail)) !== claimed.fingerprint) return;
       const [event] = current.eventId ? await tx.select().from(events).where(eq(events.id,current.eventId)) : [];
       // Track future tag provenance. Legacy curation cannot be reconstructed:
       // conservatively preserve it rather than deleting possibly manual tags.
       const manualTags = Array.from(new Set([...current.manualTags,...(current.tags || []).filter(t=>
-        !owned.recognition || !(owned.generatedTags || []).includes(t))]));
+         !(owned.generatedTags || []).includes(t))]));
       let freshTags=tags.filter(t=>!current.suppressedAITags.includes(t));
       const opposites=[["Day","Night"],["Dry Track","Wet Track"],["Dry Track","Rain"]] as const;
       for (const [a,b] of opposites) {
@@ -153,6 +208,8 @@ export async function drainAnalysisQueue() {
       availableAt: new Date(Date.now() + (busy ? 5000 : 15000 * claimed.attempts)),
       updatedAt: new Date(), durationMs: Date.now() - started,
     }).where(and(eq(mediaAnalysisJobs.mediaId, claimed.mediaId), eq(mediaAnalysisJobs.workerToken, claimed.token)));
+  } finally {
+    clearInterval(heartbeat);
   }
   return true;
 }
@@ -170,6 +227,7 @@ export function startAnalysisWorker() {
   if (running) return;
   running = true;
   const tick = async () => {
+    await cleanupVideoTemps().catch(() => console.error("Interrupted video temporary cleanup failed"));
     const active = await Promise.all(Array.from({ length: MAX_ACTIVE }, () => kickAnalysisWorker()));
     if (!running) return;
     timer = setTimeout(tick, active.some(Boolean) ? 1000 : 30000);

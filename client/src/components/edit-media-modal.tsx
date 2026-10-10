@@ -149,9 +149,9 @@ export default function EditMediaModal({
   });
 
   // AI analysis mutation
-  const analysis = useMediaAnalysis(mediaItem.id, open && mediaItem.type === "image");
+  const analysis = useMediaAnalysis(mediaItem.id, open);
   useEffect(() => {
-    if (!open || mediaItem.type !== "image") return;
+    if (!open) return;
     let current = true;
     void analysis.refetch().then(result => {
       if (!current || !result.data) return;
@@ -162,7 +162,7 @@ export default function EditMediaModal({
       }
       if (!identificationEdited.current && Array.isArray(result.data.identification)) {
         setIdentification(result.data.identification);
-        syncedIdentificationGeneration.current = `${mediaItem.id}:${result.data.generation ?? "legacy"}`;
+        syncedIdentificationGeneration.current = `${mediaItem.id}:${result.data.generation ?? "legacy"}:${result.data.status}`;
       }
     });
     return () => { current = false; };
@@ -174,7 +174,7 @@ export default function EditMediaModal({
       tagsAtAnalysisStart.current = parseEditableTags(form.getValues("tags"));
       observedPending.current = true;
     }
-    const identificationGeneration = `${mediaItem.id}:${analysis.data?.generation ?? "legacy"}`;
+    const identificationGeneration = `${mediaItem.id}:${analysis.data?.generation ?? "legacy"}:${analysis.data?.status}`;
     if (!identificationEdited.current && analysis.data?.identification &&
       syncedIdentificationGeneration.current !== identificationGeneration) {
       setIdentification(analysis.data.identification);
@@ -191,7 +191,8 @@ export default function EditMediaModal({
       tagsAtAnalysisStart.current, latestSavedTags).join(", "), { shouldDirty: true });
     savedTagSnapshot.current = latestSavedTags;
     queryClient.invalidateQueries({ predicate: query =>
-      String(query.queryKey[0]).startsWith(`/api/events/${mediaItem.eventId}/media`) });
+      String(query.queryKey[0]).startsWith(`/api/events/${mediaItem.eventId}/media`) ||
+      (String(query.queryKey[0]).startsWith("/api/media") && !String(query.queryKey[0]).endsWith("/analysis")) });
   }, [open, analysis.data?.status, analysis.data?.generation, analysis.data?.tags, analysis.data?.identification, analysis.data?.identificationManual, mediaItem.id]);
   const analysisMutation = useMutation({
     mutationFn: (mode: "start" | "retry" | "reanalyse") => requestAnalysis(
@@ -281,7 +282,7 @@ export default function EditMediaModal({
               maxLength={1000}
               {...form.register("caption")}
             />
-            <div className="flex flex-wrap gap-2">
+            {mediaItem.type === "image" && <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 size="sm"
@@ -315,7 +316,7 @@ export default function EditMediaModal({
                   {scene}
                 </Button>
               ))}
-            </div>
+            </div>}
             {form.formState.errors.caption && (
               <p className="text-sm text-destructive">{form.formState.errors.caption.message}</p>
             )}
@@ -402,7 +403,8 @@ export default function EditMediaModal({
                 ) : (
                   <>
                     <Wand2 className="h-3 w-3" />
-                    <span>{analysis.data?.status === "failed" ? "Retry analysis" : "Generate tags"}</span>
+                    <span>{analysis.data?.status === "failed" ? "Retry analysis" :
+                      mediaItem.type === "video" ? "Analyze video" : "Generate tags"}</span>
                   </>
                 )}
               </Button>
@@ -410,7 +412,8 @@ export default function EditMediaModal({
               {analysis.data && <p role="status" className="w-full text-sm text-muted-foreground">
                 {analysis.data.status === "completed" ? "Tags added" :
                   analysis.data.status === "failed" ? "Analysis failed" :
-                  analysisPending(analysis.data.status) ? "Adding tags…" : "Not analysed"}
+                  analysis.data.status === "queued" ? "Analysis queued" :
+                    analysis.data.status === "running" ? (mediaItem.type === "video" ? "Analyzing video…" : "Adding tags…") : "Not analysed"}
                 {analysis.data.status === "failed" ? " · You can retry the analysis." : ""}
               </p>}
             </div>

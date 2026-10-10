@@ -198,7 +198,8 @@ test("creator image/video uploads, delivery and ownership", async () => {
     eventId = event.id;
     assert.equal(event.creatorId, accounts[0].id);
     assert.deepEqual(await json(await owner(`/api/events/${eventId}/entries`), 200), [
-      { number: "007", team: "Team One", car: "Porsche", drivers: "A. Driver" },
+      { number: "007", team: "Team One", car: "Porsche", drivers: "A. Driver",
+        manufacturer: "", racingClass: "", discipline: "" },
     ]);
 
     const details = await json(await owner(`/api/events/${eventId}`, {

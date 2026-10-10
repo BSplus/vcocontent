@@ -129,6 +129,10 @@ Preferred communication style: Simple, everyday language.
 - Server-side image conversion and thumbnails; video files use safe poster previews
 - IPTC metadata extraction for professional photo metadata
 - Durable AI tag jobs with shared provider concurrency, bounded retries and manual-tag/caption preservation
+- Uploaded videos automatically use bounded private-original FFmpeg sampling and timestamped recognition batches; image auto-analysis remains tag-only. Original videos and the existing generic posters are unchanged.
+- FFmpeg/FFprobe are declared through `pkgs.ffmpeg`. Video analysis has a 75-second sampling deadline, 8-second tool deadlines, 960px/512KiB frames, at most 12 frames, four-image provider batches, 25-second provider deadlines and 15-second fenced lease renewal.
+- Video evidence/checksums, successful batches and known token usage persist in the additive job schema. Apply `migrations/media-process-jobs.sql` through the existing development/post-merge script or approved release schema rollout; production startup only checks readiness.
+- Run `npm run test:video-analysis` with the preview worker stopped; browser editor checks run separately with the preview serving. Measurements and live-validation limitations are in `docs/video-analysis-validation.md`.
 - Encrypted, expiring Nextcloud manifests for resumable imports; saved files are deduplicated
 - Native browser downloads through permission-checked streaming routes; count completed delivery, not authorization
 - Additive development/post-merge schema setup; never perform production DDL at application startup or build

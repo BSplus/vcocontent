@@ -175,6 +175,7 @@ export const mediaAnalysisJobs = pgTable("media_analysis_jobs", {
   referenceRevision: integer("reference_revision").notNull().default(0),
   referenceOnly: boolean("reference_only").notNull().default(false),
   generation: integer("generation").notNull().default(1),
+  videoEvidence: jsonb("video_evidence").$type<import("../server/video-recognition").VideoEvidence>(),
 }, table => [index("media_analysis_ready_idx").on(table.status, table.availableAt)]);
 
 export const nextcloudFiles = pgTable("nextcloud_files", {

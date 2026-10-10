@@ -10,6 +10,7 @@
     "check": "tsc",
     "test": "node --import tsx --test --test-concurrency=1 tests/*.test.mjs",
     "test:media-processes": "node --import tsx --test --test-concurrency=1 tests/media-processes.test.mjs tests/nextcloud.test.mjs tests/ai-tagger.test.mjs tests/download-access.test.mjs tests/caption-proposal.test.mjs",
+    "test:video-analysis": "node --import tsx --test --test-concurrency=1 tests/video-analysis.test.mjs tests/video-ingestion.test.mjs",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

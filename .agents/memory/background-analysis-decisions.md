@@ -11,6 +11,12 @@ Keep model/provider changes conditional on reviewed VCO quality results, not onl
 
 Explicit analysis requested from the media editor may extract structured entry details and match reference lists; automatic upload tagging must remain tag-only. Do not automatically generate or replace captions, and preserve manual entry corrections.
 
+For videos, automatic structured recognition and reference matching are explicitly authorized. This is a video-only exception; automatic image tagging remains tag-only.
+
+**Why:** The user's video brief requests automatic numbers/teams and listed-lineup matching without extra steps, while explicitly preserving the existing image defaults.
+
+**How to apply:** Keep video evidence timestamped and bounded, reuse successful batches, and rematch references locally. Never interpret registered lineups as physical driver identities.
+
 **Why:** The user authorized completing the manual recognition and reference controls, not replacing automatic tagging based on an unreviewed quality change.
 
 **How to apply:** Keep manual recognition separate from automatic queue requests, including their cached results. A “Reanalyse” action must request a new generation explicitly; ordinary repeated requests may reuse completed work.

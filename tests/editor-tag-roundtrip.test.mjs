@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { uiBrowser, delay } from "./helpers/ui-browser.mjs";
 
-test("editor keeps a removed AI tag suppressed through save, reanalysis and save on desktop/touch", { timeout: 60000 }, async () => {
+test("image/video editors preserve removed tags and refresh completed identification on desktop/touch", { timeout: 120000 }, async () => {
   const browser = await uiBrowser();
   const base = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
   const user = { id: 64901, username: "Fixture creator", isCreator: true, isAdmin: false, creatorStatus: "approved" };
@@ -31,10 +31,13 @@ test("editor keeps a removed AI tag suppressed through save, reanalysis and save
     } else if (path.endsWith("/analysis")) {
       const pending = pendingReads > 0;
       if (pending) pendingReads--;
-      else if (generation > 1) media = { ...media, tags: ["manual", "Race Car"] };
+      else if (generation > 1) media = { ...media, tags: ["manual", "Race Car"], identification: [{
+        number: "89", team: "Matched Team", drivers: "Registered lineup", vehicle: "", manufacturer: "",
+        racingClass: "", discipline: "", source: "reference",
+      }] };
       body = { status: pending ? "running" : "completed", generation,
         generatedTags: generation === 1 ? ["Day"] : ["Day", "Race Car"],
-        tags: media.tags, identification: [], identificationManual: false };
+        tags: media.tags, identification: media.identification, identificationManual: false };
     }
     browser.command("Fetch.fulfillRequest", { requestId, responseCode: 200,
       responseHeaders: [{ name: "Content-Type", value: "application/json" }],
@@ -56,9 +59,9 @@ test("editor keeps a removed AI tag suppressed through save, reanalysis and save
     }
   };
   try {
-    for (const width of [1280, 390]) {
+    for (const [width, type] of [[1280, "image"], [390, "image"], [1280, "video"], [390, "video"]]) {
       const touch = width === 390;
-      media = { id: 64903, eventId: event.id, type: "image", thumbnail, url: thumbnail,
+      media = { id: 64903, eventId: event.id, type, thumbnail, url: thumbnail,
         caption: "Fixture tag photo", photographer: "", createdAt: "2026-07-12T00:00:00Z",
         tags: ["manual", "Day"], identification: [], isPremium: false };
       generation = 1; pendingReads = 0; writes = [];
@@ -88,6 +91,8 @@ test("editor keeps a removed AI tag suppressed through save, reanalysis and save
       await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(button=>button.textContent.includes('Reanalyse')).setAttribute('data-test-reanalyse','true')`);
       await click('[data-test-reanalyse="true"]', touch);
       await browser.wait(`document.querySelector('#tags')?.value.includes('Race Car')`);
+      await browser.wait(`document.querySelector('[role="dialog"]')?.innerText.includes('Matched Team') ||
+        [...document.querySelectorAll('[role="dialog"] input')].some(input=>input.value==='Matched Team')`);
       assert.equal(await browser.evaluate(`document.querySelector('#tags').value.includes('Day')`), false);
       await click('[role="dialog"] button[type="submit"]', touch);
       await browser.wait(`!document.querySelector('[role="dialog"]')`);

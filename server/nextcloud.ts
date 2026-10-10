@@ -345,14 +345,13 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
     await db.insert(nextcloudFiles).values({ eventId, sourceKey: key, name: file.name }).onConflictDoNothing();
     const [record] = await db.select().from(nextcloudFiles).where(and(eq(nextcloudFiles.eventId, eventId), eq(nextcloudFiles.sourceKey, key)));
     const queueTags = async (mediaId: number) => {
-      if (file.type !== "image") return;
       try {
         const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, mediaId));
         if (!item) return;
         await enqueueAnalysis(item);
         await db.update(nextcloudFiles).set({ aiWarning: null }).where(eq(nextcloudFiles.id, record.id));
       } catch {
-        await db.update(nextcloudFiles).set({ aiWarning: "KI-Analyse nicht gestartet. Im Bilddialog gezielt erneut versuchen." }).where(eq(nextcloudFiles.id, record.id));
+        await db.update(nextcloudFiles).set({ aiWarning: "KI-Analyse nicht gestartet. Im Mediendialog gezielt erneut versuchen." }).where(eq(nextcloudFiles.id, record.id));
       }
     };
     if (record.status === "saved" && record.mediaId) { await queueTags(record.mediaId); return; }

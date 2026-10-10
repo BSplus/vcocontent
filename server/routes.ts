@@ -611,9 +611,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 })()
               : [],
             isPremium: false,
-          }), undefined, undefined, metadata.autoTag === "true");
+          }), undefined, undefined, metadata.type === "video" || metadata.autoTag === "true");
           res.status(201).json(item);
-          if (metadata.autoTag === "true") void kickAnalysisWorker();
+          if (metadata.type === "video" || metadata.autoTag === "true") void kickAnalysisWorker();
         } catch (error) {
           console.error("Media upload failed:", error);
           if (reservationId) await storage.abandonMedia(reservationId).catch(cleanupError => console.error("Upload cleanup pending:", cleanupError));
@@ -648,9 +648,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Forbidden" });
       }
       if (!isAITaggingConfigured()) return res.status(503).json({ error: "AI tagging is not configured" });
-      if (mediaItem.type === "video") {
-        return res.status(422).json({ error: "Video tagging requires a real video frame; no frame is available yet" });
-      }
 
       console.log(`Beginning AI analysis for media ${mediaId} of type ${mediaItem.type}`);
 
@@ -684,7 +681,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!event) return res.status(404).json({ error: "Event not found" });
       if (!canManageEvent(req.user, event.creatorId ?? null)) return res.status(403).json({ error: "Forbidden" });
       const jobs = await db.select({ mediaId: mediaAnalysisJobs.mediaId, status: mediaAnalysisJobs.status,
-        generatedTags: mediaAnalysisJobs.generatedTags, error: mediaAnalysisJobs.error })
+        tags: mediaItems.tags, generatedTags: mediaAnalysisJobs.generatedTags, error: mediaAnalysisJobs.error })
         .from(mediaAnalysisJobs).innerJoin(mediaItems, eq(mediaItems.id, mediaAnalysisJobs.mediaId))
         .where(eq(mediaItems.eventId, id)).limit(1000);
       res.setHeader("Cache-Control", "private, no-store");
@@ -1103,10 +1100,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const event = mediaItem.eventId ? await storage.getEvent(mediaItem.eventId) : undefined;
           if (!canManageEvent(req.user, event?.creatorId ?? null)) {
             errors.push({ id, error: "Forbidden" });
-            continue;
-          }
-          if (mediaItem.type === "video") {
-            errors.push({ id, error: "Video frame analysis is not available" });
             continue;
           }
 

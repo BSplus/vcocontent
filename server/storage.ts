@@ -1,6 +1,6 @@
 import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries, type EntryRow } from "@shared/schema";
 import { users, events, eventEntries, referenceDocuments, mediaItems, mediaReservations, mediaCleanup, nextcloudFiles, nextcloudJobs, mediaAnalysisJobs, series as seriesTable } from "@shared/schema";
-import { analysisFingerprint } from "./analysis-jobs";
+import { analysisFingerprint, itemAnalysisFingerprint } from "./analysis-jobs";
 import { isAITaggingConfigured } from "./utils/ai-tagger";
 import { db } from "./db";
 import { eq, and, or, sql, desc, lt, ilike, getTableColumns } from "drizzle-orm";
@@ -428,14 +428,15 @@ class DatabaseStorage implements IStorage {
       const [reservation] = await tx.select().from(mediaReservations).where(eq(mediaReservations.id, id));
       if (!reservation) throw new Error("Upload reservation has expired");
       const [item] = await tx.insert(mediaItems).values(mediaItem).returning();
-      if (requestAnalysis && item.type === "image") {
+      if (requestAnalysis) {
         await tx.execute(sql`select pg_advisory_xact_lock(761020)`);
         const pending = await tx.execute(sql`select count(*)::int as count from media_analysis_jobs where status in ('queued','running')`);
         const ready = isAITaggingConfigured() && Number(pending.rows[0]?.count) < 1000;
         // Saving media and requesting analysis commit together. A full queue or
         // unavailable provider must not discard a successful transfer.
         await tx.insert(mediaAnalysisJobs).values({ mediaId: item.id,
-          fingerprint: analysisFingerprint(item.thumbnail), status: ready ? "queued" : "failed",
+          fingerprint: item.type === "video" ? itemAnalysisFingerprint(item) : "tags:" + analysisFingerprint(item.thumbnail),
+          status: ready ? "queued" : "failed",
           error: ready ? null : "AI analysis not started. Retry when the service is available." });
       }
       if (nextcloudFileId) {

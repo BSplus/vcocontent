@@ -82,11 +82,12 @@ export default function MediaUploadModal({
     setUploads(previous => previous.map(upload => {
       const job = jobQuery.data.find(job => job.mediaId === upload.mediaId);
       if (!job) return upload;
-      return { ...upload, aiStatus: job.status, aiTags: job.generatedTags || undefined,
+      return { ...upload, aiStatus: job.status, aiTags: job.tags || undefined,
         aiWarning: job.error || undefined };
     }));
     queryClient.invalidateQueries({ predicate: query =>
-      String(query.queryKey[0]).startsWith(`/api/events/${eventId}/media`) });
+      String(query.queryKey[0]).startsWith(`/api/events/${eventId}/media`) ||
+      String(query.queryKey[0]).startsWith("/api/media") });
   }, [jobQuery.data, eventId]);
   const retryTags = async (upload: FileUpload) => {
     if (!upload.mediaId) return;
@@ -263,7 +264,7 @@ export default function MediaUploadModal({
       formData.append("type", upload.file.type.startsWith("video/") ? "video" : "image");
       formData.append("caption", caption);
       formData.append("photographer", photographer);
-      formData.append("autoTag", String(autoTagEnabled && upload.file.type.startsWith("image/")));
+      formData.append("autoTag", String(upload.file.type.startsWith("video/") || autoTagEnabled));
       formData.append("tags", JSON.stringify(tags));
 
       const res = await fetch(`/api/events/${eventId}/media/upload`, {
@@ -320,7 +321,7 @@ export default function MediaUploadModal({
           
           // Analysis commits with the saved media; never await the model here.
           upload.mediaId = mediaResponse.id;
-          if (autoTagEnabled && upload.file.type.startsWith("image/")) upload.aiStatus = "queued";
+          if (upload.file.type.startsWith("video/") || autoTagEnabled) upload.aiStatus = "queued";
 
           upload.status = 'success';
           upload.progress = 100;
@@ -540,7 +541,7 @@ export default function MediaUploadModal({
               onCheckedChange={setAutoTagEnabled}
             />
             <Label htmlFor="auto-tag" className="text-sm font-medium">
-              Automatically add visual tags
+              Automatically tag images
             </Label>
              <div>
               <HoverCard>
@@ -556,7 +557,7 @@ export default function MediaUploadModal({
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Tagging runs after upload. A tagging issue will not prevent your files from being saved.
+            Videos are analyzed automatically after upload. The AI tagging switch applies to images only. An analysis issue will not prevent your files from being saved.
           </p>
 
            <div className="flex flex-wrap justify-end gap-2">
