@@ -26,3 +26,4 @@
 - [Video sampling bounds](video-sampling-bounds.md) — constrain FFmpeg input windows; requested seeks and actual frame presentation times can differ.
 - [VCO evaluation permission](vco-media-authorization.md) — user authorized all photos on the VCO photo site for this project's recognition evaluation.
 - [Media worker hosting](media-worker-hosting.md) — prefer one combined VM; cost and compatibility confirmation must precede explicit hosting-change approval.
+- [Creator launch preference](creator-launch-intent.md) — prefer open, free self-service photo galleries with limits; paid expansion later, not yet implemented.
