@@ -25,7 +25,11 @@ Eine Galerie ist weiterhin das bestehende Event. Like-/Favoritenaktionen auf „
 „Event“ zählen dieselbe Einheit, nicht doppelt. Creator besitzen eigene Eventgalerien;
 mehrere unabhängig veröffentlichte Creatorgalerien *unter einem offiziellen Event* sind
 mit diesem Modell nicht abbildbar. Dafür wurde kein zweites Modell eingeführt. Eine
-spätere Erweiterung benötigt zuerst eine Betreiberentscheidung.
+Betreiberentscheidung liegt inzwischen vor: Bestehende Creator-Galerien sollen eine
+lose Zuordnung zum offiziellen Event erhalten, ohne ein getrenntes Event-/Galeriemodell
+einzuführen. Die Zuordnung ist noch nicht implementiert.
+Die bestätigten Regeln und Freigabegrenzen stehen in
+[Creator-Eventzuordnung – Betreiberentscheidung](creator-event-association-decision.md).
 
 ## Zugriff und Datensicherheit
 
