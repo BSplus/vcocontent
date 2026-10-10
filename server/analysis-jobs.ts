@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from "crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { mediaAnalysisJobs, mediaItems } from "@shared/schema";
-import { analysisImageInput } from "./image-analysis";
-import { categorizeContent, generateTagsForImage, isAITaggingConfigured } from "./utils/ai-tagger";
+import { mediaAnalysisJobs, mediaItems, events } from "@shared/schema";
+import { recognitionImageInput } from "./image-analysis";
+import { categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
+import { recognizeMotorsportImage } from "./utils/motorsport-recognition";
+import { identifyEntries } from "./reference-matching";
 import { withVisionBudget, VisionBusy } from "./ai-budget";
 
 // Database-wide budget, including multiple server processes. SDK retries are
@@ -12,7 +14,7 @@ const LOCK = 761020;
 const MAX_ACTIVE = 2;
 const MAX_PENDING = 1000;
 const MAX_ATTEMPTS = 3;
-const VERSION = "tags-v1";
+const VERSION = "recognition-v2";
 export const analysisFingerprint = (thumbnail: string) =>
   createHash("sha256").update(`${VERSION}:${thumbnail}`).digest("hex");
 type Item = { id: number; type: string; thumbnail: string };
@@ -20,28 +22,34 @@ export class AnalysisUnavailable extends Error {}
 
 export async function analysisStatus(mediaId: number) {
   const [job] = await db.select({
-    status: mediaAnalysisJobs.status, attempts: mediaAnalysisJobs.attempts,
+    status: sql<string>`case when ${mediaAnalysisJobs.status}='completed' and ${mediaAnalysisJobs.recognition} is not null
+      and coalesce(${events.referenceRevision},0)>${mediaAnalysisJobs.referenceRevision}
+      then 'queued' else ${mediaAnalysisJobs.status} end`, attempts: mediaAnalysisJobs.attempts,
     generatedTags: mediaAnalysisJobs.generatedTags, error: mediaAnalysisJobs.error,
     durationMs: mediaAnalysisJobs.durationMs,
-  }).from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, mediaId));
+    generation: mediaAnalysisJobs.generation,
+  }).from(mediaAnalysisJobs).leftJoin(mediaItems,eq(mediaItems.id,mediaAnalysisJobs.mediaId))
+    .leftJoin(events,eq(events.id,mediaItems.eventId)).where(eq(mediaAnalysisJobs.mediaId, mediaId));
   return job || { status: "not_requested", attempts: 0, error: null, generatedTags: null };
 }
 
-export async function enqueueAnalysis(item: Item, retry = false) {
+export async function enqueueAnalysis(item: Item, retry = false, reanalyse = false) {
   if (item.type !== "image") throw new AnalysisUnavailable("Video frame analysis is not available");
   if (!isAITaggingConfigured()) throw new AnalysisUnavailable("AI tagging is not configured");
   const fingerprint = analysisFingerprint(item.thumbnail);
   await db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(${LOCK})`);
     const [existing] = await tx.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id));
-    if (existing?.fingerprint === fingerprint &&
+    if (existing && (existing.status === "queued" || existing.status === "running")) return;
+    if (existing?.fingerprint === fingerprint && !reanalyse &&
         (!retry || existing.status !== "failed")) return;
     const pending = await tx.execute(sql`select count(*)::int as count from media_analysis_jobs
       where status in ('queued', 'running')`);
     if (Number(pending.rows[0]?.count) >= MAX_PENDING)
       throw new AnalysisUnavailable("Analysis queue is full. Please retry later.");
     const values = { mediaId: item.id, fingerprint, status: "queued", attempts: 0,
-      workerToken: null, generatedTags: null, error: null, durationMs: null,
+      workerToken: null, generatedTags: existing?.generatedTags || null, recognition: existing?.recognition || null,
+      referenceOnly: false, generation: (existing?.generation || 0) + 1, error: null, durationMs: null,
       availableAt: new Date(), updatedAt: new Date() };
     await tx.insert(mediaAnalysisJobs).values(values).onConflictDoUpdate({
       target: mediaAnalysisJobs.mediaId, set: values,
@@ -63,14 +71,23 @@ async function claimAnalysis() {
     const active = await tx.execute(sql`select count(*)::int as count from media_analysis_jobs where status='running'`);
     if (Number(active.rows[0]?.count) >= MAX_ACTIVE) return undefined;
     const token = randomUUID();
-    const result = await tx.execute(sql`update media_analysis_jobs set status='running',
-      attempts=attempts+1, worker_token=${token}, updated_at=now()
-      where media_id = (select media_id from media_analysis_jobs where status='queued'
-      and available_at <= now() order by available_at, media_id for update skip locked limit 1)
-      returning media_id, fingerprint, attempts`);
+    const result = await tx.execute(sql`update media_analysis_jobs set
+      reference_only = (status='completed' or reference_only),
+      generation=case when status='completed' then generation+1 else generation end,
+      attempts=case when status='completed' then 1 else attempts+1 end,
+      status='running', worker_token=${token}, updated_at=now()
+      where media_id = (select j.media_id from media_analysis_jobs j
+        left join media_items m on m.id=j.media_id left join events e on e.id=m.event_id
+        where (j.status='queued' and j.available_at<=now()) or
+          (j.status='completed' and j.recognition is not null and e.reference_revision>j.reference_revision)
+        order by case when j.status='queued' then 0 else 1 end,j.available_at,j.media_id
+        for update of j skip locked limit 1)
+      returning media_id, fingerprint, attempts, reference_only, recognition, generated_tags`);
     const row = result.rows[0];
     return row ? { mediaId: Number(row.media_id), fingerprint: String(row.fingerprint),
-      attempts: Number(row.attempts), token } : undefined;
+      attempts: Number(row.attempts), referenceOnly: Boolean(row.reference_only),
+      recognition: row.recognition as import("@shared/schema").Identification[] | null,
+      generatedTags: row.generated_tags as string[] | null, token } : undefined;
   });
 }
 
@@ -82,20 +99,41 @@ export async function drainAnalysisQueue() {
   try {
     const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, claimed.mediaId));
     if (!item) return true;
-    const input = await analysisImageInput(item.thumbnail);
-    const tags = await withVisionBudget(() => generateTagsForImage(input));
-    if (!tags.length) throw new Error("No approved tags");
+    if (claimed.fingerprint !== analysisFingerprint(item.thumbnail)) {
+      // Upgrade only jobs already requested, never mass-retag completed media.
+      claimed.fingerprint = analysisFingerprint(item.thumbnail);
+      await db.update(mediaAnalysisJobs).set({fingerprint:claimed.fingerprint})
+        .where(and(eq(mediaAnalysisJobs.mediaId,item.id),eq(mediaAnalysisJobs.workerToken,claimed.token)));
+    }
+    const result = claimed.referenceOnly && claimed.recognition
+      ? { tags: claimed.generatedTags || [], vehicles: claimed.recognition }
+      : await withVisionBudget(async () => recognizeMotorsportImage(await recognitionImageInput(item)));
+    const tags = result.tags;
     await db.transaction(async tx => {
       const [owned] = await tx.select().from(mediaAnalysisJobs)
         .where(and(eq(mediaAnalysisJobs.mediaId, item.id), eq(mediaAnalysisJobs.workerToken, claimed.token))).for("update");
       if (!owned || owned.fingerprint !== claimed.fingerprint) return;
-      // Atomic union against the latest row, not the pre-request snapshot.
-      // Captions are deliberately never updated by this worker.
-      const [updated] = await tx.update(mediaItems).set({
-        tags: sql`array(select distinct unnest(coalesce(${mediaItems.tags}, array[]::text[]) || ${sql`array[${sql.join(tags.map(t => sql`${t}`), sql`, `)}]::text[]`}))`,
-      }).where(eq(mediaItems.id, item.id)).returning();
-      await tx.update(mediaItems).set({ category: await categorizeContent(updated.tags || []) }).where(eq(mediaItems.id, item.id));
+      const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,item.id)).for("update");
+      if (!current || analysisFingerprint(current.thumbnail) !== claimed.fingerprint) return;
+      const [event] = current.eventId ? await tx.select().from(events).where(eq(events.id,current.eventId)) : [];
+      // Track future tag provenance. Legacy curation cannot be reconstructed:
+      // conservatively preserve it rather than deleting possibly manual tags.
+      const manualTags = Array.from(new Set([...current.manualTags,...(current.tags || []).filter(t=>
+        !owned.recognition || !(owned.generatedTags || []).includes(t))]));
+      let freshTags=tags.filter(t=>!current.suppressedAITags.includes(t));
+      const opposites=[["Day","Night"],["Dry Track","Wet Track"],["Dry Track","Rain"]] as const;
+      for (const [a,b] of opposites) {
+        if (manualTags.includes(a)) freshTags=freshTags.filter(t=>t!==b);
+        if (manualTags.includes(b)) freshTags=freshTags.filter(t=>t!==a);
+      }
+      const merged = claimed.referenceOnly ? current.tags || [] : Array.from(new Set([...manualTags,...freshTags])).slice(0,100);
+      const identification = current.identificationManual ? current.identification : event
+        ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx) : result.vehicles;
+      await tx.update(mediaItems).set({ tags: merged, identification,
+        ...(claimed.referenceOnly ? {} : {manualTags}),
+        ...(claimed.referenceOnly ? {} : {category:await categorizeContent(merged)}) }).where(eq(mediaItems.id,item.id));
       await tx.update(mediaAnalysisJobs).set({ status: "completed", generatedTags: tags,
+        recognition: result.vehicles, referenceRevision: event?.referenceRevision || 0, referenceOnly: false,
         workerToken: null, error: null, updatedAt: new Date(), durationMs: Date.now() - started })
         .where(eq(mediaAnalysisJobs.mediaId, item.id));
     });

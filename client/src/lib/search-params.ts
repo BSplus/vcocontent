@@ -1,4 +1,4 @@
-export const SEARCH_FIELDS = ['caption', 'photographer', 'tags'] as const;
+export const SEARCH_FIELDS = ['caption', 'photographer', 'tags', 'identification'] as const;
 
 export type SearchField = typeof SEARCH_FIELDS[number];
 export type MediaTypeFilter = 'all' | 'image' | 'video';
@@ -17,7 +17,7 @@ export function parseSearchParams(search: string): { query: string; filters: Sea
     query: params.get('q') || '',
     filters: {
       mediaType: type === 'image' || type === 'video' ? type : 'all',
-      // Older links without fields search all three areas.
+      // Links without fields search across all available media metadata.
       fields: selected === undefined
         ? [...SEARCH_FIELDS]
         : SEARCH_FIELDS.filter(field => selected.includes(field)),

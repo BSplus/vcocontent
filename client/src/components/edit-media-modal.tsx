@@ -17,8 +17,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Wand2 } from "lucide-react";
 import { analysisPending, requestAnalysis, useMediaAnalysis } from "@/hooks/use-media-analysis";
 import { Badge } from "@/components/ui/badge";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import type { MediaIdentification } from "@/hooks/use-media-analysis";
 
 interface EditMediaModalProps {
   open: boolean;
@@ -57,8 +58,14 @@ export default function EditMediaModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [aiTags, setAiTags] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
+  const [identification, setIdentification] = useState<MediaIdentification[]>([]);
+  const appliedGeneration = useRef<string | null>(null);
+  const syncedIdentificationGeneration = useRef<string | null>(null);
+  const observedPending = useRef(false);
+  const identificationEdited = useRef(false);
+  const tagsEdited = useRef(false);
+  const savedTagSnapshot = useRef<string[]>([]);
   const [captionPreview, setCaptionPreview] = useState<CaptionPreview | null>(null);
   const [selectedScene, setSelectedScene] = useState<CaptionScene | null>(null);
 
@@ -74,6 +81,11 @@ export default function EditMediaModal({
   useEffect(() => {
     if (!open) return;
     form.reset({ caption: mediaItem.caption || "", photographer: mediaItem.photographer || "", tags: mediaItem.tags?.join(", ") || "" });
+    setIdentification(Array.isArray((mediaItem as any).identification) ? (mediaItem as any).identification : []);
+    identificationEdited.current = false;
+    tagsEdited.current = false;
+    observedPending.current = false;
+    savedTagSnapshot.current = (mediaItem.tags || []).map(tag => tag.trim()).filter(Boolean);
     setCaptionPreview(null);
     setSelectedScene(null);
   }, [open, mediaItem.id]);
@@ -131,37 +143,71 @@ export default function EditMediaModal({
   // AI analysis mutation
   const analysis = useMediaAnalysis(mediaItem.id, open && mediaItem.type === "image");
   useEffect(() => {
+    if (!open || mediaItem.type !== "image") return;
+    let current = true;
+    void analysis.refetch().then(result => {
+      if (!current || !result.data) return;
+      if (Array.isArray(result.data.tags)) {
+        savedTagSnapshot.current = result.data.tags.map(tag => tag.trim()).filter(Boolean);
+        if (!tagsEdited.current) form.setValue("tags", savedTagSnapshot.current.join(", "), { shouldDirty: false });
+      }
+      if (!identificationEdited.current && Array.isArray(result.data.identification)) {
+        setIdentification(result.data.identification);
+        syncedIdentificationGeneration.current = `${mediaItem.id}:${result.data.generation ?? "legacy"}`;
+      }
+    });
+    return () => { current = false; };
+  }, [open, mediaItem.id, mediaItem.type]);
+  useEffect(() => {
     setIsAnalyzing(analysisPending(analysis.data?.status));
+    if (analysisPending(analysis.data?.status)) observedPending.current = true;
+    const identificationGeneration = `${mediaItem.id}:${analysis.data?.generation ?? "legacy"}`;
+    if (!identificationEdited.current && analysis.data?.identification &&
+      syncedIdentificationGeneration.current !== identificationGeneration) {
+      setIdentification(analysis.data.identification);
+      syncedIdentificationGeneration.current = identificationGeneration;
+    }
     if (analysis.data?.status !== "completed") return;
-    setAiTags(analysis.data.generatedTags || []);
+    const generationKey = `${mediaItem.id}:${analysis.data.generation ?? "legacy"}`;
+    if (!observedPending.current || appliedGeneration.current === generationKey) return;
+    observedPending.current = false;
+    appliedGeneration.current = generationKey;
     setCategory(analysis.data.category || null);
-    const typed = form.getValues("tags").split(",").map(tag => tag.trim()).filter(Boolean);
-    form.setValue("tags", Array.from(new Set([...typed, ...(analysis.data.tags || [])])).join(", "), { shouldDirty: true });
+    const latestSavedTags = (analysis.data.tags || []).map(tag => tag.trim()).filter(Boolean);
+    const snapshot = new Set(savedTagSnapshot.current.map(tag => tag.toLocaleLowerCase()));
+    const newlySavedTags = latestSavedTags.filter(tag => !snapshot.has(tag.toLocaleLowerCase()));
+    const locallyEditedTags = form.getValues("tags").split(",").map(tag => tag.trim()).filter(Boolean);
+    form.setValue("tags", Array.from(new Set([...locallyEditedTags, ...newlySavedTags])).join(", "), { shouldDirty: true });
+    savedTagSnapshot.current = latestSavedTags;
     queryClient.invalidateQueries({ predicate: query =>
       String(query.queryKey[0]).startsWith(`/api/events/${mediaItem.eventId}/media`) });
-  }, [analysis.data, mediaItem.id]);
+  }, [analysis.data?.status, analysis.data?.generation, analysis.data?.generatedTags, analysis.data?.identification, analysis.data?.identificationManual, mediaItem.id]);
   const analysisMutation = useMutation({
-    mutationFn: () => requestAnalysis(mediaItem.id, analysis.data?.status === "failed"),
+    mutationFn: (mode: "start" | "retry" | "reanalyse") => requestAnalysis(
+      mediaItem.id,
+      mode === "retry" ? { retry: true } : mode === "reanalyse" ? { reanalyse: true } : {},
+    ),
     onSuccess: (data) => {
       setIsAnalyzing(analysisPending(data.status));
+      observedPending.current = true;
       queryClient.invalidateQueries({ queryKey: [`/api/media/${mediaItem.id}/analysis`] });
-      toast({ title: data.status === "completed" ? "Existing analysis reused" : "Analysis queued",
+      toast({ title: data.status === "completed" ? "Tags added" : "Analysis queued",
         description: "You can close this dialog; your media is already saved." });
     },
-    onError: (error: Error) => {
+    onError: () => {
       toast({
-        title: "AI Analysis Failed",
-        description: error.message,
+        title: "Analysis unavailable",
+        description: "Analysis could not be completed. Please try again.",
         variant: "destructive",
       });
       setIsAnalyzing(false);
     },
   });
 
-  const handleAIAnalysis = async () => {
+  const handleAIAnalysis = async (mode: "start" | "retry" | "reanalyse") => {
     setIsAnalyzing(true);
     try {
-      await analysisMutation.mutateAsync();
+      await analysisMutation.mutateAsync(mode);
     } catch {
       // The mutation displays the safe status message above.
     } finally {
@@ -171,14 +217,16 @@ export default function EditMediaModal({
 
   const onSubmit = async (formData: FormData) => {
     try {
-      // Convert comma-separated string to array of tags
-      const tags = formData.tags
-        ? formData.tags.split(',').map((tag: string) => tag.trim()).filter(Boolean)
-        : [];
-
+      const { tags: tagText, ...editableMetadata } = formData;
       await updateMutation.mutateAsync({
-        ...formData,
-        tags,
+        ...editableMetadata,
+        ...(tagsEdited.current ? {
+          tags: tagText
+            ? tagText.split(",").map((tag: string) => tag.trim()).filter(Boolean)
+            : [],
+        } : {}),
+        ...(identificationEdited.current ? { identification } : {}),
+        recognitionSession: analysis.data?.recognitionSession ?? null,
         // Include category if provided by AI
         ...(category && { category })
       });
@@ -322,11 +370,12 @@ export default function EditMediaModal({
           <div className="space-y-2">
              <div className="flex flex-wrap items-center justify-between gap-2">
               <Label htmlFor="tags">Tags (comma-separated)</Label>
+              {analysis.data?.status !== "completed" && (
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={handleAIAnalysis}
+                onClick={() => handleAIAnalysis(analysis.data?.status === "failed" ? "retry" : "start")}
                 disabled={isAnalyzing || analysisMutation.isPending}
                 className="flex items-center gap-1"
                 title="Generate tags using AI"
@@ -339,34 +388,26 @@ export default function EditMediaModal({
                 ) : (
                   <>
                     <Wand2 className="h-3 w-3" />
-                    <span>{analysis.data?.status === "failed" ? "Retry analysis" : "Auto-Generate Tags"}</span>
+                    <span>{analysis.data?.status === "failed" ? "Retry analysis" : "Generate tags"}</span>
                   </>
                 )}
               </Button>
-              {analysis.data && <p role="status" className="text-sm text-muted-foreground">
-                AI: {analysis.data.status}{analysis.data.error ? ` · ${analysis.data.error}` : ""}
-                {analysisPending(analysis.data.status) ? " · Runs server-side; resumes when the server restarts." : ""}
+              )}
+              {analysis.data && <p role="status" className="w-full text-sm text-muted-foreground">
+                {analysis.data.status === "completed" ? "Tags added" :
+                  analysis.data.status === "failed" ? "Analysis failed" :
+                  analysisPending(analysis.data.status) ? "Adding tags…" : "Not analysed"}
+                {analysis.data.status === "failed" ? " · You can retry the analysis." : ""}
               </p>}
             </div>
             
             <Input
               id="tags"
               placeholder="racing, action, pit-stop"
-              {...form.register("tags")}
+              {...form.register("tags", {
+                onChange: () => { tagsEdited.current = true; },
+              })}
             />
-            
-            {aiTags.length > 0 && (
-              <div className="mt-2">
-                <p className="text-xs text-muted-foreground mb-1">AI-generated tags:</p>
-                <div className="flex flex-wrap gap-1">
-                  {aiTags.map((tag, index) => (
-                    <Badge key={index} variant="outline" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
             
             {category && (
               <div className="mt-2">
@@ -377,7 +418,43 @@ export default function EditMediaModal({
                 </p>
               </div>
             )}
+            {analysis.data?.status === "completed" && (
+              <Button type="button" variant="ghost" size="sm" className="px-0 text-muted-foreground"
+                disabled={analysisMutation.isPending} onClick={() => handleAIAnalysis("reanalyse")}>
+                {analysisMutation.isPending ? "Reanalysing…" : "Reanalyse"}
+              </Button>
+            )}
           </div>
+
+          <section className="space-y-3 rounded-md border p-3" aria-label="Recognized entry details">
+            <div>
+              <h3 className="text-sm font-semibold">Entry identification</h3>
+              <p className="text-xs text-muted-foreground">Drivers are the official entry lineup, not individually identified people.</p>
+            </div>
+            {identification.map((entry, index) => (
+              <div key={index} className="space-y-2 rounded-md bg-muted/40 p-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {([
+                    ["number", "Race number"], ["team", "Team"], ["drivers", "Listed drivers"],
+                    ["vehicle", "Vehicle"], ["manufacturer", "Manufacturer"],
+                    ["racingClass", "Racing class"], ["discipline", "Discipline"],
+                  ] as const).map(([field, label]) => (
+                    <div key={field} className="space-y-1">
+                      <Label htmlFor={`identification-${index}-${field}`}>{label}</Label>
+                      <Input id={`identification-${index}-${field}`} value={entry[field] || ""}
+                        onChange={event => { identificationEdited.current = true; setIdentification(current => current.map((item, row) =>
+                          row === index ? { ...item, [field]: event.target.value } : item)); }} />
+                    </div>
+                  ))}
+                </div>
+                {identification.length > 1 && <Button type="button" size="sm" variant="ghost"
+                  onClick={() => { identificationEdited.current = true; setIdentification(current => current.filter((_, row) => row !== index)); }}>Remove vehicle</Button>}
+              </div>
+            ))}
+            <Button type="button" size="sm" variant="outline" onClick={() => { identificationEdited.current = true; setIdentification(current => [
+              ...current, { number: "", team: "", drivers: "", vehicle: "", manufacturer: "", racingClass: "", discipline: "", source: "manual" },
+            ]); }}>Add vehicle</Button>
+          </section>
 
            <div className="flex flex-wrap justify-end gap-2">
             <Button

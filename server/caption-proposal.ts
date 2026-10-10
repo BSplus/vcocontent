@@ -10,10 +10,11 @@ export function normalizeNumber(value: string): string {
 export function entryConflicts(rows: EntryRow[]): string[] {
   const counts = new Map<string, number>();
   for (const row of rows) {
+    if (!row.number) continue;
     const key = normalizeNumber(row.number);
     counts.set(key, (counts.get(key) || 0) + 1);
   }
-  return rows.flatMap(row => (counts.get(normalizeNumber(row.number)) || 0) > 1 ? [row.number] : []);
+  return rows.flatMap(row => row.number && (counts.get(normalizeNumber(row.number)) || 0) > 1 ? [row.number] : []);
 }
 
 export function proposeCaption(

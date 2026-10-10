@@ -32,13 +32,14 @@ export function AdvancedSearch({
   className,
   initialQuery = '',
   initialType = 'all',
-  initialFields = ['caption', 'photographer', 'tags']
+  initialFields = ['caption', 'photographer', 'tags', 'identification']
 }: AdvancedSearchProps) {
   const [, setLocation] = useLocation();
   const [filters, setFilters] = useState({
     includeCaption: initialFields.includes('caption'),
     includePhotographer: initialFields.includes('photographer'),
     includeTags: initialFields.includes('tags'),
+    includeIdentification: initialFields.includes('identification'),
     mediaType: initialType,
   });
 
@@ -57,8 +58,18 @@ export function AdvancedSearch({
         getFn: (item: MediaItem) => item.tags?.join(' ') || '' 
       });
     }
+    if (filters.includeIdentification) {
+      keys.push({
+        name: 'identification',
+        weight: 2,
+        getFn: (item: MediaItem) => {
+          const entries = (item as MediaItem & { identification?: { number?: string; team?: string; drivers?: string; vehicle?: string; manufacturer?: string; racingClass?: string; discipline?: string }[] }).identification;
+          return entries?.flatMap(entry => [entry.number, entry.team, entry.drivers, entry.vehicle, entry.manufacturer, entry.racingClass, entry.discipline]).filter(Boolean).join(' ') || '';
+        },
+      });
+    }
     return keys;
-  }, [filters.includeCaption, filters.includePhotographer, filters.includeTags]);
+  }, [filters.includeCaption, filters.includePhotographer, filters.includeTags, filters.includeIdentification]);
 
   const searchOptions = useMemo(() => ({
     keys: searchKeys,
@@ -87,6 +98,7 @@ export function AdvancedSearch({
     if (filters.includeCaption) fields.push('caption');
     if (filters.includePhotographer) fields.push('photographer');
     if (filters.includeTags) fields.push('tags');
+    if (filters.includeIdentification) fields.push('identification');
     const searchParams = serializeSearchParams(searchQuery, { mediaType: filters.mediaType, fields });
 
     // Navigate to search results page with parameters
@@ -96,7 +108,7 @@ export function AdvancedSearch({
   return (
     <form onSubmit={handleSearch} className={`w-full ${className}`}>
       <label htmlFor="media-search" className="block text-sm font-semibold mb-2">Search media</label>
-      <p id="media-search-help" className="text-sm text-foreground/75 mb-3">Search captions, photographers or tags. Use Filters to narrow the results.</p>
+      <p id="media-search-help" className="text-sm text-foreground/75 mb-3">Search captions, photographers, tags or entry details. Use Filters to narrow the results.</p>
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -141,6 +153,19 @@ export function AdvancedSearch({
                   />
                   <label htmlFor="caption" className="text-sm font-medium">
                     Captions
+                  </label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="identification"
+                    checked={filters.includeIdentification}
+                    onCheckedChange={(checked) =>
+                      setFilters(prev => ({ ...prev, includeIdentification: checked === true }))
+                    }
+                  />
+                  <label htmlFor="identification" className="text-sm font-medium">
+                    Race number, team, drivers & vehicle
                   </label>
                 </div>
 

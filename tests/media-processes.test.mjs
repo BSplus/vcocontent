@@ -7,8 +7,8 @@ import sharp from "sharp";
 import { and, eq } from "drizzle-orm";
 import { db, pool } from "../server/db.ts";
 import { storage } from "../server/storage.ts";
-import { mediaAnalysisJobs, nextcloudJobs, nextcloudFiles, users } from "../shared/schema.ts";
-import { enqueueAnalysis, analysisStatus, drainAnalysisQueue, stopAnalysisWorker } from "../server/analysis-jobs.ts";
+import { mediaAnalysisJobs, mediaItems, referenceDocuments, events as eventsTable, nextcloudJobs, nextcloudFiles, users } from "../shared/schema.ts";
+import { enqueueAnalysis, analysisStatus, drainAnalysisQueue, stopAnalysisWorker, analysisFingerprint } from "../server/analysis-jobs.ts";
 import { startImport, importStatus, drainImportQueue, stopImportWorker, resumeImport } from "../server/nextcloud.ts";
 import { encryptManifest, decryptManifest } from "../server/import-manifest.ts";
 import { withVisionBudget, VisionBusy } from "../server/ai-budget.ts";
@@ -41,7 +41,7 @@ function mockAI(work = async () => {}) {
     if (!String(url).startsWith("https://queue-test.example.invalid/")) return realFetch(url, options);
     await work();
     return new Response(JSON.stringify({ id: "test", object: "chat.completion", created: 0, model: "gpt-4.1-mini",
-      choices: [{ index: 0, message: { role: "assistant", content: "Day, Front View" }, finish_reason: "stop" }] }),
+      choices: [{ index: 0, message: { role: "assistant", content: JSON.stringify({tags:["Day","Front View"],vehicles:[]}) }, finish_reason: "stop" }] }),
       { headers: { "content-type": "application/json" } });
   };
 }
@@ -123,6 +123,39 @@ test("expired analysis lease recovers and the global active cap remains two", as
     return (await Promise.all(items.map(item => analysisStatus(item.id)))).every(j => j.status === "completed");
   });
   assert.ok(peak <= 2); assert.equal(calls, 5);
+});
+test("reference corrections reuse persisted observations without provider calls or changing manual metadata", async()=>{
+  let providerCalls=0;
+  mockAI(async()=>{providerCalls++;});
+  const media=await photo((await event()).id);
+  const observation={number:"89",team:"",drivers:"",vehicle:"Race Car",manufacturer:"",racingClass:"",discipline:"",source:"visual"};
+  await db.insert(mediaAnalysisJobs).values({mediaId:media.id,fingerprint:analysisFingerprint(media.thumbnail),
+    status:"completed",generatedTags:["Day"],recognition:[observation],referenceRevision:0});
+  await db.insert(referenceDocuments).values({eventId:media.eventId,ownerId:null,seasonYear:2026,scope:"event",kind:"entry",
+    title:"local-reference",fingerprint:randomUUID(),identityKey:randomUUID(),
+    rows:[{number:"89",team:"Reference Team",car:"Stock Car",drivers:"Listed A, Listed B"}]});
+  await db.update(eventsTable).set({referenceRevision:1}).where(eq(eventsTable.id,media.eventId));
+  const before=providerCalls;
+  assert.equal((await analysisStatus(media.id)).status,"queued","stale references must keep the UI polling");
+  await drainAnalysisQueue();
+  assert.equal(providerCalls,before);
+  let saved=await storage.getMediaItem(media.id);
+  assert.equal(saved.identification[0].drivers,"Listed A, Listed B");
+  assert.equal(saved.caption,"Approved caption");
+  await db.update(mediaItems).set({identification:[{...saved.identification[0],drivers:"Editorial correction",source:"manual"}],
+    identificationManual:true,suppressedAITags:["Day"]}).where(eq(mediaItems.id,media.id));
+  await db.update(eventsTable).set({referenceRevision:2}).where(eq(eventsTable.id,media.eventId));
+  await drainAnalysisQueue();
+  saved=await storage.getMediaItem(media.id);
+  assert.equal(saved.identification[0].drivers,"Editorial correction");assert.equal(providerCalls,before);
+  await enqueueAnalysis(saved,false,true);
+  await db.update(mediaAnalysisJobs).set({attempts:2,availableAt:new Date()}).where(eq(mediaAnalysisJobs.mediaId,media.id));
+  mockAI(async()=>{providerCalls++;throw new Error("Controlled provider failure");});await drainAnalysisQueue();
+  assert.equal((await analysisStatus(media.id)).status,"failed");
+  assert.deepEqual((await storage.getMediaItem(media.id)).identification,saved.identification);
+  const [job]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,media.id));
+  assert.deepEqual(job.recognition,[observation]);
+  mockAI();
 });
 
 test("terminal provider errors are sanitized, bounded and individually retryable", async () => {

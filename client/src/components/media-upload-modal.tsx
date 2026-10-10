@@ -72,7 +72,10 @@ export default function MediaUploadModal({
   const jobQuery = useQuery<(AnalysisState & { mediaId: number })[]>({
     queryKey: [`/api/events/${eventId}/analysis`],
     enabled: open && uploads.some(u => u.mediaId && analysisPending(u.aiStatus)),
-    refetchInterval: query => query.state.fetchFailureCount < 3 ? 4000 : false,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchInterval: query => query.state.fetchFailureCount < 3 &&
+      (query.state.data?.some(job => analysisPending(job.status)) ?? true) ? 4000 : false,
   });
   useEffect(() => {
     if (!jobQuery.data) return;
@@ -93,7 +96,7 @@ export default function MediaUploadModal({
         ? { ...u, aiStatus: job.status, aiWarning: job.error || undefined } : u));
       queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/analysis`] });
     } catch (error) {
-      toast({ title: "Analysis unavailable", description: error instanceof Error ? error.message : "Please retry later.", variant: "destructive" });
+      toast({ title: "Analysis unavailable", description: "Analysis could not be completed. Please try again from Edit Media.", variant: "destructive" });
     }
   };
 
@@ -335,10 +338,9 @@ export default function MediaUploadModal({
       const failedCount = pendingUploads.length - successfulCount;
       const aiWarningCount = pendingUploads.filter(upload => upload.aiWarning).length;
       const aiSuccessCount = pendingUploads.filter(upload => upload.aiTags?.length).length;
-      const aiWarningDetails = pendingUploads.find(upload => upload.aiWarning)?.aiWarning;
       toast({
         title: failedCount || aiWarningCount ? "Upload completed with notices" : "Success",
-        description: `${successfulCount} file${successfulCount === 1 ? "" : "s"} uploaded${failedCount ? `; ${failedCount} failed` : ""}${aiSuccessCount ? `; KI-Tags für ${aiSuccessCount} erstellt` : ""}${aiWarningCount ? `; AI tagging unavailable for ${aiWarningCount}: ${aiWarningDetails}` : ""}.`,
+        description: `${successfulCount} file${successfulCount === 1 ? "" : "s"} uploaded${failedCount ? `; ${failedCount} failed` : ""}${aiSuccessCount ? `; tags added to ${aiSuccessCount}` : ""}${aiWarningCount ? `; tagging unavailable for ${aiWarningCount} file${aiWarningCount === 1 ? "" : "s"}` : ""}.`,
         variant: failedCount ? "destructive" : undefined,
       });
 
@@ -456,21 +458,21 @@ export default function MediaUploadModal({
                         onClick={() => setUploads(previous => previous.map(u => u === upload
                           ? { ...u, status: "pending", error: undefined } : u))}>Retry upload</Button>}
                       {upload.aiWarning && (
-                        <p className="text-sm text-amber-600 mt-1">{upload.aiWarning}</p>
+                        <p className="text-sm text-amber-600 mt-1">Analysis failed. You can retry from Edit Media.</p>
                       )}
                       {upload.status === "success" && analysisPending(upload.aiStatus) && (
-                        <p role="status" className="text-muted-foreground text-xs mt-1">Saved · AI {upload.aiStatus} in background</p>
+                          <p role="status" className="text-muted-foreground text-xs mt-1">Saved · Adding tags in the background…</p>
                       )}
                       {upload.aiStatus === "failed" && (
                         <Button type="button" size="sm" variant="outline" onClick={() => retryTags(upload)}>Retry analysis</Button>
                       )}
                       {upload.aiTags && (
                         <p className="text-sm text-green-700 mt-1" role="status">
-                          KI-Tags erstellt: {upload.aiTags.join(", ")}
+                          Tags added
                         </p>
                       )}
                       {upload.status === 'success' && !upload.aiTags && !upload.aiWarning && (
-                        <p className="text-sm text-green-700 mt-1">Upload abgeschlossen</p>
+                        <p className="text-sm text-green-700 mt-1">File saved</p>
                       )}
                     </div>
                   ))}
@@ -500,7 +502,7 @@ export default function MediaUploadModal({
           <div className="space-y-2">
             <Label htmlFor="caption">Caption (applies to all uploads)</Label>
             {uploads.some(u => analysisPending(u.aiStatus)) && <p className="text-sm text-muted-foreground">
-              Analysis runs server-side after closing this dialog and resumes when the server restarts. Status and retry are also available in Edit Media.
+              Analysis continues in the background after you close this dialog. You can check its status or retry in Edit Media.
               {jobQuery.isError && " Status is temporarily unavailable; the files remain saved."}
             </p>}
             <Textarea
@@ -538,7 +540,7 @@ export default function MediaUploadModal({
               onCheckedChange={setAutoTagEnabled}
             />
             <Label htmlFor="auto-tag" className="text-sm font-medium">
-              Automatisch Sim-Racing Tags generieren
+              Automatically add visual tags
             </Label>
              <div>
               <HoverCard>
@@ -547,15 +549,14 @@ export default function MediaUploadModal({
                 </HoverCardTrigger>
                 <HoverCardContent className="w-80 p-3">
                   <p className="text-sm">
-                    Aktiviert die KI-basierte automatische Erkennung von Tags wie: Front View, Rear View, Aerial View, 
-                    Side View, Onboard View, Group, Crash, Atmosphere, Day/Night, Rain/Wet Track, GT Car, Formula Car, usw.
+                    Adds visual tags such as Front View, Rear View, Aerial View, Side View, Onboard View, Pit Lane, Race Action, Night and Wet Track when supported by the image.
                   </p>
                 </HoverCardContent>
               </HoverCard>
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            KI-Tagging ist nur verfügbar, wenn der Analyse-Service aktiv ist. Fehler werden pro Datei angezeigt.
+            Tagging runs after upload. A tagging issue will not prevent your files from being saved.
           </p>
 
            <div className="flex flex-wrap justify-end gap-2">
@@ -568,8 +569,11 @@ export default function MediaUploadModal({
               Cancel
             </Button>
             <Button
-              type="submit"
-              disabled={uploading || !uploads.some(upload => upload.status === "pending")}
+              type={uploads.some(upload => upload.status === "pending") ? "submit" : "button"}
+              disabled={uploading || (!uploads.some(upload => upload.status === "pending") && !uploads.some(upload => upload.status === "error"))}
+              onClick={() => {
+                if (!uploads.some(upload => upload.status === "pending")) onOpenChange(false);
+              }}
               className="bg-primary text-black hover:bg-primary/90"
             >
               {uploading ? (
@@ -578,7 +582,9 @@ export default function MediaUploadModal({
                   Uploading...
                 </>
               ) : (
-                `Upload ${uploads.filter(upload => upload.status === "pending").length} ${uploads.filter(upload => upload.status === "pending").length === 1 ? 'File' : 'Files'}`
+                uploads.some(upload => upload.status === "pending")
+                  ? `Upload ${uploads.filter(upload => upload.status === "pending").length} ${uploads.filter(upload => upload.status === "pending").length === 1 ? "file" : "files"}`
+                  : uploads.some(upload => upload.status === "error") ? "Close" : uploads.length ? "Done — all files saved" : "Select files above"
               )}
             </Button>
           </div>

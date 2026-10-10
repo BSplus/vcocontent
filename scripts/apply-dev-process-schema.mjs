@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { pool } from "../server/db.ts";
 if (process.env.NODE_ENV === "production") throw new Error("Development schema setup cannot run in production");
 try {
-  await pool.query(await readFile(new URL("../migrations/media-process-jobs.sql", import.meta.url), "utf8"));
+  for (const name of ["media-process-jobs.sql", "motorsport-recognition.sql"]) {
+    await pool.query(await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
+  }
   console.log("Additive media-process development schema is ready.");
 } finally { await pool.end(); }

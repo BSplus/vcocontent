@@ -21,3 +21,5 @@
 - [Site date display](site-date-display.md) — visible dates should use day, full English month, four-digit year throughout the site.
 - [Background analysis decisions](background-analysis-decisions.md) — combine AI outputs only with quality evidence; shared-queue tests need exclusive consumers, not parallel mocks.
 - [Mobile browser viewport checks](mobile-browser-viewport-checks.md) — screenshot size can differ from the CSS viewport; measure both before claiming dialog clipping.
+- [Reference-list scope](reference-scope-decisions.md) — user chose season reuse; keep private owner boundaries and distinguish registered lineups from physical driver identity.
+- [JSZip stream compatibility](jszip-stream-compatibility.md) — legacy nodeStream results need a native Readable wrapper for bounded async iteration.

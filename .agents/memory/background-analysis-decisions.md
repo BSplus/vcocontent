@@ -1,13 +1,13 @@
 ---
 name: Background analysis decisions
-description: Why tag extraction remains separate from caption detection, and how to isolate shared-queue tests
+description: Recognition quality limits, manual caption publishing, and shared-queue test isolation
 ---
 
-Keep a provider/prompt change conditional on reviewed VCO quality results, not only latency or token savings. Do not automatically extract or publish race-number captions on every upload.
+Keep model/provider changes conditional on reviewed VCO quality results, not only latency or token savings. Structured observations can share the automatic tagging request, but captions remain an explicit user action, not automatic publication.
 
 **Why:** A two-photo VCO pilot showed that combined structured extraction saved requests when both outputs were needed, but lost scene information; both vision approaches missed a visible number, and local OCR produced a false number. Tag-only token usage was almost unchanged by combining. This is not sufficient evidence for a production replacement.
 
-**How to apply:** Extend the reviewed photo set and compare number-specific input resolution/cropping and car-type coverage before adopting combined extraction or another provider.
+**How to apply:** Keep number/class readability gates and unknown values conservative. Reuse observations for local reference corrections without another provider call. Extend the reviewed photo set before claiming broad recognition accuracy or changing providers; a generic Race Car label is safer than an unsupported specific class.
 
 Run shared-database worker tests with exclusive queue consumers, serializing test files and pausing the preview worker.
 

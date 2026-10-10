@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, boolean, decimal, bigint, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, decimal, bigint, index, uniqueIndex, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
@@ -43,6 +43,8 @@ export const events = pgTable("events", {
   isPremium: boolean("is_premium").notNull().default(false),
   creditCost: integer("credit_cost").default(1),
   viewCount: integer("view_count").notNull().default(0),
+  referenceRevision: integer("reference_revision").notNull().default(0),
+  referenceSeasonYear: integer("reference_season_year"),
 });
 
 export const eventEntries = pgTable("event_entries", {
@@ -52,15 +54,51 @@ export const eventEntries = pgTable("event_entries", {
   team: text("team").notNull(),
   car: text("car").notNull(),
   drivers: text("drivers").notNull(),
+  manufacturer: text("manufacturer").notNull().default(""),
+  racingClass: text("racing_class").notNull().default(""),
+  discipline: text("discipline").notNull().default(""),
 }, table => [index("event_entries_event_idx").on(table.eventId)]);
 
 export const entryRowSchema = z.object({
-  number: z.string().trim().regex(/^[0-9]{1,4}$/, "Startnummer muss 1–4 Ziffern enthalten"),
-  team: z.string().trim().min(1).max(160),
-  car: z.string().trim().min(1).max(160),
-  drivers: z.string().trim().min(1).max(500),
+  number: z.string().trim().regex(/^[0-9]{0,4}$/, "Race number must contain up to four digits"),
+  team: z.string().trim().max(160),
+  car: z.string().trim().max(160),
+  drivers: z.string().trim().max(500),
+  manufacturer: z.string().trim().max(160).optional(),
+  racingClass: z.string().trim().max(160).optional(),
+  discipline: z.string().trim().max(160).optional(),
+  eventName: z.string().trim().max(160).optional(),
+  session: z.string().trim().max(120).optional(),
 });
 export type EntryRow = z.infer<typeof entryRowSchema>;
+export const identificationSchema = z.object({
+  number: z.string().trim().regex(/^[0-9]{0,4}$/),
+  team: z.string().trim().max(160),
+  drivers: z.string().trim().max(500),
+  vehicle: z.string().trim().max(160),
+  manufacturer: z.string().trim().max(160),
+  racingClass: z.string().trim().max(160),
+  discipline: z.string().trim().max(160),
+  source: z.enum(["reference", "visual", "manual"]).default("manual"),
+});
+export type Identification = z.infer<typeof identificationSchema>;
+export const referenceDocuments = pgTable("reference_documents", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").references(() => events.id, { onDelete: "cascade" }),
+  seriesId: integer("series_id").references(() => series.id),
+  ownerId: integer("owner_id").references(() => users.id),
+  seasonYear: integer("season_year").notNull(),
+  scope: text("scope").notNull(),
+  kind: text("kind").notNull(),
+  session: text("session"),
+  title: text("title").notNull(),
+  sourceKey: text("source_key"),
+  fingerprint: text("fingerprint").notNull(),
+  identityKey: text("identity_key").notNull().unique(),
+  rows: jsonb("rows").$type<EntryRow[]>().notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => [index("reference_scope_idx").on(table.seriesId, table.seasonYear, table.ownerId),
+  index("reference_event_idx").on(table.eventId)]);
 
 export const mediaItems = pgTable("media_items", {
   id: serial("id").primaryKey(),
@@ -80,6 +118,11 @@ export const mediaItems = pgTable("media_items", {
   highBytes: bigint("high_bytes", { mode: "number" }),
   lowBytes: bigint("low_bytes", { mode: "number" }),
   objectCount: integer("object_count"),
+  identification: jsonb("identification").$type<Identification[]>().notNull().default([]),
+  identificationManual: boolean("identification_manual").notNull().default(false),
+  recognitionSession: text("recognition_session"),
+  suppressedAITags: text("suppressed_ai_tags").array().notNull().default([]),
+  manualTags: text("manual_tags").array().notNull().default([]),
 }, (table) => [
   index("media_event_page_idx").on(table.eventId, table.id),
   index("media_url_idx").on(table.url).where(sql`${table.url} like '/api/media/files/%'`),
@@ -128,6 +171,10 @@ export const mediaAnalysisJobs = pgTable("media_analysis_jobs", {
   generatedTags: text("generated_tags").array(),
   error: text("error"),
   durationMs: integer("duration_ms"),
+  recognition: jsonb("recognition").$type<Identification[]>(),
+  referenceRevision: integer("reference_revision").notNull().default(0),
+  referenceOnly: boolean("reference_only").notNull().default(false),
+  generation: integer("generation").notNull().default(1),
 }, table => [index("media_analysis_ready_idx").on(table.status, table.availableAt)]);
 
 export const nextcloudFiles = pgTable("nextcloud_files", {
@@ -169,7 +216,8 @@ export const insertEventSchema = createInsertSchema(events).extend({
   creatorId: z.number().optional(),
   isPremium: z.boolean().optional(),
   creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),
-});
+  referenceSeasonYear:z.number().int().min(1990).max(2100).nullable().optional(),
+}).omit({referenceRevision:true});
 
 export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   eventId: z.number(),
@@ -179,6 +227,7 @@ export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   caption: z.string().max(1000, "Caption cannot exceed 1000 characters").optional(),
   photographer: z.string().optional(),
   tags: z.array(z.string()),
+  identification: z.array(identificationSchema).optional(),
   category: z.string().optional(),
   isPremium: z.boolean().optional(),
   creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),

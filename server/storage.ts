@@ -1,5 +1,5 @@
 import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries, type EntryRow } from "@shared/schema";
-import { users, events, eventEntries, mediaItems, mediaReservations, mediaCleanup, nextcloudFiles, nextcloudJobs, mediaAnalysisJobs, series as seriesTable } from "@shared/schema";
+import { users, events, eventEntries, referenceDocuments, mediaItems, mediaReservations, mediaCleanup, nextcloudFiles, nextcloudJobs, mediaAnalysisJobs, series as seriesTable } from "@shared/schema";
 import { analysisFingerprint } from "./analysis-jobs";
 import { isAITaggingConfigured } from "./utils/ai-tagger";
 import { db } from "./db";
@@ -152,7 +152,7 @@ class DatabaseStorage implements IStorage {
 
   async getEventEntries(eventId: number): Promise<EntryRow[]> {
     const rows = await db.select().from(eventEntries).where(eq(eventEntries.eventId, eventId)).orderBy(eventEntries.id);
-    return rows.map(({ number, team, car, drivers }) => ({ number, team, car, drivers }));
+    return rows.map(({ number, team, car, drivers, manufacturer, racingClass, discipline }) => ({ number, team, car, drivers, manufacturer, racingClass, discipline }));
   }
 
   async replaceEventEntries(eventId: number, rows: EntryRow[]): Promise<void> {
@@ -160,6 +160,7 @@ class DatabaseStorage implements IStorage {
       const locked = await tx.execute(sql`select id from events where id = ${eventId} for update`);
       if (!locked.rows.length) throw new Error("Event not found");
       await tx.delete(eventEntries).where(eq(eventEntries.eventId, eventId));
+      await tx.update(events).set({referenceRevision:sql`${events.referenceRevision}+1`}).where(eq(events.id,eventId));
       if (rows.length) await tx.insert(eventEntries).values(rows.map(row => ({ ...row, eventId })));
     });
   }
@@ -177,9 +178,20 @@ class DatabaseStorage implements IStorage {
   }
 
   async updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event> {
+    const contextKeys=["title","date","seriesId","creatorId","referenceSeasonYear"] as const;
+    let changed=false;
+    if (contextKeys.some(key=>event[key]!==undefined)) {
+      const before=await this.getEvent(id);
+      if (before) {
+        const after={...before,...event};
+        const year=(e:typeof after)=>e.referenceSeasonYear ?? new Date(e.date).getUTCFullYear();
+        changed=before.title!==after.title || before.seriesId!==after.seriesId ||
+          before.creatorId!==after.creatorId || year(before)!==year(after);
+      }
+    }
     const result = await db
       .update(events)
-      .set(event)
+      .set({...event,...(changed?{referenceRevision:sql`${events.referenceRevision}+1`}:{})})
       .where(eq(events.id, id))
       .returning();
 
@@ -215,6 +227,9 @@ class DatabaseStorage implements IStorage {
 
       await db.transaction(async tx => {
         await tx.execute(sql`select id from events where id = ${id} for update`);
+        const documents = await tx.select({key:referenceDocuments.sourceKey}).from(referenceDocuments)
+          .where(eq(referenceDocuments.eventId,id));
+        for (const doc of documents) if (doc.key) await tx.insert(mediaCleanup).values({key:doc.key}).onConflictDoNothing();
         const keys = await tx.select({ url: mediaItems.url, thumbnail: mediaItems.thumbnail })
           .from(mediaItems).where(eq(mediaItems.eventId, id));
         for (const row of keys) for (const key of objectKeys(row)) {
@@ -287,19 +302,22 @@ class DatabaseStorage implements IStorage {
   }
 
   async listPublicMedia(page = 1, limit = 48, search = "", type?: "image" | "video",
-    fields: ("caption" | "photographer" | "tags")[] = ["caption", "photographer", "tags"]): Promise<MediaItem[]> {
+    fields: ("caption" | "photographer" | "tags" | "identification")[] = ["caption", "photographer", "tags", "identification"]): Promise<MediaItem[]> {
     if (search && !fields.length) return [];
-    const term = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
+    const terms = search.trim().split(/\s+/).filter(Boolean).slice(0,12).map(word=>`%${word.replace(/[\\%_]/g,"\\$&")}%`);
     return db.select(mediaListColumns).from(mediaItems)
       .leftJoin(events, eq(mediaItems.eventId, events.id))
       .where(and(
         or(eq(events.isPremium, false), sql`${events.id} is null`),
         ...(type ? [eq(mediaItems.type, type)] : []),
-        ...(search ? [or(
+        ...terms.map(term=>or(
           ...(fields.includes("caption") ? [ilike(mediaItems.caption, term)] : []),
           ...(fields.includes("photographer") ? [ilike(mediaItems.photographer, term)] : []),
           ...(fields.includes("tags") ? [sql`${mediaItems.tags}::text ilike ${term}`] : []),
-        )] : []),
+          ...(fields.includes("identification") ? [sql`exists(select 1 from jsonb_array_elements(${mediaItems.identification}) ident
+            where concat_ws(' ',ident->>'number',ident->>'team',ident->>'drivers',ident->>'vehicle',
+              ident->>'manufacturer',ident->>'racingClass',ident->>'discipline') ilike ${term})`] : []),
+        )),
       ))
       .orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit)
       .then(rows => rows);
@@ -466,7 +484,9 @@ class DatabaseStorage implements IStorage {
           const url = `/api/media/files/${item.key}`;
           const [referenced] = await tx.select({ id: mediaItems.id }).from(mediaItems)
             .where(or(eq(mediaItems.url, url), eq(mediaItems.thumbnail, url))).limit(1);
-          if (!referenced) await deleteMediaObject(item.key);
+          const [document] = await tx.select({id:referenceDocuments.id}).from(referenceDocuments)
+            .where(eq(referenceDocuments.sourceKey,item.key)).limit(1);
+          if (!referenced && !document) await deleteMediaObject(item.key);
           await tx.delete(mediaCleanup).where(eq(mediaCleanup.key, item.key));
         });
       } catch (error) {

@@ -77,7 +77,8 @@ export const mediaUpload: Multer = multer({
 
 function assertStoredKey(key: string): void {
   // Keep callers from using this helper as an arbitrary object-store reader.
-  if (!/^(media|thumb)-[0-9a-f-]{36}\.(jpg|png|gif|webp|mp4|mov|webm)$/.test(key)) {
+  if (!/^(media|thumb)-[0-9a-f-]{36}\.(jpg|png|gif|webp|mp4|mov|webm)$/.test(key)
+    && !/^ref-[0-9a-f-]{36}\.(csv|xlsx|pdf|png|jpg|jpeg|webp)$/.test(key)) {
     throw new Error("Invalid media storage key");
   }
 }

@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, entryRowSchema, users, mediaAnalysisJobs, mediaItems, type EntryRow } from "@shared/schema";
+import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, entryRowSchema, identificationSchema, users, mediaAnalysisJobs, mediaItems, type EntryRow } from "@shared/schema";
 import express from "express";
 import path from "path";
 import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
@@ -14,7 +14,7 @@ import { entryConflicts, proposeCaption, scenes } from "./caption-proposal";
 import { parseEntryFile } from "./entry-list";
 import multer from "multer";
 import { mediaUpload, uploadMedia, createMediaKeys, readMediaStream, getMediaContentType } from "./media-storage";
-import { analysisImageInput } from "./image-analysis";
+import { analysisImageInput, recognitionImageInput } from "./image-analysis";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
@@ -22,10 +22,12 @@ import { z } from "zod";
 import { discover, importStatus, startImport, startImportWorker, resumeImport, NextcloudError } from "./nextcloud";
 import { downloadAccess } from "./download-access";
 import { downloadStream } from "./media-delivery";
-import { enqueueAnalysis, analysisStatus, startAnalysisWorker, kickAnalysisWorker, AnalysisUnavailable } from "./analysis-jobs";
+import { enqueueAnalysis, analysisStatus, startAnalysisWorker, kickAnalysisWorker, AnalysisUnavailable, analysisFingerprint } from "./analysis-jobs";
+import { identifyEntries } from "./reference-matching";
 import { pipeline } from "stream/promises";
 import { withVisionBudget } from "./ai-budget";
 import { MediaBusyError } from "./media-work-budget";
+import { registerReferenceRoutes } from "./reference-routes";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -55,6 +57,7 @@ const publicMedia = <T extends { id: number; isPremium: boolean; url: string; th
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  registerReferenceRoutes(app, requireCreator);
   const openAITestCooldowns = new Map<number, number>();
   const captionDetections = new Map<number, { thumbnail: string; expires: number; result: Promise<Awaited<ReturnType<typeof detectRaceNumbers>>> }>();
   // Auth already set up in index.ts
@@ -483,12 +486,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Search must be under 100 characters" });
       if (type !== undefined && type !== "all" && type !== "image" && type !== "video")
         return res.status(400).json({ error: "Invalid media type" });
-      if (fields !== undefined && (typeof fields !== "string" || fields.length > 32 ||
-          fields.split(",").some(field => !["caption", "photographer", "tags"].includes(field))))
+      if (fields !== undefined && (typeof fields !== "string" || fields.length > 64 ||
+          fields.split(",").some(field => !["caption", "photographer", "tags", "identification"].includes(field))))
         return res.status(400).json({ error: "Invalid search fields" });
       return res.json((await storage.listPublicMedia(page, 48, search || "",
         type === "image" || type === "video" ? type : undefined,
-        fields === undefined ? undefined : fields === "" ? [] : fields.split(",") as ("caption" | "photographer" | "tags")[])).map(publicMedia));
+        fields === undefined ? undefined : fields === "" ? [] : fields.split(",") as ("caption" | "photographer" | "tags" | "identification")[])).map(publicMedia));
     } catch (error) {
       console.error('Error fetching all media:', error);
       res.status(500).json({ error: "Failed to fetch media" });
@@ -651,7 +654,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`Beginning AI analysis for media ${mediaId} of type ${mediaItem.type}`);
 
-      res.status(202).json({ success: true, ...await enqueueAnalysis(mediaItem, req.body?.retry === true) });
+      res.status(202).json({ success: true, ...await enqueueAnalysis(mediaItem, req.body?.retry === true, req.body?.reanalyse === true) });
     } catch (error) {
       console.error('Media analysis failed');
       res.status(503).json({ error: error instanceof AnalysisUnavailable ? error.message : "AI analysis could not be queued" });
@@ -667,7 +670,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!item || !event) return res.status(404).json({ error: "Media not found" });
       if (!canManageEvent(req.user, event.creatorId ?? null)) return res.status(403).json({ error: "Forbidden" });
       res.setHeader("Cache-Control", "private, no-store");
-      res.json({ ...await analysisStatus(id), tags: item.tags, category: item.category });
+      res.json({ ...await analysisStatus(id), tags: item.tags, category: item.category, identification:item.identification,
+        identificationManual:item.identificationManual, recognitionSession:item.recognitionSession });
     } catch { res.status(503).json({ error: "Analysis status unavailable" }); }
   });
   app.get("/api/events/:id/analysis", requireCreator, async (req, res) => {
@@ -696,20 +700,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!event || !canManageEvent(req.user, event.creatorId)) return res.status(403).json({ error: "Kein Zugriff." });
       if (media.type !== "image") return res.status(422).json({ error: "Nur Bilder können ausgewertet werden." });
       const requestedScene = z.object({ scene: z.enum(scenes).optional() }).parse(req.body || {}).scene;
-      if (!isAITaggingConfigured()) return res.status(503).json({ error: "Bild-KI ist nicht verfügbar." });
+      const [known]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,id));
+      const stored=known?.status==="completed" && known.recognition!==null &&
+        known.fingerprint===analysisFingerprint(media.thumbnail) ? known : undefined;
+      if (!stored && !isAITaggingConfigured()) return res.status(503).json({ error: "Bild-KI ist nicht verfügbar." });
       const now = Date.now();
       captionDetections.forEach((value, key) => { if (value.expires < now) captionDetections.delete(key); });
       let cached = captionDetections.get(id);
-      if (!cached || cached.thumbnail !== media.thumbnail) {
+      if (!stored && (!cached || cached.thumbnail !== media.thumbnail)) {
         if (captionDetections.size >= 100) captionDetections.delete(captionDetections.keys().next().value!);
-        const result = analysisImageInput(media.thumbnail).then(input => withVisionBudget(() => detectRaceNumbers(input)));
+        const result = recognitionImageInput(media).then(input => withVisionBudget(() => detectRaceNumbers(input)));
         cached = { thumbnail: media.thumbnail, expires: now + 5 * 60_000, result };
         captionDetections.set(id, cached);
         void result.catch(() => { if (captionDetections.get(id)?.result === result) captionDetections.delete(id); });
       }
-      const detected = await cached.result;
+      const detected=stored ? {numbers:stored.recognition!.map(row=>row.number).filter(Boolean),
+        scene:(stored.generatedTags || []).includes("Starting Grid") ? "Start" as const :
+          (stored.generatedTags || []).includes("Race Action") ? "Race Action" as const : null} : await cached!.result;
       const scene = requestedScene || detected.scene;
-      const result = proposeCaption(event, await storage.getEventEntries(event.id), detected.numbers, scene);
+      const identified=media.identificationManual ? media.identification : await identifyEntries(event,detected.numbers.map(number=>({
+        number,team:"",drivers:"",vehicle:"",manufacturer:"",racingClass:"",discipline:"",source:"visual" as const})),media.recognitionSession);
+      const entries=identified.filter(row=>row.source!=="visual").map(row=>({
+        number:row.number,team:row.team,car:row.vehicle,drivers:row.drivers}));
+      const result = proposeCaption(event, entries, media.identificationManual ? identified.map(row=>row.number).filter(Boolean) : detected.numbers, scene);
       return res.json({ ...result, scene });
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ error: "Ungültige Szenenart." });
@@ -729,10 +742,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const changes = z.object({
         caption: z.string().max(1000).optional(),
         photographer: z.string().max(150).optional(),
-        tags: z.array(z.string().max(100)).max(30).optional(),
+        tags: z.array(z.string().max(100)).max(100).optional(),
         category: z.string().max(100).optional(),
+        identification: z.array(identificationSchema).max(12).optional(),
+        recognitionSession: z.string().trim().max(120).nullable().optional(),
       }).strict().parse(req.body);
-      return res.json(await storage.updateMediaItem(id, changes));
+      const updated = await db.transaction(async tx => {
+        const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,id)).for("update");
+        if (!current) throw new Error("Media no longer exists");
+        const meaningful = (entries: typeof current.identification) => entries.map(entry =>
+          Object.keys(entry).filter(k=>k !== "source").sort().map(k=>entry[k as keyof typeof entry]));
+        const identificationChanged = changes.identification !== undefined &&
+          JSON.stringify(meaningful(changes.identification)) !== JSON.stringify(meaningful(current.identification));
+        const suppressedAITags = changes.tags ? Array.from(new Set([...current.suppressedAITags,
+          ...(current.tags || []).filter(tag=>!changes.tags!.includes(tag))])).filter(tag=>!changes.tags!.includes(tag))
+          : current.suppressedAITags;
+        const [result] = await tx.update(mediaItems).set({ ...changes, suppressedAITags,
+          ...(changes.tags ? {manualTags:changes.tags} : {}),
+          identification: identificationChanged ? changes.identification!.map(i=>({...i,source:"manual" as const})) : current.identification,
+          identificationManual: current.identificationManual || identificationChanged }).where(eq(mediaItems.id,id)).returning();
+        if (changes.recognitionSession !== undefined && changes.recognitionSession !== current.recognitionSession)
+          await tx.update(mediaAnalysisJobs).set({referenceRevision:-1}).where(eq(mediaAnalysisJobs.mediaId,id));
+        return result;
+      });
+      void kickAnalysisWorker();
+      return res.json(updated);
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ error: "Ungültige Medienangaben (Caption max. 1000 Zeichen)." });
       return res.status(500).json({ error: "Medium konnte nicht aktualisiert werden." });

@@ -5,6 +5,13 @@ const allowedTags = new Set([
   "Front View", "Rear View", "Aerial View", "Side View", "Onboard View",
   "Group", "Crash", "Atmosphere", "Day", "Night", "Rain", "Wet Track",
   "Dry Track", "GT Car", "Formula Car", "Prototype", "Vintage",
+  "Front 3/4", "Rear 3/4", "Top Down", "Close-up", "Wide Shot", "Cockpit View",
+  "Race Track", "Pit Lane", "Pit Box", "Garage", "Paddock", "Starting Grid", "Podium",
+  "Studio", "Esports Arena", "Race Car", "Driver", "Helmet", "Cockpit", "Steering Wheel",
+  "Wheel", "Trophy", "Team Members", "Crowd", "Racing Simulator", "Race Action",
+  "Battle", "Overtaking", "Pit Stop", "Celebration", "Podium Ceremony", "Portrait",
+  "Behind the Scenes", "Sunset", "Sim Racing", "Real Motorsport", "Esports",
+  "GT3", "GT4", "Stock Car", "Touring Car", "Rally",
 ]);
 
 export function parseTagResponse(text: string): string[] {
@@ -46,7 +53,7 @@ export async function generateTagsForImage(imageUrl: string): Promise<string[]> 
       messages: [
         {
           role: "system",
-          content: "You are a specialized tagging system for sim racing images. Focus only on identifying the following aspects:\n- Camera angles: Front View, Rear View, Aerial View, Side View, Onboard View\n- Racing scenarios: Group, Crash, Atmosphere\n- Conditions: Day, Night, Rain, Wet Track, Dry Track\n- Car features: GT Car, Formula Car, Prototype, Vintage\nProvide ONLY these specific tags when applicable. Format your response as a simple comma-separated list."
+          content: `Describe only visible evidence. Allowed tags: ${Array.from(allowedTags).join(", ")}. Use a short comma-separated list, no synonyms or guesses. Stock cars are not GT cars. Prefer Race Car when precise class is unknown.`,
         },
         {
           role: "user",
