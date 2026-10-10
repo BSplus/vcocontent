@@ -80,3 +80,6 @@ timeoutMs = 180000
 
 [userenv.production]
 MEDIA_ANALYSIS_CONCURRENCY = "1"
+
+[userenv.development]
+MEDIA_ANALYSIS_CONCURRENCY = "1"

@@ -4,9 +4,10 @@
 
 After reviewing the development results, the operator approved implementing the
 recommended single-VM configuration. The `.replit` deployment target is now `vm`,
-with the existing `npm run build` / `npm run start` commands. The production-only
-environment variable `MEDIA_ANALYSIS_CONCURRENCY=1` is configured; development
-retains its existing default. No additional service was created or published.
+with the existing `npm run build` / `npm run start` commands. Following explicit
+preparation approval, `MEDIA_ANALYSIS_CONCURRENCY=1` is configured in both
+production and development so consumers use the same queue limit.
+No additional service was created or published.
 The **0.5 vCPU / 2 GiB machine size must be selected in Publishing → Adjust
 settings → Machine configuration**; the available configuration tools do not
 set the hardware size. Confirm the displayed price and click Publish to activate
@@ -137,9 +138,9 @@ production changes were explicitly withheld.
 `MEDIA_ANALYSIS_CONCURRENCY=1` lowers the active job limit to one without changing
 the architecture. Its allowed values are 1 or 2; the unchanged default is 2.
 The development experiment used this override only in its validation children.
-Following approval, the production environment now has the one-job setting;
-development settings are unchanged. All processes connected to the same queue
-must use the same setting.
+Following preparation approval, both production and development environments
+have the one-job setting. All processes connected to the same queue must use the
+same setting.
 
 The claim limit remains database-wide and transaction-locked. The shared
 two-request provider budget remains unchanged and also protects captions/OCR.
@@ -154,3 +155,108 @@ recheck deployment status so any previously unknown live deployment is not
 replaced unintentionally. Do a short actual-VM upload/queue check and increase
 capacity only if resource pressure, upload latency or decoder deadlines justify
 it. The deployment target is prepared; no live hosting was changed at this stage.
+
+## Actual-VM acceptance remains pending
+
+Preparation approval is not restart approval. Following the operator's publishing
+confirmation, the deployment check on 10 October 2026 reported an active private
+Reserved VM with a successful build. Startup logs confirm the server listening
+on port 5000 after initial startup health-check failures. Deployment metadata does
+not expose machine capacity, so 0.5 vCPU / 2 GiB still needs confirmation from
+Publishing settings. An unauthenticated live request redirects to Replit sign-in.
+The read-only production queue summary returned no analysis jobs; there is no
+live persisted-batch or idle-processing evidence yet. Secure external access and
+an authorized Creator test account are needed for real live upload checks.
+Do not treat the development-only harness as a production validation tool.
+
+The operator subsequently approved a one-time check with one small image and
+video, upload timing, background completion during a request-free interval, and
+cleanup of only the check's content. They explicitly prohibited production
+restarts, configuration/privacy/authentication changes, changes to existing user
+content, load testing and additional operations without approval.
+
+The replacement Production access token reached the application, but application
+login returned HTTP 401 with invalid credentials. No uploads, provider calls or
+cleanup mutations were performed. An explicitly authorized read-only account
+check confirmed production contains users and approved Creators. A credential-free
+username-match check found that the supplied test username corresponds to an
+administrator, not the intended restricted Creator test identity. Do not use
+that account for validation, reset it or change its roles without separate
+authorization. A working restricted production Creator test account remains
+required; no passwords or password hashes were read for this check.
+
+After the operator reported the replacement account ready, application login
+succeeded (HTTP 200, session issued). The replacement identity is not an
+administrator, but has neither the Creator role nor approved Creator status.
+Under its current permissions the upload check remains blocked. No test event,
+media upload, provider request, restart or production-settings change was made.
+Creator approval must be supplied separately; validation must not grant itself
+additional privileges.
+
+After user-initiated publishing:
+
+- Confirm the live deployment is a healthy Reserved VM and verify its selected
+  capacity, concurrency setting and FFmpeg availability.
+- Use a small authorized photo/video upload sample through the real live routes;
+  confirm uploads remain responsive and analysis completes while no visitor
+  traffic is keeping the website active.
+- Observe the VM's CPU and memory during that sample; record actual measurements,
+  not the development half-core approximation.
+- Obtain explicit approval for a brief live-site interruption before testing
+  restart recovery. Confirm a successful video batch has been persisted before
+  restarting, then verify recovery after lease expiry and reuse of that saved
+  batch without another provider request for its frames.
+- Preserve existing user data; remove only disposable check fixtures after the
+  operator approves cleanup. Record evidence and limitations here.
+
+## Authorized one-time live check — 10 October 2026
+
+After Creator approval, the restricted test account logged in successfully with
+no administrator rights. Exactly one disposable event, one resized authorized
+photo and one 1.8-second test video were created via the real published routes.
+The check made no production configuration, visibility, authentication or
+existing-content changes and did not restart production.
+
+| Observation | Actual result |
+|---|---|
+| Image upload, 72,479 bytes | HTTP 201 in 1.679 seconds |
+| Image background analysis | Completed on attempt 1; server-reported duration 1.028 seconds, five generated tags |
+| Video upload, 75,506 bytes; 640×360, 5 fps | HTTP 201 in 3.141 seconds |
+| Video background analysis | Running before the quiet interval; failed after three automatic attempts; last-attempt duration 8.110 seconds |
+| Test-client quiet interval | 90.031 seconds, zero application requests from this client |
+| Manual test tags | Preserved on both media items |
+| Cleanup | Own test event deletion returned HTTP 200; event and both media-status endpoints then returned HTTP 404 |
+| Read-only cleanup confirmation | Zero remaining test event/media/job rows and zero pending cleanup entries for the four test object keys |
+
+The raw credential-free measurement report and one-time runner are under the
+ignored `generated-artifacts/` directory. Session cookies and credentials were
+kept in process memory only. Local fixture files were removed.
+
+### Conclusion and limits
+
+The live image path and asynchronous processing worked. The worker continued
+attempting the video during the test client's request-free interval, but the
+video did **not** complete successfully. No manual retry, second upload sample
+or additional analysis was requested. The normal worker performed its own three
+automatic attempts. Provider token/cost counts were not captured before cleanup;
+do not infer that failed video attempts were unbilled.
+
+The targeted deployment-log check did not expose the video failure cause.
+The last-attempt duration alone does not establish a decoder timeout or a
+provider failure. Diagnose before proposing a fix or larger machine.
+
+This was not a load test. Client upload timings include network/response time;
+the sample is too small to establish throughput or capacity. Other visitors
+were not controlled, so the quiet interval means no requests from this test
+client, not proof of globally idle HTTP traffic. Machine capacity and live
+CPU/RAM metrics were not available through the accessed tools. FFmpeg-dependent
+video upload succeeded, but full video analysis compatibility remains unproven.
+
+Production restart recovery and reuse of saved successful video batches were
+not tested because the operator explicitly prohibited a restart. Development
+recovery evidence does not substitute for this missing live check.
+
+**Continuous, reliable video analysis on the actual small VM is not confirmed.**
+Further live diagnostics, resource checks, restart tests or retests require
+separate operator approval. Revoke the temporary external access token after
+the one-time check.
