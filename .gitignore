@@ -7,3 +7,7 @@ vite.config.ts.*
 *.tar.gz
 /generated-artifacts/
 /attached_assets/*179161417330*.jpeg
+/attached_assets/*1791615863*.mp4
+/attached_assets/*1791615863*.mov
+/attached_assets/*1791615944469.pdf
+/attached_assets/*1791615944469.xlsx
