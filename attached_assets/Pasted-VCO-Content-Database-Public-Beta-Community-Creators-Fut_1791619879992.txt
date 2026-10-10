@@ -1,0 +1,461 @@
+VCO Content Database – Public Beta, Community Creators & Future Monetization
+
+Objective
+
+Prepare the existing VCO Content Database for a simple, user-friendly public beta.
+
+The platform has two distinct purposes:
+
+Primary purpose: Make official VCO photos, videos, events and historical media easily accessible, searchable and downloadable.
+
+Secondary purpose: Allow community photographers and Creators to publish their own photo galleries, initially free of charge.
+
+In Phase 2, the platform should offer opportunities for Creators to monetize their content.
+
+Important implementation principle: Inspect first, reuse existing functionality, then make only the necessary changes.
+
+Do not rebuild working features or unnecessarily expand the application.
+
+⸻
+
+1. Audit the Existing Implementation First
+
+Before making changes, inspect the current code and database structures for:
+
+* User registration and authentication
+* Email verification
+* Creator applications, approval and permissions
+* Creator dashboards
+* Gallery and event management
+* Photo and video uploads
+* Storage quotas and upload restrictions
+* AI tagging and metadata
+* Downloads and access permissions
+* Public gallery visibility
+* Admin moderation and suspension
+* Credit balances and premium content
+* Stripe integration and payment infrastructure
+* Creator payouts or revenue-sharing structures, if present
+
+For each relevant component, determine whether it is:
+
+* Already implemented and usable
+* Implemented but inactive
+* Partially implemented
+* Missing
+
+Reuse existing functionality wherever possible.
+
+Do not treat older documentation as authoritative if it conflicts with the actual implementation.
+
+Do not delete or migrate existing payment-related data merely because monetization is disabled during the beta.
+
+2. Product Positioning – VCO First
+
+The VCO Content Database is primarily the official media library for VCO.
+
+The homepage and main navigation should prioritize:
+
+* Official VCO media
+* Events and racing series
+* Photos and videos
+* Historical content
+* Search and discovery
+
+Community Creator galleries complement the official content.
+
+They should be easy to discover without dominating the homepage.
+
+Avoid positioning the platform primarily as a photo marketplace or Creator monetization service.
+
+Reuse the existing visual design and navigation structure.
+
+Do not redesign the entire website.
+
+3. Open Creator Registration
+
+Community members should be able to become Creators without manual administrator approval.
+
+Preferred flow:
+
+1. User registers.
+2. User verifies their email address.
+3. User activates Creator access.
+4. User creates a gallery.
+5. User uploads photos.
+6. Gallery becomes publicly accessible.
+
+Reuse the existing registration and Creator account infrastructure.
+
+Remove the manual approval requirement from the normal onboarding flow.
+
+Important:
+
+* Do not automatically reactivate suspended or explicitly rejected accounts.
+* Preserve administrator permissions and account blocking.
+* Creators may only manage their own content.
+* Official VCO content remains protected.
+* Existing Creator accounts and galleries must continue working.
+* Do not introduce an additional mandatory onboarding wizard.
+
+If email verification is not currently implemented, identify the smallest secure way to enable it before public publishing.
+
+4. VCO Creator Free – Initial Limits
+
+Introduce or adjust the free Community Creator tier to the following limits:
+
+Resource	Free Limit
+Total storage	500 MB
+Galleries	5
+Photos	1,000
+Maximum file size per photo	5 MB
+Video uploads	Not allowed
+AI tagging	Included, subject to fair-use safeguards
+Creator monetization	Not available in Phase 1
+
+Use decimal units:
+
+* 500 MB = 500,000,000 bytes
+* 5 MB = 5,000,000 bytes
+
+Quota enforcement
+
+Enforce limits server-side.
+
+Include:
+
+* Uploaded photos
+* Stored Creator reference documents
+* Other persistent Creator-owned files where applicable
+
+Avoid double-counting shared files or temporary processing artifacts.
+
+Concurrent uploads must not bypass quotas.
+
+Gallery and photo counts must be enforced reliably.
+
+Regular Community Creators must not be able to bypass restrictions through alternative upload endpoints.
+
+Official VCO exception
+
+These Community Creator limits must not restrict:
+
+* Official VCO media
+* Authorized administrator uploads
+* Existing official video functionality
+
+Preserve existing role-based permissions.
+
+5. Creator Dashboard & Usability
+
+Keep the Creator dashboard simple.
+
+Show a compact usage overview:
+
+* Storage used / 500 MB
+* Galleries used / 5
+* Photos used / 1,000
+
+Example:
+
+“245 MB of 500 MB used”
+
+Provide clear messages when limits are reached.
+
+Examples:
+
+* “Your storage is full.”
+* “You have reached the maximum of 5 galleries.”
+* “Images must be smaller than 5 MB.”
+* “Video uploads are not available for Community Creators.”
+
+Respect the existing application language and localization.
+
+Do not expose technical storage units, backend errors or internal quota calculations to users.
+
+Do not add complex billing, upgrade or subscription interfaces.
+
+The normal Creator workflow should remain:
+
+Create gallery → Upload photos → Edit if needed → Publish.
+
+Avoid unnecessary confirmation dialogs.
+
+6. Creator Photo Uploads
+
+Community Creators may upload photos only.
+
+Accepted formats should follow the existing supported image formats, subject to secure file validation.
+
+Maximum upload size: 5 MB per image.
+
+Keep:
+
+* Existing upload functionality
+* Automatic AI tagging
+* Manual tags and captions
+* Event/gallery assignment
+* Background processing
+* Existing download functionality
+
+Do not require additional steps for AI analysis.
+
+Video uploads must be rejected server-side for regular Community Creators, including through direct API requests.
+
+Official VCO video uploads remain available.
+
+Do not remove existing video processing or AI video tagging functionality.
+
+7. AI Tagging & Cost Protection
+
+Keep automatic AI tagging available to Community Creators.
+
+Reuse the existing AI analysis infrastructure.
+
+Apply reasonable server-side safeguards:
+
+* Prevent unnecessary repeated analysis of unchanged media.
+* Rate-limit manual reanalysis.
+* Respect existing background processing concurrency limits.
+* Prevent a single Creator from monopolizing the shared AI queue.
+* Preserve manually edited tags and metadata.
+* Avoid duplicate provider requests where completed results can be reused.
+
+Do not introduce visible AI credits or complex usage controls during Phase 1.
+
+Keep safeguards configurable for future growth.
+
+Do not redesign the AI tagging system as part of this task.
+
+8. Public Galleries & Basic Moderation
+
+Creator galleries should be publicly accessible without manual editorial approval after the Creator account has been activated.
+
+Preserve or implement minimal safeguards:
+
+* Verified email before public publishing
+* Existing authentication and authorization
+* Ownership checks
+* Server-side file validation
+* Reasonable upload and request rate limits
+* Admin ability to hide or unpublish galleries
+* Admin ability to suspend Creator accounts
+* Simple content reporting where already supported or achievable with minimal changes
+
+Do not introduce a complex editorial approval workflow.
+
+Preserve existing public/private visibility controls if available.
+
+Ensure newly uploaded content does not bypass any existing moderation or account restrictions.
+
+9. Phase 2 – Creator Monetization
+
+Creator monetization is a planned future development phase.
+
+Potential features include:
+
+* Paid photo downloads
+* Premium galleries
+* Creator revenue sharing
+* Creator payouts
+* Paid storage extensions
+* Additional gallery capacity
+* Subscription-based Creator tiers
+
+The exact commercial model is not finalized.
+
+Preserve existing infrastructure
+
+If any of the following already exist, retain them:
+
+* Stripe integration
+* Payment service configuration
+* Credit balances
+* Credit transaction records
+* Premium media flags
+* Checkout infrastructure
+* Payment webhooks
+* Creator payout structures
+* Revenue-sharing logic
+* Subscription-related database fields
+
+Do not delete these components simply because they are not currently active.
+
+Do not perform destructive database migrations.
+
+Do not remove existing historical payment or credit records.
+
+Keep future monetization functionality technically available for Phase 2, but inactive for public beta users.
+
+Phase 1 restrictions
+
+During the public beta:
+
+* No active Credit purchases
+* No active Stripe checkout for regular users
+* No Creator payouts
+* No paid subscriptions
+* No public pricing or upgrade flows
+* No automatic conversion of premium content into free content
+
+Preserve the existing premium access restrictions.
+
+Do not accidentally make previously premium content freely downloadable.
+
+Disable or hide inactive commercial controls in the public interface rather than removing their underlying implementation.
+
+Future compatibility
+
+Where practical, keep Creator limits configurable so paid tiers can be introduced later.
+
+Do not implement a new billing abstraction, pricing model or subscription engine now.
+
+10. Communicating Future Monetization
+
+The platform should mention the planned opportunity for Creators to earn money from their content in a suitable, secondary location.
+
+Suggested English copy:
+
+“Share your racing photography with the community. We’re planning future features that will allow Creators to earn money from their content.”
+
+Suggested German copy:
+
+“Teile deine Motorsport-Fotografie mit der Community. Für eine spätere Ausbaustufe planen wir Funktionen, mit denen Creator Einnahmen aus ihren Inhalten erzielen können.”
+
+Use this messaging in the Creator information or onboarding area.
+
+Do not make monetization a primary homepage message.
+
+Do not promise specific launch dates, earnings, commissions or commercial terms.
+
+Do not advertise monetization as an already available feature.
+
+11. Existing Users & Data
+
+Preserve:
+
+* Existing user accounts
+* Existing approved Creator accounts
+* Existing galleries
+* Existing uploaded media
+* Existing download records
+* Existing credits and payment records
+* Existing premium content restrictions
+
+Handle existing Creators whose usage exceeds the new free limits safely.
+
+Do not delete their content.
+
+Do not automatically remove galleries or files.
+
+If an existing Creator exceeds the new quota, preserve existing content and restrict only additional uploads or gallery creation until usage is within the applicable limit or an administrator grants an exception.
+
+Do not automatically activate suspended accounts.
+
+Avoid unnecessary database migrations.
+
+12. Security & Ownership
+
+Maintain strict separation between:
+
+* Regular users
+* Community Creators
+* Official VCO content managers
+* Administrators
+
+Creators must not modify or delete other Creators’ content.
+
+Community quotas must not affect official VCO operations.
+
+Preserve existing authentication, authorization, download permissions and storage access controls.
+
+Do not introduce new public access to private files.
+
+13. Focused Validation
+
+Test only the relevant workflows.
+
+Registration
+
+* New user registration
+* Email verification
+* Creator activation without manual approval
+* Suspended accounts remain blocked
+
+Uploads
+
+* Valid photo upload
+* Image larger than 5 MB rejected
+* Creator video upload rejected
+* Official VCO video upload still works
+
+Quotas
+
+* 500 MB storage limit
+* 5-gallery limit
+* 1,000-photo limit
+* Concurrent upload protection
+* Correct usage display
+
+Permissions
+
+* Creator can manage own galleries
+* Creator cannot manage another Creator’s content
+* Official VCO content remains protected
+* Admin moderation continues working
+
+Payments
+
+* Stripe checkout remains inactive for public beta
+* Credits cannot be purchased
+* Premium content remains protected
+* Existing payment-related records remain intact
+
+Keep tests proportionate.
+
+Do not perform an extensive application-wide regression campaign unless changes reveal a specific risk.
+
+14. Implementation Rules
+
+* Inspect the existing implementation before coding.
+* Reuse working components.
+* Make focused changes.
+* Preserve existing database records.
+* Avoid unnecessary architectural changes.
+* Do not create a separate Creator application.
+* Do not introduce new payment services.
+* Do not rebuild Stripe or Credits.
+* Do not redesign the entire frontend.
+* Do not modify production deployment configuration.
+* Do not publish automatically.
+
+If a requirement conflicts with existing functionality or would require substantial architectural changes, explain the issue before expanding scope.
+
+15. Final Report
+
+After implementation, provide a concise report:
+
+1. What was already implemented
+2. What was changed
+3. Which Creator limits are now enforced
+4. How the open Creator registration works
+5. What was preserved for Phase 2 monetization
+6. Which usability improvements were made
+7. Test results
+8. Remaining issues or decisions
+
+Primary Success Criteria
+
+For VCO users:
+
+The platform remains a fast, intuitive and searchable media database focused on official VCO content.
+
+For Community Creators:
+
+A new user can register, activate Creator access, create a gallery and upload photos within minutes, without manual approval or payment.
+
+For future development:
+
+Existing Stripe, Credit, Premium and payment-related infrastructure remains safely preserved for Phase 2, without exposing inactive commercial functionality during the public beta.
+
+Prioritize simplicity, reliability, low operating costs and reuse of the existing architecture.

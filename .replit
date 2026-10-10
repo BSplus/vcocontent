@@ -9,6 +9,7 @@ channel = "stable-24_05"
 deploymentTarget = "vm"
 run = ["npm", "run", "start"]
 build = ["npm", "run", "build"]
+ignorePorts = false
 
 [[ports]]
 localPort = 5000
