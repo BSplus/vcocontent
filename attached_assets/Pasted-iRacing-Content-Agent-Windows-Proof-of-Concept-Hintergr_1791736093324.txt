@@ -1,0 +1,234 @@
+iRacing Content Agent – Windows Proof of Concept
+
+Hintergrund und Ziel
+
+Wir möchten für BS+ und VCO einen iRacing Content Agent entwickeln, der langfristig die automatisierte Produktion von Motorsport-Screenshots und Videos aus iRacing ermöglicht.
+
+Perspektivisch sollen sowohl gespeicherte Replays als auch Live-Sessions unterstützt werden. Später könnten KI-basierte Motivauswahl, automatische Kamerasteuerung und eine Anbindung an unsere VCO Content-Datenbank hinzukommen.
+
+Jetzt soll ausschließlich ein schlanker, funktionsfähiger Windows-Proof-of-Concept (PoC) entstehen.
+
+Der PoC soll aus einem bereits manuell geöffneten iRacing-Replay automatisiert Screenshots erzeugen.
+
+Die technische Machbarkeitsanalyse wurde bereits durchgeführt. Bitte keine erneute umfangreiche Recherche durchführen, sondern auf dieser Grundlage implementieren.
+
+1. Technische Architektur
+
+* Eigenständiger lokaler Agent für Windows.
+* Python mit pyirsdk als bevorzugte Schnittstelle zum iRacing SDK.
+* Native iRacing-Screenshot-Funktion verwenden.
+* Einfache Konfiguration über JSON.
+* Lokale Speicherung aller Ergebnisse.
+* Keine Datenbank, kein Webserver und kein Dashboard.
+* Keine Integration in bestehende BS+ Anwendungen.
+* Keine Cloud-Abhängigkeiten.
+
+Die Architektur soll später erweiterbar sein, ohne dafür jetzt zusätzliche Infrastruktur aufzubauen.
+
+2. Funktionen des PoC
+
+A. Verbindung und Diagnose
+
+Beim Start soll der Agent:
+
+* Prüfen, ob iRacing läuft und das SDK erreichbar ist.
+* Prüfen, ob ein gespeichertes Replay aktiv ist.
+* Bei nicht eindeutig bestätigtem Replay-Modus keine Aufnahme starten.
+* Verfügbare Fahrzeuge und Kameragruppen auslesen, soweit das SDK diese bereitstellt.
+* Den aktuellen Replay-Zustand anzeigen.
+* Verständliche Fehlermeldungen ausgeben.
+
+Eine einfache Konsolenausgabe genügt.
+
+B. Automatisierte Screenshots
+
+Ein JSON-Auftrag definiert:
+
+* Zwei Fahrzeuge.
+* Zwei vorhandene Kameragruppen.
+* Drei Replay-Positionen.
+* Ausgabeordner.
+
+Ziel: 12 Screenshots pro Testdurchlauf.
+
+Für jede Aufnahme soll der Agent:
+
+1. Die gewünschte Replay-Position ansteuern.
+2. Prüfen, ob die Position tatsächlich erreicht wurde.
+3. Das Replay pausieren.
+4. Das gewünschte Fahrzeug auswählen.
+5. Die Kameragruppe wechseln.
+6. Soweit möglich den erreichten Fahrzeug-/Kamerazustand prüfen.
+7. Kurz warten, bis die Szene vollständig gerendert ist.
+8. Einen nativen iRacing-Screenshot auslösen.
+9. Die neu entstandene Datei erkennen.
+10. Prüfen, ob die Datei vollständig geschrieben wurde.
+11. Die Datei eindeutig benennen und im Ausgabeordner speichern.
+
+Beispiel:
+
+job01_car007_camTV1_frame012345_001.png
+
+Führende Nullen bei Fahrzeugnummern müssen korrekt behandelt werden.
+
+C. Zuverlässigkeit und Fehlerbehandlung
+
+* SDK-Befehle nicht automatisch als erfolgreich interpretieren.
+* Zustände soweit technisch möglich verifizieren.
+* Zeitlimits für Steuerbefehle und Dateioperationen.
+* Keine unbegrenzten Wiederholungsversuche.
+* Fehler verständlich protokollieren.
+* Fehlende Fahrzeuge oder Kameras erkennen.
+* Bei Verbindungsverlust kontrolliert abbrechen.
+* Keine vorhandenen Screenshots überschreiben.
+* Fehlgeschlagene Aufnahmen im Ergebnisbericht dokumentieren.
+
+Falls eine Zustandsprüfung technisch nicht möglich ist, dies ausdrücklich dokumentieren und nicht als verifiziert ausgeben.
+
+3. Ergebnisaufbereitung
+
+Nach jedem Durchlauf sollen automatisch entstehen:
+
+A. Screenshot-Ordner
+
+Alle erfolgreich erzeugten Bilder mit eindeutigen Dateinamen.
+
+B. JSON-Manifest
+
+Enthält:
+
+* Auftrags-ID und Zeitpunkt.
+* Gewünschtes Fahrzeug.
+* Gewünschte Kamera.
+* Gewünschte Replay-Position.
+* Tatsächlich bestätigte Zustände, soweit verfügbar.
+* Dateiname.
+* Erfolg oder Fehler.
+* Fehlerbeschreibung bei Problemen.
+
+C. HTML-Kontaktübersicht
+
+Eine einfache lokale HTML-Datei mit:
+
+* Vorschaubildern.
+* Fahrzeugnummer.
+* Kameragruppe.
+* Replay-Position.
+* Status der Aufnahme.
+
+Keine komplexe Benutzeroberfläche entwickeln.
+
+4. Windows-Installation und Start
+
+Wir haben morgen Zugriff auf einen Windows-Rechner in unserer Agentur, auf dem iRacing installiert ist.
+
+Bitte den PoC so vorbereiten, dass wir ihn dort möglichst unkompliziert testen können.
+
+Erstelle ein herunterladbares ZIP-Paket mit:
+
+* Vollständigem Python-Quellcode.
+* requirements.txt.
+* start.bat.
+* Beispielkonfiguration job.example.json.
+* Kurzer deutschsprachiger README.md.
+* Testcheckliste.
+
+Die start.bat soll:
+
+1. Prüfen, ob eine kompatible Python-Version vorhanden ist.
+2. Falls erforderlich eine lokale virtuelle Python-Umgebung anlegen.
+3. Fehlende Python-Abhängigkeiten installieren.
+4. Den Agenten starten.
+5. Bei Problemen verständliche Hinweise anzeigen.
+6. Das Konsolenfenster bei einem Fehler offen halten.
+
+Keine Administratorrechte voraussetzen, sofern technisch nicht erforderlich.
+
+Falls die automatische Installation nicht möglich ist, klare manuelle Schritte dokumentieren.
+
+5. Testablauf
+
+Der PoC wird auf einem echten Windows-PC getestet.
+
+Geplanter Ablauf:
+
+1. iRacing starten und anmelden.
+2. Ein vorhandenes Replay manuell öffnen.
+3. Den Agenten über start.bat starten.
+4. SDK-Verbindung und Replay-Erkennung prüfen.
+5. Zwei Fahrzeuge und zwei verfügbare Kameras auswählen.
+6. Drei gültige Replay-Positionen festlegen.
+7. Den Screenshot-Auftrag ausführen.
+8. Zwölf Bilder und das Manifest kontrollieren.
+9. Den Durchlauf insgesamt dreimal wiederholen.
+
+Erfolgskriterium:
+
+Drei aufeinanderfolgende Durchläufe mit jeweils zwölf korrekt zugeordneten Screenshots und anschließender manueller Sichtkontrolle.
+
+Dabei auch prüfen:
+
+* Richtige Fahrzeuge und Kameras.
+* Korrekte Replay-Positionen.
+* Vollständig gerenderte Bilder.
+* Keine unerwünschten UI-Elemente.
+* Tatsächliche Bildauflösung und Qualität.
+* Verständliche Fehlerbehandlung.
+
+Keine bestimmte Auflösung wie 4K versprechen, bevor sie am Zielrechner bestätigt wurde.
+
+6. Sicherheits- und Nutzungsgrenzen
+
+Der PoC darf ausschließlich mit manuell geöffneten gespeicherten Replays arbeiten.
+
+Nicht implementieren:
+
+* Automatischen iRacing-Login.
+* Automatisches Beitreten zu Sessions.
+* Steuerung laufender Live-Rennen.
+* Videoaufnahme.
+* KI-Motivauswahl.
+* Automatische Replay-Downloads.
+* Cloud-Uploads.
+* Zentrale Auftragsverwaltung.
+* Anbindung an BS+ Suite oder VCO Content-Datenbank.
+
+Keine Prozess-Injection, privaten Schnittstellen oder Umgehung von Schutzmechanismen.
+
+Die kommerzielle Nutzung und die Zulässigkeit der Automatisierung müssen vor produktivem Einsatz mit iRacing geklärt werden. Den PoC bis dahin ausschließlich als kontrollierten lokalen Techniktest behandeln.
+
+7. Entwicklungs- und Testvorgaben
+
+Bitte bewusst minimalistisch implementieren.
+
+* Keine unnötigen Frameworks.
+* Keine umfangreiche Testinfrastruktur.
+* Keine überdimensionierte Architektur.
+* Keine Änderungen an bestehenden Anwendungen.
+* Keine zusätzlichen Features ohne ausdrückliche Freigabe.
+
+Isolierte Tests für Konfiguration, Dateibenennung und Manifest sind sinnvoll.
+
+Wichtig: Replit kann die tatsächliche Steuerung des iRacing-Clients nicht selbst überprüfen.
+
+Deshalb:
+
+* Keine simulierten Tests als echte iRacing-Erfolge darstellen.
+* Keine Behauptung, dass Screenshots funktionieren, bevor der Windows-Test erfolgt ist.
+* Technische Unsicherheiten ausdrücklich benennen.
+* Falls SDK-Funktionen anders arbeiten als erwartet, keine unbelegten Workarounds implementieren.
+
+8. Erwartete Lieferung
+
+Bitte liefere:
+
+1. Den vollständigen Windows-PoC.
+2. Ein herunterladbares ZIP-Paket.
+3. Eine kurze Installations- und Startanleitung.
+4. Eine Beispielkonfiguration.
+5. Eine Testcheckliste für morgen.
+6. Eine kurze Übersicht der implementierten Funktionen und noch offenen Windows-Prüfungen.
+
+Arbeite auf einen unmittelbar testbaren Stand hin. Keine zusätzlichen Entwicklungsphasen starten.
+
+Nach der Implementierung bitte stoppen und auf unsere Testergebnisse vom echten Windows-Rechner warten.
