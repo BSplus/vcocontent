@@ -51,6 +51,12 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const openerRef = useRef<HTMLElement | null>(null);
 
+  useEffect(() => {
+    if (!editItem) return;
+    const refreshedItem = items.find(item => item.id === editItem.id);
+    if (refreshedItem && refreshedItem.caption !== editItem.caption) setEditItem(refreshedItem);
+  }, [items, editItem]);
+
   const openItem = (item: MediaItem, index: number, opener: HTMLElement) => {
     openerRef.current = opener;
     setSelectedItem(item);

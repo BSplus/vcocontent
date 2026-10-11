@@ -70,6 +70,7 @@ export default function EditMediaModal({
   const identificationEdited = useRef(false);
   const tagsEdited = useRef(false);
   const sessionEdited = useRef(false);
+  const captionEdited = useRef(false);
   const [recognitionSession, setRecognitionSession] = useState("");
   const savedTagSnapshot = useRef<string[]>([]);
   const [captionPreview, setCaptionPreview] = useState<CaptionPreview | null>(null);
@@ -91,12 +92,18 @@ export default function EditMediaModal({
     identificationEdited.current = false;
     tagsEdited.current = false;
     sessionEdited.current = false;
+    captionEdited.current = false;
     setRecognitionSession(mediaItem.recognitionSession || "");
     observedPending.current = false;
     savedTagSnapshot.current = (mediaItem.tags || []).map(tag => tag.trim()).filter(Boolean);
     setCaptionPreview(null);
     setSelectedScene(null);
   }, [open, mediaItem.id]);
+
+  useEffect(() => {
+    if (!open || captionEdited.current) return;
+    form.resetField("caption", {defaultValue:mediaItem.caption || ""});
+  }, [open, mediaItem.caption, form]);
 
   const captionPreviewMutation = useMutation({
     mutationFn: async (scene?: CaptionScene) => {
@@ -170,6 +177,9 @@ export default function EditMediaModal({
   }, [open, mediaItem.id, mediaItem.type]);
   useEffect(() => {
     if (!open) return;
+    if (!captionEdited.current && analysis.data?.caption !== undefined) {
+      form.resetField("caption", {defaultValue:analysis.data.caption || ""});
+    }
     setIsAnalyzing(analysisPending(analysis.data?.status));
     if (analysisPending(analysis.data?.status) && !observedPending.current) {
       tagsAtAnalysisStart.current = parseEditableTags(form.getValues("tags"));
@@ -194,7 +204,7 @@ export default function EditMediaModal({
     queryClient.invalidateQueries({ predicate: query =>
       String(query.queryKey[0]).startsWith(`/api/events/${mediaItem.eventId}/media`) ||
       (String(query.queryKey[0]).startsWith("/api/media") && !String(query.queryKey[0]).endsWith("/analysis")) });
-  }, [open, analysis.data?.status, analysis.data?.generation, analysis.data?.tags, analysis.data?.identification, analysis.data?.identificationManual, mediaItem.id]);
+  }, [open, analysis.data?.status, analysis.data?.generation, analysis.data?.tags, analysis.data?.identification, analysis.data?.identificationManual, analysis.data?.caption, mediaItem.id]);
   const analysisMutation = useMutation({
     mutationFn: (mode: "start" | "retry" | "reanalyse") => requestAnalysis(
       mediaItem.id,
@@ -233,9 +243,10 @@ export default function EditMediaModal({
 
   const onSubmit = async (formData: FormData) => {
     try {
-      const { tags: tagText, ...editableMetadata } = formData;
+      const { tags: tagText, caption, ...editableMetadata } = formData;
       await updateMutation.mutateAsync({
         ...editableMetadata,
+        ...(captionEdited.current ? {caption} : {}),
         ...(tagsEdited.current ? {
           tags: tagText
             ? tagText.split(",").map((tag: string) => tag.trim()).filter(Boolean)
@@ -281,7 +292,7 @@ export default function EditMediaModal({
             <Textarea
               id="caption"
               maxLength={1000}
-              {...form.register("caption")}
+              {...form.register("caption", {onChange:()=>{captionEdited.current=true;}})}
             />
             {mediaItem.type === "image" && <div className="flex flex-wrap gap-2">
               <Button
@@ -366,7 +377,10 @@ export default function EditMediaModal({
                     type="button"
                     size="sm"
                     variant="secondary"
-                    onClick={() => form.setValue("caption", captionPreview.suggestion, { shouldValidate: true, shouldDirty: true })}
+                    onClick={() => {
+                      captionEdited.current=true;
+                      form.setValue("caption", captionPreview.suggestion, { shouldValidate: true, shouldDirty: true });
+                    }}
                   >
                     Apply Suggestion to Caption
                   </Button>

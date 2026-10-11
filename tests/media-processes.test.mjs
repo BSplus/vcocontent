@@ -192,20 +192,20 @@ test("recovered import skips saved media and clears its encrypted credentials", 
   const album = await event(); const item = await photo(album.id);
   await enqueueAnalysis(item);
   await until(async () => (await analysisStatus(item.id)).status === "completed");
-  const href = "https://cloud.example.invalid/public.php/dav/files/test/one.jpg";
+  const href = "https://nextcloud.bs-plus.de/public.php/dav/files/test/one.jpg";
   const { createHash } = await import("node:crypto");
   await db.insert(nextcloudFiles).values({ eventId: album.id, sourceKey: createHash("sha256").update(href).digest("hex"),
     name: "one.jpg", status: "saved", mediaId: item.id });
   await db.insert(nextcloudJobs).values({ eventId: album.id, status: "running",
     workerToken: "terminated-import", updatedAt: new Date(Date.now() - 120000),
     manifestExpiresAt: new Date(Date.now() + 3600000),
-    manifest: encryptManifest({ sources: [{ base: "https://cloud.example.invalid/",
-      root: "https://cloud.example.invalid/public.php/dav/files/test/", auth: "Basic test" }],
+    manifest: encryptManifest({ sources: [{ base: "https://nextcloud.bs-plus.de/",
+      root: "https://nextcloud.bs-plus.de/public.php/dav/files/test/", auth: "Basic test" }],
       files: [{ href, name: "one.jpg", bytes: 100, mime: "image/jpeg", type: "image" }] }),
   });
   let downloads = 0;
   globalThis.fetch = async (url, options) => {
-    if (String(url).startsWith("https://cloud.example.invalid")) { downloads++; throw new Error("Must not download saved media"); }
+    if (String(url).startsWith("https://nextcloud.bs-plus.de")) { downloads++; throw new Error("Must not download saved media"); }
     return realFetch(url, options);
   };
   await drainImportQueue();

@@ -178,21 +178,24 @@ class DatabaseStorage implements IStorage {
   }
 
   async updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event> {
-    const contextKeys=["title","date","seriesId","creatorId","referenceSeasonYear"] as const;
+    return db.transaction(async tx => {
+    const [before] = await tx.select().from(events).where(eq(events.id,id)).for("update");
+    if (!before) throw new Error("Event not found");
+    const contextKeys=["title","date","seriesId","creatorId","referenceSeasonYear","round","track","platform"] as const;
     let changed=false;
     if (contextKeys.some(key=>event[key]!==undefined)) {
-      const before=await this.getEvent(id);
       if (before) {
         const after={...before,...event};
         const year=(e:typeof after)=>e.referenceSeasonYear ?? new Date(e.date).getUTCFullYear();
         changed=before.title!==after.title || before.seriesId!==after.seriesId ||
-          before.creatorId!==after.creatorId || year(before)!==year(after);
+           before.creatorId!==after.creatorId || +new Date(before.date)!==+new Date(after.date) ||
+           before.round!==after.round || before.track!==after.track || before.platform!==after.platform || year(before)!==year(after);
       }
     }
-    const result = await db
+    const result = await tx
       .update(events)
       .set({...event,...(changed?{referenceRevision:sql`${events.referenceRevision}+1`}:{}),
-        ...(["title","description","round","track"].some(key=>key in event) ? {
+         ...(["title","description","round","track","platform"].some(key=>key in event) ? {
           contentVersion:sql`${events.contentVersion}+1`,safetyStatus:sql`case when ${events.creatorId} is not null then 'error' else ${events.safetyStatus} end`,
           safetyReason:sql`case when ${events.creatorId} is not null then 'Safety check pending.' else ${events.safetyReason} end`,
         } : {})})
@@ -204,6 +207,7 @@ class DatabaseStorage implements IStorage {
     }
 
     return result[0];
+    });
   }
 
   async deleteEvent(id: number): Promise<{ success: boolean; message: string }> {
@@ -288,6 +292,7 @@ class DatabaseStorage implements IStorage {
       throw new Error("Series not found");
     }
 
+    if (series.name!==undefined) await db.update(events).set({referenceRevision:sql`${events.referenceRevision}+1`}).where(eq(events.seriesId,id));
     return result[0];
   }
 
@@ -295,7 +300,7 @@ class DatabaseStorage implements IStorage {
     // First update all events that reference this series
     await db
       .update(events)
-      .set({ seriesId: null })
+      .set({ seriesId: null,referenceRevision:sql`${events.referenceRevision}+1` })
       .where(eq(events.seriesId, id));
 
     // Then delete the series
@@ -456,8 +461,11 @@ class DatabaseStorage implements IStorage {
       if (!reservation) throw new Error("Upload reservation has expired");
       if (mediaItem.eventId!==reservation.eventId) throw new Error("Upload event does not match its reservation");
       const community = !!reservation.creatorId;
+      const [event] = await tx.select().from(events).where(eq(events.id,reservation.eventId)).for("update");
+      const photoWorkflow = mediaItem.type==="image" && !!event?.photoMatchingEnabled;
       const [item] = await tx.insert(mediaItems).values({...mediaItem,
-        captionSource:community && mediaItem.type==="image" && !mediaItem.caption ? "auto_pending" : "preserved",
+        captionSource:nextcloudFileId && mediaItem.type==="image" ? "nextcloud_placeholder" :
+          (community || photoWorkflow) && mediaItem.type==="image" && !mediaItem.caption ? "auto_pending" : "preserved",
         manualTags:mediaItem.tags || [],
         ...(community ? {safetyStatus:"error",safetyReason:"Safety check pending."} : {})}).returning();
       if (requestAnalysis) {
@@ -471,7 +479,8 @@ class DatabaseStorage implements IStorage {
         // Saving media and requesting analysis commit together. A full queue or
         // unavailable provider must not discard a successful transfer.
         await tx.insert(mediaAnalysisJobs).values({ mediaId: item.id,
-          fingerprint: item.type === "video" ? itemAnalysisFingerprint(item) : "tags:" + analysisFingerprint(item.thumbnail),
+          fingerprint: itemAnalysisFingerprint(item,photoWorkflow),
+          photoWorkflow,photoMatchingRevision:event?.photoMatchingRevision || 0,
           status: ready ? "queued" : "failed",
           error: ready ? null : "AI analysis not started. Retry when the service is available." });
       }

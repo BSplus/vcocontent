@@ -36,8 +36,9 @@
 - [FFmpeg failure codes](ffmpeg-failure-codes.md) — nonzero exit statuses vary across versions; preserve actual codes rather than assuming exit 1.
 - [Beta mail setup](beta-launch-setup.md) — user deferred Resend setup; document it as open, without bypassing verification or authorizing publication.
 - [Legal release boundaries](legal-release-boundaries.md) — free downloads do not determine reuse licences; creator terms and rights require explicit operator approval.
-- [Communitycaption-Ausnahme](community-caption-boundary.md) — automatische Captions nur für neue leere Communityfotos; Moderation und geschützte Texte bleiben unabhängig.
+- [Eventbezogene Caption-Ausnahme](community-caption-boundary.md) — Matching nur nach Event-Opt-in; registrierte Lineups sind kein Beweis abgebildeter Personen, geschützte Texte bleiben geschützt.
 - [Optimistische Browseraktionen](optimistic-browser-actions.md) — neuer sichtbarer Zustand beweist keine abgeschlossene Mutation; vor Folgeaktionen auf aktive Buttons warten.
 - [Creator-Eventzuordnung](creator-event-association.md) — Betreiber wählt lose Zuordnung eigener Galerien statt Modelltrennung; nur separate Umsetzungsplanung freigegeben.
 - [Event image boundaries](event-image-boundaries.md) — metadata uploads need separate limits; the historical built-in fallback is a trusted preset, not a new upload.
 - [Startup paint verification](startup-paint-verification.md) — computed visibility can pass while production CSS blocks painting; check actual pixels with delayed styles.
+- [Touch-emulated inputs](browser-input-fixtures.md) — desktop selection shortcuts can append text in mobile checks; verify edited values before diagnosing saved-metadata failures.

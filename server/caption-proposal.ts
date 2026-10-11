@@ -1,4 +1,4 @@
-import type { EntryRow, Event } from "@shared/schema";
+import type { EntryRow, Event, Identification } from "@shared/schema";
 
 export const scenes = ["Race Action", "Start", "Finish"] as const;
 export type Scene = typeof scenes[number];
@@ -38,4 +38,26 @@ export function proposeCaption(
  * evidence of who appears in a photograph. Event context is sufficient. */
 export function communityCaption(event: Pick<Event,"title"|"date"|"round"|"track">) {
   return proposeCaption(event,[],[],null).suggestion;
+}
+
+/** Deterministic, reference-backed caption; never claims a pictured driver's identity. */
+export function matchedPhotoCaption(
+  event: Pick<Event,"title"|"date"|"round"|"track"|"platform">,
+  seriesName: string | null,
+  identification: Identification[],
+) {
+  const date = new Date(event.date);
+  const context = [event.platform, seriesName, event.title,
+    event.round ? (/^round\b/i.test(event.round) ? event.round : `Round ${event.round}`) : null,
+    event.track, Number.isFinite(+date) ? date.toLocaleDateString("en-GB",
+      {timeZone:"UTC",day:"numeric",month:"long",year:"numeric"}) : null].filter(Boolean).join(" · ");
+  const matched = identification.length > 0 && identification.every(row =>
+    row.source === "reference" && /^\d{1,4}$/.test(row.number) && !!row.team);
+  const vehicles = matched ? identification.map(row =>
+    [`#${row.number} ${row.team}`, row.vehicle,
+      row.drivers ? `Registered lineup: ${row.drivers}` : null].filter(Boolean).join(" — ")) : [];
+  // Do not partially truncate a lineup into a misleading fragment.
+  const full = [context, ...vehicles].join(" | ");
+  return {caption:(full.length <= 1000 ? full : context).slice(0,1000),
+    matchStatus:matched ? "matched" : "no_unique_match"};
 }

@@ -3,7 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { takeBetaRate } from "./beta-policy";
 import { reviewMediaSafety } from "./content-safety";
-import { mediaAnalysisJobs, mediaItems, events } from "@shared/schema";
+import { mediaAnalysisJobs, mediaItems, events, series } from "@shared/schema";
 import { analysisImageInput, recognitionImageInput } from "./image-analysis";
 import { categorizeContent, generateTagsForImage, isAITaggingConfigured } from "./utils/ai-tagger";
 import { recognizeMotorsportImage } from "./utils/motorsport-recognition";
@@ -12,7 +12,7 @@ import { withVisionBudget, VisionBusy } from "./ai-budget";
 import { sampleVideo, SAMPLING_VERSION, cleanupVideoTemps } from "./video-sampling";
 import { aggregateVideo, recognizeVideoBatch, type VideoEvidence } from "./video-recognition";
 import { classifyVideoFailure, videoFailureRecord, type VideoFailureStage } from "./video-failures";
-import { communityCaption } from "./caption-proposal";
+import { communityCaption, matchedPhotoCaption } from "./caption-proposal";
 
 // Database-wide budget, including multiple server processes. SDK retries are
 // disabled: only this queue owns retry/backoff and the persisted attempt count.
@@ -47,17 +47,38 @@ export async function analysisStatus(mediaId: number) {
   return job || { status: "not_requested", attempts: 0, error: null, generatedTags: null };
 }
 
-export async function enqueueAnalysis(item: Item, options: boolean | { retry?: boolean; reanalyse?: boolean; recognition?: boolean } = false, legacyReanalyse = false) {
+export async function enqueueAnalysis(item: Item, options: boolean | { retry?: boolean; reanalyse?: boolean; recognition?: boolean; photoWorkflow?: boolean; replacePreserved?: boolean } = false, legacyReanalyse = false) {
   const settings = typeof options === "boolean" ? { retry: options, reanalyse: legacyReanalyse } : options;
   if (!["image", "video"].includes(item.type)) throw new AnalysisUnavailable("Unsupported media type");
   if (!isAITaggingConfigured()) throw new AnalysisUnavailable("AI tagging is not configured");
-  const fingerprint = itemAnalysisFingerprint(item, settings.recognition);
   await db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(${LOCK})`);
+    const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,item.id));
+    if (!current) throw new AnalysisUnavailable("Photo no longer exists.");
+    const [event] = current.eventId ? await tx.select().from(events).where(eq(events.id,current.eventId)) : [];
+    const photoWorkflow = current.type==="image" && !!event?.photoMatchingEnabled;
+    if (settings.photoWorkflow && !photoWorkflow) throw new AnalysisUnavailable("Enable photo matching before processing photos.");
+    if (settings.photoWorkflow && current.identificationManual) throw new AnalysisUnavailable("Manual identification is protected.");
+    const fingerprint = itemAnalysisFingerprint(current, settings.recognition || photoWorkflow);
     const [existing] = await tx.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id));
-    if (existing && (existing.status === "queued" || existing.status === "running")) return;
+    const sameInput=existing && (existing.fingerprint===fingerprint ||
+      (current.type==="image" && existing.fingerprint.replace(/^(?:tags|recognition):/,"")===
+        fingerprint.replace(/^(?:tags|recognition):/,"")));
+    if (existing && (existing.status === "queued" || existing.status === "running") &&
+      existing.fingerprint===fingerprint && (!photoWorkflow || (existing.photoWorkflow &&
+        existing.photoMatchingRevision===event!.photoMatchingRevision))) {
+      if (settings.replacePreserved && current.captionSource==="preserved") {
+        await tx.update(mediaAnalysisJobs).set({replaceCaption:current.caption}).where(eq(mediaAnalysisJobs.mediaId,item.id));
+      }
+      return;
+    }
+    // Duplicate import requests must never downgrade completed recognition.
+    if (current.type==="image" && !settings.recognition && !photoWorkflow &&
+      existing?.fingerprint === itemAnalysisFingerprint(current,true) && !settings.reanalyse) return;
     if (existing?.fingerprint === fingerprint && !settings.reanalyse &&
-        (!settings.retry || existing.status !== "failed")) return;
+        (!settings.retry || existing.status !== "failed") &&
+        !(photoWorkflow && (!existing.photoWorkflow || existing.photoMatchingRevision!==event!.photoMatchingRevision ||
+          (settings.replacePreserved && current.captionSource==="preserved" && existing.replaceCaption!==current.caption)))) return;
     const creator = await tx.execute(sql`select e.creator_id,u.is_admin from media_items m join events e on e.id=m.event_id
       left join users u on u.id=e.creator_id where m.id=${item.id}`);
     const owner = creator.rows[0];
@@ -76,8 +97,13 @@ export async function enqueueAnalysis(item: Item, options: boolean | { retry?: b
     if (Number(pending.rows[0]?.count) >= MAX_PENDING)
       throw new AnalysisUnavailable("Analysis queue is full. Please retry later.");
     const values = { mediaId: item.id, fingerprint, status: "queued", attempts: 0,
-      workerToken: null, generatedTags: existing?.generatedTags || null, recognition: existing?.recognition || null,
-      referenceOnly: false, generation: (existing?.generation || 0) + 1, error: null, durationMs: null,
+      workerToken: null, generatedTags: existing?.generatedTags || null,
+      recognition:sameInput ? existing!.recognition : null,
+      referenceOnly: !!existing?.recognition && !!sameInput && !settings.reanalyse &&
+        (existing.status==="completed" || existing.referenceOnly),
+      photoWorkflow, photoMatchingRevision:event?.photoMatchingRevision || 0,
+      replaceCaption:settings.replacePreserved && current.captionSource==="preserved" ? current.caption : null,
+      generation: (existing?.generation || 0) + 1, error: null, durationMs: null,
       availableAt: new Date(), updatedAt: new Date() };
     const videoEvidence = existing?.fingerprint === fingerprint && !settings.reanalyse ? existing.videoEvidence : null;
     await tx.insert(mediaAnalysisJobs).values({ ...values, videoEvidence }).onConflictDoUpdate({
@@ -124,7 +150,8 @@ async function claimAnalysis() {
         left join media_items m on m.id=j.media_id left join events e on e.id=m.event_id
         left join users u on u.id=e.creator_id
         where ((j.status='queued' and j.available_at<=now()) or
-          (j.status='completed' and j.recognition is not null and e.reference_revision>j.reference_revision))
+          (j.status='completed' and j.recognition is not null and e.reference_revision>j.reference_revision
+            and (not j.photo_workflow or (e.photo_matching_enabled and e.photo_matching_revision=j.photo_matching_revision))))
         and ${testCreatorNames===undefined?sql`true`:sql`(j.media_id=any(${testIdsArray}::int[]) or u.username=any(${testNamesArray}::text[]))`}
         and (e.creator_id is null or (not u.suspended and coalesce(u.creator_status,'none')<>'rejected'
           and not exists(select 1 from media_analysis_jobs r join media_items rm on rm.id=r.media_id
@@ -134,10 +161,12 @@ async function claimAnalysis() {
             join events oe on oe.id=om.event_id where oe.creator_id is null and oj.status in ('running','completed')) end,
           timestamp '1970-01-01'),case when j.status='queued' then 0 else 1 end,j.available_at,j.media_id
         for update of j skip locked limit 1)
-       returning media_id, fingerprint, attempts, reference_only, recognition, generated_tags, video_evidence`);
+       returning media_id, fingerprint, attempts, reference_only, recognition, generated_tags, video_evidence,
+         photo_workflow,photo_matching_revision`);
     const row = result.rows[0];
     return row ? { mediaId: Number(row.media_id), fingerprint: String(row.fingerprint),
       attempts: Number(row.attempts), referenceOnly: Boolean(row.reference_only),
+      photoWorkflow:Boolean(row.photo_workflow),photoMatchingRevision:Number(row.photo_matching_revision),
       recognition: row.recognition as import("@shared/schema").Identification[] | null,
        generatedTags: row.generated_tags as string[] | null,
        videoEvidence: row.video_evidence as VideoEvidence | null, token } : undefined;
@@ -166,6 +195,15 @@ export async function drainAnalysisQueue() {
   try {
     const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, claimed.mediaId));
     if (!item) return true;
+    if (claimed.photoWorkflow) {
+      const [event]=item.eventId ? await db.select().from(events).where(eq(events.id,item.eventId)) : [];
+      if (!event?.photoMatchingEnabled || event.photoMatchingRevision!==claimed.photoMatchingRevision) {
+        await db.update(mediaAnalysisJobs).set({status:"completed",workerToken:null,replaceCaption:null,
+          error:"Photo matching was disabled before processing. No new analysis was performed.",updatedAt:new Date()})
+          .where(and(eq(mediaAnalysisJobs.mediaId,item.id),eq(mediaAnalysisJobs.workerToken,claimed.token)));
+        return true;
+      }
+    }
     const tagOnly = claimed.fingerprint.startsWith("tags:");
     const prefix = tagOnly ? "tags:" : claimed.fingerprint.startsWith("recognition:") ? "recognition:" : "";
     const fingerprint = item.type === "video" ? itemAnalysisFingerprint(item) : prefix + analysisFingerprint(item.thumbnail);
@@ -230,13 +268,21 @@ export async function drainAnalysisQueue() {
     const tags = result.tags;
     videoStage="database_persistence";
     await db.transaction(async tx => {
+      // Event lock fences opt-out and context/reference corrections against late writes.
+      const [event] = item.eventId ? await tx.select().from(events).where(eq(events.id,item.eventId)).for("update") : [];
       const [owned] = await tx.select().from(mediaAnalysisJobs)
         .where(and(eq(mediaAnalysisJobs.mediaId, item.id), eq(mediaAnalysisJobs.workerToken, claimed.token))).for("update");
       if (!owned || owned.fingerprint !== claimed.fingerprint) return;
       const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,item.id)).for("update");
       if (!current || (current.type === "video" ? itemAnalysisFingerprint(current) :
         prefix + analysisFingerprint(current.thumbnail)) !== claimed.fingerprint) return;
-      const [event] = current.eventId ? await tx.select().from(events).where(eq(events.id,current.eventId)) : [];
+      if (owned.photoWorkflow && (!event?.photoMatchingEnabled ||
+        event.photoMatchingRevision!==owned.photoMatchingRevision || current.eventId!==item.eventId)) {
+        await tx.update(mediaAnalysisJobs).set({status:"completed",workerToken:null,
+          recognition:result.vehicles,generatedTags:tags,error:"Photo matching was disabled or changed; no automatic changes were saved.",
+          updatedAt:new Date()}).where(eq(mediaAnalysisJobs.mediaId,item.id));
+        return;
+      }
       // Track future tag provenance. Legacy curation cannot be reconstructed:
       // conservatively preserve it rather than deleting possibly manual tags.
       const manualTags = Array.from(new Set([...current.manualTags,...(current.tags || []).filter(t=>
@@ -249,14 +295,22 @@ export async function drainAnalysisQueue() {
       }
       const merged = claimed.referenceOnly ? current.tags || [] : Array.from(new Set([...manualTags,...freshTags])).slice(0,100);
       const identification = current.identificationManual || !result.vehicles ? current.identification : event
-        ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx) : result.vehicles;
+        ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx,owned.photoWorkflow) : result.vehicles;
       const category = claimed.referenceOnly ? current.category : await categorizeContent(merged);
-      const caption = event?.creatorId && current.type==="image" && current.captionSource==="auto_pending" && !current.caption
+      const [eventSeries] = event?.seriesId ? await tx.select({name:series.name}).from(series).where(eq(series.id,event.seriesId)) : [];
+      const proposal = owned.photoWorkflow && event && !current.identificationManual
+        ? matchedPhotoCaption(event,eventSeries?.name || null,identification) : undefined;
+      const replaceable = current.captionSource==="photo_automatic" || current.captionSource==="nextcloud_placeholder" ||
+        (!current.caption && current.captionSource==="auto_pending") ||
+        (owned.replaceCaption!==null && current.captionSource==="preserved" && current.caption===owned.replaceCaption);
+      const caption = proposal && replaceable ? proposal.caption :
+        !owned.photoWorkflow && event?.creatorId && current.type==="image" && current.captionSource==="auto_pending" && !current.caption
         ? communityCaption(event) : undefined;
       const publicChanged = JSON.stringify([current.tags,current.identification,current.category]) !==
         JSON.stringify([merged,identification,category]) || caption!==undefined;
       await tx.update(mediaItems).set({ tags: merged, identification,
-        ...(caption!==undefined ? {caption,captionSource:"automatic"} : {}),
+        ...(proposal ? {photoMatchStatus:proposal.matchStatus} : {}),
+        ...(caption!==undefined ? {caption,captionSource:proposal ? "photo_automatic" : "automatic"} : {}),
         ...(event?.creatorId && publicChanged ? {
           contentVersion:sql`${mediaItems.contentVersion}+1`,safetyStatus:"error",safetyReason:"Safety check pending.",
         }:{}),
@@ -264,7 +318,7 @@ export async function drainAnalysisQueue() {
         ...(claimed.referenceOnly ? {} : {category}) }).where(eq(mediaItems.id,item.id));
       await tx.update(mediaAnalysisJobs).set({ status: "completed", generatedTags: tags,
         recognition: result.vehicles, referenceRevision: event?.referenceRevision || 0, referenceOnly: false,
-        workerToken: null, error: null, updatedAt: new Date(), durationMs: Date.now() - started })
+        replaceCaption:null,workerToken: null, error: null, updatedAt: new Date(), durationMs: Date.now() - started })
         .where(eq(mediaAnalysisJobs.mediaId, item.id));
     });
     videoStage="database_read";

@@ -12,8 +12,24 @@ export function applicableDocuments(event: Event) {
       event.creatorId ? eq(referenceDocuments.ownerId, event.creatorId) : isNull(referenceDocuments.ownerId)));
 }
 export type MatchDocument = { scope: string; kind: string; session: string | null; rows: EntryRow[]; updatedAt: Date };
+// Broad descriptors do not contradict a model. Specific names must agree after
+// punctuation/case normalization or be a less-specific subset of the other name.
+// Do not infer model aliases: uncertain differences must not produce identity.
+function vehicleConflict(visible: string, registered: string) {
+  const words=(text:string)=>text.normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase().replace(/[^a-z0-9]+/g," ").trim().split(/\s+/).filter(Boolean);
+  const generic=new Set(["race","racing","car","cars","vehicle","vehicles","racecar","sports","sport","sim",
+    "prototype","prototypes","formula","touring","stock","single","seater","hypercar","gt","gt1","gt2","gt3","gt4",
+    "lmp1","lmp2","lmp3","unknown"]);
+  const a=words(visible),b=words(registered);
+  if (!a.length || !b.length || a.every(word=>generic.has(word)) || b.every(word=>generic.has(word))) return false;
+  const noise=new Set(["race","racing","car","cars","vehicle","vehicles","sports","sport","sim",
+    "prototype","formula","touring","stock","single","seater","hypercar"]);
+  const specificA=a.filter(word=>!noise.has(word)),specificB=b.filter(word=>!noise.has(word));
+  return !specificA.every(word=>specificB.includes(word)) && !specificB.every(word=>specificA.includes(word));
+}
 /** Result/event/session overrides merge available fields, not guesses. */
-export function matchReferences(visible: Identification[], documents: MatchDocument[], session: string | null, eventTitle = ""): Identification[] {
+export function matchReferences(visible: Identification[], documents: MatchDocument[], session: string | null, eventTitle = "", strictPhoto = false): Identification[] {
   const applicable = documents.filter(d => !d.session || d.session === session);
   const priority = (d: MatchDocument) => (d.scope === "event" ? 10 : 0) + (d.session ? 4 : 0) + (d.kind === "result" ? 2 : 0);
   applicable.sort((a, b) => priority(a) - priority(b) || +new Date(a.updatedAt) - +new Date(b.updatedAt));
@@ -32,6 +48,7 @@ export function matchReferences(visible: Identification[], documents: MatchDocum
         const consensus = (key: keyof EntryRow) => Array.from(new Map(rows.map(row=>String(row[key] || "").trim()).filter(Boolean)
           .map(value=>[value.toLowerCase().replace(/\s+/g," "),value])).values());
         const teams = consensus("team");
+        ambiguous = ["team","car","drivers","manufacturer","racingClass"].some(key=>consensus(key as keyof EntryRow).length>1);
         if (entry?.team && teams.length === 1 && entry.team.toLowerCase() !== teams[0].toLowerCase()) entry = undefined;
         entry ||= {number:observed.number,team:"",car:"",drivers:"",manufacturer:"",racingClass:"",discipline:""};
         for (const key of ["team","car","drivers","manufacturer","racingClass","discipline"] as const) {
@@ -40,13 +57,19 @@ export function matchReferences(visible: Identification[], documents: MatchDocum
         }
         if (["team","car","manufacturer"].some(key=>consensus(key as keyof EntryRow).length>1) &&
           rows.some(row=>!row.drivers.trim())) entry.drivers="";
+        if (strictPhoto && ambiguous) entry=undefined;
       }
     }
-    if (entry && !ambiguous) return { ...observed, team: entry.team || observed.team, drivers: entry.drivers,
+    if (strictPhoto && entry && (vehicleConflict(observed.vehicle,entry.car) || [
+      [observed.team,entry.team],[observed.manufacturer,entry.manufacturer],
+    ].some(([a,b])=>a && b && a.trim().toLowerCase()!==b.trim().toLowerCase()))) {
+      entry=undefined;
+    }
+    if (entry && (!strictPhoto || !ambiguous) && (!strictPhoto || !!entry.team)) return { ...observed, team: entry.team || observed.team, drivers: entry.drivers,
       vehicle: entry.car || observed.vehicle, manufacturer: entry.manufacturer || observed.manufacturer,
       racingClass: entry.racingClass || observed.racingClass, discipline: entry.discipline || observed.discipline, source: "reference" };
     // Team-only branding can match a team, never infer an individual driver.
-    if (!observed.number && observed.team) {
+    if (!strictPhoto && !observed.number && observed.team) {
       const names = applicable.flatMap(d => d.rows.filter(r=>(!r.session || r.session === session) &&
         (d.scope === "event" || !r.eventName || r.eventName.toLowerCase().trim() === eventTitle.toLowerCase().trim())))
         .filter(r => r.team.toLowerCase() === observed.team.toLowerCase());
@@ -55,8 +78,8 @@ export function matchReferences(visible: Identification[], documents: MatchDocum
     return { ...observed, drivers: "", source: "visual" };
   });
 }
-export async function identifyEntries(event: Event, visible: Identification[], session: string | null, executor: Pick<typeof db, "select"> = db) {
+export async function identifyEntries(event: Event, visible: Identification[], session: string | null, executor: Pick<typeof db, "select"> = db, strictPhoto = false) {
   const documents = await executor.select().from(referenceDocuments).where(applicableDocuments(event));
   const legacy = await executor.select().from(eventEntries).where(eq(eventEntries.eventId, event.id));
-  return matchReferences(visible, [...documents, ...(legacy.length ? [{ scope: "event", kind: "entry", session: null, rows: legacy, updatedAt: new Date(0) }] : [])], session,event.title);
+  return matchReferences(visible, [...documents, ...(legacy.length ? [{ scope: "event", kind: "entry", session: null, rows: legacy, updatedAt: new Date(0) }] : [])], session,event.title,strictPhoto);
 }

@@ -117,7 +117,7 @@ export async function reviewEventSafety(id: number, creatorId: number) {
   if (!await takeBetaRate(`safety:${creatorId}`,30,3600000)) return;
   const [event] = await db.select().from(events).where(eq(events.id,id));
   if (!event) return;
-  const result = await checkContent(JSON.stringify({title:event.title,description:event.description,round:event.round,track:event.track}));
+  const result = await checkContent(JSON.stringify({title:event.title,description:event.description,round:event.round,track:event.track,platform:event.platform}));
   await db.update(events).set({safetyStatus:result.status,safetyReason:result.reason,safetyVersion:event.contentVersion,safetyPolicy:SAFETY_POLICY})
     .where(and(eq(events.id,id),eq(events.contentVersion,event.contentVersion)));
 }

@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, Plus, Trash2, FileText, Download } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
+import PhotoMatchingControls from "@/components/photo-matching-controls";
 
 export interface EventEntryRow {
   number: string;
@@ -389,6 +390,8 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
             : "Upload a list to preview it, make corrections, then explicitly confirm before replacing the saved list."}
         </p>
       </div>
+
+      {eventId !== null && <PhotoMatchingControls eventId={eventId} />}
 
       <div className="space-y-3 rounded-md bg-muted/30 p-3">
         <div>

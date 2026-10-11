@@ -67,6 +67,9 @@ export const events = pgTable("events", {
   viewCount: integer("view_count").notNull().default(0),
   referenceRevision: integer("reference_revision").notNull().default(0),
   referenceSeasonYear: integer("reference_season_year"),
+  photoMatchingEnabled: boolean("photo_matching_enabled").notNull().default(false),
+  photoMatchingRevision: integer("photo_matching_revision").notNull().default(0),
+  platform: text("platform"),
   visibility: text("visibility").notNull().default("published"),
   adminHidden: boolean("admin_hidden").notNull().default(false),
   contentVersion: integer("content_version").notNull().default(0),
@@ -147,6 +150,7 @@ export const mediaItems = pgTable("media_items", {
   thumbnail: text("thumbnail").notNull(),
   caption: text("caption"),
   captionSource: text("caption_source").notNull().default("preserved"),
+  photoMatchStatus: text("photo_match_status"),
   photographer: text("photographer"),
   tags: text("tags").array(),
   category: text("category"),
@@ -294,6 +298,9 @@ export const mediaAnalysisJobs = pgTable("media_analysis_jobs", {
   referenceRevision: integer("reference_revision").notNull().default(0),
   referenceOnly: boolean("reference_only").notNull().default(false),
   generation: integer("generation").notNull().default(1),
+  photoWorkflow: boolean("photo_workflow").notNull().default(false),
+  photoMatchingRevision: integer("photo_matching_revision").notNull().default(0),
+  replaceCaption: text("replace_caption"),
   videoEvidence: jsonb("video_evidence").$type<import("../server/video-recognition").VideoEvidence>(),
 }, table => [index("media_analysis_ready_idx").on(table.status, table.availableAt)]);
 
@@ -341,6 +348,7 @@ export const insertEventSchema = createInsertSchema(events).extend({
   description: z.string().min(1, "Description is required"),
   round: z.string().trim().max(100).nullable().optional(),
   track: z.string().trim().max(160).nullable().optional(),
+  platform: z.string().trim().max(120).nullable().optional(),
   coverImage: z.string().optional(),
   customThumbnail: z.string().optional(),
   date: z.coerce.date(),
@@ -349,7 +357,7 @@ export const insertEventSchema = createInsertSchema(events).extend({
   isPremium: z.boolean().optional(),
   creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),
   referenceSeasonYear:z.number().int().min(1990).max(2100).nullable().optional(),
-}).omit({referenceRevision:true,visibility:true,adminHidden:true,contentVersion:true,safetyVersion:true,safetyStatus:true,safetyPolicy:true,safetyReason:true});
+}).omit({photoMatchingRevision:true,photoMatchingEnabled:true,referenceRevision:true,visibility:true,adminHidden:true,contentVersion:true,safetyVersion:true,safetyStatus:true,safetyPolicy:true,safetyReason:true});
 
 export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   eventId: z.number(),
@@ -363,7 +371,7 @@ export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   identification: z.array(identificationSchema).max(12).optional(),
   isPremium: z.boolean().optional(),
   creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),
-}).omit({captionSource:true,contentVersion:true,safetyVersion:true,safetyStatus:true,safetyPolicy:true,safetyReason:true});
+}).omit({photoMatchStatus:true,captionSource:true,contentVersion:true,safetyVersion:true,safetyStatus:true,safetyPolicy:true,safetyReason:true});
 
 // Export types
 export type InsertUser = z.infer<typeof insertUserSchema>;

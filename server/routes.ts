@@ -39,6 +39,7 @@ import { registerCommunityRoutes, issueDownloadOperation, validDownloadOperation
 import { publicCreatorById } from "./creator-profiles";
 import { registerCreatorEventAssociationRoutes } from "./creator-event-association";
 import { EventImageError, validateOfficialEventImages, publicEventThumbnails, registerEventThumbnailRoute } from "./event-thumbnails";
+import { registerPhotoMatchingRoutes } from "./photo-matching-routes";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -77,6 +78,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   registerCommunityRoutes(app);
   registerCreatorEventAssociationRoutes(app);
   registerReferenceRoutes(app, requireCreator);
+  registerPhotoMatchingRoutes(app, requireCreator);
   const openAITestCooldowns = new Map<number, number>();
   const captionDetections = new Map<number, { thumbnail: string; expires: number; result: Promise<Awaited<ReturnType<typeof detectRaceNumbers>>> }>();
   // Auth already set up in index.ts
@@ -179,10 +181,11 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const updatedEvent = await storage.updateEvent(eventId, {
         ...eventChanges,
       });
-      if (event.creatorId && ["title","description","round","track"].some(field=>field in eventChanges)) {
+      if (event.creatorId && ["title","description","round","track","platform"].some(field=>field in eventChanges)) {
         await reviewEventSafety(eventId,event.creatorId);
       }
       res.json(await storage.getEvent(eventId));
+      void kickAnalysisWorker();
     } catch (error) {
       if (!(error instanceof EventImageError)) console.error('Error updating event:', error);
       res.status(400).json({ error: error instanceof EventImageError ? error.message : "Failed to update event" });
@@ -777,7 +780,8 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (!canManageEvent(req.user, event.creatorId ?? null)) return res.status(403).json({ error: "Forbidden" });
       res.setHeader("Cache-Control", "private, no-store");
       res.json({ ...await analysisStatus(id), tags: item.tags, category: item.category, identification:item.identification,
-        identificationManual:item.identificationManual, recognitionSession:item.recognitionSession });
+        identificationManual:item.identificationManual, recognitionSession:item.recognitionSession,
+        caption:item.caption,captionSource:item.captionSource,matchStatus:item.photoMatchStatus });
     } catch { res.status(503).json({ error: "Analysis status unavailable" }); }
   });
   app.get("/api/events/:id/analysis", requireCreator, async (req, res) => {
@@ -857,6 +861,8 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
         recognitionSession: z.string().trim().max(120).nullable().optional(),
       }).strict().parse(req.body);
       const updated = await db.transaction(async tx => {
+        await tx.select().from(eventsTable).where(eq(eventsTable.id,event.id)).for("update");
+        await tx.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,id)).for("update");
         const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,id)).for("update");
         if (!current) throw new Error("Media no longer exists");
         const meaningful = (entries: typeof current.identification) => entries.map(entry =>

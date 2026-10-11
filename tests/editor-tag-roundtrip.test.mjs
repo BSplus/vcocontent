@@ -32,13 +32,15 @@ test("image/video editors preserve removed tags and refresh completed identifica
     } else if (path.endsWith("/analysis")) {
       const pending = pendingReads > 0;
       if (pending) pendingReads--;
-      else if (generation > 1) media = { ...media, tags: ["manual", "Race Car"], identification: [{
+      else if (generation > 1) media = { ...media,
+        ...(media.type==="image" ? {caption:"Stored matching caption"} : {}),
+        tags: ["manual", "Race Car"], identification: [{
         number: "89", team: "Matched Team", drivers: "Registered lineup", vehicle: "", manufacturer: "",
         racingClass: "", discipline: "", source: "reference",
       }] };
       body = { status: pending ? "running" : "completed", generation,
         generatedTags: generation === 1 ? ["Day"] : ["Day", "Race Car"],
-        tags: media.tags, identification: media.identification, identificationManual: false };
+        tags: media.tags, caption:media.caption, identification: media.identification, identificationManual: false };
     }
     browser.command("Fetch.fulfillRequest", { requestId, responseCode: 200,
       responseHeaders: [{ name: "Content-Type", value: "application/json" }],
@@ -69,6 +71,8 @@ test("image/video editors preserve removed tags and refresh completed identifica
       await browser.command("Emulation.setDeviceMetricsOverride", { width, height: 844, deviceScaleFactor: 1, mobile: touch });
       await browser.command("Emulation.setTouchEmulationEnabled", { enabled: touch });
       await browser.command("Page.navigate", { url: new URL("/creator/dashboard", base).href });
+      await browser.wait(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='My Galleries')`);
+      await browser.evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='My Galleries').click()`);
       await browser.wait(`!!document.querySelector('[role="tab"]')`);
       await browser.evaluate(`document.querySelectorAll('[role="tab"]')[1].focus()`);
       await browser.command("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
@@ -80,25 +84,37 @@ test("image/video editors preserve removed tags and refresh completed identifica
       await click(edit, touch);
       await browser.wait(`document.querySelector('#tags')?.value.includes('Day')`);
       await click("#tags", touch);
-      await browser.command("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA", windowsVirtualKeyCode: 65, modifiers: 2 });
-      await browser.command("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", windowsVirtualKeyCode: 65, modifiers: 2 });
-      await browser.command("Input.insertText", { text: "manual" });
+      // Touch emulation does not reliably apply desktop Ctrl+A to an input.
+      await browser.evaluate(`(()=>{const el=document.querySelector('#tags');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'manual');
+        el.dispatchEvent(new Event('input',{bubbles:true}));})()`);
       await click('[role="dialog"] button[type="submit"]', touch);
       await browser.wait(`!document.querySelector('[role="dialog"]')`);
       assert.deepEqual(writes[0].tags, ["manual"]);
+      assert.equal("caption" in writes[0],false,"tag-only edits do not change caption provenance");
       await delay(150); // Allow the media-query refresh before reopening.
       await click(edit, touch);
       await browser.wait(`document.querySelector('#tags')?.value === 'manual'`);
+      if(type==="image" && touch){
+        await browser.evaluate(`(()=>{const el=document.querySelector('#caption');
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(el,'');
+          el.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+      }
       await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(button=>button.textContent.includes('Reanalyse')).setAttribute('data-test-reanalyse','true')`);
       await click('[data-test-reanalyse="true"]', touch);
       await browser.wait(`document.querySelector('#tags')?.value.includes('Race Car')`);
       await browser.wait(`document.querySelector('[role="dialog"]')?.innerText.includes('Matched Team') ||
         [...document.querySelectorAll('[role="dialog"] input')].some(input=>input.value==='Matched Team')`);
       assert.equal(await browser.evaluate(`document.querySelector('#tags').value.includes('Day')`), false);
+      if(type==="image"){
+        assert.equal(await browser.evaluate(`document.querySelector('#caption').value`),
+          touch ? "" : "Stored matching caption","saved automatic text refreshes without overwriting a manually cleared draft");
+      }
       await click('[role="dialog"] button[type="submit"]', touch);
       await browser.wait(`!document.querySelector('[role="dialog"]')`);
       // Unedited tags may be omitted to avoid overwriting concurrent server changes.
       assert.deepEqual(writes[1].tags ?? media.tags, ["manual", "Race Car"]);
+      if(type==="image" && touch)assert.equal(writes[1].caption,"","explicitly cleared captions are submitted as manual empty text");
       assert.equal(media.tags.includes("Day"), false);
     }
     assert.deepEqual(failures, []); assert.deepEqual(browser.errors, []);

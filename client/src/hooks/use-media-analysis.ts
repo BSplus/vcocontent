@@ -8,6 +8,9 @@ export type AnalysisState = {
   identification?: MediaIdentification[];
   identificationManual?: boolean;
   recognitionSession?: string | null;
+  caption?: string | null;
+  captionSource?: string;
+  matchStatus?: string | null;
 };
 export type MediaIdentification = {
   number: string;
