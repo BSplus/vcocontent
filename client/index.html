@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <style>
+      html, body { margin:0; background:#11151c; color:#e6e9eb; color-scheme:dark; }
+      html[data-app-starting] #root, html[data-app-starting] #root * { visibility:hidden !important; }
+      #app-startup { display:none; }
+      html[data-app-starting] #app-startup { position:fixed; inset:0; z-index:2147483647; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px; background:#11151c; color:#e6e9eb; text-align:center; font:16px/1.5 system-ui,sans-serif; }
+      #app-startup p { margin:0; max-width:32rem; }
+      #app-startup button { padding:10px 16px; border:1px solid #35404c; border-radius:3px; background:#1a2029; color:#e6e9eb; font:inherit; cursor:pointer; }
+      #app-startup button:focus-visible { outline:2px solid #1c9cff; outline-offset:3px; }
+      #app-startup [hidden] { display:none !important; }
       .public-html { background:#090d12; color:#f3f4f6; font:18px/1.6 system-ui,sans-serif; min-height:100vh; padding:24px max(20px,calc((100vw - 1200px)/2)); box-sizing:border-box; }
       .public-html a { color:#e7ff5e; }
       .public-html nav,.public-html footer { padding:16px 0; }
@@ -12,30 +20,79 @@
       .public-preview-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr)); gap:20px; }
       .public-preview-grid figure { margin:0; }
     </style>
+    <script>
+      // Run before the body can paint. Without JS the same public HTML stays visible.
+      (() => {
+        const html = document.documentElement;
+        html.setAttribute("data-app-starting", "");
+        let ready = false, committed = false, failed = false, frame = 0;
+        let slowTimer;
+        function updateNotice() {
+          if (ready || !html.hasAttribute("data-app-starting")) return;
+          const notice = document.getElementById("app-startup");
+          if (!notice) return;
+          notice.setAttribute("role", failed ? "alert" : "status");
+          document.getElementById("startup-message").textContent = failed
+            ? "The application could not be loaded. Please try again."
+            : "This is taking longer than expected. You can keep waiting or reload the page.";
+          document.getElementById("startup-actions").hidden = false;
+          document.getElementById("startup-public").hidden = !document.querySelector("#root .public-html");
+        }
+        function fail() {
+          if (ready) return;
+          failed = true;
+          clearTimeout(slowTimer);
+          if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", updateNotice, { once:true });
+          } else updateNotice();
+        }
+        function revealWhenStyled() {
+          if (ready || !committed) return;
+          // This marker comes from the app stylesheet, not the inline shell.
+          if (getComputedStyle(html).getPropertyValue("--vco-app-styles").trim() !== "ready") {
+            frame = requestAnimationFrame(revealWhenStyled);
+            return;
+          }
+          ready = true;
+          clearTimeout(slowTimer);
+          cancelAnimationFrame(frame);
+          html.removeAttribute("data-app-starting");
+          document.getElementById("app-startup")?.remove();
+          window.removeEventListener("error", onError, true);
+          window.removeEventListener("unhandledrejection", fail);
+        }
+        function onError(event) {
+          const target = event.target;
+          if ((target instanceof HTMLScriptElement && target.type === "module") ||
+              (target instanceof HTMLLinkElement && target.rel === "stylesheet") ||
+              event instanceof ErrorEvent) fail();
+        }
+        window.__appStartup = {
+          committed() { committed = true; revealWhenStyled(); },
+          failed: fail,
+          reload() { window.location.reload(); },
+          showPublic() {
+            if (!document.querySelector("#root .public-html")) return;
+            html.removeAttribute("data-app-starting");
+            clearTimeout(slowTimer);
+          }
+        };
+        window.addEventListener("error", onError, true);
+        window.addEventListener("unhandledrejection", fail);
+        // A timeout offers recovery, never declares a slow connection a failure.
+        slowTimer = setTimeout(updateNotice, 15000);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      // React cannot show its own error boundary if the entry module never loads.
-      function showStartupError() {
-        const root = document.getElementById("root");
-        if (!root || root.hasChildNodes()) return;
-        const message = document.createElement("div");
-        message.setAttribute("role", "alert");
-        message.style.cssText = "min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;font:16px sans-serif";
-        const text = document.createElement("p");
-        text.textContent = "The application could not be loaded. Please try again.";
-        const retry = document.createElement("button");
-        retry.textContent = "Reload page";
-        retry.onclick = () => window.location.reload();
-        message.append(text, retry);
-        root.append(message);
-      }
-      window.addEventListener("error", (event) => {
-        if (event.target instanceof HTMLScriptElement || /module|import/i.test(event.message || "")) showStartupError();
-      }, true);
-      setTimeout(showStartupError, 15000);
-    </script>
+    <div id="app-startup" role="status" aria-live="polite">
+      <p id="startup-message">Loading VCO Media Database…</p>
+      <div id="startup-actions" hidden>
+        <button type="button" onclick="window.__appStartup.reload()">Reload page</button>
+        <button id="startup-public" type="button" hidden onclick="window.__appStartup.showPublic()">View public page</button>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

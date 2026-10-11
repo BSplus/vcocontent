@@ -40,3 +40,4 @@
 - [Optimistische Browseraktionen](optimistic-browser-actions.md) — neuer sichtbarer Zustand beweist keine abgeschlossene Mutation; vor Folgeaktionen auf aktive Buttons warten.
 - [Creator-Eventzuordnung](creator-event-association.md) — Betreiber wählt lose Zuordnung eigener Galerien statt Modelltrennung; nur separate Umsetzungsplanung freigegeben.
 - [Event image boundaries](event-image-boundaries.md) — metadata uploads need separate limits; the historical built-in fallback is a trusted preset, not a new upload.
+- [Startup paint verification](startup-paint-verification.md) — computed visibility can pass while production CSS blocks painting; check actual pixels with delayed styles.

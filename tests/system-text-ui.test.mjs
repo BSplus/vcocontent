@@ -63,8 +63,7 @@ test("empty galleries and app, auth, admin and creator load errors are English",
     failure = "startup";
     await browser.command("Fetch.disable");
     await browser.command("Fetch.enable", { patterns: [{ urlPattern: "*/src/main.tsx*", requestStage: "Request" }] });
-    // Public SEO routes retain server-rendered content when JS fails, so use a
-    // client-only route to exercise the empty-root startup alert.
+    // Also exercise the startup alert on a client-only route.
     await visit("/admin/dashboard", "The application could not be loaded. Please try again.");
     assert.equal(await browser.evaluate("document.querySelector('[role=alert] button').textContent"), "Reload page");
   } finally { await browser.close(); }

@@ -10,6 +10,7 @@
 
 /* Keep centered layouts still when a route gains or loses its scrollbar. */
 html {
+  --vco-app-styles: ready;
   scrollbar-gutter: stable;
 }
 
