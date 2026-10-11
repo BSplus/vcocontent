@@ -92,27 +92,37 @@ ist nur ein unverbindlicher Reviewentwurf, keine bereits akzeptierten AGB.
 
 ## Medienbudget und Kostenplanung (Stand September 2026)
 
- Neue Uploads: Bild bis 32 MiB und 40 Megapixel, Video bis 50 MiB. Bilder werden
-serverseitig auf eine WebP-Darstellung mit höchstens 2560 px langer Kante
- (hartes Limit 4 MiB, Ziel 2–4 MiB) als High-Res-Version und eine
- Low-Res-WebP-Datei mit höchstens 640 px (unter 100 KiB) reduziert. Das
- eingereichte Original wird **nicht** als drittes Objekt gespeichert. Die
+ Neue offizielle Uploads und Nextcloud-Quellen: Bild bis 32 MiB und 40 Megapixel,
+ Video unverändert bis 50 MiB. Offizielle Fotodownloads bleiben bis 5.000.000 Bytes
+ möglichst in ursprünglicher Auflösung: moderate Qualität 90/85/80, erst danach
+ nötigenfalls 85 % bzw. 70 % der ursprünglichen Abmessungen; andernfalls ausdrückliche
+ Ablehnung statt extremer Kompression. Keine pauschale 2560-Pixel-Grenze und kein
+ Upscaling. Geeignete kleine Dateien werden nicht unnötig neu komprimiert.
+ Creator-Fotos bis einschließlich 5.000.000 Bytes werden nach vollständiger
+ Validierung byteidentisch gespeichert, auch bei Adminuploads in Creator-Galerien.
+ Animationen bleiben dort gesperrt. Pro Foto bleibt genau eine separate WebP-Vorschau
+ bis 100.000 Bytes mit höchstens ungefähr 640 px langer Kante; kleinere Dateien
+ werden nicht auf die Grenzen aufgebläht. Download plus Vorschau zählen zusammen
+ genau einmal, höchstens 5.100.000 Bytes. Kein drittes Originalobjekt. Die
  Download-Optionen zeigen die gemessene Größe beider gespeicherten Versionen
  in MB; für Altmedien ohne solche Messwerte wird keine Größe erfunden.
- Bei Bildern mit Transparenz und animierten GIFs kann die
-Darstellung anders aussehen; vor einem Verkauf unveränderter Originaldateien
-muss ausdrücklich entschieden werden, ob und wie Originale separat gespeichert
-werden. Solange Bezahlmedien gesperrt sind, akzeptiert der neue Uploadpfad keine
+ Historische komprimierte Creator-Fotos heißen weiterhin optimierte Downloads,
+ nicht Originale. Qualitätsvergleich, Herkunftskennzeichnung und Grenzen stehen in
+ `docs/image-download-quality.md`. Solange Bezahlmedien gesperrt sind, akzeptiert der neue Uploadpfad keine
 Premium-Events. Videos bleiben ohne Transcoding und haben ein kleines generisches
 WebP-Poster. ZIP wird nur im Browser entpackt: maximal 100 Bilder, 100 MiB
- entpackt, 32 MiB pro Bild; das Server-Uploadlimit gilt danach für **jede** Datei.
+ entpackt, 5.000.000 Bytes pro Creator-Foto bzw. 32 MiB pro offiziellem Bild;
+ das kontextbezogene Server-Uploadlimit gilt danach für **jede** Datei.
 
 Die Standardbudgets betragen 2 GiB/1000 Medien pro Event sowie 10 GiB/5000
 Medien pro Creator; 80 % markieren eine Warnschwelle. Über die positiven
 Integer-Umgebungsvariablen `MEDIA_IMAGE_MIB`, `MEDIA_VIDEO_MIB`,
 `MEDIA_EVENT_MIB`, `MEDIA_CREATOR_MIB`, `MEDIA_EVENT_COUNT` und
-`MEDIA_CREATOR_COUNT`, `MEDIA_IMAGE_MEGAPIXELS`, `MEDIA_DISPLAY_EDGE` und
-`MEDIA_THUMB_EDGE` lassen sich die Grenzen beim Start ändern. Der
+`MEDIA_CREATOR_COUNT`, `MEDIA_IMAGE_MEGAPIXELS` und
+`MEDIA_THUMB_EDGE` lassen sich die Eingangs-/Arbeitsgrenzen beim Start ändern.
+`MEDIA_DISPLAY_EDGE` wird nicht mehr verwendet. Download- und Vorschau-Bytegrenzen
+ sind fest; die Vorschaukante wird nicht über 640 px erhöht. Creator-Free-Quoten
+ bleiben 500 MB, fünf Galerien und 1.000 Fotos (bestehende Ausnahmen unverändert). Der
 Upload-Dialog bezieht die Eingangsgrenzen direkt vom Server.
 Reservierungen werden vor dem Objektschreiben in PostgreSQL
 unter Event-/Creator-Sperre geprüft. Gelöschte oder fehlgeschlagene Uploads

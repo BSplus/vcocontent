@@ -15,7 +15,6 @@ export const mediaPolicy = {
   eventCount: positiveInt("MEDIA_EVENT_COUNT", 1000),
   creatorCount: positiveInt("MEDIA_CREATOR_COUNT", 5000),
   maxPixels: positiveInt("MEDIA_IMAGE_MEGAPIXELS", 40) * 1_000_000,
-  displayEdge: Math.min(positiveInt("MEDIA_DISPLAY_EDGE", 2560), 2560),
   thumbnailEdge: positiveInt("MEDIA_THUMB_EDGE", 640),
   zipCount: 100,
   zipBytes: 100 * mib,

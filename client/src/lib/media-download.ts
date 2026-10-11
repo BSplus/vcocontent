@@ -1,4 +1,5 @@
 import type { MediaItem } from "@shared/schema";
+import { isCreatorOriginal } from "@shared/image-provenance";
 
 export type DownloadQuality = "high" | "low";
 
@@ -7,7 +8,9 @@ export function downloadOptionLabel(item: MediaItem, quality: DownloadQuality): 
   const size = typeof bytes === "number" && bytes > 0
     ? `${(bytes / 1_000_000).toFixed(2)} MB`
     : "size unavailable";
-  return `${quality === "high" ? "High-Res" : "Low-Res"} (${size})`;
+  const label = quality === "low" ? "Low-Res" : item.type === "video" ? "Video Download" :
+    isCreatorOriginal(item.url) ? "Original Download · uploaded file" : "High-Res Download · optimized";
+  return `${label} (${size})`;
 }
 
 export async function downloadMedia(item: MediaItem, quality: DownloadQuality): Promise<void> {

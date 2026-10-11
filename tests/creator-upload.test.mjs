@@ -263,9 +263,8 @@ test("verified creator photo uploads, video rejection, delivery and ownership", 
       assert.equal(original.status, 200);
       const delivered = Buffer.from(await original.arrayBuffer());
       if (type === "image") {
-        assert.equal(original.headers.get("content-type"), "image/webp");
-        assert.equal((await sharp(delivered).metadata()).format, "webp");
-        assert.ok(delivered.length <= 4 * 1024 * 1024);
+        assert.equal(original.headers.get("content-type"), mime);
+        assert.deepEqual(delivered, bytes, "Creator download must be byte-identical");
       } else {
         assert.equal(original.headers.get("content-type"), mime);
         assert.deepEqual(delivered, bytes);
@@ -340,7 +339,7 @@ test("verified creator photo uploads, video rejection, delivery and ownership", 
       ["corrupt image", Buffer.from("not a PNG"), "broken.png", "image/png", "image", 400],
       ["truncated image", image.subarray(0, 40), "truncated.png", "image/png", "image", 400],
       ["corrupt video", Buffer.from("not an MP4"), "broken.mp4", "video/mp4", "video", 413],
-      ["wrong image MIME", image, "wrong.jpg", "image/jpeg", "image", 502],
+      ["wrong image MIME", image, "wrong.jpg", "image/jpeg", "image", 400],
       ["wrong video MIME", video, "wrong.webm", "video/webm", "video", 413],
       ["wrong selected type", image, "wrong.png", "image/png", "video", 413],
       ["unsupported MIME", image, "wrong.txt", "text/plain", "image", 400],
@@ -383,8 +382,8 @@ test("verified creator photo uploads, video rejection, delivery and ownership", 
       assert.equal(original.status, 200);
       const delivered = Buffer.from(await original.arrayBuffer());
       if (media.type === "image") {
-        assert.equal(original.headers.get("content-type"), "image/webp");
-        assert.equal((await sharp(delivered).metadata()).format, "webp");
+        assert.equal(original.headers.get("content-type"), "image/png");
+        assert.equal((await sharp(delivered).metadata()).format, "png");
       } else {
         assert.equal(original.headers.get("content-type"), "video/mp4");
         assert.deepEqual(delivered, video);

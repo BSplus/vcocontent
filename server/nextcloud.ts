@@ -440,10 +440,9 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
        const fileUpload = { path: tmp, size: (await stat(tmp)).size, mimetype: file.mime } as Express.Multer.File;
       const keys = createMediaKeys(fileUpload.mimetype);
       reservation = randomUUID();
-       await storage.reserveMedia(reservation, eventId, null,
-         file.type === "image" ? 4 * 1048576 + 100 * 1024 : fileUpload.size + 100 * 1024,
-         keys.storageKey, keys.thumbnailKey);
-       const saved = await uploadMedia(fileUpload, file.type, keys);
+        const saved = await uploadMedia(fileUpload, file.type, keys, async (bytes, outputKeys) => {
+          await storage.reserveMedia(reservation!, eventId, null, bytes, outputKeys.storageKey, outputKeys.thumbnailKey);
+        });
       const item = await storage.finishMedia(reservation, insertMediaItemSchema.parse({
          eventId, type: saved.mediaType, url: saved.url, thumbnail: saved.thumbnail, storedBytes: saved.storedBytes,
           highBytes: saved.highBytes, lowBytes: saved.lowBytes,

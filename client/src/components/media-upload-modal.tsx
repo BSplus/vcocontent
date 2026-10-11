@@ -61,11 +61,11 @@ export default function MediaUploadModal({
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { data: limits } = useQuery<{ imageBytes: number; videoBytes: number; maxPixels: number; zipCount: number; zipBytes: number; community: boolean }>({
-    queryKey: ["/api/media/policy"],
+    queryKey: [`/api/media/policy?eventId=${eventId}`],
   });
   const imageLimit = limits?.imageBytes ?? IMAGE_LIMIT;
-  const videoLimit = limits?.videoBytes ?? (user?.isAdmin ? VIDEO_LIMIT : 0);
-  const community = limits?.community ?? !user?.isAdmin;
+  const videoLimit = limits?.videoBytes ?? 0;
+  const community = limits?.community ?? true;
   const [uploads, setUploads] = useState<FileUpload[]>([]);
   const previewUrls = useRef(new Set<string>());
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -161,10 +161,10 @@ export default function MediaUploadModal({
         // allocating a Blob. Also check the actual expanded size afterwards.
         const declared = (file as any)._data?.uncompressedSize;
         if (!Number.isSafeInteger(declared) || declared < 1 || declared > imageLimit || unpacked + declared > ZIP_LIMIT)
-          throw new Error(`ZIP exceeds the ${imageLimit / 1048576} MiB/image or 100 MiB expanded limit`);
+          throw new Error(`ZIP exceeds the ${imageLimit.toLocaleString("en-US")} bytes/image or 100 MiB expanded limit`);
         unpacked += declared;
         const blob = await file.async('blob');
-        if (blob.size > imageLimit || blob.size !== declared) throw new Error(`ZIP image exceeds ${imageLimit / 1048576} MiB`);
+        if (blob.size > imageLimit || blob.size !== declared) throw new Error(`ZIP image exceeds ${imageLimit.toLocaleString("en-US")} bytes`);
         const imageFile = new File([blob], filename, {
           type: ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
             ext === 'png' ? 'image/png' :
@@ -236,7 +236,7 @@ export default function MediaUploadModal({
 
       if (file.size > maxSize) {
         const sizeInMB = (file.size / (1024 * 1024)).toFixed(1);
-        const limit = `${maxSize / 1048576} MiB`;
+        const limit = mediaType === "image" && community ? "5 MB (5,000,000 bytes)" : `${maxSize / 1048576} MiB`;
         toast({
           title: "Error",
           description: `File ${file.name} is too large. Maximum size is ${limit}. File size: ${sizeInMB}MB`,
@@ -499,7 +499,7 @@ export default function MediaUploadModal({
                   <Upload className="h-8 w-8" />
                   <p>Click or drag files here to upload</p>
                   <p className="text-sm text-muted-foreground">
-                     {mediaType === "video" ? `MP4, MOV or WebM · ${videoLimit / 1048576} MiB` : `JPG, PNG, GIF, WebP or ZIP · ${imageLimit / 1048576} MiB/image; ZIP 100 images / 100 MiB`}
+                     {mediaType === "video" ? `MP4, MOV or WebM · ${videoLimit / 1048576} MiB` : `JPG, PNG, GIF, WebP or ZIP · ${community ? "5 MB (5,000,000 bytes)" : `${imageLimit / 1048576} MiB`}/image; ZIP 100 images / 100 MiB`}
                   </p>
                 </div>
                </button>
@@ -615,6 +615,5 @@ export default function MediaUploadModal({
 
 const ZIP_LIMIT = 100 * 1024 * 1024;
 
-const VIDEO_LIMIT = 50 * 1024 * 1024;
 
 const ZIP_COUNT = 100;

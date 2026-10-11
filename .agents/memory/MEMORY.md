@@ -42,3 +42,4 @@
 - [Event image boundaries](event-image-boundaries.md) — metadata limits stay separate; checked draft photos may be selected without publishing; the built-in fallback is trusted.
 - [Startup paint verification](startup-paint-verification.md) — computed visibility can pass while production CSS blocks painting; check actual pixels with delayed styles.
 - [Touch-emulated inputs](browser-input-fixtures.md) — desktop selection shortcuts can append text in mobile checks; verify edited values before diagnosing saved-metadata failures.
+- [Local Neon test transport](local-neon-test-transport.md) — disable password pipelining for local trust-authenticated PostgreSQL; keep test transport separate from app runtime.

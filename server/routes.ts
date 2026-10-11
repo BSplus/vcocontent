@@ -17,7 +17,7 @@ import { mediaUpload, uploadMedia, createMediaKeys, readMediaStream, getMediaCon
 import { analysisImageInput, recognitionImageInput } from "./image-analysis";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { randomUUID } from "crypto";
-import { readFile } from "fs/promises";
+import { InvalidPhotoError } from "./image-downloads";
 import sharp from "sharp";
 import { z } from "zod";
 import { discover, importStatus, startImport, startImportWorker, resumeImport, updateGallery, NextcloudError } from "./nextcloud";
@@ -386,16 +386,25 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
 
   // Use JSON parser for all other routes
   app.use(express.json());
-  app.get("/api/media/policy", (req, res) => res.json({
-    community:!req.user?.isAdmin,
-    imageBytes: req.user?.isAdmin ? mediaPolicy.imageBytes : communityLimits.imageBytes,
-    videoBytes: req.user?.isAdmin ? mediaPolicy.videoBytes : 0,
-    maxPixels: mediaPolicy.maxPixels,
-    displayEdge: mediaPolicy.displayEdge,
-    thumbnailEdge: mediaPolicy.thumbnailEdge,
-    zipCount: mediaPolicy.zipCount,
-    zipBytes: mediaPolicy.zipBytes,
-  }));
+  app.get("/api/media/policy", async (req, res) => {
+    try {
+      const id = Number(req.query.eventId);
+      const event = Number.isSafeInteger(id) && id > 0 ? await storage.getEvent(id) : undefined;
+      if (req.query.eventId !== undefined && !event) return res.status(404).json({error:"Event not found"});
+      const community = event ? !!event.creatorId : !req.user?.isAdmin;
+      res.json({
+        community,
+        imageBytes: community ? communityLimits.imageBytes : mediaPolicy.imageBytes,
+        videoBytes: community ? 0 : req.user?.isAdmin ? mediaPolicy.videoBytes : 0,
+        maxPixels: mediaPolicy.maxPixels,
+        thumbnailEdge: Math.min(mediaPolicy.thumbnailEdge, 640),
+        zipCount: mediaPolicy.zipCount,
+        zipBytes: mediaPolicy.zipBytes,
+      });
+    } catch {
+      res.status(502).json({error:"Upload policy could not be loaded"});
+    }
+  });
 
   const nextcloudRequest = z.object({
     sources: z.array(z.object({ link: z.string().url().max(2048), password: z.string().max(256).optional() })).min(1).max(10),
@@ -597,7 +606,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
         if (req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
         const event = record.eventId ? await storage.getEvent(record.eventId) : undefined;
         if (!req.isAuthenticated() || record.isPremium || event?.isPremium)
-          return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Original not available" });
+          return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Download file not available" });
       }
       const dataUrl = variant === "file" ? record.url : record.thumbnail;
       const match = /^data:(image\/(?:jpeg|png|gif|webp)|video\/(?:mp4|webm|quicktime));base64,([A-Za-z0-9+/=\r\n]+)$/.exec(dataUrl);
@@ -635,7 +644,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const isOriginal = record.url === `/api/media/files/${key}`;
       if (isOriginal && req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
       if (isOriginal && (!req.isAuthenticated() || record.isPremium || event?.isPremium)) {
-        return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Original not available" });
+        return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Download file not available" });
       }
       res.setHeader("Content-Type", getMediaContentType(key));
       res.setHeader("Cache-Control", "private, no-store");
@@ -672,26 +681,22 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
             tags: z.string().max(1500).optional(),
             autoTag: z.enum(["true", "false"]).optional(),
           }).parse(req.body);
-          const community = !!event.creatorId && !req.user!.isAdmin;
+          const community = !!event.creatorId;
           if (community) {
             if (metadata.type!=="image" || !req.file.mimetype.startsWith("image/")) throw new MediaLimitError("Video uploads are not available for Community Creators.");
             if (req.file.size>communityLimits.imageBytes) throw new MediaLimitError("Images must be no larger than 5 MB.");
-            const info = await sharp(req.file.path,{animated:true,limitInputPixels:mediaPolicy.maxPixels}).metadata().catch(()=>undefined);
-            if (!info) return res.status(400).json({error:"Choose a valid, readable photo."});
-            const source=await readFile(req.file.path);
-            if ((info.pages || 1)>1 || (info.format==="png" && source.includes(Buffer.from("acTL"))) ||
-              (info.format==="webp" && source.includes(Buffer.from("ANIM"))))
-              throw new MediaLimitError("Animated or multi-frame images are not available for Community Creators.");
           }
           if (!req.user!.isAdmin && !await takeBetaRate(`upload:${req.user!.id}`,120,3600000))
             throw new MediaLimitError("Too many uploads. Please try again later.");
-          if (req.file.size > (metadata.type === "image" ? mediaPolicy.imageBytes : mediaPolicy.videoBytes))
-            throw new MediaLimitError(`${metadata.type === "image" ? "Image" : "Video"} exceeds the ${metadata.type === "image" ? mediaPolicy.imageBytes / 1048576 : mediaPolicy.videoBytes / 1048576} MiB limit`);
-          const keys = createMediaKeys(req.file.mimetype);
+          const inputLimit = metadata.type === "image" ? community ? communityLimits.imageBytes : mediaPolicy.imageBytes : mediaPolicy.videoBytes;
+          if (req.file.size > inputLimit)
+            throw new MediaLimitError(`${metadata.type === "image" ? "Image" : "Video"} exceeds the ${inputLimit.toLocaleString("en-US")}-byte limit`);
+          const strategy = community ? "creator-original" : "official";
+          const keys = createMediaKeys(req.file.mimetype, strategy);
           reservationId = randomUUID();
-          const saved = await uploadMedia(req.file, metadata.type, keys,async bytes=>{
-            await storage.reserveMedia(reservationId!,eventId,event.creatorId,bytes,keys.storageKey,keys.thumbnailKey,req.user!.isAdmin);
-          });
+          const saved = await uploadMedia(req.file, metadata.type, keys,async (bytes, outputKeys)=>{
+            await storage.reserveMedia(reservationId!,eventId,event.creatorId,bytes,outputKeys.storageKey,outputKeys.thumbnailKey,req.user!.isAdmin);
+          }, strategy);
           const item = await storage.finishMedia(reservationId, insertMediaItemSchema.parse({
             eventId,
             type: saved.mediaType,
@@ -720,8 +725,8 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
         } catch (error) {
           console.error("Media upload failed");
           if (reservationId) await storage.abandonMedia(reservationId).catch(cleanupError => console.error("Upload cleanup pending:", cleanupError));
-          res.status(error instanceof MediaBusyError ? 503 : error instanceof MediaLimitError ? 413 : error instanceof z.ZodError ? 400 : 502).json({
-            error: error instanceof MediaBusyError || error instanceof MediaLimitError ? error.message : error instanceof z.ZodError ? "Invalid upload details" : "Could not store media",
+          res.status(error instanceof MediaBusyError ? 503 : error instanceof MediaLimitError ? 413 : error instanceof z.ZodError || error instanceof InvalidPhotoError ? 400 : 502).json({
+            error: error instanceof MediaBusyError || error instanceof MediaLimitError || error instanceof InvalidPhotoError ? error.message : error instanceof z.ZodError ? "Invalid upload details" : "Could not store media",
           });
         } finally {
           const { unlink } = await import("fs/promises");

@@ -128,6 +128,13 @@ Preferred communication style: Simple, everyday language.
 **Media Handling:**
 - Disk-backed multipart uploads to private App Storage, with shared bounded processing and the limits in `server/media-policy.ts`
 - Server-side image conversion and thumbnails; video files use safe poster previews
+- Photo download rules and the offline comparison: `docs/image-download-quality.md`.
+  Creator originals use server-issued UUIDv8 media keys, never relabel historical v4
+  keys; image policy follows the authorized gallery, not the uploader's admin role.
+  Exactly two photo objects, fixed decimal budgets 5,000,000 + 100,000 bytes.
+  Run the isolated checks with `node scripts/test-image-downloads.mjs` (local PostgreSQL
+  tools required); this uses a disposable database and local mocked storage/providers,
+  not the connected database. No schema migration is needed for this image change.
 - IPTC metadata extraction for professional photo metadata
 - Durable AI tag jobs with shared provider concurrency, bounded retries and manual-tag/caption preservation
 - Uploaded videos automatically use bounded private-original FFmpeg sampling and timestamped recognition batches; image auto-analysis remains tag-only. Original videos and the existing generic posters are unchanged.

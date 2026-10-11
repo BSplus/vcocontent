@@ -468,7 +468,7 @@ test("mixed import validates content and size, serves video posters safely, and 
       assert.equal(item.type, /\.(mp4|mov|webm)$/i.test(item.caption) ? "video" : "image");
       assert.match(item.thumbnail, /^\/api\/media\/files\/thumb-.*\.webp$/);
       assert.match(item.url, new RegExp(`^/api/media/files/media-.*\\.${item.type === "video"
-        ? item.caption.split(".").pop() : "webp"}$`));
+        ? item.caption.split(".").pop() : "(?:jpg|png|webp|gif)"}$`));
     }
 
     const app = express();
@@ -634,7 +634,7 @@ for (const configured of [false, true]) {
       assert.equal(gets, 1);
       const media = await storage.getMediaItems(eventId);
       assert.equal(media.length, 1);
-      assert.match(media[0].url, /^\/api\/media\/files\/media-.*\.webp$/);
+      assert.match(media[0].url, /^\/api\/media\/files\/media-.*\.(jpg|png|webp|gif)$/);
       assert.ok(!JSON.stringify(result).includes("synthetic-password"));
     } finally {
       await stopImportWorker();

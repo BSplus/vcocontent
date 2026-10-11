@@ -450,7 +450,8 @@ class DatabaseStorage implements IStorage {
       // Lock the creator first, then the event. Serializes budgets across events
       // and across app instances; the reservation remains until commit/failure.
       if (creatorId) await tx.execute(sql`select id from users where id = ${creatorId} for update`);
-      if (creatorId && !adminUpload) await lockedCreatorBudget(tx,creatorId,bytes,1);
+       // The target owner's Free quota applies even when an admin uploads.
+       if (creatorId) await lockedCreatorBudget(tx,creatorId,bytes,1);
       const event = await tx.execute(sql`select id,creator_id from events where id = ${eventId} for update`);
       if (!event.rows.length) throw new Error("Event no longer exists");
       if ((event.rows[0].creator_id ?? null)!==creatorId) throw new Error("Event owner changed before upload");
@@ -528,9 +529,13 @@ class DatabaseStorage implements IStorage {
     await db.transaction(async tx => {
       const [reservation] = await tx.select().from(mediaReservations).where(eq(mediaReservations.id, id));
       if (!reservation) return;
+      const photo = /\.(jpg|png|gif|webp)$/.test(reservation.storageKey);
+      // Hold the complete reserved total exactly once until failed objects are
+      // removed. A partial write must not become unmeasured/free quota usage.
       for (const key of [reservation.storageKey, reservation.thumbnailKey])
         await tx.insert(mediaCleanup).values({ key,creatorId:reservation.creatorId,
-          photoToken:reservation.storageKey.endsWith(".webp")?`reservation:${reservation.id}`:null }).onConflictDoNothing();
+          storedBytes:key===reservation.storageKey ? reservation.reservedBytes : 0,
+          photoToken:photo?`reservation:${reservation.id}`:null }).onConflictDoNothing();
       await tx.delete(mediaReservations).where(eq(mediaReservations.id, id));
     });
   }

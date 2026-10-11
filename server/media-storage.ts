@@ -9,6 +9,7 @@ import multer, { type Multer } from "multer";
 import sharp from "sharp";
 import { Client } from "@replit/object-storage";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
+import { preparePhoto, DOWNLOAD_BYTES, type ImageStrategy } from "./image-downloads";
 
 const TEMP_UPLOAD_DIR = path.join(tmpdir(), "vco-media-uploads");
 
@@ -52,7 +53,7 @@ export const mediaUpload: Multer = multer({
     filename: (_req, _file, callback) => callback(null, randomUUID()),
   }),
   limits: {
-    fileSize: Math.max(mediaPolicy.videoBytes, mediaPolicy.imageBytes),
+    fileSize: Math.max(mediaPolicy.videoBytes, mediaPolicy.imageBytes, DOWNLOAD_BYTES),
     files: 1,
     fields: 10,
     parts: 12,
@@ -109,26 +110,6 @@ async function validateFileSignature(file: Express.Multer.File, type: MediaType)
     throw new Error(`The uploaded file does not match the selected ${type} type`);
   }
 
-  if (type === "image") {
-    const metadata = await sharp(file.path, {
-      limitInputPixels: mediaPolicy.maxPixels,
-      failOn: "error",
-    }).metadata();
-    if (!metadata.width || !metadata.height || !metadata.format) {
-      throw new Error("The uploaded image is invalid or unsupported");
-    }
-    const validFormats = new Set(["jpeg", "png", "gif", "webp"]);
-    if (!validFormats.has(metadata.format)) {
-      throw new Error("The uploaded file is not a supported image");
-    }
-    if (metadata.width * metadata.height > mediaPolicy.maxPixels) {
-      throw new MediaLimitError(`Image exceeds ${mediaPolicy.maxPixels / 1_000_000} megapixels`);
-    }
-    const mimeFormat = file.mimetype === "image/jpeg" ? "jpeg" : file.mimetype.split("/")[1];
-    if (mimeFormat !== metadata.format) throw new Error("Image content does not match its file type");
-    return;
-  }
-
   // QuickTime and MP4 are ISO base media containers identified by `ftyp`;
   // WebM starts with the EBML signature. Do not trust a client-supplied MIME.
   const header = Buffer.alloc(12);
@@ -167,16 +148,18 @@ export async function uploadMedia(
   file: Express.Multer.File,
   type?: MediaType,
   keys?: { storageKey: string; thumbnailKey: string },
-  beforePersist?: (bytes: number) => Promise<void>,
+  beforePersist?: (bytes: number, keys: { storageKey: string; thumbnailKey: string }) => Promise<void>,
+  imageStrategy: ImageStrategy = "official",
 ): Promise<StoredMedia> {
-  return withMediaWorkBudget(() => performUploadMedia(file, type, keys,beforePersist));
+  return withMediaWorkBudget(() => performUploadMedia(file, type, keys,beforePersist,imageStrategy));
 }
 
 async function performUploadMedia(
   file: Express.Multer.File,
   type?: MediaType,
   keys?: { storageKey: string; thumbnailKey: string },
-  beforePersist?: (bytes: number) => Promise<void>,
+  beforePersist?: (bytes: number, keys: { storageKey: string; thumbnailKey: string }) => Promise<void>,
+  imageStrategy: ImageStrategy = "official",
 ): Promise<StoredMedia> {
   const tempPaths = new Set<string>([file.path]);
   let generatedKeys: { storageKey: string; thumbnailKey: string } | undefined;
@@ -186,49 +169,40 @@ async function performUploadMedia(
       throw new Error("The uploaded file does not match the selected media type");
     }
     const mediaType = type ?? actualType;
-    const maxBytes = mediaType === "image" ? mediaPolicy.imageBytes : mediaPolicy.videoBytes;
+    const maxBytes = mediaType === "image"
+      ? imageStrategy === "creator-original" ? DOWNLOAD_BYTES : mediaPolicy.imageBytes
+      : mediaPolicy.videoBytes;
     if (!file.size || file.size > maxBytes) {
-      throw new MediaLimitError(`File must be between 1 byte and ${Math.floor(maxBytes / (1024 * 1024))} MiB`);
+      throw new MediaLimitError(`File must be between 1 byte and ${maxBytes.toLocaleString("en-US")} bytes`);
     }
-    await validateFileSignature(file, mediaType);
+    if (mediaType === "video") await validateFileSignature(file, mediaType);
 
-    const { storageKey, thumbnailKey } = keys ?? createMediaKeys(file.mimetype);
+    let { storageKey, thumbnailKey } = keys ?? createMediaKeys(file.mimetype, imageStrategy);
     if (!keys) generatedKeys = { storageKey, thumbnailKey };
     let storedBytes = file.size;
     let thumbnailBytes = 0;
+    let outputMime = file.mimetype;
 
     if (mediaType === "image") {
-      const displayPath = path.join(TEMP_UPLOAD_DIR, `${randomUUID()}.webp`);
+      const prepared = await preparePhoto(file.path, file.mimetype, file.size, imageStrategy);
+      outputMime = prepared.mimeType;
+      const extension = outputMime === "image/jpeg" ? "jpg" : outputMime.split("/")[1];
+      storageKey = storageKey.replace(/\.[^.]+$/, `.${extension}`);
+      if (!keys) generatedKeys = { storageKey, thumbnailKey };
+      const displayPath = path.join(TEMP_UPLOAD_DIR, `${randomUUID()}.${extension}`);
       tempPaths.add(displayPath);
-      // Never persist the input as a second "original": paid originals require
-      // an explicit product decision before this free-only upload path changes.
-      let display = Buffer.alloc(0);
-      for (const quality of [86, 76, 64, 52, 40]) {
-        display = await sharp(file.path, { limitInputPixels: mediaPolicy.maxPixels, failOn: "error" })
-          .rotate().resize({ width: mediaPolicy.displayEdge, height: mediaPolicy.displayEdge, fit: "inside", withoutEnlargement: true })
-          .webp({ quality, effort: 4 }).toBuffer();
-        if (display.length <= 4 * 1024 * 1024) break;
-      }
-      if (!display.length || display.length > 4 * 1024 * 1024) throw new MediaLimitError("Image cannot fit the 4 MiB display budget");
       const { writeFile } = await import("fs/promises");
-      await writeFile(displayPath, display);
-      storedBytes = display.length;
+      await writeFile(displayPath, prepared.download);
+      storedBytes = prepared.download.length;
       const thumbnailPath = path.join(TEMP_UPLOAD_DIR, `${randomUUID()}.webp`);
       tempPaths.add(thumbnailPath);
-      let thumb = Buffer.alloc(0);
-      for (const quality of [76, 62, 48, 36, 24]) {
-        thumb = await sharp(display).resize({ width: mediaPolicy.thumbnailEdge, height: mediaPolicy.thumbnailEdge, fit: "inside", withoutEnlargement: true })
-          .webp({ quality, effort: 5 }).toBuffer();
-        if (thumb.length < 100 * 1024) break;
-      }
-      if (!thumb.length || thumb.length >= 100 * 1024) throw new MediaLimitError("Thumbnail cannot fit the 100 KiB budget");
-      await writeFile(thumbnailPath, thumb);
-      thumbnailBytes = thumb.length;
-      if (beforePersist) await beforePersist(storedBytes+thumbnailBytes);
+      await writeFile(thumbnailPath, prepared.preview);
+      thumbnailBytes = prepared.preview.length;
+      if (beforePersist) await beforePersist(storedBytes+thumbnailBytes, { storageKey, thumbnailKey });
       await uploadFromFilename(storageKey, displayPath);
       await uploadFromFilename(thumbnailKey, thumbnailPath);
     } else {
-      if (beforePersist) await beforePersist(file.size+100*1024);
+      if (beforePersist) await beforePersist(file.size+100*1024, { storageKey, thumbnailKey });
       await uploadFromFilename(storageKey, file.path);
       // There is no video-frame extractor in this app yet. Save a small,
       // generic poster rather than falsely presenting an analyzed frame.
@@ -251,7 +225,7 @@ async function performUploadMedia(
       storageKey,
       thumbnailKey,
       mediaType,
-      mimeType: mediaType === "image" ? "image/webp" : file.mimetype,
+      mimeType: outputMime,
       size: file.size,
       storedBytes: storedBytes + thumbnailBytes,
       highBytes: storedBytes,
@@ -275,13 +249,15 @@ async function performUploadMedia(
   }
 }
 
-export function createMediaKeys(mime: string): { storageKey: string; thumbnailKey: string } {
+export function createMediaKeys(mime: string, strategy: ImageStrategy = "official"): { storageKey: string; thumbnailKey: string } {
   const extension: Record<string, string> = {
-    "image/jpeg": "webp", "image/png": "webp", "image/gif": "webp", "image/webp": "webp",
+    "image/jpeg": "jpg", "image/png": strategy === "creator-original" ? "png" : "webp", "image/gif": strategy === "creator-original" ? "gif" : "webp", "image/webp": "webp",
     "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm",
   };
   if (!extension[mime]) throw new Error("Unsupported media type");
-  const id = randomUUID();
+  const uuid = randomUUID();
+  const id = strategy === "creator-original" && mime.startsWith("image/")
+    ? uuid.slice(0,14) + "8" + uuid.slice(15) : uuid;
   return { storageKey: `media-${id}.${extension[mime]}`, thumbnailKey: `thumb-${id}.webp` };
 }
 

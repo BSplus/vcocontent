@@ -76,7 +76,7 @@ export async function reviewMediaSafety(id: number, creatorId: number) {
   }
   const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id,id));
   if (!item) return;
-  const key = /^\/api\/media\/files\/(media-[0-9a-f-]{36}\.webp)$/.exec(item.url)?.[1];
+  const key = /^\/api\/media\/files\/(media-[0-9a-f-]{36}\.(?:jpg|png|gif|webp))$/.exec(item.url)?.[1];
   let result = {status:"blocked",reason:"Public community files must be supported static photos. This source stays private."};
   if (item.type==="image" && (key || /^data:image\/(png|jpeg|webp);base64,/.test(item.url))) {
     try {
@@ -93,7 +93,16 @@ export async function reviewMediaSafety(id: number, creatorId: number) {
             chunks.push(bytes);
           }
         } finally { clearTimeout(deadline);stream.destroy(); }
-        image=Buffer.concat(chunks);
+        const source=Buffer.concat(chunks);
+        const info=await sharp(source,{animated:true,limitInputPixels:40_000_000}).metadata();
+        if (!["png","jpeg","gif","webp"].includes(info.format||"") || (info.pages||1)>1 ||
+          (info.format==="png" && source.includes(Buffer.from("acTL"))) ||
+          (info.format==="webp" && source.includes(Buffer.from("ANIM"))))
+          throw new Error("Safety source must be a static photo");
+        // Originals can be JPEG/PNG/GIF and much larger in pixels than the
+        // former WebP downloads. Bound provider input, label its real encoding.
+        image=await sharp(source,{limitInputPixels:40_000_000,failOn:"error"}).rotate()
+          .resize(1600,1600,{fit:"inside",withoutEnlargement:true}).webp({quality:82}).toBuffer();
       } else {
         const source=Buffer.from(item.url.split(",")[1],"base64");
         if (source.length>32*1048576) throw new Error("Historical image exceeds bounded review budget");
