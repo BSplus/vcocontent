@@ -30,6 +30,7 @@
 - [Creator launch preference](creator-launch-intent.md) — prefer open, free self-service photo galleries with limits; paid expansion later, not yet implemented.
 - [Public creator profiles](public-creator-profiles.md) — preserve profile links and login identity; optional contact is explicit, and each new image needs independent approval.
 - [Database publishing](database-publishing.md) — verify the publishing diff; the Neon driver or a Neon secret alone does not imply an unmanaged production database.
+- [Öffentliche Ziel-Domain](public-domain.md) — Betreiber plant https://content.vco-esports.com; Domainzuordnung vor Konfiguration und Veröffentlichung verifizieren.
 - [Beta safety transition](beta-safety-transition.md) — preserve unreviewed history; new files and public edits must pass independent safety checks, even in existing public galleries.
 - [Drizzle array interpolation](drizzle-array-interpolation.md) — raw SQL array interpolation can expand into lists; bind PostgreSQL arrays explicitly.
 - [FFmpeg failure codes](ffmpeg-failure-codes.md) — nonzero exit statuses vary across versions; preserve actual codes rather than assuming exit 1.
