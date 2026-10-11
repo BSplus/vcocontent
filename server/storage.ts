@@ -338,7 +338,7 @@ class DatabaseStorage implements IStorage {
     return db.select(mediaListColumns).from(mediaItems)
       .leftJoin(events, eq(mediaItems.eventId, events.id))
       .where(and(
-        publicEventPredicate(), publicMediaPredicate(),
+        publicEventPredicate(), publicMediaPredicate(), eq(mediaItems.isPremium, false),
         or(eq(events.isPremium, false), sql`${events.id} is null`),
         ...(type ? [eq(mediaItems.type, type)] : []),
         ...terms.map(term=>or(

@@ -37,7 +37,7 @@ Preferred communication style: Simple, everyday language.
 - In admin selection mode, thumbnail labels say Select/Deselect; the explicit Preview button still opens a preview.
 - Creator media editing stays visible without hover and returns keyboard focus to its opener.
 - Focused browser checks: `node --test tests/ui-click-targets.test.mjs`. These use isolated API fixtures without database writes; they verify UI role boundaries, not authenticated backend ownership.
-- Client-side search and filtering using Fuse.js for fuzzy matching
+- Public media search uses PostgreSQL results before pagination, with debounced input and URL-driven filters/pages; never re-filter returned pages in the browser.
 - Error boundary implementation for graceful error handling
 - Font system using Orbitron for headings, Rajdhani for interactive elements, and Space Grotesk for body text
 

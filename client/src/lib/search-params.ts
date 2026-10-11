@@ -8,6 +8,12 @@ export interface SearchFilters {
   fields: SearchField[];
 }
 
+export function parseSearchPage(search: string): number {
+  const value = new URLSearchParams(search).get('page');
+  const page = Number(value);
+  return value && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(page) ? page : 1;
+}
+
 export function parseSearchParams(search: string): { query: string; filters: SearchFilters } {
   const params = new URLSearchParams(search);
   const type = params.get('type');

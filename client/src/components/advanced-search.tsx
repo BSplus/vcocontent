@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useLocation } from 'wouter';
+import React from 'react';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useSearch } from '@/hooks/use-search';
-import { MediaItem } from '@shared/schema';
 import { Badge } from '@/components/ui/badge';
 import { 
   Sheet, 
@@ -15,11 +13,11 @@ import {
   SheetTrigger 
 } from '@/components/ui/sheet';
 import { Checkbox } from '@/components/ui/checkbox';
-import { SearchField, MediaTypeFilter, serializeSearchParams } from '@/lib/search-params';
+import { SearchField, MediaTypeFilter, SearchFilters } from '@/lib/search-params';
 
 interface AdvancedSearchProps {
-  items: MediaItem[];
-  onSearchResults: (results: MediaItem[], query: string) => void;
+  onApply: (query: string, filters: SearchFilters, replace: boolean) => void;
+  onPendingChange: (pending: boolean) => void;
   className?: string;
   initialQuery?: string;
   initialType?: MediaTypeFilter;
@@ -27,82 +25,24 @@ interface AdvancedSearchProps {
 }
 
 export function AdvancedSearch({ 
-  items, 
-  onSearchResults, 
+  onApply,
+  onPendingChange,
   className,
   initialQuery = '',
   initialType = 'all',
   initialFields = ['caption', 'photographer', 'tags', 'identification']
 }: AdvancedSearchProps) {
-  const [, setLocation] = useLocation();
-  const [filters, setFilters] = useState({
-    includeCaption: initialFields.includes('caption'),
-    includePhotographer: initialFields.includes('photographer'),
-    includeTags: initialFields.includes('tags'),
-    includeIdentification: initialFields.includes('identification'),
-    mediaType: initialType,
-  });
-
-  const searchKeys = useMemo(() => {
-    const keys = [];
-    if (filters.includeCaption) {
-      keys.push({ name: 'caption', weight: 2 });
-    }
-    if (filters.includePhotographer) {
-      keys.push({ name: 'photographer', weight: 1 });
-    }
-    if (filters.includeTags) {
-      keys.push({ 
-        name: 'tags', 
-        weight: 1.5,
-        getFn: (item: MediaItem) => item.tags?.join(' ') || '' 
-      });
-    }
-    if (filters.includeIdentification) {
-      keys.push({
-        name: 'identification',
-        weight: 2,
-        getFn: (item: MediaItem) => {
-          const entries = (item as MediaItem & { identification?: { number?: string; team?: string; drivers?: string; vehicle?: string; manufacturer?: string; racingClass?: string; discipline?: string }[] }).identification;
-          return entries?.flatMap(entry => [entry.number, entry.team, entry.drivers, entry.vehicle, entry.manufacturer, entry.racingClass, entry.discipline]).filter(Boolean).join(' ') || '';
-        },
-      });
-    }
-    return keys;
-  }, [filters.includeCaption, filters.includePhotographer, filters.includeTags, filters.includeIdentification]);
-
-  const searchOptions = useMemo(() => ({
-    keys: searchKeys,
-    threshold: 0.3,
-    distance: 100,
-  }), [searchKeys]);
-
-  const { searchQuery, setSearchQuery, results } = useSearch(items, searchOptions, initialQuery);
-
-  // Update results whenever search parameters change
-  useEffect(() => {
-    let filteredResults = searchQuery.trim() ? [...results] : [];
-
-    if (filters.mediaType !== 'all') {
-      filteredResults = filteredResults.filter(item => 
-        item.type === filters.mediaType
-      );
-    }
-
-    onSearchResults(filteredResults, searchQuery);
-  }, [results, filters.mediaType, onSearchResults, searchQuery]);
+  const { searchQuery, setSearchQuery, filters, setFilters, submit } = useSearch(
+    initialQuery, { mediaType: initialType, fields: initialFields }, onApply, onPendingChange,
+  );
+  const toggleField = (field: SearchField, checked: boolean) => setFilters(prev => ({
+    ...prev,
+    fields: checked ? [...prev.fields, field] : prev.fields.filter(value => value !== field),
+  }));
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const fields: SearchField[] = [];
-    if (filters.includeCaption) fields.push('caption');
-    if (filters.includePhotographer) fields.push('photographer');
-    if (filters.includeTags) fields.push('tags');
-    if (filters.includeIdentification) fields.push('identification');
-    const searchParams = serializeSearchParams(searchQuery, { mediaType: filters.mediaType, fields });
-
-    // Navigate to search results page with parameters
-    setLocation(searchParams ? `/search?${searchParams}` : '/search');
+    submit();
   };
 
   return (
@@ -125,7 +65,7 @@ export function AdvancedSearch({
 
         <Sheet>
           <SheetTrigger asChild>
-            <Button variant="outline" className="min-h-11" aria-label="Open search filters">
+            <Button type="button" variant="outline" className="min-h-11" aria-label="Open search filters">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
               </svg>
@@ -146,9 +86,9 @@ export function AdvancedSearch({
                 <div className="flex items-center space-x-2">
                   <Checkbox 
                     id="caption" 
-                    checked={filters.includeCaption}
+                    checked={filters.fields.includes('caption')}
                     onCheckedChange={(checked) => 
-                      setFilters(prev => ({ ...prev, includeCaption: checked === true }))
+                      toggleField('caption', checked === true)
                     }
                   />
                   <label htmlFor="caption" className="text-sm font-medium">
@@ -159,9 +99,9 @@ export function AdvancedSearch({
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="identification"
-                    checked={filters.includeIdentification}
+                    checked={filters.fields.includes('identification')}
                     onCheckedChange={(checked) =>
-                      setFilters(prev => ({ ...prev, includeIdentification: checked === true }))
+                      toggleField('identification', checked === true)
                     }
                   />
                   <label htmlFor="identification" className="text-sm font-medium">
@@ -172,9 +112,9 @@ export function AdvancedSearch({
                 <div className="flex items-center space-x-2">
                   <Checkbox 
                     id="photographer" 
-                    checked={filters.includePhotographer}
+                    checked={filters.fields.includes('photographer')}
                     onCheckedChange={(checked) => 
-                      setFilters(prev => ({ ...prev, includePhotographer: checked === true }))
+                      toggleField('photographer', checked === true)
                     }
                   />
                   <label htmlFor="photographer" className="text-sm font-medium">
@@ -185,9 +125,9 @@ export function AdvancedSearch({
                 <div className="flex items-center space-x-2">
                   <Checkbox 
                     id="tags" 
-                    checked={filters.includeTags}
+                    checked={filters.fields.includes('tags')}
                     onCheckedChange={(checked) => 
-                      setFilters(prev => ({ ...prev, includeTags: checked === true }))
+                      toggleField('tags', checked === true)
                     }
                   />
                   <label htmlFor="tags" className="text-sm font-medium">
@@ -221,13 +161,6 @@ export function AdvancedSearch({
               </div>
             </div>
 
-            {searchQuery && (
-              <div className="mt-4">
-                <p className="text-sm text-muted-foreground">
-                  {results.length} results found for "{searchQuery}"
-                </p>
-              </div>
-            )}
           </SheetContent>
         </Sheet>
 

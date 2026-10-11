@@ -1,99 +1,37 @@
-import { useState, useEffect, useCallback } from 'react';
-import Fuse from 'fuse.js';
-import { MediaItem } from '@shared/schema';
+import { useEffect, useState, SetStateAction } from 'react';
+import { parseSearchParams, serializeSearchParams, SearchFilters } from '@/lib/search-params';
 
-export type SearchableItem = MediaItem;
-
-interface UseSearchOptions<T> {
-  includeScore?: boolean;
-  shouldSort?: boolean;
-  threshold?: number;
-  location?: number;
-  distance?: number;
-  minMatchCharLength?: number;
-  keys: {
-    name: string;
-    weight: number;
-    getFn?: (item: T) => string;
-  }[];
-}
-
-const DEFAULT_OPTIONS = {
-  includeScore: true,
-  shouldSort: true,
-  threshold: 0.3,
-  distance: 100,
-  minMatchCharLength: 2,
-};
-
-export function useSearch<T extends SearchableItem>(
-  items: T[],
-  options: UseSearchOptions<T>,
-  initialQuery = ''
+/** Draft input is never used to filter a loaded page. Apply it to the server search. */
+export function useSearch(
+  initialQuery: string,
+  initialFilters: SearchFilters,
+  onApply: (query: string, filters: SearchFilters, replace: boolean) => void,
+  onPendingChange: (pending: boolean) => void,
 ) {
-  const [searchQuery, setSearchQueryState] = useState(initialQuery);
-  const [results, setResults] = useState<T[]>([]);
-  const [fuse, setFuse] = useState<Fuse<T> | null>(null);
+  const applied = serializeSearchParams(initialQuery, initialFilters);
+  const [draft, setDraft] = useState(() => parseSearchParams(applied));
+  const conditions = serializeSearchParams(draft.query, draft.filters);
 
-  // Initialize Fuse instance with optimized settings
+  // Restore input and filters on direct navigation, including Back/Forward.
   useEffect(() => {
-    const fuseOptions = {
-      ...DEFAULT_OPTIONS,
-      ...options,
-      keys: options.keys,
-      ignoreLocation: true,
-      useExtendedSearch: true,
-      findAllMatches: true,
-      includeMatches: true,
-    };
-
-    setFuse(new Fuse(items, fuseOptions));
-  }, [items, options]);
-
-  // Perform search with improved matching
-  const performSearch = useCallback((query: string) => {
-    setSearchQueryState(query);
-
-    if (!query.trim() || !fuse) {
-      setResults(items);
-      return;
-    }
-
-    try {
-      console.log(`Searching for: "${query}" in ${items.length} items`);
-      const searchResults = fuse.search(query);
-      console.log(`Found ${searchResults.length} results`);
-
-      // Extract and deduplicate items
-      const uniqueResults = Array.from(
-       new Map(searchResults.map(result => [result.item.id, result.item]))
-      ).map(([, item]) => item);
-
-      setResults(uniqueResults);
-    } catch (error) {
-      console.error('Search error:', error);
-      setResults(items);
-    }
-  }, [fuse, items]);
-
-  // Re-run the current query when the index or media list changes.
-  useEffect(() => {
-    performSearch(searchQuery);
-  }, [performSearch]);
+    setDraft(parseSearchParams(applied));
+  }, [applied]);
 
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setResults(items);
-    }
-  }, [items, searchQuery]);
+    const pending = conditions !== applied;
+    onPendingChange(pending);
+    if (!pending) return;
+    const timer = window.setTimeout(() => onApply(draft.query, draft.filters, true), 350);
+    return () => window.clearTimeout(timer);
+  }, [conditions, applied, onApply, onPendingChange]);
 
   return {
-    searchQuery,
-    setSearchQuery: performSearch,
-    results,
-    resetSearch: useCallback(() => {
-      setSearchQueryState('');
-      setResults(items);
-    }, [items])
+    searchQuery: draft.query,
+    setSearchQuery: (query: string) => setDraft(prev => ({ ...prev, query })),
+    filters: draft.filters,
+    setFilters: (update: SetStateAction<SearchFilters>) => setDraft(prev => ({
+      ...prev, filters: typeof update === 'function' ? update(prev.filters) : update,
+    })),
+    submit: () => onApply(draft.query, draft.filters, false),
   };
 }

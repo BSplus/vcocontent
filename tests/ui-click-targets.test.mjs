@@ -43,7 +43,13 @@ test("click targets on desktop and touch with isolated API fixtures (no database
     else if (path.startsWith("/api/community/")) body = {count:0,liked:false,saved:false};
     else if (path === "/api/media/top-shots") body = [media[0], media[2]];
     else if (path === "/api/media/creator-top") body = [media[1]];
-    else if (path === "/api/media") body = media;
+    else if (path === "/api/media") {
+      // Public search results are authoritative; the browser must not re-filter them.
+      const params = new URL(request.url).searchParams;
+      const terms = (params.get("q") || "").toLowerCase().trim().split(/\s+/).filter(Boolean);
+      body = media.filter(item => terms.every(term =>
+        [item.caption, item.photographer, ...(item.tags || [])].some(value => value?.toLowerCase().includes(term))));
+    }
     else if (/^\/api\/events\/\d+\/media$/.test(path)) body = media.filter(item => item.eventId === Number(path.split("/")[3]));
     else if (/^\/api\/events\/\d+$/.test(path)) body = events.find(item => item.id === Number(path.split("/")[3]));
     else if (/^\/api\/media\/\d+$/.test(path)) body = media.find(item => item.id === Number(path.split("/")[3]));
