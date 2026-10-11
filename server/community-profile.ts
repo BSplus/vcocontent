@@ -6,7 +6,8 @@ import { db } from "./db";
 import { requireAuth } from "./middleware/auth";
 import { checkContent } from "./content-safety";
 import { takeBetaRate, lockedCreatorBudget, creatorAllowed } from "./beta-policy";
-import { profileUpdateSchema, normalizeProfileImage } from "./profile-validation";
+import { profileUpdateSchema, normalizeProfileImage, ProfileImageSizeError } from "./profile-validation";
+import { PROFILE_IMAGE_SIZE_MESSAGE } from "../shared/profile-image-limits";
 import { storage } from "./storage";
 
 export function registerCommunityProfile(app:Express) {
@@ -58,6 +59,10 @@ export function registerCommunityProfile(app:Express) {
       });
       const {password,...safe}=result;res.json(safe);
     } catch(error) {
+      if (error instanceof ProfileImageSizeError ||
+        (error instanceof z.ZodError && error.issues.some(issue =>
+          issue.code === "too_big" && ["profileImage", "coverImage"].includes(String(issue.path[0])))))
+        return res.status(400).json({error:PROFILE_IMAGE_SIZE_MESSAGE});
       if (error instanceof z.ZodError) return res.status(400).json({error:"Check your profile fields, contact email and links. Use HTTP/HTTPS and an Instagram profile URL."});
       // Constraint/provider/image errors may carry private content; do not echo them.
       res.status(400).json({error:"Profile could not be saved. Check the photo, choose an available name, or try again later."});

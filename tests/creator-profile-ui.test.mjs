@@ -1,17 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { uiBrowser } from "./helpers/ui-browser.mjs";
+import { profileImageBytes } from "./helpers/profile-image.mjs";
 
 const base=process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
 const poster="data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="640"><rect width="1920" height="640" fill="#263541"/></svg>');
 
 test("creator profile, follow, name previews, following list and visual profile editor work on desktop and mobile",{timeout:120000},async()=>{
+  const source = await profileImageBytes(1_500_000);
+  const maximum = await profileImageBytes(3_000_000, "#abcdef");
+  const oversized = await profileImageBytes(3_000_001);
   const browser=await uiBrowser(), mockErrors=[], writes=[];
   let following=false, failFollow=false, owner=false;
   const creator={id:64200,username:"FixtureCreator",displayName:"Fixture Photographer",isCreator:true,
     creatorStatus:"approved",bio:"Fixture motorsport photographer",profileImage:poster,coverImage:poster,
     publicContactEmail:null,websiteUrl:"https://example.invalid/",instagramUrl:null};
-  const user=()=>owner?{...creator,email:"private-owner@example.invalid",profileCoverImage:poster,emailVerifiedAt:new Date().toISOString()}:
+  const user=()=>owner?{...creator,email:"private-owner@example.invalid",profileCoverImage:creator.coverImage,emailVerifiedAt:new Date().toISOString()}:
     {id:64201,username:"FixtureViewer",email:"private-viewer@example.invalid",isCreator:false,creatorStatus:"none"};
   const profile=()=>({...creator,following,followerCount:following?1:0});
   browser.listeners.add(event=>{
@@ -39,9 +43,15 @@ test("creator profile, follow, name previews, following list and visual profile 
   const click=async text=>browser.evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)}&&!b.disabled&&!b.closest('nav[aria-label="Account sections"]'));if(!b)throw Error('Missing active button '+${JSON.stringify(text)});b.click();})()`);
   const readyButton=text=>`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()===${JSON.stringify(text)}&&!b.disabled&&!b.closest('nav[aria-label="Account sections"]'))`;
   const visit=async(path,ready)=>{await browser.command("Page.navigate",{url:new URL(path,base).href});await browser.wait(ready);};
+  const pick=async(id,bytes,type="image/jpeg")=>browser.evaluate(`(()=>{
+    const raw=atob(${JSON.stringify(bytes.toString("base64"))}), data=Uint8Array.from(raw,c=>c.charCodeAt(0));
+    const transfer=new DataTransfer();transfer.items.add(new File([data],"fixture.jpg",{type:${JSON.stringify(type)}}));
+    const input=document.getElementById(${JSON.stringify(id)});input.files=transfer.files;input.dispatchEvent(new Event("change",{bubbles:true}));
+  })()`);
   try{
     for(const width of [1280,390]){
       following=false;owner=false;
+      creator.profileImage=poster;creator.coverImage=poster;
       await browser.command("Emulation.setDeviceMetricsOverride",{width,height:850,deviceScaleFactor:1,mobile:width<500});
       await visit(`/creator/${creator.id}`,readyButton("Follow"));
       assert.ok(await browser.evaluate(`document.querySelector('h1').textContent.includes('Fixture Photographer')`));
@@ -74,6 +84,33 @@ test("creator profile, follow, name previews, following list and visual profile 
       assert.equal(writes.at(-1).displayName,"Edited Photographer");
       assert.equal("coverImage" in writes.at(-1),false);
       assert.ok(await browser.evaluate(`!!document.querySelector('img[alt="Creator cover preview"]')`));
+      const hints=await browser.evaluate(`document.querySelector('[aria-labelledby="profile-settings-heading"]').innerText`);
+      assert.equal((hints.match(/3 MB per image/g)||[]).length,2);
+      assert.equal(/1 MB|1.4 MB/.test(hints),false);
+      // Sources above the old limit are selectable for each asset and sent together.
+      for(const input of ["profile-image","profile-cover"]){
+        await pick(input,source);
+        const alt=input==="profile-image"?"Profile photo preview":"Creator cover preview";
+        await browser.wait(`document.querySelector('img[alt="${alt}"]').getAttribute('src')?.length===2000023`);
+      }
+      await click("Save profile");await browser.wait(`document.body.innerText.includes('Your profile was updated') && ${readyButton("Save profile")}`);
+      assert.equal(Buffer.from(writes.at(-1).profileImage.split(",")[1],"base64").length,1_500_000);
+      assert.equal(Buffer.from(writes.at(-1).coverImage.split(",")[1],"base64").length,1_500_000);
+      for(const input of ["profile-image","profile-cover"]){
+        const alt=input==="profile-image"?"Profile photo preview":"Creator cover preview";
+        await pick(input,maximum);
+        await browser.wait(`document.querySelector('img[alt="${alt}"]').getAttribute('src')?.length===4000023`);
+        const selected=await browser.evaluate(`document.querySelector('img[alt="${alt}"]').getAttribute('src')`);
+        await pick(input,oversized);
+        await browser.wait(`document.querySelector('[role="alert"]')?.textContent.includes('3 MB')`);
+        assert.equal(await browser.evaluate(`document.getElementById("${input}").value`),"");
+        assert.equal(await browser.evaluate(`document.querySelector('img[alt="${alt}"]').getAttribute('src')`),selected);
+      }
+      const count=writes.length;
+      await click("Save profile");await browser.wait(`document.body.innerText.includes('Your profile was updated') && ${readyButton("Save profile")}`);
+      assert.equal(writes.length,count+1);
+      assert.equal(Buffer.from(writes.at(-1).profileImage.split(",")[1],"base64").length,3_000_000);
+      assert.equal(Buffer.from(writes.at(-1).coverImage.split(",")[1],"base64").length,3_000_000);
       creator.displayName="Fixture Photographer";creator.publicContactEmail=null;
     }
     assert.deepEqual(mockErrors,[]);assert.deepEqual(browser.errors,[]);

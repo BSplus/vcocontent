@@ -1,5 +1,12 @@
 import { z } from "zod";
 import sharp from "sharp";
+import { PROFILE_IMAGE_SOURCE_BYTES, PROFILE_IMAGE_DATA_URL_LENGTH, PROFILE_IMAGE_SIZE_MESSAGE } from "../shared/profile-image-limits";
+
+export class ProfileImageSizeError extends Error {
+  constructor() {
+    super(PROFILE_IMAGE_SIZE_MESSAGE);
+  }
+}
 
 const nullableText = (max: number) => z.string().trim().max(max).transform(value => value || null).nullable().optional();
 const externalLink = (instagram = false) => z.string().trim().max(2048).transform((value, ctx) => {
@@ -19,8 +26,8 @@ const externalLink = (instagram = false) => z.string().trim().max(2048).transfor
 export const profileUpdateSchema = z.object({
   username: z.string().trim().min(3).max(80),
   bio: z.string().trim().max(500),
-  profileImage: z.string().max(1400000).nullable().optional(),
-  coverImage: z.string().max(1400000).nullable().optional(),
+  profileImage: z.string().max(PROFILE_IMAGE_DATA_URL_LENGTH, PROFILE_IMAGE_SIZE_MESSAGE).nullable().optional(),
+  coverImage: z.string().max(PROFILE_IMAGE_DATA_URL_LENGTH, PROFILE_IMAGE_SIZE_MESSAGE).nullable().optional(),
   displayName: nullableText(80),
   publicContactEmail: z.union([z.string().trim().email().max(254), z.literal("")]).transform(value => value || null).nullable().optional(),
   websiteUrl: externalLink(),
@@ -28,10 +35,12 @@ export const profileUpdateSchema = z.object({
 }).strict();
 
 export async function normalizeProfileImage(value: string, cover = false) {
+  if (value.length > PROFILE_IMAGE_DATA_URL_LENGTH) throw new ProfileImageSizeError();
   if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value))
     throw new Error("Choose a JPEG, PNG or WebP image.");
   const source = Buffer.from(value.split(",")[1], "base64");
-  if (source.length > 1000000 || !source.length) throw new Error("Images must be at most 1 MB.");
+  if (source.length > PROFILE_IMAGE_SOURCE_BYTES) throw new ProfileImageSizeError();
+  if (!source.length) throw new Error("Choose a JPEG, PNG or WebP image.");
   const info = await sharp(source, { animated: true, limitInputPixels: 40000000 }).metadata();
   if (!["jpeg", "png", "webp"].includes(info.format || "") || (info.pages || 1) > 1 ||
     source.includes(Buffer.from("acTL")) || source.includes(Buffer.from("ANIM")))

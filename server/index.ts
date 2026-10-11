@@ -6,6 +6,7 @@ import session from "express-session";
 import { storage } from "./storage";
 import { registerSeoRoutes } from "./seo-routes";
 import { verifyRecognitionSchema } from "./recognition-schema-readiness";
+import { registerRequestParsers } from "./request-parsers";
 
 const app = express();
 
@@ -14,8 +15,7 @@ app.set("trust proxy", 1);
 
 // Small event/series metadata may contain a thumbnail. Media files use the
 // bounded multipart upload route, not JSON or database base64 payloads.
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: false, limit: "64kb" }));
+registerRequestParsers(app);
 
 // The client and API are served from the same origin. Do not reflect arbitrary
 // origins or enable credentialed cross-origin requests.

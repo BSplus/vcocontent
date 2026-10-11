@@ -4,12 +4,13 @@ import express from "express";
 import sharp from "sharp";
 import { randomUUID, createHash } from "node:crypto";
 import { once } from "node:events";
+import { profileImageBytes } from "./helpers/profile-image.mjs";
 
 // Fully synthetic safety transport, installed before importing the SDK.
 process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = "https://profile-test.invalid";
 process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "synthetic";
 const originalFetch = globalThis.fetch;
-let safetyImages = 0, rejectNext = false;
+let safetyImages = 0, rejectNext = false, rejectAtImage = Infinity;
 const fingerprints = [];
 globalThis.fetch = async (input, init) => {
   if (!String(input).startsWith("https://profile-test.invalid")) return originalFetch(input, init);
@@ -20,7 +21,7 @@ globalThis.fetch = async (input, init) => {
   fingerprints.push(createHash("sha256").update(SAFETY_POLICY).update(TAG_MODEL).update(text)
     .update(encoded?Buffer.from(encoded,"base64"):"").digest("hex"));
   safetyImages += body.messages[1].content.filter(part => part.type === "image_url").length;
-  const prohibited = rejectNext; rejectNext = false;
+  const prohibited = rejectNext || safetyImages === rejectAtImage; rejectNext = false;
   return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({
     sexualized: prohibited ? "prohibited" : "clear", pornography: "clear", racistOrDehumanizing: "clear",
     hateSymbolsOrGlorification: "clear", visibleTextAndSymbolsReviewed: true,
@@ -33,11 +34,13 @@ const { storage } = await import("../server/storage.ts");
 const { registerCommunityProfile } = await import("../server/community-profile.ts");
 const { registerCreatorProfiles, publicCreatorById } = await import("../server/creator-profiles.ts");
 const { profileUpdateSchema, normalizeProfileImage } = await import("../server/profile-validation.ts");
+const { registerRequestParsers } = await import("../server/request-parsers.ts");
+const { PROFILE_JSON_BYTES } = await import("../shared/profile-image-limits.ts");
 const { creatorUsage } = await import("../server/beta-policy.ts");
 const { SAFETY_POLICY } = await import("../server/beta-policy.ts");
 const { TAG_MODEL } = await import("../server/utils/ai-tagger.ts");
 const id = randomUUID();
-let creator, viewer, stranger, suspended, server, base;
+let creator, viewer, stranger, suspended, sizeCreator, server, base;
 const fixtureIds = [];
 const request = async (path, actor, method = "GET", data) => {
   const response = await originalFetch(base + path, { method,
@@ -53,6 +56,7 @@ test.before(async () => {
     ["viewer", { isCreator: false, creatorStatus: "none" }],
     ["stranger", { isCreator: true, creatorStatus: "approved" }],
     ["suspended", { isCreator: true, creatorStatus: "approved", suspended: true }],
+    ["sizes", { isCreator: true, creatorStatus: "approved" }],
   ]) {
     const [row] = await db.insert(users).values({
       username: `profile-${role}-${id}`, email: `${role}-${id}@example.invalid`, password: "synthetic-not-used",
@@ -63,13 +67,16 @@ test.before(async () => {
     if (role === "viewer") viewer = row;
     if (role === "stranger") stranger = row;
     if (role === "suspended") suspended = row;
+    if (role === "sizes") sizeCreator = row;
   }
-  const app = express(); app.use(express.json({ limit: "2mb" }));
+  const app = express(); registerRequestParsers(app);
   app.use(async (req, _res, next) => {
     req.user = req.headers["x-fixture-user"] ? await storage.getUser(Number(req.headers["x-fixture-user"])) : undefined;
     req.isAuthenticated = () => !!req.user; next();
   });
   registerCommunityProfile(app); registerCreatorProfiles(app);
+  app.all("/api/parser-fixture", (_req, res) => res.json({ ok: true }));
+  app.post("/api/account/profile", (_req, res) => res.json({ ok: true }));
   server = app.listen(0, "127.0.0.1"); await once(server, "listening");
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -175,6 +182,97 @@ test("avatar and cover are normalized, independently reviewed, and included in s
   await assert.rejects(normalizeProfileImage("data:image/png;base64,bm90LWFuLWltYWdl"));
 });
 
+test("source size boundaries use decimal bytes for both assets and preserve output limits", async () => {
+  for (const size of [1_500_000, 3_000_000]) {
+    const source = await profileImageBytes(size);
+    assert.equal(source.length, size);
+    const dataUrl = `data:image/jpeg;base64,${source.toString("base64")}`;
+    assert.equal(profileUpdateSchema.safeParse({ username: "Fixture", bio: "", profileImage: dataUrl, coverImage: dataUrl }).success, true);
+    for (const cover of [false, true]) {
+      const result = await normalizeProfileImage(dataUrl, cover);
+      const info = await sharp(result.buffer).metadata();
+      assert.equal(info.format, "webp");
+      assert.ok(info.width <= (cover ? 1920 : 256));
+      assert.ok(info.height <= (cover ? 640 : 256));
+      assert.ok(result.buffer.length <= (cover ? 250000 : 100000));
+    }
+  }
+  const oversized = `data:image/jpeg;base64,${(await profileImageBytes(3_000_001)).toString("base64")}`;
+  for (const field of ["profileImage", "coverImage"]) {
+    const parsed = profileUpdateSchema.safeParse({ username: "Fixture", bio: "", [field]: oversized });
+    assert.equal(parsed.success, false);
+    assert.match(parsed.error.issues[0].message, /3 MB/);
+    await assert.rejects(normalizeProfileImage(oversized, field === "coverImage"), /3 MB/);
+  }
+});
+
+test("the production parser accepts two exact 3 MB images together and keeps other request limits narrow", async () => {
+  const body = {
+    username: sizeCreator.username, bio: `Synthetic maximum assets ${id}`,
+    displayName: "Both maximum images", publicContactEmail: "sizes@example.invalid",
+    websiteUrl: "https://example.invalid/", instagramUrl: null,
+    profileImage: `data:image/jpeg;base64,${(await profileImageBytes(3_000_000)).toString("base64")}`,
+    coverImage: `data:image/jpeg;base64,${(await profileImageBytes(3_000_000, "#abcdef")).toString("base64")}`,
+  };
+  assert.ok(Buffer.byteLength(JSON.stringify(body)) > 8_000_000);
+  const previous = safetyImages;
+  const result = await request("/api/account/profile", sizeCreator, "PATCH", body);
+  assert.equal(result.status, 200);
+  assert.equal(safetyImages - previous, 2);
+  const profile = await publicCreatorById(sizeCreator.id);
+  assert.equal(profile.bio, body.bio);
+  assert.ok(profile.profileImage.startsWith("data:image/webp;base64,"));
+  assert.ok(profile.coverImage.startsWith("data:image/webp;base64,"));
+  assert.equal((await creatorUsage(db, sizeCreator.id)).bytes,
+    Buffer.from(profile.profileImage.split(",")[1], "base64").length +
+    Buffer.from(profile.coverImage.split(",")[1], "base64").length);
+  for (const [path, method] of [["/api/parser-fixture", "PATCH"], ["/api/account/profile", "POST"], ["/api/account/profile/extra", "PATCH"]]) {
+    const denied = await request(path, sizeCreator, method, body);
+    assert.equal(denied.status, 413);
+    assert.deepEqual(denied.data, { error: "The request is too large. Send less data." });
+  }
+  const tooLarge = await request("/api/account/profile", sizeCreator, "PATCH", { ...body, bio: "x".repeat(PROFILE_JSON_BYTES) });
+  assert.equal(tooLarge.status, 413);
+  assert.match(tooLarge.data.error, /3 MB/);
+  assert.equal(tooLarge.data.error.includes(body.username), false);
+  assert.deepEqual(await publicCreatorById(sizeCreator.id), profile);
+});
+
+test("direct API size and malformed-image failures keep all existing fields unchanged", async () => {
+  const before = await publicCreatorById(sizeCreator.id);
+  const oversized = `data:image/jpeg;base64,${(await profileImageBytes(3_000_001)).toString("base64")}`;
+  for (const field of ["profileImage", "coverImage"]) {
+    const result = await request("/api/account/profile", sizeCreator, "PATCH", {
+      username: sizeCreator.username, bio: "Must not change", [field]: oversized,
+    });
+    assert.equal(result.status, 400);
+    assert.match(result.data.error, /3 MB/);
+    assert.deepEqual(await publicCreatorById(sizeCreator.id), before);
+  }
+  for (const image of ["data:image/svg+xml;base64,PHN2Zz4=", "data:image/png;base64,bm90LWFuLWltYWdl"]) {
+    const result = await request("/api/account/profile", sizeCreator, "PATCH", {
+      username: sizeCreator.username, bio: "Malformed source", profileImage: null, coverImage: image,
+    });
+    assert.equal(result.status, 400);
+    assert.deepEqual(await publicCreatorById(sizeCreator.id), before);
+  }
+});
+
+test("a rejected second maximum image rolls back the first image and all text changes", async () => {
+  const before = await publicCreatorById(sizeCreator.id);
+  const previous = safetyImages;
+  rejectAtImage = previous + 2;
+  const result = await request("/api/account/profile", sizeCreator, "PATCH", {
+    username: sizeCreator.username, bio: `Synthetic second image rejection ${id}`, displayName: "Must not change",
+    profileImage: `data:image/jpeg;base64,${(await profileImageBytes(3_000_000, "#135790")).toString("base64")}`,
+    coverImage: `data:image/jpeg;base64,${(await profileImageBytes(3_000_000, "#246801")).toString("base64")}`,
+  });
+  rejectAtImage = Infinity;
+  assert.equal(result.status, 400);
+  assert.equal(safetyImages - previous, 2);
+  assert.deepEqual(await publicCreatorById(sizeCreator.id), before);
+});
+
 test("failed safety review leaves all profile fields and public images unchanged", async () => {
   const before = await publicCreatorById(creator.id);
   rejectNext = true;
@@ -191,6 +289,7 @@ test("an unsafe cover cannot be published or alter any other profile field", asy
   rejectNext=true;
   const result=await request("/api/account/profile",creator,"PATCH",{
     username:creator.username,bio:`Synthetic rejected cover ${id}`,displayName:"Not saved",
+    profileImage:null,
     coverImage:`data:image/png;base64,${cover.toString("base64")}`,
   });
   assert.equal(result.status,400);

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { User } from "@shared/schema";
+import { PROFILE_IMAGE_SOURCE_BYTES, PROFILE_IMAGE_SIZE_MESSAGE } from "@shared/profile-image-limits";
 import { Check, ImagePlus, LoaderCircle, Trash2, UserRound, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,8 +34,6 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
   const [instagramUrl, setInstagramUrl] = useState(creatorUser.instagramUrl ?? "");
   const [imageChanged, setImageChanged] = useState(false);
   const [coverChanged, setCoverChanged] = useState(false);
-  const [pickedProfileBytes, setPickedProfileBytes] = useState(0);
-  const [pickedCoverBytes, setPickedCoverBytes] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -54,32 +53,23 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
     setInstagramUrl(publicProfile.instagramUrl ?? "");
     setImageChanged(false);
     setCoverChanged(false);
-    setPickedProfileBytes(0);
-    setPickedCoverBytes(0);
     setError("");
     setNotice("");
   }, [user.id]);
 
   const chooseImage = (file?: File, target: "profile" | "cover" = "profile") => {
     if (!file) return;
+    const input = target === "profile" ? fileRef : coverFileRef;
     setError("");
     setNotice("");
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
       setError("Choose a JPEG, PNG, or WebP image.");
-      if (fileRef.current) fileRef.current.value = "";
+      if (input.current) input.current.value = "";
       return;
     }
-    if (file.size > 1_000_000) {
-      setError("The source image must be no larger than 1 MB.");
-      if (fileRef.current) fileRef.current.value = "";
-      return;
-    }
-    const profileBytes = target === "profile" ? file.size : pickedProfileBytes;
-    const coverBytes = target === "cover" ? file.size : pickedCoverBytes;
-    if (profileBytes + coverBytes > 1_400_000) {
-      setError("Choose profile and cover images separately, or keep their combined source size under 1.4 MB.");
-      if (target === "cover" && coverFileRef.current) coverFileRef.current.value = "";
-      if (target === "profile" && fileRef.current) fileRef.current.value = "";
+    if (file.size > PROFILE_IMAGE_SOURCE_BYTES) {
+      setError(PROFILE_IMAGE_SIZE_MESSAGE);
+      if (input.current) input.current.value = "";
       return;
     }
     const reader = new FileReader();
@@ -91,11 +81,9 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
       if (target === "profile") {
         setProfileImage(reader.result);
         setImageChanged(true);
-        setPickedProfileBytes(file.size);
       } else {
         setCoverImage(reader.result);
         setCoverChanged(true);
-        setPickedCoverBytes(file.size);
       }
     };
     reader.onerror = () => setError("This image could not be read. Choose another file.");
@@ -170,8 +158,6 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
       setInstagramUrl(publicProfile.instagramUrl ?? "");
       setImageChanged(false);
       setCoverChanged(false);
-      setPickedProfileBytes(0);
-      setPickedCoverBytes(0);
       if (fileRef.current) fileRef.current.value = "";
       if (coverFileRef.current) coverFileRef.current.value = "";
       setNotice("Your profile was updated. Public changes follow the moderation review.");
@@ -224,24 +210,24 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold">{profileImage ? "Photo selected" : "No profile photo"}</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">JPEG, PNG, or WebP · source up to 1 MB. The server resizes and reviews the image.</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">JPEG, PNG, or WebP · source up to 3 MB per image. The server resizes and reviews the image.</p>
             </div>
           </div>
           <input ref={fileRef} id="profile-image" type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={isSaving} onChange={event => chooseImage(event.currentTarget.files?.[0], "profile")} />
           <div className="mt-4 flex flex-wrap gap-2">
             <Button type="button" variant="outline" className="min-h-11" disabled={isSaving} onClick={() => fileRef.current?.click()}><ImagePlus className="mr-2 h-4 w-4" />Choose image</Button>
-            {profileImage && <Button type="button" variant="outline" className="min-h-11" disabled={isSaving} onClick={() => { setProfileImage(null); setImageChanged(true); setPickedProfileBytes(0); setNotice(""); if (fileRef.current) fileRef.current.value = ""; }}><Trash2 className="mr-2 h-4 w-4" />Remove photo</Button>}
+            {profileImage && <Button type="button" variant="outline" className="min-h-11" disabled={isSaving} onClick={() => { setProfileImage(null); setImageChanged(true); setNotice(""); if (fileRef.current) fileRef.current.value = ""; }}><Trash2 className="mr-2 h-4 w-4" />Remove photo</Button>}
           </div>
           {canEditCreatorProfile && <div className="mt-7 border-t border-border pt-6">
             <Label className="mb-3 block" htmlFor="profile-cover">Creator cover image</Label>
             <div className="relative aspect-[2.7/1] overflow-hidden border border-border bg-secondary">
               {coverImage ? <img src={coverImage} alt="Creator cover preview" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center gap-2 text-muted-foreground"><ImageIcon className="h-5 w-5" />No cover image</div>}
             </div>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">JPEG, PNG, or WebP · up to 1 MB. Changed profile and cover source files must total no more than 1.4 MB.</p>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">JPEG, PNG, or WebP · source up to 3 MB per image. Profile photo and cover can be saved together.</p>
             <input ref={coverFileRef} id="profile-cover" type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={isSaving} onChange={event => chooseImage(event.currentTarget.files?.[0], "cover")} />
             <div className="mt-3 flex flex-wrap gap-2">
               <Button type="button" variant="outline" className="min-h-11" disabled={isSaving} onClick={() => coverFileRef.current?.click()}><ImagePlus className="mr-2 h-4 w-4" />Choose cover</Button>
-              {coverImage && <Button type="button" variant="outline" className="min-h-11" disabled={isSaving} onClick={() => { setCoverImage(null); setCoverChanged(true); setPickedCoverBytes(0); setNotice(""); if (coverFileRef.current) coverFileRef.current.value = ""; }}><Trash2 className="mr-2 h-4 w-4" />Remove cover</Button>}
+              {coverImage && <Button type="button" variant="outline" className="min-h-11" disabled={isSaving} onClick={() => { setCoverImage(null); setCoverChanged(true); setNotice(""); if (coverFileRef.current) coverFileRef.current.value = ""; }}><Trash2 className="mr-2 h-4 w-4" />Remove cover</Button>}
             </div>
           </div>}
         </aside>
