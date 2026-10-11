@@ -3,11 +3,13 @@ import type { Event } from "@shared/schema";
 import { createHash } from "crypto";
 import sharp from "sharp";
 import { storage } from "./storage";
-import { eventPublic, mediaPublic } from "./beta-access";
+import { canManage, eventPublic, mediaPublic } from "./beta-access";
 import { mediaPolicy } from "./media-policy";
 import { MediaBusyError, withMediaWorkBudget } from "./media-work-budget";
 import { eventImagePolicy } from "@shared/event-image-policy";
 import { readMediaStream } from "./media-storage";
+import { EventImageError, galleryThumbnailReference } from "./gallery-thumbnail-policy";
+import { requireAuth } from "./middleware/auth";
 
 type Field = "customThumbnail" | "coverImage";
 export const DEFAULT_EVENT_IMAGE = "/attached_assets/%2389_3.png";
@@ -16,7 +18,7 @@ const legacyPattern = /^\/api\/media\/legacy\/([1-9][0-9]*)\/thumbnail$/;
 const inlinePattern = /^data:image\/(jpeg|png|gif|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
 const previews = new Map<string, Promise<Buffer>>();
 
-export class EventImageError extends Error {}
+export { EventImageError };
 
 async function validateImageBytes(input: Buffer, format?: string) {
   if (!input.length || input.length > eventImagePolicy.bytes)
@@ -64,8 +66,7 @@ export async function validateOfficialEventImages(changes: Partial<Pick<Event, F
         const media = previous && (file || legacy)
           ? file ? await storage.findMediaByKey(file[1]) : await storage.getMediaItem(Number(legacy![1]))
           : undefined;
-        if (!media || media.eventId !== previous?.id || media.type !== "image" || media.isPremium ||
-          (media.thumbnail !== value && !legacy) || !await mediaPublic(media, previous!))
+        if (!media || !previous || galleryThumbnailReference(media, previous) !== value)
           throw new EventImageError("Choose an image file or a public, non-premium thumbnail from this event. External URLs, original files and other events' media are not allowed.");
         if (file) {
           const stream = readMediaStream(file[1]);
@@ -95,6 +96,19 @@ export async function validateOfficialEventImages(changes: Partial<Pick<Event, F
       throw new EventImageError(`${label}: ${error instanceof EventImageError ? error.message : "Image could not be read. Choose another image or retry."}`);
     }
   }
+}
+
+/** Creator images must be independently approved gallery photos, never uploads. */
+export async function validateEventImages(changes: Partial<Pick<Event, Field>>, previous: Event) {
+  if (previous.creatorId) {
+    for (const field of ["customThumbnail", "coverImage"] as const) {
+      const value = changes[field];
+      if (!value || value === previous[field]) continue;
+      if (!filePattern.test(value) && !legacyPattern.test(value))
+        throw new EventImageError("Select an approved photo from this gallery; external images are not allowed.");
+    }
+  }
+  await validateOfficialEventImages(changes, previous);
 }
 
 function staticImage(value: string): boolean {
@@ -156,6 +170,24 @@ export async function inlineEventThumbnail(value: string): Promise<Buffer> {
 }
 
 export function registerEventThumbnailRoute(app: Express) {
+  app.get("/api/events/:id/thumbnail-options", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    const page = req.query.page === undefined ? 1 : Number(req.query.page);
+    if (!Number.isSafeInteger(id) || id < 1 || !Number.isSafeInteger(page) || page < 1 || page > 100000)
+      return res.status(400).json({ error: "Invalid gallery or page." });
+    try {
+      const event = await storage.getEvent(id);
+      if (!event) return res.status(404).json({ error: "Gallery not found." });
+      if (!canManage(req.user, event)) return res.status(403).json({ error: "You cannot edit this gallery." });
+      const photos = await storage.getEventThumbnailOptions(event, page);
+      res.json({ page, hasMore: photos.length > 24, photos: photos.slice(0, 24).map(photo => ({
+        id: photo.id, caption: photo.caption, reference: galleryThumbnailReference(photo, event),
+        preview: galleryThumbnailReference(photo, event),
+      })) });
+    } catch {
+      res.status(500).json({ error: "Gallery photos could not be loaded. Please retry." });
+    }
+  });
   app.get("/api/events/:id/thumbnail", async (req, res) => {
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -166,15 +198,15 @@ export function registerEventThumbnailRoute(app: Express) {
     try {
       // Always re-authorize, even when the bounded generated image is cached.
       const event = await storage.getEvent(id);
-      if (!event || event.isPremium || !await eventPublic(event)) return res.status(404).end();
+      if (!event || event.isPremium || (!canManage(req.user, event) && !await eventPublic(event))) return res.status(404).end();
       const value = event[field as Field];
       if (!value || !eventThumbnailReference(event, field as Field)) return res.status(404).end();
       const file = filePattern.exec(value);
       const legacy = legacyPattern.exec(value);
       if (file || legacy) {
         const media = file ? await storage.findMediaByKey(file[1]) : await storage.getMediaItem(Number(legacy![1]));
-        if (!media || media.eventId !== id || media.type !== "image" || media.isPremium ||
-          !await mediaPublic(media, event)) return res.status(404).end();
+        if (!media || galleryThumbnailReference(media, event, false) !== value ||
+          (!canManage(req.user, event) && !await mediaPublic(media, event))) return res.status(404).end();
         return res.redirect(302, value);
       }
       if (staticImage(value)) return res.redirect(302, value);

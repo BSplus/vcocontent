@@ -11,6 +11,7 @@ import { formatDate } from "@/lib/utils";
 import CommunityActions from "@/components/community-actions";
 import CreatorIdentity, { type PublicCreator } from "@/components/creator-identity";
 import { useState } from "react";
+import { SAFETY_POLICY } from "@shared/safety-policy";
 
 const DEFAULT_EVENT_IMAGE = "/attached_assets/%2389_3.png";
 
@@ -40,7 +41,9 @@ export default function EventCard({ event }: EventCardProps) {
     enabled: isCreatorEvent,
   });
   const thumbnailUrl = [...chosenImages,
-    mediaItems?.find((item) => item.type === "image" && !item.isPremium)?.thumbnail,
+    mediaItems?.find((item) => item.type === "image" && !item.isPremium &&
+      (item.safetyStatus === "legacy" || item.safetyStatus === "approved" &&
+        item.contentVersion === item.safetyVersion && item.safetyPolicy === SAFETY_POLICY))?.thumbnail,
     DEFAULT_EVENT_IMAGE].find(url => !!url && !failedImages.includes(url));
   const imageError = () => {
     if (thumbnailUrl) setFailedImages(failed => failed.includes(thumbnailUrl) ? failed : [...failed, thumbnailUrl]);

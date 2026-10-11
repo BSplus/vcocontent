@@ -3,9 +3,10 @@ import { db } from "./db";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { events, users, mediaItems } from "@shared/schema";
 import { verificationConfigured } from "./beta-config";
+import { SAFETY_POLICY } from "@shared/safety-policy";
 
 // Invalidates results from before incomplete visual inspections became non-approvable.
-export const SAFETY_POLICY = "vco-community-safety-2";
+export { SAFETY_POLICY };
 export const communityLimits = Object.freeze({
   bytes: 500_000_000, galleries: 5, photos: 1_000, imageBytes: 5_000_000,
 });

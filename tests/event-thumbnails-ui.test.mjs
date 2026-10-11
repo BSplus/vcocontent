@@ -34,6 +34,7 @@ for (const editing of [false, true]) test(`official ${editing ? "editing" : "cre
       if (path === "/api/user") content = { id: 99999, username: "synthetic-admin", isAdmin: true, isCreator: false };
       if (path === "/api/admin/events" || path === "/api/events") content = [event];
       if (path === "/api/events/95001") content = event;
+      if (path === "/api/events/95001/thumbnail-options") content = { photos: [], hasMore: false, page: 1 };
       if (path === "/api/admin/safety") content = { media: [], events: [] };
       if (path === "/api/admin/media-usage") content = { total: { bytes: "0", count: "0", legacy: "0" },
         byEvent: [], byCreator: [], cleanupCount: "0", policy: { eventBytes: 100000000, creatorBytes: 100000000,
@@ -87,13 +88,13 @@ for (const editing of [false, true]) test(`official ${editing ? "editing" : "cre
         [Buffer.alloc(1048577).toString("base64"), "image/png", "large.png", "1 MiB"],
       ]) {
         await select(bytes, type, name);
-        await browser.wait(`document.querySelector('[role="dialog"] [role="alert"]')?.textContent.includes(${JSON.stringify(error)})`);
+        await browser.wait(`[...document.querySelectorAll('[role="dialog"] [role="alert"]')].some(el=>el.textContent.includes(${JSON.stringify(error)}))`);
         assert.equal(await browser.evaluate(preview), selected, "rejected file preserves valid selection");
         assert.equal(writes.length, 0, "file-picker rejection does not submit");
       }
       // Same file can be selected again after a failed attempt, and clears the inline error.
       await select(selectedPhoto, "image/webp", "valid.webp");
-      assert.equal(await browser.evaluate(`!!document.querySelector('[role="dialog"] [role="alert"]')`), false);
+      assert.equal(await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] [role="alert"]')].some(el=>el.textContent.includes('Event thumbnail too large')||el.textContent.includes('Choose a JPEG')||el.textContent.includes('Image is damaged'))`), false);
       await click(browser, button(editing ? "Update Event" : "Create Event"));
       await browser.wait(`document.body.innerText.includes('all frames combined).') && !!${button(editing ? "Update Event" : "Create Event")}`);
       await browser.wait(`document.body.innerText.includes('Event thumbnail: Image must not exceed')`);
@@ -137,7 +138,7 @@ for (const width of [1600, 390]) test(`event thumbnails, error recovery and refr
       if (path === "/api/user") status = 401;
       if (path === "/api/events") content = events();
       if (path === "/api/events/95002/media") content = [{ id: 42, type: "image",
-        thumbnail: "/api/media/fixture-gallery.webp", isPremium: false }];
+        thumbnail: "/api/media/fixture-gallery.webp", isPremium: false, safetyStatus: "legacy" }];
       if (path.endsWith("/thumbnail") || path === "/api/media/fixture-gallery.webp" || path === fallback) {
         contentType = "image/webp"; content = photo;
         if (["/api/events/95002/thumbnail", "/api/events/95003/thumbnail"].includes(path) ||

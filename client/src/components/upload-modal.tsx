@@ -26,7 +26,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { eventCreateRoute } from "@/lib/event-create-route";
 import EntryListEditor, { type EventEntryRow, type PendingEventReference } from "@/components/entry-list-editor";
 import LegalLinks from "@/components/legal-links";
-import { creatorAssociationsKey } from "@/components/creator-gallery-association";
+import { creatorAssociationsKey, invalidateCommunityGalleryQueries } from "@/components/creator-gallery-association";
+import GalleryThumbnailSelector from "@/components/gallery-thumbnail-selector";
 import { eventImagePolicy } from "@shared/event-image-policy";
 
 interface UploadModalProps {
@@ -49,6 +50,7 @@ export default function UploadModal({
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const [thumbnailError, setThumbnailError] = useState<string | null>(null);
   const [thumbnailBusy, setThumbnailBusy] = useState(false);
+  const [galleryThumbnailReference, setGalleryThumbnailReference] = useState<string | null>(null);
   const [validationSummary, setValidationSummary] = useState<string[]>([]);
   const [imageSource, setImageSource] = useState<"local" | "nextcloud">("local");
    const [links, setLinks] = useState<SourceEntry[]>([{ link: "", password: "" }]);
@@ -230,7 +232,10 @@ export default function UploadModal({
         track: eventWithRaceDetails.track ?? "",
       } as any);
 
-      setThumbnailPreview(eventData.customThumbnail || null);
+       setThumbnailPreview(eventData.customThumbnail ? `/api/events/${eventData.id}/thumbnail?field=customThumbnail` : null);
+       setGalleryThumbnailReference(eventData.customThumbnail &&
+         /^\/api\/media\/(?:files\/thumb-[0-9a-f-]{36}\.webp|legacy\/[1-9][0-9]*\/thumbnail)$/.test(eventData.customThumbnail)
+         ? eventData.customThumbnail : null);
       setThumbnailError(null);
     }
   }, [open, eventData, isEditing, form]);
@@ -262,6 +267,7 @@ export default function UploadModal({
         if (image.naturalWidth * image.naturalHeight > eventImagePolicy.pixels)
           throw new Error("Event thumbnail must not exceed 40 megapixels.");
         setThumbnailPreview(dataUrl);
+        setGalleryThumbnailReference(null);
         form.setValue("customThumbnail", dataUrl, { shouldDirty: true });
       } catch (error) {
         setThumbnailError((error as Error).message);
@@ -281,6 +287,7 @@ export default function UploadModal({
         credentials: "include",
         body: JSON.stringify({
           ...data,
+          ...(creatorId ? { coverImage: undefined, customThumbnail: undefined } : {}),
           date: new Date(data.date),
           isPremium: false,
           visibility: "draft",
@@ -323,6 +330,19 @@ export default function UploadModal({
     retry: false,
     mutationFn: async (id: number) => {
       const formData = form.getValues();
+      const imageFields: Record<string, unknown> = {};
+      if ((formData.customThumbnail || null) !== (eventData?.customThumbnail || null)) {
+        imageFields.customThumbnail = formData.customThumbnail || null;
+      }
+      if ((formData.coverImage || null) !== (eventData?.coverImage || null)) {
+        imageFields.coverImage = formData.coverImage || null;
+      }
+      const details: Record<string, unknown> = {};
+      for (const field of ["title", "description", "round", "track", "seriesId"] as const) {
+        if ((formData[field] || null) !== (eventData?.[field] || null)) details[field] = formData[field];
+      }
+      if (new Date(formData.date).toISOString().slice(0, 10) !== new Date(eventData!.date).toISOString().slice(0, 10))
+        details.date = new Date(formData.date);
 
       const res = await fetch(`/api/events/${id}`, {
         method: "PUT",
@@ -331,15 +351,8 @@ export default function UploadModal({
         },
         credentials: "include",
         body: JSON.stringify({
-          title: formData.title,
-          description: formData.description,
-          date: new Date(formData.date),
-          coverImage: formData.coverImage,
-          customThumbnail: formData.customThumbnail,
-          seriesId: formData.seriesId,
-          round: formData.round,
-          track: formData.track,
-          isPremium: false,
+          ...details,
+          ...imageFields,
         }),
       });
 
@@ -352,6 +365,10 @@ export default function UploadModal({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
+      void invalidateCommunityGalleryQueries(queryClient);
+      queryClient.invalidateQueries({ predicate: query => typeof query.queryKey[0] === "string" &&
+        /^\/api\/events\/creator\/\d+$/.test(query.queryKey[0]) });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/events"] });
       if (eventId) {
         queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}`] });
@@ -422,6 +439,7 @@ export default function UploadModal({
     if (!open) {
       form.reset();
       setThumbnailPreview(null);
+      setGalleryThumbnailReference(null);
       setThumbnailError(null);
       setImportEventId(null);
       setCreatedEventId(null);
@@ -555,7 +573,22 @@ export default function UploadModal({
             </div>
           )}
           
-          <div className="space-y-2">
+          {open && isEditing && eventId && eventData && (
+            <GalleryThumbnailSelector
+              eventId={eventId}
+              selectedReference={galleryThumbnailReference}
+              selectedPreview={galleryThumbnailReference && eventData.customThumbnail
+                ? `/api/events/${eventId}/thumbnail?field=customThumbnail` : undefined}
+              onSelect={(reference, previewImage) => {
+                setGalleryThumbnailReference(reference);
+                setThumbnailPreview(previewImage);
+                setThumbnailError(null);
+                form.setValue("customThumbnail", reference, { shouldDirty: true });
+              }}
+            />
+          )}
+
+          {user?.isAdmin && (!isEditing || eventData && !eventData.creatorId) && <div className="space-y-2">
             <Label>Event Thumbnail</Label>
             <Input
               type="file"
@@ -584,7 +617,7 @@ export default function UploadModal({
              <Button type="button" variant="outline" disabled={thumbnailBusy} onClick={() => thumbnailInputRef.current?.click()}>
                <Upload className="h-4 w-4 mr-2" /> Choose Thumbnail
              </Button>
-          </div>
+          </div>}
 
           {user?.isAdmin && (!isEditing || eventData && !eventData.creatorId) && (
             <div className="space-y-3 rounded-md border p-4">

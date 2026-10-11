@@ -3,7 +3,7 @@
 - [Historical media indexes](historical-media-indexes.md) — old Base64 payloads exceed PostgreSQL index-entry limits; keep object-path indexes partial.
 - [Live-server test freshness](live-server-test-freshness.md) — integration tests may hit an older preview process after merges; restart it before interpreting failures.
 - [Development dependency rebuild](dev-dependency-rebuild.md) — stop Vite during merge-time installs; a later restart alone cannot prevent transient missing chunks.
-- [Browser role assertions](browser-role-assertions.md) — a route's static text can appear before the auth query settles; wait for role-specific UI before asserting navigation.
+- [Browser assertions](browser-role-assertions.md) — wait for role UI and dialog transitions; return booleans from polling and scope alerts to the tested feature.
 - [Fetch mocks and object storage](fetch-mocks-object-storage.md) — Nextcloud network mocks must delegate unrelated requests or they also intercept App Storage's sidecar calls.
 - [Browser route checks](browser-route-checks.md) — unrelated API failures can arrive after navigation; keep route assertions separate from data-loading checks.
 - [Navigation behavior](navigation-behavior.md) — new pages open at the top; preserve browser history positions, query-only reading context, and fragment links.
@@ -39,6 +39,6 @@
 - [Eventbezogene Caption-Ausnahme](community-caption-boundary.md) — Matching nur nach Event-Opt-in; registrierte Lineups sind kein Beweis abgebildeter Personen, geschützte Texte bleiben geschützt.
 - [Optimistische Browseraktionen](optimistic-browser-actions.md) — neuer sichtbarer Zustand beweist keine abgeschlossene Mutation; vor Folgeaktionen auf aktive Buttons warten.
 - [Creator-Eventzuordnung](creator-event-association.md) — Betreiber wählt lose Zuordnung eigener Galerien statt Modelltrennung; nur separate Umsetzungsplanung freigegeben.
-- [Event image boundaries](event-image-boundaries.md) — metadata uploads need separate limits; the historical built-in fallback is a trusted preset, not a new upload.
+- [Event image boundaries](event-image-boundaries.md) — metadata limits stay separate; checked draft photos may be selected without publishing; the built-in fallback is trusted.
 - [Startup paint verification](startup-paint-verification.md) — computed visibility can pass while production CSS blocks painting; check actual pixels with delayed styles.
 - [Touch-emulated inputs](browser-input-fixtures.md) — desktop selection shortcuts can append text in mobile checks; verify edited values before diagnosing saved-metadata failures.

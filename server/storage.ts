@@ -8,7 +8,9 @@ import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { deleteMediaObject } from "./media-storage";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
-import { creatorUsage, lockedCreatorBudget, publicEventPredicate, publicMediaPredicate } from "./beta-policy";
+import { creatorUsage, lockedCreatorBudget, publicEventPredicate, publicMediaPredicate, SAFETY_POLICY } from "./beta-policy";
+import { EventImageError, galleryFilePattern, galleryLegacyPattern, galleryThumbnailReference } from "./gallery-thumbnail-policy";
+import { eventImagePolicy } from "@shared/event-image-policy";
 
 type SafeUser = Omit<User, "password">;
 function objectKeys(item: { url: string; thumbnail: string }): string[] {
@@ -181,6 +183,18 @@ class DatabaseStorage implements IStorage {
     return db.transaction(async tx => {
     const [before] = await tx.select().from(events).where(eq(events.id,id)).for("update");
     if (!before) throw new Error("Event not found");
+    // Recheck under row locks at the write boundary, including concurrent moderation.
+    for (const field of ["customThumbnail", "coverImage"] as const) {
+      const value = event[field];
+      if (!value || value === before[field]) continue;
+      const file = galleryFilePattern.exec(value);
+      const legacy = galleryLegacyPattern.exec(value);
+      if (!file && !legacy) continue; // Official uploads were decoded by the route.
+      const [photo] = await tx.select().from(mediaItems).where(file
+        ? eq(mediaItems.thumbnail, value) : eq(mediaItems.id, Number(legacy![1]))).for("share");
+      if (!photo || galleryThumbnailReference(photo, { ...before, ...event }) !== value)
+        throw new EventImageError("The selected photo is no longer eligible. Choose another gallery photo.");
+    }
     const contextKeys=["title","date","seriesId","creatorId","referenceSeasonYear","round","track","platform"] as const;
     let changed=false;
     if (contextKeys.some(key=>event[key]!==undefined)) {
@@ -340,6 +354,22 @@ class DatabaseStorage implements IStorage {
       .select(mediaListColumns)
       .from(mediaItems)
       .where(eq(mediaItems.eventId, eventId)).orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit);
+  }
+
+  async getEventThumbnailOptions(event: Event, page = 1): Promise<MediaItem[]> {
+    if (event.isPremium) return [];
+    // Filter before pagination so videos or pending photos cannot hide later choices.
+    // Only bounded inline thumbnails are read, never gallery originals.
+    return db.select({ ...mediaListColumns, url: sql<string>`''` }).from(mediaItems)
+      .where(and(eq(mediaItems.eventId, event.id), eq(mediaItems.type, "image"),
+        eq(mediaItems.isPremium, false),
+        or(...(!event.creatorId ? [eq(mediaItems.safetyStatus, "legacy")] : []),
+          and(eq(mediaItems.safetyStatus, "approved"), eq(mediaItems.safetyPolicy, SAFETY_POLICY),
+            sql`${mediaItems.contentVersion} = ${mediaItems.safetyVersion}`)),
+        or(sql`${mediaItems.thumbnail} ~ '^/api/media/files/thumb-[0-9a-f-]{36}\\.webp$'`,
+          and(sql`${mediaItems.thumbnail} ~ '^data:image/(jpeg|png|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$'`,
+            sql`length(${mediaItems.thumbnail}) <= ${Math.ceil(eventImagePolicy.bytes * 4 / 3) + 100}`))))
+      .orderBy(desc(mediaItems.id)).limit(25).offset((page - 1) * 24);
   }
 
   async getPublicEventMediaItems(eventId: number, page = 1, limit = 48): Promise<MediaItem[]> {

@@ -4,7 +4,7 @@ import { getEventPage } from "./dashboard-event-list";
 import { formatDate } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Images } from "lucide-react";
+import SafeEventImage from "@/components/safe-event-image";
 
 export default function CreatorGalleryCards({events,mediaItems,eventCounts,search,actions}:{
   title:string;events:Event[];mediaItems:MediaItem[];
@@ -19,11 +19,10 @@ export default function CreatorGalleryCards({events,mediaItems,eventCounts,searc
     <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
       {visible.map(event=>{
         const ownMedia=mediaItems.filter(item=>item.eventId===event.id);
-        const cover=event.customThumbnail || event.coverImage || ownMedia.find(item=>item.type==="image")?.thumbnail;
         const stats=eventCounts?.get(event.id);
         return <article key={event.id} className="overflow-hidden border border-border bg-card">
           <div className="relative aspect-[4/3] bg-secondary">
-            {cover?<img src={cover} alt="" loading="lazy" className="h-full w-full object-cover"/>:<div className="flex h-full items-center justify-center"><Images className="h-10 w-10 text-muted-foreground"/></div>}
+            <SafeEventImage event={event} />
             <Badge className="absolute bottom-3 left-3 bg-background text-foreground">{event.visibility==="published"?"Published":"Draft"}</Badge>
           </div>
           <div className="p-5">

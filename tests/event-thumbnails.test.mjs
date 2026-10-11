@@ -124,7 +124,7 @@ test("managed and historical photo URLs resolve only to public, non-premium phot
   try {
     event = { ...event, customThumbnail: `/api/media/files/${key}`, coverImage: null };
     media = { id: 42, eventId: event.id, type: "image", isPremium: false,
-      safetyStatus: "legacy", contentVersion: 0, safetyVersion: 0 };
+      thumbnail: event.customThumbnail, safetyStatus: "legacy", contentVersion: 0, safetyVersion: 0 };
     assert.equal((await call(`/api/events/${event.id}/thumbnail`)).headers.get("location"), event.customThumbnail);
     media.eventId++;
     assert.equal((await call(`/api/events/${event.id}/thumbnail`)).status, 404);
@@ -134,6 +134,7 @@ test("managed and historical photo URLs resolve only to public, non-premium phot
     assert.equal((await call(`/api/events/${event.id}/thumbnail`)).status, 404);
     media.type = "image";
     event.customThumbnail = "/api/media/legacy/42/thumbnail";
+    media.thumbnail = "data:image/png;base64,YmFk";
     assert.equal((await call(`/api/events/${event.id}/thumbnail`)).headers.get("location"), event.customThumbnail);
     media = undefined;
     assert.equal((await call(`/api/events/${event.id}/thumbnail`)).status, 404);
@@ -150,7 +151,7 @@ test("creator covers require independent public media approval and current owner
     assert.equal((await call(`/api/events/${event.id}/thumbnail`)).status, 404);
     event.customThumbnail = "/api/media/files/thumb-00000000-0000-0000-0000-000000000000.webp";
     media = { id: 42, eventId: event.id, type: "image", isPremium: false,
-      safetyStatus: "approved", safetyPolicy: SAFETY_POLICY, contentVersion: 0, safetyVersion: 0 };
+      thumbnail: event.customThumbnail, safetyStatus: "approved", safetyPolicy: SAFETY_POLICY, contentVersion: 0, safetyVersion: 0 };
     assert.equal((await call(`/api/events/${event.id}/thumbnail`)).status, 302);
     for (const change of [{ safetyStatus: "error" }, { safetyStatus: "review" },
       { contentVersion: 1 }, { safetyPolicy: "outdated" }]) {
@@ -278,7 +279,8 @@ test("same-event stored thumbnails are decoded with bounded reads, and originals
   let source = await sharp({ create: { width: 30, height: 20, channels: 3, background: "#aabbcc" } }).webp().toBuffer();
   Client.prototype.downloadAsStream = () => { opens++; return Readable.from([source]); };
   try {
-    media = { id: 42, eventId: event.id, type: "image", isPremium: false, thumbnail: url };
+    media = { id: 42, eventId: event.id, type: "image", isPremium: false, thumbnail: url,
+      safetyStatus: "legacy", contentVersion: 0, safetyVersion: 0 };
     assert.equal((await save("PUT", { customThumbnail: url })).status, 200);
     assert.equal(opens, 1);
     for (const input of [Buffer.from("damaged"), Buffer.alloc(1048577)]) {

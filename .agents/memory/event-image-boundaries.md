@@ -14,3 +14,9 @@ Treat the built-in event fallback as a trusted historical preset, not a newly up
 **Why:** The existing default asset exceeds the new-upload allowance. Applying upload validation to that preset would block ordinary event creation without a custom image.
 
 **How to apply:** Keep the exception specific to the built-in preset; do not broaden it to arbitrary asset paths or external links.
+
+Gallery-photo selection is preparation, not publication: independently approved photos in an owned draft may be chosen without requiring the gallery to be public.
+
+**Why:** The operator wants creators to prepare a complete gallery before publishing, without bypassing independent approval for new images or changing publication rules.
+
+**How to apply:** Keep photo eligibility separate from gallery visibility. Preserve unchanged historical values, but do not treat historical creator photos as newly approved selections.

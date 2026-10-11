@@ -1,10 +1,11 @@
 import { formatDate } from "@/lib/utils";
 import React, { useEffect, useState, type ReactNode } from "react";
 import { Event, MediaItem } from "@shared/schema";
-import { Image as ImageIcon, Film, EyeOff, ShieldAlert } from "lucide-react";
+import { Image as ImageIcon, Film, EyeOff, ShieldAlert, Edit } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import EventTitle from "@/components/event-title";
+import SafeEventImage from "@/components/safe-event-image";
 
 export const EVENTS_PER_PAGE = 8;
 
@@ -31,10 +32,11 @@ interface DashboardEventListProps {
   search: string;
   emptyMessage: string;
   actions: (event: Event) => ReactNode;
+  onEditEvent?: (event: Event) => void;
 }
 
 export default function DashboardEventList({
-  title, events, mediaItems, eventCounts, search, emptyMessage, actions,
+  title, events, mediaItems, eventCounts, search, emptyMessage, actions, onEditEvent,
 }: DashboardEventListProps) {
   const [page, setPage] = useState(1);
   useEffect(() => setPage(1), [search]);
@@ -63,7 +65,11 @@ export default function DashboardEventList({
             const stats = counts.get(event.id) ?? { photos: 0, videos: 0, downloads: 0 };
             return (
               <li key={event.id} className="flex min-w-0 flex-col gap-2 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="h-14 w-20 shrink-0 overflow-hidden rounded bg-secondary">
+                    <SafeEventImage event={event} />
+                  </div>
+                  <div className="min-w-0">
                   <p className="break-words font-semibold leading-tight"><EventTitle title={event.title} /></p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     <time dateTime={new Date(event.date).toISOString()}>{formatDate(event.date)}</time>
@@ -75,8 +81,12 @@ export default function DashboardEventList({
                     <Badge variant="secondary" className="gap-1"><Film className="h-3 w-3" />{stats.videos} Videos</Badge>
                     <span>{stats.downloads} Downloads</span>
                   </div>
+                  </div>
                 </div>
-                <div className="flex shrink-0 flex-wrap gap-1.5">{actions(event)}</div>
+                <div className="flex shrink-0 flex-wrap gap-1.5">
+                  {onEditEvent && <Button size="sm" variant="outline" onClick={() => onEditEvent(event)}><Edit className="mr-1 h-4 w-4" />Edit Event</Button>}
+                  {actions(event)}
+                </div>
               </li>
             );
           })}

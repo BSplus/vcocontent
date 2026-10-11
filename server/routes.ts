@@ -38,7 +38,7 @@ import { verificationConfigured } from "./email-verification";
 import { registerCommunityRoutes, issueDownloadOperation, validDownloadOperation, recordDownload } from "./community";
 import { publicCreatorById } from "./creator-profiles";
 import { registerCreatorEventAssociationRoutes } from "./creator-event-association";
-import { EventImageError, validateOfficialEventImages, publicEventThumbnails, registerEventThumbnailRoute } from "./event-thumbnails";
+import { EventImageError, validateOfficialEventImages, validateEventImages, publicEventThumbnails, registerEventThumbnailRoute } from "./event-thumbnails";
 import { registerPhotoMatchingRoutes } from "./photo-matching-routes";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
@@ -166,14 +166,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       }
 
       const { creatorId: _ignoredCreatorId, ...eventChanges } = insertEventSchema.partial().parse(req.body);
-      if (event.creatorId) {
-        for (const field of ["coverImage","customThumbnail"] as const) if (eventChanges[field]) {
-          const match = /^\/api\/media\/files\/(thumb-[0-9a-f-]{36}\.webp)$/.exec(eventChanges[field]!);
-          const cover = match ? await storage.findMediaByKey(match[1]) : undefined;
-          if (!cover || cover.eventId!==event.id || cover.safetyStatus!=="approved" || !safeState(cover))
-            return res.status(400).json({error:"Select an approved photo from this gallery; external images are not allowed."});
-        }
-      } else await validateOfficialEventImages(eventChanges, event);
+      await validateEventImages(eventChanges, event);
       if (!req.user!.isAdmin) {
         delete eventChanges.isPremium;
         delete eventChanges.creditCost;
@@ -1163,7 +1156,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       }
       
       const events = await visibleEvents(await storage.getEventsByCreator(creatorId));
-      res.json(events);
+      res.json(events.map(publicEventThumbnails));
     } catch (error) {
       console.error('Error fetching creator events:', error);
       res.status(500).json({ error: "Failed to fetch creator events" });

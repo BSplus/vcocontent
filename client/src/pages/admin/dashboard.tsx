@@ -271,7 +271,8 @@ export default function AdminDashboard() {
                   <Button size="sm" variant="destructive" aria-label={`Delete event ${event.title}`} onClick={() => setEventToDelete(event)}><Trash2 className="mr-1 h-4 w-4" />Delete Event</Button>
                 </>
               )} />
-              <DashboardEventList title="Creator Events" events={creatorEvents} mediaItems={mediaItemsArray} search={eventSearch} emptyMessage="No creator events yet." actions={event => (
+              <DashboardEventList title="Creator Events" events={creatorEvents} mediaItems={mediaItemsArray} search={eventSearch} emptyMessage="No creator events yet."
+                onEditEvent={event => { setSelectedEventId(event.id); setUploadModalOpen(true); }} actions={event => (
                 <>
                   <Button size="sm" variant="outline" onClick={() => switchToMediaTab(event.id)}><Eye className="mr-1 h-4 w-4" />Manage Media</Button>
                   <Button size="sm" variant="outline" disabled={visibilityMutation.isPending}
