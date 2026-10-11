@@ -34,7 +34,10 @@ function mediaForName(name: string): { type: MediaType; mime: string } | undefin
   return contentType ? { type: contentType.startsWith("image/") ? "image" : "video", mime: contentType } : undefined;
 }
 
-const PUBLIC_INSTANCE = new URL("https://nextcloud.bs-plus.de/");
+const PUBLIC_INSTANCES = [
+  new URL("https://nextcloud.bs-plus.de/"),
+  new URL("https://nextcloud.vco-motorsports.com/"),
+];
 
 function instance(): URL | undefined {
   const value = process.env.NEXTCLOUD_BASE_URL;
@@ -67,13 +70,14 @@ export function resolveSource(input: SourceInput): Source {
   try { link = new URL(input.link); } catch { throw new NextcloudError("Bitte einen gültigen Nextcloud-Ordnerlink angeben."); }
   if (link.protocol !== "https:" || link.username || link.password || link.hash)
     throw new NextcloudError("Nur sichere HTTPS-Ordnerlinks ohne Zugangsdaten im Link sind erlaubt.");
-  // The operator's public instance is trusted independently of account configuration.
+  // These public instances are trusted independently of account configuration.
   // Other hosts are accepted only when explicitly configured as the operator's instance.
   const configuredBase = instance();
-  const base = link.origin === PUBLIC_INSTANCE.origin &&
+  const publicBase = PUBLIC_INSTANCES.find(candidate => candidate.origin === link.origin);
+  const base = publicBase &&
     (!configuredBase || configuredBase.origin !== link.origin ||
       !link.pathname.startsWith(prefix(configuredBase) + "/"))
-    ? PUBLIC_INSTANCE : configuredBase;
+    ? publicBase : configuredBase;
   if (!base || link.origin !== base.origin)
     throw new NextcloudError("Diese Nextcloud-Instanz wird nicht unterstützt.");
   safePath(link, base);

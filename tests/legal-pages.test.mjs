@@ -42,7 +42,7 @@ test("legal pages load without login with mobile-readable text, working navigati
       const response = await fetch(new URL(path, base));
       assert.equal(response.status, 200, path);
       const html = await response.text();
-      assert.ok(html.includes(`<title>${title} | VCO Media Database</title>`));
+      assert.ok(html.includes(`<title data-vco-seo="true">${title} | VCO Media Database</title>`));
       await browser.command("Page.navigate", { url: new URL(path, base).href });
       await browser.wait(`!!document.querySelector('article') && document.title===${JSON.stringify(`${title} | VCO Media Database`)}`);
       const state = await browser.evaluate(`({

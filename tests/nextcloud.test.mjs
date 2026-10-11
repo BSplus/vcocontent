@@ -13,6 +13,8 @@ import { eventCreateRoute } from "../client/src/lib/event-create-route.ts";
 
 const base = "https://cloud.example.invalid";
 const publicBase = "https://nextcloud.bs-plus.de";
+const vcoBase = "https://nextcloud.vco-motorsports.com";
+const syntheticToken = "TEST_ONLY_NOT_A_REAL_SHARE";
 const previous = {
   base: process.env.NEXTCLOUD_BASE_URL,
   user: process.env.NEXTCLOUD_USERNAME,
@@ -41,6 +43,108 @@ function dav(folder, entries) {
   return `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">${response(folder, true)}${entries.map(e => response(...e)).join("")}</d:multistatus>`;
 }
 
+// Provider mocks must not intercept HTTP API calls or App Storage's transport.
+function mockOrigin(origin, handler, transport = globalThis.fetch) {
+  return (url, options) => new URL(url).origin === origin
+    ? handler(url, options) : transport(url, options);
+}
+
+test("both trusted public instances preserve configured origins and installation paths", () => {
+  try {
+    for (const configured of [undefined, base, `${vcoBase}/nextcloud`]) {
+      if (configured) process.env.NEXTCLOUD_BASE_URL = configured;
+      else delete process.env.NEXTCLOUD_BASE_URL;
+      delete process.env.NEXTCLOUD_USERNAME;
+      delete process.env.NEXTCLOUD_APP_PASSWORD;
+      for (const origin of [publicBase, vcoBase]) {
+        for (const form of ["/s/", "/index.php/s/"]) {
+          const source = resolveSource({ link: `${origin}${form}${syntheticToken}?path=%2FRace%20photos%2FDay1`, password: "synthetic-password" });
+          assert.equal(source.base.origin, origin);
+          assert.equal(source.root.href, `${origin}/public.php/dav/files/${syntheticToken}/Race%20photos/Day1/`);
+          assert.equal(Buffer.from(source.auth.slice(6), "base64").toString(), `${syntheticToken}:synthetic-password`);
+        }
+        assert.throws(() => resolveSource({ link: `${origin}/apps/files/files/12?dir=/Album` }), /Interner Nextcloud-Zugang/);
+      }
+      if (configured) {
+        assert.equal(resolveSource({ link: `${configured}/index.php/s/${syntheticToken}` }).root.href,
+          `${configured}/public.php/dav/files/${syntheticToken}/`);
+      }
+    }
+    process.env.NEXTCLOUD_BASE_URL = `${vcoBase}/nextcloud`;
+    process.env.NEXTCLOUD_USERNAME = "admin";
+    process.env.NEXTCLOUD_APP_PASSWORD = "test-app-password";
+    for (const link of [
+      `${vcoBase}/nextcloud/apps/files/files/12?dir=/Album`,
+      `${vcoBase}/nextcloud/remote.php/dav/files/admin/Album`,
+    ]) {
+      assert.equal(resolveSource({ link }).root.href, `${vcoBase}/nextcloud/remote.php/dav/files/admin/Album/`);
+    }
+  } finally {
+    process.env.NEXTCLOUD_BASE_URL = base;
+    process.env.NEXTCLOUD_USERNAME = "admin";
+    process.env.NEXTCLOUD_APP_PASSWORD = "test-app-password";
+  }
+});
+
+test("VCO public discovery rejects unsafe links, redirects, DAV escapes and import limits without leaking access", async () => {
+  const transport = globalThis.fetch;
+  let calls = 0;
+  const link = `${vcoBase}/index.php/s/${syntheticToken}`;
+  const folder = `/public.php/dav/files/${syntheticToken}/`;
+  const password = "synthetic-private-password";
+  let respond = () => new Response(dav(folder, [[folder + "photo.jpg"]]), { status: 207 });
+  globalThis.fetch = mockOrigin(vcoBase, (url, options) => {
+    calls++;
+    assert.equal(options.redirect, "manual");
+    return respond(url, options);
+  }, transport);
+  try {
+    for (const invalid of [
+      `https://foreign.example/s/${syntheticToken}`,
+      `http://nextcloud.vco-motorsports.com/s/${syntheticToken}`,
+      `${vcoBase}:444/s/${syntheticToken}`,
+      `https://nextcloud.vco-motorsports.com.evil.example/s/${syntheticToken}`,
+      `https://nextcloud-vco-motorsports.com/s/${syntheticToken}`,
+      `https://user:password@nextcloud.vco-motorsports.com/s/${syntheticToken}`,
+      `${link}#fragment`, `${link}?unexpected=1`, `${link}?path=/../private`,
+      `${link}?path=%2F..%2Fprivate`, `${link}?path=%2Fbad%5Cfolder`,
+      `${link}?path=%2F%252e%252e%2Fprivate`,
+      `${vcoBase}/s/${syntheticToken}%2fprivate`,
+      `${vcoBase}/s/${syntheticToken}%5cprivate`,
+      `${vcoBase}/s/${syntheticToken}%00`,
+    ]) {
+      await assert.rejects(() => discover([{ link: invalid }]));
+    }
+    assert.equal(calls, 0, "unsafe links rejected before fetching");
+    for (const [status, expected] of [[401, /Kein Zugriff/], [403, /Kein Zugriff/], [404, /nicht gefunden/], [500, /HTTP 500/]]) {
+      respond = () => new Response("", { status });
+      await assert.rejects(() => discover([{ link, password }]), error =>
+        expected.test(error.message) && !error.message.includes(password) && !error.message.includes(syntheticToken));
+    }
+    respond = () => { throw new Error(`${link} ${password}`); };
+    await assert.rejects(() => discover([{ link, password }]), error =>
+      /nicht erreichbar/.test(error.message) && !error.message.includes(password) && !error.message.includes(syntheticToken));
+    for (const location of ["http://127.0.0.1/", `${vcoBase}/s/OTHER_SYNTHETIC_SHARE`, `${publicBase}/s/OTHER_SYNTHETIC_SHARE`]) {
+      respond = () => new Response("", { status: 302, headers: { Location: location } });
+      const before = calls;
+      await assert.rejects(() => discover([{ link, password }]), /umgeleitet/);
+      assert.equal(calls, before + 1, "redirect must never be followed");
+    }
+    for (const href of [
+      `https://other.example${folder}photo.jpg`, `${vcoBase}:444${folder}photo.jpg`,
+      "/private/photo.jpg", folder + "bad%2fphoto.jpg", folder + "bad%5cphoto.jpg",
+      folder + "%252e%252e/photo.jpg", folder + "../private/photo.jpg",
+    ]) {
+      respond = () => new Response(dav(folder, [[href]]), { status: 207 });
+      await assert.rejects(() => discover([{ link }]), /unsicherer|außerhalb/);
+    }
+    respond = () => new Response(dav(folder, Array.from({ length: 501 }, (_, i) => [folder + `${i}.jpg`])), { status: 207 });
+    await assert.rejects(() => discover([{ link }]), /Importgrenze/);
+    respond = () => new Response(dav(folder, Array.from({ length: 17 }, (_, i) => [folder + `${i}.jpg`, false, 32 * 1048576])), { status: 207 });
+    await assert.rejects(() => discover([{ link }]), /Importgrenze/);
+  } finally { globalThis.fetch = transport; }
+});
+
 test("public password, internal account and unsupported target validation", () => {
   const publicSource = resolveSource({ link: `${base}/s/abc`, password: "private" });
   assert.equal(publicSource.root.pathname, "/public.php/dav/files/abc/");
@@ -60,11 +164,11 @@ test("operator public shares work without an account, but internal and foreign l
   delete process.env.NEXTCLOUD_APP_PASSWORD;
   const originalFetch = globalThis.fetch;
   const calls = [];
-  globalThis.fetch = async (url, options) => {
+  globalThis.fetch = mockOrigin(publicBase, async (url, options) => {
     calls.push({ url: new URL(url), options });
     return new Response(dav("/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/",
       [["/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/photo.jpg"]]), { status: 207 });
-  };
+  }, originalFetch);
   try {
     const link = `${publicBase}/s/TEST_ONLY_NOT_A_REAL_SHARE`;
     const found = await discover([{ link, password: "album-password" }]);
@@ -80,16 +184,16 @@ test("operator public shares work without an account, but internal and foreign l
     assert.throws(() => resolveSource({ link: "https://nextcloud.bs-plus.de:444/s/abc" }), /nicht unterstützt/);
     assert.throws(() => resolveSource({ link: "https://nextcloud.bs-plus.de.evil.example/s/abc" }), /nicht unterstützt/);
     assert.equal(calls.length, 1, "invalid links must be rejected before any network request");
-    globalThis.fetch = async () => new Response("", { status: 401 });
+    globalThis.fetch = mockOrigin(publicBase, async () => new Response("", { status: 401 }), originalFetch);
     await assert.rejects(() => discover([{ link, password: "wrong" }]), /Kein Zugriff/);
-    globalThis.fetch = async () => new Response("", { status: 404 });
+    globalThis.fetch = mockOrigin(publicBase, async () => new Response("", { status: 404 }), originalFetch);
     await assert.rejects(() => discover([{ link }]), /nicht gefunden/);
-    globalThis.fetch = async () => { throw new TypeError("network failure"); };
+    globalThis.fetch = mockOrigin(publicBase, async () => { throw new TypeError("network failure"); }, originalFetch);
     await assert.rejects(() => discover([{ link }]), /nicht erreichbar/);
-    globalThis.fetch = async () => new Response("", { status: 302, headers: { Location: "http://127.0.0.1/" } });
+    globalThis.fetch = mockOrigin(publicBase, async () => new Response("", { status: 302, headers: { Location: "http://127.0.0.1/" } }), originalFetch);
     await assert.rejects(() => discover([{ link }]), /umgeleitet/);
-    globalThis.fetch = async () => new Response(dav("/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/",
-      [["https://other.example/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/photo.jpg"]]), { status: 207 });
+    globalThis.fetch = mockOrigin(publicBase, async () => new Response(dav("/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/",
+      [["https://other.example/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/photo.jpg"]]), { status: 207 }), originalFetch);
     await assert.rejects(() => discover([{ link }]), /unsicherer Nextcloud-Pfad/);
   } finally {
     globalThis.fetch = originalFetch;
@@ -102,7 +206,7 @@ test("operator public shares work without an account, but internal and foreign l
 test("multiple links, recursive folders, mixed files and access failures", async () => {
   const originalFetch = globalThis.fetch;
   const seen = [];
-  globalThis.fetch = async (url, options) => {
+  globalThis.fetch = mockOrigin(base, async (url, options) => {
     seen.push({ path: new URL(url).pathname, options });
     const path = new URL(url).pathname;
     const entries = path === "/public.php/dav/files/abc/" ?
@@ -112,7 +216,7 @@ test("multiple links, recursive folders, mixed files and access failures", async
         [["/public.php/dav/files/abc/sub/two.png"], ["/public.php/dav/files/abc/sub/clip.webm"]] :
         [["/remote.php/dav/files/admin/Other/three.webp"], ["/remote.php/dav/files/admin/Other/film.mov"]];
     return new Response(dav(path, entries), { status: 207 });
-  };
+  }, originalFetch);
   try {
     const found = await discover([
       { link: `${base}/s/abc`, password: "private" },
@@ -125,11 +229,11 @@ test("multiple links, recursive folders, mixed files and access failures", async
     assert.equal(seen.length, 3);
     assert.ok(seen.every(entry => entry.options.redirect === "manual" && entry.options.method === "PROPFIND"));
     assert.equal(Buffer.from(seen[0].options.headers.Authorization.slice(6), "base64").toString(), "abc:private");
-    globalThis.fetch = async () => new Response("", { status: 401 });
+    globalThis.fetch = mockOrigin(base, async () => new Response("", { status: 401 }), originalFetch);
     await assert.rejects(() => discover([{ link: `${base}/s/abc`, password: "bad" }]), /Kein Zugriff/);
-    globalThis.fetch = async () => new Response("", { status: 302, headers: { Location: "http://127.0.0.1/" } });
+    globalThis.fetch = mockOrigin(base, async () => new Response("", { status: 302, headers: { Location: "http://127.0.0.1/" } }), originalFetch);
     await assert.rejects(() => discover([{ link: `${base}/s/abc` }]), /umgeleitet/);
-    globalThis.fetch = async () => new Response(dav("/public.php/dav/files/abc/", [["/remote.php/dav/files/admin/private.jpg"]]), { status: 207 });
+    globalThis.fetch = mockOrigin(base, async () => new Response(dav("/public.php/dav/files/abc/", [["/remote.php/dav/files/admin/private.jpg"]]), { status: 207 }), originalFetch);
     await assert.rejects(() => discover([{ link: `${base}/s/abc` }]), /außerhalb/);
   } finally { globalThis.fetch = originalFetch; }
 });
@@ -302,6 +406,90 @@ test("a failed image does not block the others, and retry does not duplicate sav
     await storage.deleteEvent(event.id);
   }
 });
+
+for (const configured of [false, true]) {
+ for (const form of ["/s/", "/index.php/s/"]) {
+  test(`admin VCO preview and real image import: ${form}, other instance configured=${configured}`, async () => {
+    if (configured) process.env.NEXTCLOUD_BASE_URL = base;
+    else delete process.env.NEXTCLOUD_BASE_URL;
+    delete process.env.NEXTCLOUD_USERNAME;
+    delete process.env.NEXTCLOUD_APP_PASSWORD;
+    const app = express();
+    app.use(express.json());
+    let admin = true;
+    app.use((req, _res, next) => {
+      req.user = { id: 42, isAdmin: admin };
+      req.isAuthenticated = () => true;
+      next();
+    });
+    const server = await registerRoutes(app, { workers: false });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = `http://127.0.0.1:${server.address().port}`;
+    const transport = globalThis.fetch;
+    const image = await sharp({ create: { width: 16, height: 16, channels: 3, background: "red" } }).jpeg().toBuffer();
+    const folder = `/public.php/dav/files/${syntheticToken}/Selected%20folder/`;
+    let gets = 0;
+    globalThis.fetch = mockOrigin(vcoBase, (url, options) => {
+      assert.equal(options.redirect, "manual");
+      assert.equal(Buffer.from(options.headers.Authorization.slice(6), "base64").toString(), `${syntheticToken}:synthetic-password`);
+      const pathname = new URL(url).pathname;
+      if (options.method === "PROPFIND") {
+        assert.equal(pathname, folder);
+        return new Response(dav(folder, [[folder + "photo.jpg", false, image.length]]), { status: 207 });
+      }
+      assert.equal(options.method, "GET");
+      assert.equal(pathname, folder + "photo.jpg");
+      gets++;
+      return new Response(image, { headers: { "Content-Length": String(image.length) } });
+    }, transport);
+    const sources = [{ link: `${vcoBase}${form}${syntheticToken}?path=%2FSelected%20folder`, password: "synthetic-password" }];
+    const post = (path, body) => transport(address + path, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    let eventId;
+    try {
+      admin = false;
+      assert.equal((await post("/api/admin/nextcloud/preview", { sources })).status, 403);
+      admin = true;
+      const preview = await post("/api/admin/nextcloud/preview", { sources });
+      assert.equal(preview.status, 200);
+      assert.deepEqual(await preview.json(), { count: 1, images: 1, videos: 0, skipped: 0 });
+      const created = await post("/api/events", { title: "Synthetic VCO import", description: "Temporary test", date: new Date().toISOString(), visibility: "draft" });
+      assert.equal(created.status, 201);
+      const event = await created.json();
+      eventId = event.id;
+      assert.equal(event.creatorId, null);
+      const started = await post(`/api/admin/events/${eventId}/nextcloud`, { sources });
+      assert.equal(started.status, 202, await started.text());
+      let result;
+      for (let attempt = 0; attempt < 120; attempt++) {
+        const response = await transport(`${address}/api/admin/events/${eventId}/nextcloud`);
+        assert.equal(response.status, 200);
+        result = await response.json();
+        if (["completed", "partial", "error"].includes(result.status)) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      assert.equal(result.status, "completed", JSON.stringify(result));
+      assert.equal(result.importedImages, 1);
+      assert.equal(result.failed, 0);
+      assert.equal(gets, 1);
+      const media = await storage.getMediaItems(eventId);
+      assert.equal(media.length, 1);
+      assert.match(media[0].url, /^\/api\/media\/files\/media-.*\.webp$/);
+      assert.ok(!JSON.stringify(result).includes("synthetic-password"));
+    } finally {
+      await stopImportWorker();
+      globalThis.fetch = transport;
+      if (eventId) await storage.deleteEvent(eventId);
+      await new Promise(resolve => server.close(resolve));
+      process.env.NEXTCLOUD_BASE_URL = base;
+      process.env.NEXTCLOUD_USERNAME = "admin";
+      process.env.NEXTCLOUD_APP_PASSWORD = "test-app-password";
+    }
+  });
+ }
+}
 
 test("admin can preview and import an operator public share without Nextcloud configuration", async () => {
   delete process.env.NEXTCLOUD_BASE_URL;

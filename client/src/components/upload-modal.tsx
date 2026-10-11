@@ -520,11 +520,11 @@ export default function UploadModal({
                 </SelectContent>
               </Select>
               {imageSource === "nextcloud" && <>
-                 <p className="text-sm text-muted-foreground">Public folder links work without a Nextcloud account. Enter a share password below if needed. Internal links require the instance and Nextcloud access to be configured by an administrator. All links and subfolders are imported into this album.</p>
+                 <p className="text-sm text-muted-foreground">Public folder links from nextcloud.vco-motorsports.com, nextcloud.bs-plus.de or a separately configured instance work without a Nextcloud account. Both /s/TOKEN and /index.php/s/TOKEN are supported. Enter a share password below if needed. Internal links require the instance and Nextcloud access to be configured by an administrator. All links and subfolders are imported into this album.</p>
                 {links.map((entry, i) => (
                   <div className="space-y-2 border-b pb-3" key={i}>
                     <Label htmlFor={`nc-link-${i}`}>Folder link {i + 1}</Label>
-                     <Input id={`nc-link-${i}`} type="url" value={entry.link} placeholder="https://nextcloud.bs-plus.de/s/..."
+                     <Input id={`nc-link-${i}`} type="url" value={entry.link} placeholder="https://nextcloud.vco-motorsports.com/index.php/s/TOKEN"
                       onChange={e => { const next = [...links]; next[i] = { ...entry, link: e.target.value }; setLinks(next); setPreview(null); }} />
                     <Input aria-label={`Share password for link ${i + 1}`} type="password" autoComplete="off"
                       placeholder="Share password (if needed)" value={entry.password}

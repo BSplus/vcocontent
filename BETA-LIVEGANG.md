@@ -130,15 +130,18 @@ keine vorhandenen Medien migrieren oder löschen.
 ### Nextcloud-Bildimport für Admins
 
 Nach der Migration `0002-nextcloud-import.sql` sind öffentliche Freigaben
-von **`https://nextcloud.bs-plus.de/s/TOKEN`** ohne `NEXTCLOUD_BASE_URL` und
-ohne Nextcloud-Konto nutzbar. Andere Instanzen werden nur angenommen, wenn
+ von **`https://nextcloud.vco-motorsports.com`** und
+ **`https://nextcloud.bs-plus.de`** als `/s/TOKEN` oder `/index.php/s/TOKEN`
+ ohne `NEXTCLOUD_BASE_URL` und ohne Nextcloud-Konto nutzbar.
+ Beide öffentlichen Instanzen bleiben auch bei einer anderweitig konfigurierten
+ Instanz unterstützt. Andere Instanzen werden nur angenommen, wenn
 `NEXTCLOUD_BASE_URL` explizit auf deren HTTPS-Basisadresse gesetzt ist
 (z. B. `https://cloud.example.org`, bei Installation im Unterpfad
 `https://cloud.example.org/nextcloud`). Für interne Ordnerlinks muss diese
 Variable zur Instanz passen; zusätzlich `NEXTCLOUD_USERNAME` und das separate
 **App-Passwort** `NEXTCLOUD_APP_PASSWORD` als serverseitige Secrets einrichten.
 Das Konto braucht Lesezugriff auf die Ordner; reguläre Kontopasswörter nicht
-verwenden. Öffentliche Links `/s/TOKEN` auf der bekannten oder explizit
+ verwenden. Öffentliche Links `/s/TOKEN` und `/index.php/s/TOKEN` auf den bekannten oder explizit
 konfigurierten Instanz brauchen keine Konto-Konfiguration; ein Freigabepasswort
 kann der Admin pro Link im Dialog eingeben. Bei fehlgeschlagenem Zugriff
 erscheint vor der Albumanlage ein Zugriffs- oder Netzwerkfehler. Die
