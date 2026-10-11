@@ -37,6 +37,7 @@ import { verificationConfigured } from "./email-verification";
 import { registerCommunityRoutes, issueDownloadOperation, validDownloadOperation, recordDownload } from "./community";
 import { publicCreatorById } from "./creator-profiles";
 import { registerCreatorEventAssociationRoutes } from "./creator-event-association";
+import { publicEventThumbnails, registerEventThumbnailRoute } from "./event-thumbnails";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -70,6 +71,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   const kickAnalysisWorker = options.workers===false ? async()=>false : kickWorker;
   // All API data and protected previews must be re-authorized on each request.
   app.use("/api",(_req,res,next)=>{res.setHeader("Cache-Control","private, no-store");next();});
+  registerEventThumbnailRoute(app);
   registerBetaRoutes(app);
   registerCommunityRoutes(app);
   registerCreatorEventAssociationRoutes(app);
@@ -90,12 +92,8 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
     try {
       const events = await visibleEvents(await storage.getEvents());
       
-      // Remove heavy base64 thumbnails from the list to improve performance
-      // Thumbnails will be loaded lazily by the frontend when needed
-      const eventsWithoutThumbnails = events.map(event => ({
-        ...event,
-        customThumbnail: null // Replace with null to keep structure but remove payload
-      }));
+      // Lazy, bounded previews, including historical inline event images.
+      const eventsWithoutThumbnails = events.map(publicEventThumbnails);
       
       // Return all events, regardless of auth status
       // This is needed for the public-facing event listing

@@ -10,6 +10,9 @@ import EventTitle from "@/components/event-title";
 import { formatDate } from "@/lib/utils";
 import CommunityActions from "@/components/community-actions";
 import CreatorIdentity, { type PublicCreator } from "@/components/creator-identity";
+import { useState } from "react";
+
+const DEFAULT_EVENT_IMAGE = "/attached_assets/%2389_3.png";
 
 interface EventCardProps {
   event: Event;
@@ -21,7 +24,13 @@ export default function EventCard({ event }: EventCardProps) {
   const isUpcoming = eventDate ? eventDate >= new Date() : false;
   const isCreatorEvent = !!event.creatorId;
   const canManageMedia = user?.isAdmin || (user?.isCreator && user.id === event.creatorId);
-  const { data: mediaItems } = useQuery<MediaItem[]>({ queryKey: [`/api/events/${event.id}/media`] });
+  const [failedImages, setFailedImages] = useState<string[]>([]);
+  const chosenImages = [event.customThumbnail, event.coverImage !== DEFAULT_EVENT_IMAGE ? event.coverImage : null]
+    .filter((url): url is string => !!url);
+  const { data: mediaItems } = useQuery<MediaItem[]>({
+    queryKey: [`/api/events/${event.id}/media`],
+    enabled: !event.isPremium && !chosenImages.some(url => !failedImages.includes(url)),
+  });
   const { data: series } = useQuery<Series>({
     queryKey: [`/api/series/${event.seriesId}`],
     enabled: !!event.seriesId,
@@ -30,19 +39,22 @@ export default function EventCard({ event }: EventCardProps) {
     queryKey: [`/api/users/${event.creatorId}`, user?.id ?? "signed-out"],
     enabled: isCreatorEvent,
   });
-  const thumbnailUrl = event.customThumbnail ||
-    mediaItems?.find((item) => item.type === "image")?.thumbnail ||
-    "/attached_assets/%2389_3.png";
+  const thumbnailUrl = [...chosenImages,
+    mediaItems?.find((item) => item.type === "image" && !item.isPremium)?.thumbnail,
+    DEFAULT_EVENT_IMAGE].find(url => !!url && !failedImages.includes(url));
+  const imageError = () => {
+    if (thumbnailUrl) setFailedImages(failed => failed.includes(thumbnailUrl) ? failed : [...failed, thumbnailUrl]);
+  };
   const galleryUrl = `/events/${event.id}`;
 
   return (
     <Card className={`flex h-full flex-col overflow-hidden rounded-none border-border bg-card ${isUpcoming ? "" : "group transition-[border-color,background-color,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/65 motion-reduce:transform-none"}`}>
       <div className="relative aspect-[16/10] overflow-hidden bg-black/30">
         {isUpcoming ? (
-          <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+          thumbnailUrl && <img src={thumbnailUrl} onError={imageError} alt="" className="h-full w-full object-cover" loading="lazy" />
         ) : (
           <Link href={galleryUrl} aria-label={`Open ${event.title} gallery`} className="block h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary">
-            <img src={thumbnailUrl} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none" loading="lazy" />
+            {thumbnailUrl && <img src={thumbnailUrl} onError={imageError} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none" loading="lazy" />}
           </Link>
         )}
         <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3 pointer-events-none">
