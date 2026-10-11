@@ -45,8 +45,8 @@ const entryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize
 function creationEntries(body: Record<string, unknown>): EntryRow[] | undefined {
   if (body.entryRows === undefined) return undefined;
   const result = z.array(entryRowSchema).min(1).max(500).safeParse(body.entryRows);
-  if (!result.success) throw new Error("Entry List: Bitte alle Einträge prüfen und unvollständige Zeilen korrigieren.");
-  if (entryConflicts(result.data).length) throw new Error("Entry List: Doppelte oder mehrdeutige Startnummern (auch mit führenden Nullen).");
+  if (!result.success) throw new Error("Entry list: Please review all entries and correct incomplete rows.");
+  if (entryConflicts(result.data).length) throw new Error("Entry list: Duplicate or ambiguous race numbers (including leading zeros).");
   return result.data;
 }
 const OPENAI_TEST_COOLDOWN_MS = 60_000;
@@ -126,7 +126,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
     } catch (error) {
       console.error('Error creating creator event:', error);
       res.status(400).json({ 
-        error: error instanceof MediaLimitError || error instanceof Error && error.message.startsWith("Entry List:") ? error.message : "Failed to create event",
+        error: error instanceof MediaLimitError || error instanceof Error && error.message.startsWith("Entry list:") ? error.message : "Failed to create event",
       });
     }
   });
@@ -410,26 +410,26 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
         videos: files.filter(file => file.type === "video").length, skipped });
     } catch (error) {
       res.status(error instanceof z.ZodError || error instanceof NextcloudError ? 400 : 502)
-        .json({ error: error instanceof NextcloudError ? error.message : "Nextcloud-Vorschau konnte nicht geladen werden." });
+        .json({ error: error instanceof NextcloudError ? error.message : "The Nextcloud preview could not be loaded." });
     }
   });
   app.get("/api/admin/events/:id/nextcloud", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Ungültiges Album." });
-    if (!await storage.getEvent(id)) return res.status(404).json({ error: "Album nicht gefunden." });
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Invalid event gallery." });
+    if (!await storage.getEvent(id)) return res.status(404).json({ error: "Event gallery not found." });
     res.json(await importStatus(id));
   });
   app.post("/api/admin/events/:id/nextcloud", requireAdmin, async (req, res) => {
     try {
       const id = Number(req.params.id);
-      if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Ungültiges Album." });
+      if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Invalid event gallery." });
       const event = await storage.getEvent(id);
-      if (!event || event.creatorId || event.isPremium) return res.status(404).json({ error: "Admin-Album nicht gefunden." });
+      if (!event || event.creatorId || event.isPremium) return res.status(404).json({ error: "Admin event gallery not found." });
       await startImport(id, nextcloudRequest.parse(req.body).sources);
       res.status(202).json(await importStatus(id));
     } catch (error) {
       res.status(error instanceof z.ZodError || error instanceof NextcloudError ? 400 : 502)
-        .json({ error: error instanceof NextcloudError ? error.message : "Import konnte nicht gestartet werden." });
+        .json({ error: error instanceof NextcloudError ? error.message : "The import could not be started." });
     }
   });
   app.post("/api/admin/events/:id/nextcloud/resume", requireAdmin, async (req, res) => {
@@ -766,19 +766,19 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
 
   app.post("/api/media/:id/caption-preview", requireCreator, async (req, res) => {
     const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Ungültiges Bild." });
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Invalid image." });
     try {
       const media = await storage.getMediaItem(id);
-      if (!media) return res.status(404).json({ error: "Bild nicht gefunden." });
+      if (!media) return res.status(404).json({ error: "Image not found." });
       const event = media.eventId ? await storage.getEvent(media.eventId) : undefined;
-      if (!event || !canManageEvent(req.user, event.creatorId)) return res.status(403).json({ error: "Kein Zugriff." });
-      if (media.type !== "image") return res.status(422).json({ error: "Nur Bilder können ausgewertet werden." });
+      if (!event || !canManageEvent(req.user, event.creatorId)) return res.status(403).json({ error: "Access denied." });
+      if (media.type !== "image") return res.status(422).json({ error: "Only images can be analyzed." });
       const requestedScene = z.object({ scene: z.enum(scenes).optional() }).parse(req.body || {}).scene;
       const [known]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,id));
       const stored=known?.status==="completed" && known.recognition!==null &&
         (known.fingerprint===analysisFingerprint(media.thumbnail) ||
           known.fingerprint==="recognition:"+analysisFingerprint(media.thumbnail)) ? known : undefined;
-      if (!stored && !isAITaggingConfigured()) return res.status(503).json({ error: "Bild-KI ist nicht verfügbar." });
+      if (!stored && !isAITaggingConfigured()) return res.status(503).json({ error: "AI image analysis is unavailable." });
       const now = Date.now();
       captionDetections.forEach((value, key) => { if (value.expires < now) captionDetections.delete(key); });
       let cached = captionDetections.get(id);
@@ -802,20 +802,20 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const result = proposeCaption(event, entries, media.identificationManual ? identified.map(row=>row.number).filter(Boolean) : detected.numbers, scene);
       return res.json({ ...result, scene });
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: "Ungültige Szenenart." });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid scene type." });
       console.error("Caption preview failed");
-      return res.status(502).json({ error: "Bild-KI konnte die Nummern nicht prüfen. Das Bild bleibt unverändert." });
+      return res.status(502).json({ error: "AI image analysis could not check the numbers. The image remains unchanged." });
     }
   });
 
   app.put("/api/media/:id", requireCreator, async (req, res) => {
     const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Ungültiges Medium." });
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "Invalid media item." });
     try {
       const item = await storage.getMediaItem(id);
-      if (!item) return res.status(404).json({ error: "Medium nicht gefunden." });
+      if (!item) return res.status(404).json({ error: "Media item not found." });
       const event = item.eventId ? await storage.getEvent(item.eventId) : undefined;
-      if (!event || !canManageEvent(req.user, event.creatorId)) return res.status(403).json({ error: "Kein Zugriff." });
+      if (!event || !canManageEvent(req.user, event.creatorId)) return res.status(403).json({ error: "Access denied." });
       const changes = z.object({
         caption: z.string().max(1000).optional(),
         photographer: z.string().max(150).optional(),
@@ -848,50 +848,50 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       void kickAnalysisWorker();
       return res.json(await storage.getMediaItem(id));
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: "Ungültige Medienangaben (Caption max. 1000 Zeichen)." });
-      return res.status(500).json({ error: "Medium konnte nicht aktualisiert werden." });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid media details (caption: maximum 1000 characters)." });
+      return res.status(500).json({ error: "The media item could not be updated." });
     }
   });
 
   async function managedEntryEvent(req: express.Request, res: express.Response) {
     const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Ungültiges Event." }); return null; }
+    if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid event." }); return null; }
     const event = await storage.getEvent(id);
-    if (!event) { res.status(404).json({ error: "Event nicht gefunden." }); return null; }
-    if (!canManageEvent(req.user, event.creatorId)) { res.status(403).json({ error: "Kein Zugriff auf diese Entry List." }); return null; }
+    if (!event) { res.status(404).json({ error: "Event not found." }); return null; }
+    if (!canManageEvent(req.user, event.creatorId)) { res.status(403).json({ error: "Access to this entry list denied." }); return null; }
     return event;
   }
   app.get("/api/events/:id/entries", requireCreator, async (req, res) => {
     try {
       const event = await managedEntryEvent(req, res);
       if (event) res.json(await storage.getEventEntries(event.id));
-    } catch { res.status(500).json({ error: "Entry List konnte nicht geladen werden." }); }
+    } catch { res.status(500).json({ error: "The entry list could not be loaded." }); }
   });
   app.put("/api/events/:id/entries", requireCreator, async (req, res) => {
     try {
       const event = await managedEntryEvent(req, res);
       if (!event) return;
       const { rows } = entryRowsSchema.parse(req.body);
-      if (entryConflicts(rows).length) return res.status(400).json({ error: "Doppelte oder mehrdeutige Startnummern (auch mit führenden Nullen). Bitte korrigieren." });
+      if (entryConflicts(rows).length) return res.status(400).json({ error: "Duplicate or ambiguous race numbers (including leading zeros). Please correct them." });
       await storage.replaceEventEntries(event.id, rows);
       res.json({ rows });
     } catch (error) {
-      res.status(error instanceof z.ZodError ? 400 : 500).json({ error: error instanceof z.ZodError ? "Unvollständige Entry-Zeilen. Bitte Nummer, Team, Fahrzeug und Fahrer prüfen." : "Entry List konnte nicht gespeichert werden." });
+      res.status(error instanceof z.ZodError ? 400 : 500).json({ error: error instanceof z.ZodError ? "Incomplete entry rows. Please check the number, team, car and drivers." : "The entry list could not be saved." });
     }
   });
   const previewEntryFile = (req: express.Request, res: express.Response) => {
     entryUpload(req, res, async error => {
       if (!req.user!.isAdmin && !await takeBetaRate(`reference:${req.user!.id}`,20,3600000))
         return res.status(429).json({error:"Too many reference analyses. Please try later."});
-      if (error) return res.status(413).json({ error: "Entry List zu groß oder ungültig (maximal 8 MiB)." });
-      if (!req.file) return res.status(400).json({ error: "Bitte eine Datei auswählen." });
+      if (error) return res.status(413).json({ error: "Entry list too large or invalid (maximum 8 MiB)." });
+      if (!req.file) return res.status(400).json({ error: "Please select a file." });
       try {
         // Only actual image/scanned-PDF requests consume a shared vision slot.
         res.json(await parseEntryFile(req.file.buffer, req.file.mimetype, req.file.originalname, withVisionBudget));
       } catch (failure) {
         const message = failure instanceof Error ? failure.message : "";
         res.status(/not configured|unavailable|failed/i.test(message) ? 503 : 400)
-          .json({ error: /not configured|unavailable|failed/i.test(message) ? "Texterkennung nicht verfügbar. Einträge können weiterhin manuell erfasst werden." : message.slice(0, 200) || "Datei konnte nicht gelesen werden." });
+          .json({ error: /not configured|unavailable|failed/i.test(message) ? "Text recognition is unavailable. Entries can still be added manually." : message.slice(0, 200) || "The file could not be read." });
       }
     });
   };
@@ -901,7 +901,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const event = await managedEntryEvent(req, res);
       if (!event) return;
       previewEntryFile(req, res);
-    } catch { res.status(500).json({ error: "Entry-List-Vorschau fehlgeschlagen." }); }
+    } catch { res.status(500).json({ error: "Entry list preview failed." }); }
   });
 
   app.post("/api/media", requireCreator, (_req, res) => {
@@ -1145,7 +1145,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       res.status(201).json(event);
     } catch (error) {
       if (!(error instanceof EventImageError)) console.error('Error creating event:', error);
-      res.status(400).json({ error: error instanceof EventImageError || error instanceof Error && error.message.startsWith("Entry List:") ? error.message : "Failed to create event" });
+      res.status(400).json({ error: error instanceof EventImageError || error instanceof Error && error.message.startsWith("Entry list:") ? error.message : "Failed to create event" });
     }
   });
 

@@ -30,6 +30,7 @@ Preferred communication style: Simple, everyday language.
 - Responsive design optimized for both desktop and mobile viewing
 
 **Click-target conventions:**
+- App-owned system copy is English, including API errors and new import status. Preserve user content, proper names, legal wording and historical stored errors. See `docs/system-text-audit.md`.
 - Public media search is labeled “Search media”; it searches media metadata, not a separate event catalog.
 - “Recent events” and “Creator events” identify event-list destinations; upcoming listings are calendar information, not gallery links.
 - “Preview” opens a dialog, “Media details” navigates to the media page, and “Download options” opens the existing quality menu. Download counts are statistics.

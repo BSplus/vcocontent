@@ -191,8 +191,8 @@ export default function AdminDashboard() {
 
   if (eventsError || mediaError) {
     return <div role="alert" className="min-h-screen flex flex-col items-center justify-center gap-4">
-      <p>Die Dashboard-Daten konnten nicht geladen werden.</p>
-      <Button onClick={() => { if (eventsError) void retryEvents(); if (mediaError) void retryMedia(); }}>Erneut versuchen</Button>
+      <p>Dashboard data could not be loaded.</p>
+      <Button onClick={() => { if (eventsError) void retryEvents(); if (mediaError) void retryMedia(); }}>Try again</Button>
     </div>;
   }
   if (eventsLoading || mediaLoading) {
@@ -232,8 +232,8 @@ export default function AdminDashboard() {
       <main className="container mx-auto px-4 py-8">
         {usageError && (
           <div role="alert" className="mb-4 flex flex-wrap items-center gap-3">
-            <p>Die Speicherübersicht konnte nicht geladen werden.</p>
-            <Button variant="outline" onClick={() => void retryUsage()}>Erneut versuchen</Button>
+            <p>The storage overview could not be loaded.</p>
+            <Button variant="outline" onClick={() => void retryUsage()}>Try again</Button>
           </div>
         )}
         <Tabs value={activeTab} onValueChange={setActiveTab}>

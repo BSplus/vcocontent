@@ -24,9 +24,9 @@
         message.setAttribute("role", "alert");
         message.style.cssText = "min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;font:16px sans-serif";
         const text = document.createElement("p");
-        text.textContent = "Die Anwendung konnte nicht geladen werden. Bitte versuche es erneut.";
+        text.textContent = "The application could not be loaded. Please try again.";
         const retry = document.createElement("button");
-        retry.textContent = "Erneut versuchen";
+        retry.textContent = "Reload page";
         retry.onclick = () => window.location.reload();
         message.append(text, retry);
         root.append(message);

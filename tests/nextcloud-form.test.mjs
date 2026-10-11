@@ -10,12 +10,15 @@ test("admin Nextcloud form shows the VCO example and supported public instances"
     if (message.method !== "Fetch.requestPaused") return;
     const { requestId, request } = message.params;
     const path = new URL(request.url).pathname;
-    const data = path === "/api/user"
+    const previewFailure = path === "/api/admin/nextcloud/preview";
+    const data = previewFailure
+      ? { error: "Access to the Nextcloud folder denied. Check the share password or account." }
+      : path === "/api/user"
       ? { id: 880001, username: "Synthetic admin", isAdmin: true, isCreator: true }
       : path === "/api/admin/safety" ? { media: [], events: [] }
       : path === "/api/admin/media-usage" ? null : [];
     void browser.command("Fetch.fulfillRequest", {
-      requestId, responseCode: 200,
+      requestId, responseCode: previewFailure ? 400 : 200,
       responseHeaders: [{ name: "Content-Type", value: "application/json" }],
       body: Buffer.from(JSON.stringify(data)).toString("base64"),
     });
@@ -45,6 +48,15 @@ test("admin Nextcloud form shows the VCO example and supported public instances"
     for (const text of ["nextcloud.vco-motorsports.com", "nextcloud.bs-plus.de", "/s/TOKEN", "/index.php/s/TOKEN", "separately configured instance"]) {
       assert.ok(state.text.includes(text), text);
     }
+    assert.ok(state.text.includes("Gallery media source"));
+    await browser.evaluate(`(() => {
+      const input = document.querySelector('#nc-link-0');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input,
+        'https://nextcloud.vco-motorsports.com/s/SYNTHETIC_ONLY');
+      input.dispatchEvent(new Event('input', {bubbles:true}));
+    })()`);
+    await browser.evaluate("[...document.querySelectorAll('[role=dialog] button')].find(b=>b.textContent.includes('Check access and media')).click()");
+    await browser.wait("document.body.innerText.includes('Nextcloud access failed') && document.body.innerText.includes('Access to the Nextcloud folder denied. Check the share password or account.')");
     await browser.command("Fetch.disable");
     await browser.command("Page.navigate", { url: new URL("/privacy-policy", base).href });
     await browser.wait("!!document.querySelector('article') && document.querySelector('article').innerText.includes('nextcloud.vco-motorsports.com')");

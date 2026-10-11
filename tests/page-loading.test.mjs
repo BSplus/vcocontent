@@ -365,7 +365,7 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
         let restore = await failApi("/api/events");
         try {
           const state = await visit("/admin/dashboard",
-            { path: "/admin/dashboard", text: "Die Dashboard-Daten konnten nicht geladen werden" },
+            { path: "/admin/dashboard", text: "Dashboard data could not be loaded" },
             { allowFailures: true });
           assert.equal(state.alert, true);
         } finally { await restore(); }
@@ -376,7 +376,7 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
         restore = await failApi("/api/media");
         try {
           const state = await visit("/admin/dashboard",
-            { path: "/admin/dashboard", text: "Die Dashboard-Daten konnten nicht geladen werden" },
+            { path: "/admin/dashboard", text: "Dashboard data could not be loaded" },
             { allowFailures: true });
           assert.equal(state.alert, true, "Media API failure must offer a retry");
         } finally { await restore(); }
@@ -387,7 +387,7 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
         restore = await failApi("/api/user");
         try {
           const state = await visit("/admin/dashboard",
-            { path: "/admin/dashboard", text: "Die Anmeldung konnte nicht geprüft werden" },
+            { path: "/admin/dashboard", text: "Your sign-in status could not be checked" },
             { allowFailures: true });
           assert.equal(state.alert, true);
         } finally { await restore(); }
@@ -399,7 +399,7 @@ test("browser pages, modules, loading states and role boundaries", { timeout: 12
         restore = await failApi("/src/main.tsx");
         try {
           const state = await visit("/admin/dashboard",
-            { path: "/admin/dashboard", text: "Die Anwendung konnte nicht geladen werden" },
+            { path: "/admin/dashboard", text: "The application could not be loaded" },
             { allowFailures: true });
           assert.equal(state.alert, true, "Module failure must offer a retry");
         } finally {

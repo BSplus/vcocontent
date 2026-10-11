@@ -130,6 +130,42 @@ test.after(async () => {
   await pool.end();
 });
 
+test("API validation and entry-list errors use English without changing access or saved data", async () => {
+  const event = await album(), item = await photo(event.id);
+  const cases = [
+    [`/api/events/invalid/entries`, "owner", undefined, "GET", 400, "Invalid event."],
+    [`/api/events/${event.id}/entries`, "other", undefined, "GET", 403, "Access to this entry list denied."],
+    [`/api/events/${event.id}/entries`, "owner", { rows: [{ number: "1" }] }, "PUT", 400,
+      "Incomplete entry rows. Please check the number, team, car and drivers."],
+    [`/api/events/${event.id}/entries`, "owner", { rows: [
+      { number: "007", team: "A", car: "GT3", drivers: "One" },
+      { number: "7", team: "B", car: "GT3", drivers: "Two" },
+    ] }, "PUT", 400, "Duplicate or ambiguous race numbers (including leading zeros). Please correct them."],
+    [`/api/media/${item.id}`, "owner", { caption: "x".repeat(1001) }, "PUT", 400,
+      "Invalid media details (caption: maximum 1000 characters)."],
+  ];
+  for (const [path, role, body, method, status, error] of cases) {
+    const response = await api(path, role, body, method);
+    assert.equal(response.status, status, path);
+    assert.equal((await response.json()).error, error, path);
+  }
+  const preview = await realFetch(`${base}/api/events/${event.id}/entries/preview`, {
+    method: "POST", headers: { "x-fixture-role": "owner" }, body: new FormData(),
+  });
+  assert.equal(preview.status, 400);
+  assert.equal((await preview.json()).error, "Please select a file.");
+  // Both creation handlers classify entry-validation failures by their text prefix.
+  for (const [path, role] of [["/api/events", "admin"], ["/api/creator/events", "owner"]]) {
+    const response = await api(path, role, {
+      title: "Invalid entry fixture", description: "Synthetic validation fixture", date: "2026-07-12", entryRows: [{ number: "1" }],
+    }, "POST");
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error, "Entry list: Please review all entries and correct incomplete rows.");
+  }
+  assert.deepEqual(await (await api(`/api/events/${event.id}/entries`)).json(), []);
+  assert.equal((await storage.getMediaItem(item.id)).caption, "Approved caption");
+});
+
 test("caption/tag/identification edits persist with ownership and strict field validation", async () => {
   const event = await album(), item = await photo(event.id);
   const body = { caption: "Corrected caption", photographer: "Fixture photographer", tags: ["manual", "Day"],

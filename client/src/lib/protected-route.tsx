@@ -26,8 +26,8 @@ export function ProtectedRoute({
         if (error) {
           return (
             <div role="alert" className="min-h-screen flex flex-col items-center justify-center gap-4">
-              <p>Die Anmeldung konnte nicht geprüft werden. Bitte versuche es erneut.</p>
-              <button className="underline" onClick={() => window.location.reload()}>Erneut versuchen</button>
+              <p>Your sign-in status could not be checked. Please try again.</p>
+              <button className="underline" onClick={() => window.location.reload()}>Reload page</button>
             </div>
           );
         }

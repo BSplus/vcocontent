@@ -114,7 +114,7 @@ export default function EventGallery() {
         {!mediaItems.length && page === 1 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg">
-              Noch keine Medien für dieses Event verfügbar.
+              No media available for this event yet.
             </p>
           </div>
         ) : (

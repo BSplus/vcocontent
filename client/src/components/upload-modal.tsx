@@ -334,7 +334,7 @@ export default function UploadModal({
         setImportEventId(targetId);
         await nextcloudPost(`/api/admin/events/${targetId}/nextcloud`, { sources: sources() });
         queryClient.invalidateQueries({ queryKey: [`/api/admin/events/${targetId}/nextcloud`] });
-        toast({ title: "Nextcloud import started", description: "The album is saved. Progress and errors are available here." });
+        toast({ title: "Nextcloud import started", description: "The event gallery is saved. Progress and errors are available here." });
         return;
       }
       if (isEditing && eventId) {
@@ -528,7 +528,7 @@ export default function UploadModal({
 
           {user?.isAdmin && (
             <div className="space-y-3 rounded-md border p-4">
-               <Label htmlFor="image-source">Album media source</Label>
+               <Label htmlFor="image-source">Gallery media source</Label>
               <Select value={imageSource} onValueChange={value => { setImageSource(value as "local" | "nextcloud"); setPreview(null); }}>
                 <SelectTrigger id="image-source"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -537,7 +537,7 @@ export default function UploadModal({
                 </SelectContent>
               </Select>
               {imageSource === "nextcloud" && <>
-                 <p className="text-sm text-muted-foreground">Public folder links from nextcloud.vco-motorsports.com, nextcloud.bs-plus.de or a separately configured instance work without a Nextcloud account. Both /s/TOKEN and /index.php/s/TOKEN are supported. Enter a share password below if needed. Internal links require the instance and Nextcloud access to be configured by an administrator. All links and subfolders are imported into this album.</p>
+                 <p className="text-sm text-muted-foreground">Public folder links from nextcloud.vco-motorsports.com, nextcloud.bs-plus.de or a separately configured instance work without a Nextcloud account. Both /s/TOKEN and /index.php/s/TOKEN are supported. Enter a share password below if needed. Internal links require the instance and Nextcloud access to be configured by an administrator. All links and subfolders are imported into this gallery.</p>
                 {links.map((entry, i) => (
                   <div className="space-y-2 border-b pb-3" key={i}>
                     <Label htmlFor={`nc-link-${i}`}>Folder link {i + 1}</Label>

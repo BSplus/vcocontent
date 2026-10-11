@@ -119,7 +119,7 @@ export default function CreatorDashboard() {
   if (eventsError || mediaError) {
     return <div role="alert" className="min-h-screen flex flex-col items-center justify-center gap-4">
         <p>Creator data could not be loaded.</p>
-      <Button onClick={() => window.location.reload()}>Seite neu laden</Button>
+      <Button onClick={() => window.location.reload()}>Reload page</Button>
     </div>;
   }
 

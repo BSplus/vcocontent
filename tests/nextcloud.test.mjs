@@ -63,7 +63,7 @@ test("both trusted public instances preserve configured origins and installation
           assert.equal(source.root.href, `${origin}/public.php/dav/files/${syntheticToken}/Race%20photos/Day1/`);
           assert.equal(Buffer.from(source.auth.slice(6), "base64").toString(), `${syntheticToken}:synthetic-password`);
         }
-        assert.throws(() => resolveSource({ link: `${origin}/apps/files/files/12?dir=/Album` }), /Interner Nextcloud-Zugang/);
+        assert.throws(() => resolveSource({ link: `${origin}/apps/files/files/12?dir=/Album` }), /Internal Nextcloud access/);
       }
       if (configured) {
         assert.equal(resolveSource({ link: `${configured}/index.php/s/${syntheticToken}` }).root.href,
@@ -116,18 +116,18 @@ test("VCO public discovery rejects unsafe links, redirects, DAV escapes and impo
       await assert.rejects(() => discover([{ link: invalid }]));
     }
     assert.equal(calls, 0, "unsafe links rejected before fetching");
-    for (const [status, expected] of [[401, /Kein Zugriff/], [403, /Kein Zugriff/], [404, /nicht gefunden/], [500, /HTTP 500/]]) {
+    for (const [status, expected] of [[401, /Access.*denied/], [403, /Access.*denied/], [404, /not found/], [500, /HTTP 500/]]) {
       respond = () => new Response("", { status });
       await assert.rejects(() => discover([{ link, password }]), error =>
         expected.test(error.message) && !error.message.includes(password) && !error.message.includes(syntheticToken));
     }
     respond = () => { throw new Error(`${link} ${password}`); };
     await assert.rejects(() => discover([{ link, password }]), error =>
-      /nicht erreichbar/.test(error.message) && !error.message.includes(password) && !error.message.includes(syntheticToken));
+      /unreachable/.test(error.message) && !error.message.includes(password) && !error.message.includes(syntheticToken));
     for (const location of ["http://127.0.0.1/", `${vcoBase}/s/OTHER_SYNTHETIC_SHARE`, `${publicBase}/s/OTHER_SYNTHETIC_SHARE`]) {
       respond = () => new Response("", { status: 302, headers: { Location: location } });
       const before = calls;
-      await assert.rejects(() => discover([{ link, password }]), /umgeleitet/);
+      await assert.rejects(() => discover([{ link, password }]), /redirected/);
       assert.equal(calls, before + 1, "redirect must never be followed");
     }
     for (const href of [
@@ -136,12 +136,12 @@ test("VCO public discovery rejects unsafe links, redirects, DAV escapes and impo
       folder + "%252e%252e/photo.jpg", folder + "../private/photo.jpg",
     ]) {
       respond = () => new Response(dav(folder, [[href]]), { status: 207 });
-      await assert.rejects(() => discover([{ link }]), /unsicherer|außerhalb/);
+      await assert.rejects(() => discover([{ link }]), /unsafe|outside/);
     }
     respond = () => new Response(dav(folder, Array.from({ length: 501 }, (_, i) => [folder + `${i}.jpg`])), { status: 207 });
-    await assert.rejects(() => discover([{ link }]), /Importgrenze/);
+    await assert.rejects(() => discover([{ link }]), /Import limit reached/);
     respond = () => new Response(dav(folder, Array.from({ length: 17 }, (_, i) => [folder + `${i}.jpg`, false, 32 * 1048576])), { status: 207 });
-    await assert.rejects(() => discover([{ link }]), /Importgrenze/);
+    await assert.rejects(() => discover([{ link }]), /Import limit reached/);
   } finally { globalThis.fetch = transport; }
 });
 
@@ -177,24 +177,24 @@ test("operator public shares work without an account, but internal and foreign l
     assert.equal(calls[0].options.redirect, "manual");
     assert.equal(Buffer.from(calls[0].options.headers.Authorization.slice(6), "base64").toString(),
       "TEST_ONLY_NOT_A_REAL_SHARE:album-password");
-    assert.throws(() => resolveSource({ link: `${publicBase}/apps/files/files/12?dir=/Album` }), /Interner Nextcloud-Zugang/);
-    assert.throws(() => resolveSource({ link: `${publicBase}/remote.php/dav/files/admin/Album` }), /Interner Nextcloud-Zugang/);
-    assert.throws(() => resolveSource({ link: "https://other.example/s/abc" }), /nicht unterstützt/);
+    assert.throws(() => resolveSource({ link: `${publicBase}/apps/files/files/12?dir=/Album` }), /Internal Nextcloud access/);
+    assert.throws(() => resolveSource({ link: `${publicBase}/remote.php/dav/files/admin/Album` }), /Internal Nextcloud access/);
+    assert.throws(() => resolveSource({ link: "https://other.example/s/abc" }), /not supported/);
     assert.throws(() => resolveSource({ link: "http://nextcloud.bs-plus.de/s/abc" }), /HTTPS/);
-    assert.throws(() => resolveSource({ link: "https://nextcloud.bs-plus.de:444/s/abc" }), /nicht unterstützt/);
-    assert.throws(() => resolveSource({ link: "https://nextcloud.bs-plus.de.evil.example/s/abc" }), /nicht unterstützt/);
+    assert.throws(() => resolveSource({ link: "https://nextcloud.bs-plus.de:444/s/abc" }), /not supported/);
+    assert.throws(() => resolveSource({ link: "https://nextcloud.bs-plus.de.evil.example/s/abc" }), /not supported/);
     assert.equal(calls.length, 1, "invalid links must be rejected before any network request");
     globalThis.fetch = mockOrigin(publicBase, async () => new Response("", { status: 401 }), originalFetch);
-    await assert.rejects(() => discover([{ link, password: "wrong" }]), /Kein Zugriff/);
+    await assert.rejects(() => discover([{ link, password: "wrong" }]), /Access.*denied/);
     globalThis.fetch = mockOrigin(publicBase, async () => new Response("", { status: 404 }), originalFetch);
-    await assert.rejects(() => discover([{ link }]), /nicht gefunden/);
+    await assert.rejects(() => discover([{ link }]), /not found/);
     globalThis.fetch = mockOrigin(publicBase, async () => { throw new TypeError("network failure"); }, originalFetch);
-    await assert.rejects(() => discover([{ link }]), /nicht erreichbar/);
+    await assert.rejects(() => discover([{ link }]), /unreachable/);
     globalThis.fetch = mockOrigin(publicBase, async () => new Response("", { status: 302, headers: { Location: "http://127.0.0.1/" } }), originalFetch);
-    await assert.rejects(() => discover([{ link }]), /umgeleitet/);
+    await assert.rejects(() => discover([{ link }]), /redirected/);
     globalThis.fetch = mockOrigin(publicBase, async () => new Response(dav("/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/",
       [["https://other.example/public.php/dav/files/TEST_ONLY_NOT_A_REAL_SHARE/photo.jpg"]]), { status: 207 }), originalFetch);
-    await assert.rejects(() => discover([{ link }]), /unsicherer Nextcloud-Pfad/);
+    await assert.rejects(() => discover([{ link }]), /unsafe Nextcloud path/);
   } finally {
     globalThis.fetch = originalFetch;
     process.env.NEXTCLOUD_BASE_URL = base;
@@ -230,11 +230,11 @@ test("multiple links, recursive folders, mixed files and access failures", async
     assert.ok(seen.every(entry => entry.options.redirect === "manual" && entry.options.method === "PROPFIND"));
     assert.equal(Buffer.from(seen[0].options.headers.Authorization.slice(6), "base64").toString(), "abc:private");
     globalThis.fetch = mockOrigin(base, async () => new Response("", { status: 401 }), originalFetch);
-    await assert.rejects(() => discover([{ link: `${base}/s/abc`, password: "bad" }]), /Kein Zugriff/);
+    await assert.rejects(() => discover([{ link: `${base}/s/abc`, password: "bad" }]), /Access.*denied/);
     globalThis.fetch = mockOrigin(base, async () => new Response("", { status: 302, headers: { Location: "http://127.0.0.1/" } }), originalFetch);
-    await assert.rejects(() => discover([{ link: `${base}/s/abc` }]), /umgeleitet/);
+    await assert.rejects(() => discover([{ link: `${base}/s/abc` }]), /redirected/);
     globalThis.fetch = mockOrigin(base, async () => new Response(dav("/public.php/dav/files/abc/", [["/remote.php/dav/files/admin/private.jpg"]]), { status: 207 }), originalFetch);
-    await assert.rejects(() => discover([{ link: `${base}/s/abc` }]), /außerhalb/);
+    await assert.rejects(() => discover([{ link: `${base}/s/abc` }]), /outside/);
   } finally { globalThis.fetch = originalFetch; }
 });
 
@@ -299,6 +299,8 @@ test("mixed import validates content and size, serves video posters safely, and 
     assert.equal(first.importedVideos, 3);
     assert.equal(first.failed, 5);
     assert.equal(first.skipped, 2);
+    assert.ok(first.files.some(file => file.message === "The file could not be imported."));
+    assert.ok(first.files.some(file => /^(Image|Video) exceeds the file size limit\.$/.test(file.message || "")));
     assert.ok(first.warnings <= first.importedImages);
     assert.ok(first.files.filter(file => file.type === "video").every(file => !file.aiWarning));
     assert.ok(getCalls.some(p => p.endsWith("overflow.mp4")));
@@ -523,7 +525,7 @@ test("admin can preview and import an operator public share without Nextcloud co
       body: JSON.stringify({ sources: [{ link: `${publicBase}/apps/files/files/12?dir=/Album` }] }),
     });
     assert.equal(invalid.status, 400);
-    assert.match((await invalid.json()).error, /Interner Nextcloud-Zugang/);
+    assert.match((await invalid.json()).error, /Internal Nextcloud access/);
     const preview = await originalFetch(`${address}/api/admin/nextcloud/preview`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sources: [{ link: `${publicBase}/s/abc`, password: "private" }] }),

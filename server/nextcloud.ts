@@ -43,9 +43,9 @@ function instance(): URL | undefined {
   const value = process.env.NEXTCLOUD_BASE_URL;
   if (!value) return undefined;
   let url: URL;
-  try { url = new URL(value); } catch { throw new NextcloudError("Nextcloud-Konfiguration ist ungültig."); }
+  try { url = new URL(value); } catch { throw new NextcloudError("Invalid Nextcloud configuration."); }
   if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !url.hostname)
-    throw new NextcloudError("Nextcloud-Konfiguration benötigt eine HTTPS-Basisadresse.");
+    throw new NextcloudError("Nextcloud configuration requires an HTTPS base URL.");
   url.pathname = url.pathname.replace(/\/+$/, "") || "/";
   return url;
 }
@@ -60,16 +60,16 @@ function safePath(url: URL, base: URL): void {
         let decoded: string;
         try { decoded = decodeURIComponent(part); } catch { return true; }
         return decoded === "." || decoded === ".." || decoded.includes("\\") || decoded.includes("/");
-      })) throw new NextcloudError("Nicht unterstützter oder unsicherer Nextcloud-Pfad.");
+      })) throw new NextcloudError("Unsupported or unsafe Nextcloud path.");
 }
 
 export function resolveSource(input: SourceInput): Source {
   if (input.link.length > 2048 || (input.password?.length ?? 0) > 256)
-    throw new NextcloudError("Nextcloud-Link oder Freigabepasswort ist zu lang.");
+    throw new NextcloudError("The Nextcloud link or share password is too long.");
   let link: URL;
-  try { link = new URL(input.link); } catch { throw new NextcloudError("Bitte einen gültigen Nextcloud-Ordnerlink angeben."); }
+  try { link = new URL(input.link); } catch { throw new NextcloudError("Please provide a valid Nextcloud folder link."); }
   if (link.protocol !== "https:" || link.username || link.password || link.hash)
-    throw new NextcloudError("Nur sichere HTTPS-Ordnerlinks ohne Zugangsdaten im Link sind erlaubt.");
+    throw new NextcloudError("Only secure HTTPS folder links without credentials in the URL are allowed.");
   // These public instances are trusted independently of account configuration.
   // Other hosts are accepted only when explicitly configured as the operator's instance.
   const configuredBase = instance();
@@ -79,43 +79,43 @@ export function resolveSource(input: SourceInput): Source {
       !link.pathname.startsWith(prefix(configuredBase) + "/"))
     ? publicBase : configuredBase;
   if (!base || link.origin !== base.origin)
-    throw new NextcloudError("Diese Nextcloud-Instanz wird nicht unterstützt.");
+    throw new NextcloudError("This Nextcloud instance is not supported.");
   safePath(link, base);
   const relative = link.pathname.slice(prefix(base).length);
   const share = /^\/(?:index\.php\/)?s\/([A-Za-z0-9_-]+)\/?$/.exec(relative);
   if (share) {
     if (Array.from(link.searchParams.keys()).some(key => key !== "path"))
-      throw new NextcloudError("Dieser Freigabelink wird nicht unterstützt.");
+      throw new NextcloudError("This share link is not supported.");
     const folder = link.searchParams.get("path") || "/";
     const parts = folder.split("/").filter(Boolean);
     if (parts.some(part => part === "." || part === ".." || part.includes("\\")))
-      throw new NextcloudError("Ungültiger Unterordner.");
+      throw new NextcloudError("Invalid subfolder.");
     const root = new URL(`${prefix(base)}/public.php/dav/files/${share[1]}/${parts.map(encodeURIComponent).join("/")}${parts.length ? "/" : ""}`, base);
     safePath(root, base);
     return { base, root, auth: "Basic " + Buffer.from(`${share[1]}:${input.password || ""}`).toString("base64") };
   }
   if (!configuredBase || configuredBase.origin !== link.origin || prefix(configuredBase) !== prefix(base))
-    throw new NextcloudError("Interner Nextcloud-Zugang ist noch nicht eingerichtet.");
+    throw new NextcloudError("Internal Nextcloud access is not configured yet.");
   const username = process.env.NEXTCLOUD_USERNAME;
   const password = process.env.NEXTCLOUD_APP_PASSWORD;
   if (!username || !password || /[/\\]/.test(username))
-    throw new NextcloudError("Interner Nextcloud-Zugang ist noch nicht eingerichtet.");
+    throw new NextcloudError("Internal Nextcloud access is not configured yet.");
   let folder: string;
   const dav = /^\/remote\.php\/dav\/files\/([^/]+)(\/.*)?$/.exec(relative);
   if (dav) {
     if (decodeURIComponent(dav[1]) !== username || link.search)
-      throw new NextcloudError("Interner Link gehört nicht zum eingerichteten Nextcloud-Konto.");
+      throw new NextcloudError("The internal link does not belong to the configured Nextcloud account.");
     folder = dav[2] || "/";
   } else if (/^\/apps\/files\/files\/\d+\/?$/.test(relative)) {
     if (Array.from(link.searchParams.keys()).some(key => key !== "dir") || !link.searchParams.has("dir"))
-      throw new NextcloudError("Interner Ordnerlink benötigt einen dir-Pfad.");
+      throw new NextcloudError("An internal folder link requires a dir path.");
     folder = link.searchParams.get("dir") || "/";
-  } else throw new NextcloudError("Nur Nextcloud-Freigaben und interne Ordnerlinks werden unterstützt.");
+  } else throw new NextcloudError("Only Nextcloud shares and internal folder links are supported.");
   const parts = folder.split("/").filter(Boolean).map(part => {
     let decoded: string;
-    try { decoded = decodeURIComponent(part); } catch { throw new NextcloudError("Ungültiger Ordnerpfad."); }
+    try { decoded = decodeURIComponent(part); } catch { throw new NextcloudError("Invalid folder path."); }
     if (decoded === "." || decoded === ".." || decoded.includes("/") || decoded.includes("\\"))
-      throw new NextcloudError("Ungültiger Ordnerpfad.");
+      throw new NextcloudError("Invalid folder path.");
     return encodeURIComponent(decoded);
   });
   const root = new URL(`${prefix(base)}/remote.php/dav/files/${encodeURIComponent(username)}/${parts.join("/")}${parts.length ? "/" : ""}`, base);
@@ -127,7 +127,7 @@ async function request(url: URL, source: Source, method: string, signal?: AbortS
   safePath(url, source.base);
   // Every DAV href must stay beneath its selected folder, including encoded segments.
   if (url.pathname !== source.root.pathname && !url.pathname.startsWith(source.root.pathname.replace(/\/$/, "") + "/"))
-    throw new NextcloudError("Datei liegt außerhalb des ausgewählten Ordners.");
+    throw new NextcloudError("The file is outside the selected folder.");
   let response: Response;
   try {
     response = await fetch(url, {
@@ -136,23 +136,23 @@ async function request(url: URL, source: Source, method: string, signal?: AbortS
       ...(method === "PROPFIND" ? { body: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/></d:prop></d:propfind>' } : {}),
     });
   } catch {
-    throw new NextcloudError("Nextcloud-Freigabe ist derzeit nicht erreichbar. Netzwerkverbindung prüfen.");
+    throw new NextcloudError("The Nextcloud share is currently unreachable. Check the network connection.");
   }
   if (response.status >= 300 && response.status < 400)
-    throw new NextcloudError("Nextcloud hat auf eine andere Adresse umgeleitet; die Freigabe kann nicht sicher abgerufen werden.");
-  if (response.status === 401 || response.status === 403) throw new NextcloudError("Kein Zugriff auf den Nextcloud-Ordner. Freigabepasswort oder Konto prüfen.");
-  if (response.status === 404) throw new NextcloudError("Nextcloud-Ordner nicht gefunden.");
-  if (!response.ok) throw new NextcloudError(`Nextcloud-Abruf fehlgeschlagen (HTTP ${response.status}).`);
+    throw new NextcloudError("Nextcloud redirected to a different address; the share cannot be retrieved safely.");
+  if (response.status === 401 || response.status === 403) throw new NextcloudError("Access to the Nextcloud folder denied. Check the share password or account.");
+  if (response.status === 404) throw new NextcloudError("Nextcloud folder not found.");
+  if (!response.ok) throw new NextcloudError(`Nextcloud request failed (HTTP ${response.status}).`);
   return response;
 }
 
 async function bounded(response: Response, limit: number): Promise<Buffer> {
-  if (!response.body) throw new NextcloudError("Nextcloud lieferte keine Daten.");
+  if (!response.body) throw new NextcloudError("Nextcloud returned no data.");
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of Readable.fromWeb(response.body as any)) {
     size += chunk.length;
-    if (size > limit) throw new NextcloudError("Nextcloud-Antwort überschreitet die Größenbegrenzung.");
+    if (size > limit) throw new NextcloudError("The Nextcloud response exceeds the size limit.");
     chunks.push(Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
@@ -160,7 +160,7 @@ async function bounded(response: Response, limit: number): Promise<Buffer> {
 
 export async function discover(inputs: SourceInput[]): Promise<{ sources: Source[]; files: Found[]; skipped: number }> {
   if (!Array.isArray(inputs) || !inputs.length || inputs.length > 10)
-    throw new NextcloudError("Bitte 1 bis 10 Ordnerlinks angeben.");
+    throw new NextcloudError("Please provide 1 to 10 folder links.");
   const sources = inputs.map(resolveSource);
   const files: Found[] = [];
   let skipped = 0, directories = 0, bytes = 0;
@@ -173,20 +173,20 @@ export async function discover(inputs: SourceInput[]): Promise<{ sources: Source
       const folder = queue.shift()!;
       if (visited.has(folder.pathname)) continue;
       visited.add(folder.pathname);
-      if (++directories > MAX_DIRS) throw new NextcloudError("Zu viele Unterordner (maximal 300).");
+      if (++directories > MAX_DIRS) throw new NextcloudError("Too many subfolders (maximum 300).");
       const response = await request(folder, source, "PROPFIND", deadline);
       const xml = (await bounded(response, 2 * 1048576)).toString("utf8");
-      if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new NextcloudError("Ungültige Nextcloud-Ordnerantwort.");
+      if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new NextcloudError("Invalid Nextcloud folder response.");
       const document = parser.parse(xml);
       const rows = document.multistatus?.response;
-      if (!rows) throw new NextcloudError("Nextcloud lieferte keine gültige Ordnerliste.");
+      if (!rows) throw new NextcloudError("Nextcloud did not return a valid folder listing.");
       for (const row of Array.isArray(rows) ? rows : [rows]) {
         if (typeof row.href !== "string") continue;
         const href = new URL(row.href, folder.origin);
         safePath(href, source.base);
         if (href.pathname !== source.root.pathname && !href.pathname.startsWith(source.root.pathname.replace(/\/$/, "") + "/"))
-          throw new NextcloudError("Nextcloud-Antwort verweist außerhalb des Ordners.");
-        if (href.search || href.hash) throw new NextcloudError("Ungültiger Dateilink in Nextcloud-Antwort.");
+          throw new NextcloudError("The Nextcloud response points outside the folder.");
+        if (href.search || href.hash) throw new NextcloudError("Invalid file link in the Nextcloud response.");
         if (href.pathname.replace(/\/$/, "") === folder.pathname.replace(/\/$/, "")) continue;
         const propstat = Array.isArray(row.propstat) ? row.propstat.find((p: any) => String(p.status).includes(" 200 ")) : row.propstat;
         const prop = propstat?.prop;
@@ -202,7 +202,7 @@ export async function discover(inputs: SourceInput[]): Promise<{ sources: Source
         if (seen.has(key)) continue;
         seen.add(key);
         if (files.length >= MAX_FILES || bytes + length > MAX_BYTES)
-          throw new NextcloudError(`Importgrenze erreicht (${MAX_FILES} Medien oder ${Math.floor(MAX_BYTES / 1048576)} MiB).`);
+          throw new NextcloudError(`Import limit reached (${MAX_FILES} media items or ${Math.floor(MAX_BYTES / 1048576)} MiB).`);
         bytes += length;
         files.push({ href, name, bytes: length, ...media });
       }
@@ -250,7 +250,7 @@ export async function startImport(eventId: number, inputs: SourceInput[]): Promi
       manifestExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       workerToken: null, error: null, updatedAt: new Date() })
       .where(and(eq(nextcloudJobs.eventId, eventId), sql`${nextcloudJobs.status} not in ('queued','running')`)).returning();
-    if (!locked) throw new NextcloudError("Für dieses Album läuft bereits ein Import.");
+    if (!locked) throw new NextcloudError("An import is already running for this event gallery.");
     for (const file of files) {
       const sourceKey = createHash("sha256").update(file.href.href).digest("hex");
       await tx.insert(nextcloudFiles).values({ eventId, sourceKey, name: file.name }).onConflictDoNothing();
@@ -264,7 +264,7 @@ export async function resumeImport(eventId: number) {
   const [job] = await db.update(nextcloudJobs).set({ status: "queued", error: null, workerToken: null, updatedAt: new Date() })
     .where(and(eq(nextcloudJobs.eventId, eventId), sql`${nextcloudJobs.status} in ('partial', 'error') and ${nextcloudJobs.manifest} is not null
       and ${nextcloudJobs.manifestExpiresAt} > now()`)).returning();
-  if (!job) throw new NextcloudError("Kein fortsetzbarer Import vorhanden. Bitte Links erneut prüfen.");
+  if (!job) throw new NextcloudError("No resumable import is available. Please check the links again.");
   startImportWorker();
   void kickImportWorker();
 }
@@ -301,7 +301,7 @@ export async function drainImportQueue() {
   const job = await db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(761021)`);
     await tx.execute(sql`update nextcloud_jobs set manifest=null, manifest_expires_at=null,
-      status='error', worker_token=null, error='Gespeicherter Importzugang ist abgelaufen. Links erneut prüfen.'
+      status='error', worker_token=null, error='Saved import access has expired. Check the links again.'
       where manifest is not null and manifest_expires_at < now()`);
     const active = await tx.execute(sql`select count(*)::int as count from nextcloud_jobs where status='running'
       and updated_at >= now() - interval '90 seconds'`);
@@ -323,7 +323,7 @@ export async function drainImportQueue() {
     await runImport(job.eventId, sources, files, job.workerToken);
   } catch {
     await db.update(nextcloudJobs).set({ status: "error", workerToken: null,
-      error: "Import unterbrochen. Fortsetzen ist möglich; bei geänderten Zugangsdaten Links erneut prüfen.", updatedAt: new Date() })
+      error: "Import interrupted. It can be resumed; if credentials have changed, check the links again.", updatedAt: new Date() })
       .where(and(eq(nextcloudJobs.id, job.id), eq(nextcloudJobs.workerToken, job.workerToken)));
   }
   return true;
@@ -347,7 +347,7 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
    // separate budget and never blocks the next transfer.
    let cursor = 0;
    const processFile = async (file: Found) => {
-    if (Date.now() - started > MAX_MS) throw new NextcloudError("Import-Zeitlimit erreicht.");
+    if (Date.now() - started > MAX_MS) throw new NextcloudError("Import time limit reached.");
     const [lease] = await db.select({ token: nextcloudJobs.workerToken }).from(nextcloudJobs).where(owned);
     if (!lease) throw new NextcloudError("Import lease expired");
     const source = sources.find(s => file.href.origin === s.root.origin &&
@@ -362,7 +362,7 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
         await enqueueAnalysis(item);
         await db.update(nextcloudFiles).set({ aiWarning: null }).where(eq(nextcloudFiles.id, record.id));
       } catch {
-        await db.update(nextcloudFiles).set({ aiWarning: "KI-Analyse nicht gestartet. Im Mediendialog gezielt erneut versuchen." }).where(eq(nextcloudFiles.id, record.id));
+        await db.update(nextcloudFiles).set({ aiWarning: "AI analysis did not start. Try again for this item in the media dialog." }).where(eq(nextcloudFiles.id, record.id));
       }
     };
     if (record.status === "saved" && record.mediaId) { await queueTags(record.mediaId); return; }
@@ -376,14 +376,14 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
        const limit = file.type === "image" ? mediaPolicy.imageBytes : mediaPolicy.videoBytes;
       const response = await request(file.href, source, "GET");
        if (Number(response.headers.get("content-length")) > limit || !response.body)
-         throw new MediaLimitError(`${file.type === "image" ? "Bild" : "Video"} überschreitet das Dateilimit.`);
+         throw new MediaLimitError(`${file.type === "image" ? "Image" : "Video"} exceeds the file size limit.`);
       let received = 0;
       await pipeline(Readable.fromWeb(response.body as any), new Transform({
         transform(chunk, _enc, cb) {
           received += chunk.length;
           downloaded += chunk.length;
            cb(received > limit || downloaded > MAX_BYTES
-             ? new MediaLimitError("Medium oder gesamter Import überschreitet das Datenlimit.") : null, chunk);
+             ? new MediaLimitError("The media item or the entire import exceeds the data limit.") : null, chunk);
         },
       }), createWriteStream(tmp));
        const fileUpload = { path: tmp, size: (await stat(tmp)).size, mimetype: file.mime } as Express.Multer.File;
@@ -404,7 +404,7 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
       const [current] = await db.select({ status: nextcloudFiles.status }).from(nextcloudFiles).where(eq(nextcloudFiles.id, record.id));
       if (current?.status !== "saved") {
         failed++;
-        await db.update(nextcloudFiles).set({ status: "error", message: error instanceof MediaLimitError ? error.message : "Datei konnte nicht importiert werden." })
+        await db.update(nextcloudFiles).set({ status: "error", message: error instanceof MediaLimitError ? error.message : "The file could not be imported." })
           .where(and(eq(nextcloudFiles.id, record.id), eq(nextcloudFiles.status, "pending")));
       }
     } finally {
