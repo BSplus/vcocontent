@@ -34,6 +34,7 @@ interface UploadModalProps {
   onOpenChange: (open: boolean) => void;
   eventId: number | null;
 }
+type SourceEntry = { id?: string; link: string; password: string; hasPassword?: boolean; removePassword?: boolean };
 
 export default function UploadModal({
   open,
@@ -50,7 +51,11 @@ export default function UploadModal({
   const [thumbnailBusy, setThumbnailBusy] = useState(false);
   const [validationSummary, setValidationSummary] = useState<string[]>([]);
   const [imageSource, setImageSource] = useState<"local" | "nextcloud">("local");
-  const [links, setLinks] = useState<{ link: string; password: string }[]>([{ link: "", password: "" }]);
+   const [links, setLinks] = useState<SourceEntry[]>([{ link: "", password: "" }]);
+   const [savedLinks, setSavedLinks] = useState<SourceEntry[]>([]);
+   const [sourcesBusy, setSourcesBusy] = useState(false);
+   const [sourcesLoaded, setSourcesLoaded] = useState(false);
+   const [sourcesError, setSourcesError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ count: number; images: number; videos: number; skipped: number } | null>(null);
   const [importEventId, setImportEventId] = useState<number | null>(null);
   const [createdEventId, setCreatedEventId] = useState<number | null>(null);
@@ -80,16 +85,20 @@ export default function UploadModal({
     status: string; error?: string; total: number; imported: number; importedImages: number; importedVideos: number;
     failed: number; skipped: number; warnings: number;
     analysisPending: number; analysisCompleted: number;
+    run?: { found: number; existing: number; imported: number; skipped: number; failed: number } | null;
     files: { name: string; type?: "image" | "video"; status: string; message?: string; aiWarning?: string;
       mediaId?: number; analysisStatus?: string; analysisError?: string }[];
   }>({
     queryKey: [`/api/admin/events/${importEventId}/nextcloud`],
-    enabled: open && !!importEventId,
-    refetchInterval: query => !query.state.data || ["queued", "running"].includes(query.state.data.status)
+     enabled: open && !!importEventId && !!user?.isAdmin && !eventData?.creatorId,
+     refetchInterval: query => !query.state.data || ["scanning", "queued", "running"].includes(query.state.data.status)
       || query.state.data.analysisPending > 0 ? 4000 : false,
   });
 
-  const sources = () => links.map(({ link, password }) => ({ link: link.trim(), password: password || undefined }));
+   const sources = () => links.filter(entry => entry.link.trim()).map(({ id, link, password, removePassword }) =>
+     ({ id, link: link.trim(), password: password || undefined, removePassword }));
+   const sourcesDirty = JSON.stringify(links) !== JSON.stringify(savedLinks.length ? savedLinks : [{ link: "", password: "" }]);
+   const activeImport = !!importProgress && ["scanning", "queued", "running"].includes(importProgress.status);
   const nextcloudPost = async (url: string, body: unknown) => {
     const response = await fetch(url, { method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -101,12 +110,59 @@ export default function UploadModal({
     setPreview(null);
     setPreviewBusy(true);
     try {
-      const result = await nextcloudPost("/api/admin/nextcloud/preview", { sources: sources() });
+       const result = await nextcloudPost(importEventId ? `/api/admin/events/${importEventId}/nextcloud/preview` : "/api/admin/nextcloud/preview", { sources: sources() });
       setPreview(result);
     } catch (error) {
       toast({ title: "Nextcloud access failed", description: (error as Error).message, variant: "destructive" });
     } finally {
       setPreviewBusy(false);
+    }
+  };
+  const applySavedSources = (data: { sources: Omit<SourceEntry, "password">[] }) => {
+    const entries = data.sources.map(source => ({ ...source, password: "" }));
+    setSavedLinks(entries);
+    setLinks(entries.length ? entries : [{ link: "", password: "" }]);
+    setSourcesLoaded(true);
+    setSourcesError(null);
+  };
+  useEffect(() => {
+    if (!open || !eventId || !user?.isAdmin || !eventData || eventData.creatorId) return;
+    const controller = new AbortController();
+    setSourcesLoaded(false);
+    setSourcesError(null);
+    void fetch(`/api/admin/events/${eventId}/nextcloud/sources`, { credentials: "include", signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error("Saved sources could not be loaded. Reopen the dialog to try again.");
+        const data = await response.json();
+        if (!controller.signal.aborted) {
+          applySavedSources(data);
+          if (data.sources.length) setImageSource("nextcloud");
+        }
+      }).catch(error => { if (!controller.signal.aborted) setSourcesError(error.message); });
+    return () => controller.abort();
+  }, [open, eventId, user?.isAdmin, eventData?.id, eventData?.creatorId]);
+  const saveSourceLinks = async () => {
+    if (!importEventId) return;
+    setSourcesBusy(true);
+    try {
+      applySavedSources(await nextcloudPost(`/api/admin/events/${importEventId}/nextcloud/sources`, { sources: sources() }));
+      toast({ title: "Sources saved", description: "No import was started." });
+    } catch (error) {
+      toast({ title: "Sources could not be saved", description: (error as Error).message, variant: "destructive" });
+    } finally { setSourcesBusy(false); }
+  };
+  const updateGallery = async () => {
+    if (!importEventId) return;
+    setImportBusy(true);
+    try {
+      await nextcloudPost(`/api/admin/events/${importEventId}/nextcloud/update`, {});
+      toast({ title: "Gallery update started", description: "Saved sources are scanned for new media." });
+    } catch (error) {
+      toast({ title: "Gallery update failed", description: (error as Error).message, variant: "destructive" });
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: [`/api/admin/events/${importEventId}/nextcloud`] });
+      await queryClient.invalidateQueries({ queryKey: [`/api/events/${importEventId}/media`] });
+      setImportBusy(false);
     }
   };
 
@@ -323,16 +379,17 @@ export default function UploadModal({
         setValidationSummary(["Review and confirm the entry list, or discard it before creating the event."]);
         return;
       }
-      if (imageSource === "nextcloud") {
+       if (imageSource === "nextcloud" && !isEditing) {
         setImportBusy(true);
         // Recheck the current inputs before creating an album, even if the preview
         // was for an older link or the share has since become unavailable.
-        await nextcloudPost("/api/admin/nextcloud/preview", { sources: sources() });
+         await nextcloudPost(importEventId ? `/api/admin/events/${importEventId}/nextcloud/preview` : "/api/admin/nextcloud/preview", { sources: sources() });
         const id = importEventId || createdEventId || (isEditing ? eventId : null);
         const event = id ? null : await createMutation.mutateAsync(data);
         const targetId = id ?? event!.id;
         setImportEventId(targetId);
-        await nextcloudPost(`/api/admin/events/${targetId}/nextcloud`, { sources: sources() });
+         applySavedSources(await nextcloudPost(`/api/admin/events/${targetId}/nextcloud/sources`, { sources: sources() }));
+         await nextcloudPost(`/api/admin/events/${targetId}/nextcloud/update`, {});
         queryClient.invalidateQueries({ queryKey: [`/api/admin/events/${targetId}/nextcloud`] });
         toast({ title: "Nextcloud import started", description: "The event gallery is saved. Progress and errors are available here." });
         return;
@@ -371,6 +428,9 @@ export default function UploadModal({
       setEntryDraft({ rows: null, blocked: false });
       setPreview(null);
       setLinks([{ link: "", password: "" }]);
+       setSavedLinks([]);
+       setSourcesLoaded(false);
+       setSourcesError(null);
       setImageSource("local");
       if (!referenceImportRecovery) {
         pendingEventReferenceRef.current = null;
@@ -381,7 +441,7 @@ export default function UploadModal({
 
   return (
     <Dialog open={open} onOpenChange={nextOpen=>{
-      if(!nextOpen && (thumbnailBusy || referenceImportRecovery?.status==="uploading")) return;
+       if(!nextOpen && (thumbnailBusy || sourcesBusy || importBusy || referenceImportRecovery?.status==="uploading")) return;
       onOpenChange(nextOpen);
     }}>
        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -526,7 +586,7 @@ export default function UploadModal({
              </Button>
           </div>
 
-          {user?.isAdmin && (
+          {user?.isAdmin && (!isEditing || eventData && !eventData.creatorId) && (
             <div className="space-y-3 rounded-md border p-4">
                <Label htmlFor="image-source">Gallery media source</Label>
               <Select value={imageSource} onValueChange={value => { setImageSource(value as "local" | "nextcloud"); setPreview(null); }}>
@@ -537,6 +597,11 @@ export default function UploadModal({
                 </SelectContent>
               </Select>
               {imageSource === "nextcloud" && <>
+                <p className="text-sm">Updates only add new media. Removing links or files from Nextcloud never deletes gallery media, tags or captions. Changed files at the same source path are not replaced.</p>
+                {isEditing && !sourcesLoaded && !sourcesError && <p role="status">Loading saved sources…</p>}
+                {sourcesError && <p role="alert">{sourcesError}</p>}
+                {isEditing && sourcesLoaded && !savedLinks.length && <p>No saved sources. Historical links cannot be recovered; enter them once and choose Save sources.</p>}
+                {savedLinks.length > 0 && <p role="status">{savedLinks.length} saved sources{sourcesDirty ? " · Unsaved changes" : " · No import started by saving sources"}</p>}
                  <p className="text-sm text-muted-foreground">Public folder links from nextcloud.vco-motorsports.com, nextcloud.bs-plus.de or a separately configured instance work without a Nextcloud account. Both /s/TOKEN and /index.php/s/TOKEN are supported. Enter a share password below if needed. Internal links require the instance and Nextcloud access to be configured by an administrator. All links and subfolders are imported into this gallery.</p>
                 {links.map((entry, i) => (
                   <div className="space-y-2 border-b pb-3" key={i}>
@@ -544,18 +609,31 @@ export default function UploadModal({
                      <Input id={`nc-link-${i}`} type="url" value={entry.link} placeholder="https://nextcloud.vco-motorsports.com/index.php/s/TOKEN"
                       onChange={e => { const next = [...links]; next[i] = { ...entry, link: e.target.value }; setLinks(next); setPreview(null); }} />
                     <Input aria-label={`Share password for link ${i + 1}`} type="password" autoComplete="off"
-                      placeholder="Share password (if needed)" value={entry.password}
+                      placeholder={entry.hasPassword && !entry.removePassword ? "Saved password kept (enter to replace)" : "Share password (if needed)"} value={entry.password}
                       onChange={e => { const next = [...links]; next[i] = { ...entry, password: e.target.value }; setLinks(next); setPreview(null); }} />
-                    {links.length > 1 && <Button type="button" variant="ghost" onClick={() => { setLinks(links.filter((_, index) => index !== i)); setPreview(null); }}>Remove link</Button>}
+                    {entry.hasPassword && <Button type="button" variant="ghost" onClick={() => {
+                      const next = [...links]; next[i] = { ...entry, password: "", removePassword: !entry.removePassword }; setLinks(next); setPreview(null);
+                    }}>{entry.removePassword ? "Keep saved password" : "Remove saved password"}</Button>}
+                    <Button type="button" variant="ghost" onClick={() => { setLinks(links.filter((_, index) => index !== i)); setPreview(null); }}>Remove link</Button>
                   </div>
                 ))}
                  <div className="flex flex-wrap gap-2">
                    <Button type="button" variant="outline" disabled={links.length >= 10} onClick={() => setLinks([...links, { link: "", password: "" }])}>Add another link</Button>
-                    <Button type="button" variant="outline" disabled={previewBusy || importBusy} onClick={checkLinks}>{previewBusy ? "Checking access…" : "Check access and media"}</Button>
+                    <Button type="button" variant="outline" disabled={previewBusy || importBusy || sourcesBusy || (isEditing && !sourcesLoaded)} onClick={checkLinks}>{previewBusy ? "Checking access…" : "Check access and media"}</Button>
+                    {importEventId && <>
+                      <Button type="button" variant="outline" disabled={sourcesBusy || importBusy || activeImport || (isEditing && !sourcesLoaded)} onClick={saveSourceLinks}>{sourcesBusy ? "Saving sources…" : "Save sources"}</Button>
+                      <Button type="button" disabled={sourcesBusy || importBusy || activeImport || !savedLinks.length || sourcesDirty || (isEditing && !sourcesLoaded)} onClick={updateGallery}>{importBusy ? "Scanning…" : "Update gallery"}</Button>
+                      {sourcesDirty && <p className="text-sm">Save source changes before updating the gallery.</p>}
+                    </>}
                 </div>
-                 {preview && <p role="status">{preview.images} images and {preview.videos} videos found; {preview.skipped} files skipped.</p>}
+                 {preview && <p role="status">{preview.count === 0 ? "No supported media found. " : ""}{preview.images} images and {preview.videos} videos found; {preview.skipped} files skipped.</p>}
                 {importProgress && <div role="status" className="text-sm space-y-1">
-                   <p>Import: {importProgress.status} · {importProgress.imported}/{importProgress.total} files ({importProgress.importedImages} images, {importProgress.importedVideos} videos) · {importProgress.skipped} skipped · {importProgress.failed} failed · {importProgress.warnings} image analysis warnings</p>
+                  {importProgress.run && <>
+                    <p>Current run: {importProgress.status} · {importProgress.run.found} found · {importProgress.run.existing} already present · {importProgress.run.imported} newly imported · {importProgress.run.skipped} skipped · {importProgress.run.failed} failed</p>
+                    {importProgress.status === "completed" && importProgress.run.found === 0 && <p>No supported media found</p>}
+                    {importProgress.status === "completed" && importProgress.run.found > 0 && importProgress.run.existing === importProgress.run.found && <p>All supported media already present. No new media imported.</p>}
+                  </>}
+                   <p>Historical totals: {importProgress.imported}/{importProgress.total} files ({importProgress.importedImages} images, {importProgress.importedVideos} videos) · {importProgress.warnings} analysis warnings</p>
                   {importProgress.error && <p className="text-amber-600">{importProgress.error}</p>}
                   <p>Tagging: {importProgress.analysisPending || 0} images still being processed · {importProgress.analysisCompleted || 0} complete. Files are already saved.</p>
                   <div className="max-h-28 overflow-y-auto">
@@ -576,7 +654,7 @@ export default function UploadModal({
                         await queryClient.invalidateQueries({ queryKey: [`/api/admin/events/${importEventId}/nextcloud`] }); }
                       catch (error) { toast({ title: "Import could not resume", description: error instanceof Error ? error.message : "Check the links again", variant: "destructive" }); }
                     }}>Resume failed files</Button>}
-                   <p>Imports resume automatically after a server restart. Saved media is not duplicated. Import credentials are encrypted and deleted after success or within 24 hours.</p>
+                   <p>Imports resume automatically after a server restart. Saved media is not duplicated or reanalysed. Sources stay encrypted until removed; temporary recovery access expires within 24 hours. Saved passwords are never returned to your browser.</p>
                 </div>}
               </>}
             </div>
@@ -594,7 +672,7 @@ export default function UploadModal({
              <Button
               type={createdEventId && !isEditing && imageSource !== "nextcloud" ? "button" : "submit"}
               onClick={createdEventId && !isEditing && imageSource !== "nextcloud" ? () => onOpenChange(false) : undefined}
-               disabled={thumbnailBusy || createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (!isEditing && !createdEventId && entryDraft.blocked) || (imageSource === "nextcloud" && !preview && !createdEventId)}
+               disabled={thumbnailBusy || sourcesBusy || createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (!isEditing && !createdEventId && entryDraft.blocked) || (!isEditing && imageSource === "nextcloud" && !preview && !createdEventId)}
               className="bg-primary text-black hover:bg-primary/90"
             >
                 {referenceImportRecovery?.status==="uploading" ? (
@@ -604,7 +682,7 @@ export default function UploadModal({
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   {isEditing ? "Updating..." : "Creating..."}
                 </>
-              ) : imageSource === "nextcloud" ? (
+              ) : imageSource === "nextcloud" && !isEditing ? (
                 importEventId || isEditing ? "Start / resume import" : "Create event and import"
               ) : isEditing ? (
                 "Update Event"

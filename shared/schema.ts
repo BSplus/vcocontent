@@ -257,6 +257,12 @@ export const safetyReviews = pgTable("safety_reviews", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Separate from expiring recovery manifests; never joined into public events.
+export const nextcloudSources = pgTable("nextcloud_sources", {
+  eventId: integer("event_id").primaryKey().references(() => events.id, { onDelete: "cascade" }),
+  encrypted: text("encrypted").notNull(),
+});
+
 export const nextcloudJobs = pgTable("nextcloud_jobs", {
   id: serial("id").primaryKey(),
   eventId: integer("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
@@ -268,6 +274,8 @@ export const nextcloudJobs = pgTable("nextcloud_jobs", {
   manifest: text("manifest"),
   manifestExpiresAt: timestamp("manifest_expires_at"),
   workerToken: text("worker_token"),
+  runKeys: jsonb("run_keys").$type<string[]>(),
+  existingKeys: jsonb("existing_keys").$type<string[]>().notNull().default([]),
 }, table => [uniqueIndex("nextcloud_job_event_idx").on(table.eventId),
   index("nextcloud_job_ready_idx").on(table.status, table.updatedAt)]);
 

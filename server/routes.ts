@@ -20,7 +20,8 @@ import { randomUUID } from "crypto";
 import { readFile } from "fs/promises";
 import sharp from "sharp";
 import { z } from "zod";
-import { discover, importStatus, startImport, startImportWorker, resumeImport, NextcloudError } from "./nextcloud";
+import { discover, importStatus, startImport, startImportWorker, resumeImport, updateGallery, NextcloudError } from "./nextcloud";
+import { readSources, saveSources, savedSourceInputs, sourceEdits, mergeSourceEdits } from "./nextcloud-sources";
 import { downloadAccess } from "./download-access";
 import { downloadStream } from "./media-delivery";
 import { enqueueAnalysis, analysisStatus, startAnalysisWorker, kickAnalysisWorker as kickWorker, AnalysisUnavailable, analysisFingerprint } from "./analysis-jobs";
@@ -403,6 +404,37 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   const nextcloudRequest = z.object({
     sources: z.array(z.object({ link: z.string().url().max(2048), password: z.string().max(256).optional() })).min(1).max(10),
   });
+  // Explicit private endpoints: never include source data in public event records.
+  for (const action of ["sources", "update", "preview"] as const) {
+    const endpoint = `/api/admin/events/:id/nextcloud/${action}`;
+    if (action === "sources") app.get(endpoint, requireAdmin, async (req, res) => {
+      try {
+        const id = Number(req.params.id);
+        const event = Number.isSafeInteger(id) && id > 0 ? await storage.getEvent(id) : undefined;
+        if (!event || event.creatorId || event.isPremium) return res.status(404).json({ error: "Admin event gallery not found." });
+        res.json({ sources: await readSources(id) });
+      } catch { res.status(502).json({ error: "Saved sources could not be loaded." }); }
+    });
+    app.post(endpoint, requireAdmin, async (req, res) => {
+      try {
+        const id = Number(req.params.id);
+        const event = Number.isSafeInteger(id) && id > 0 ? await storage.getEvent(id) : undefined;
+        if (!event || event.creatorId || event.isPremium) return res.status(404).json({ error: "Admin event gallery not found." });
+        if (action === "sources") return res.json({ sources: await saveSources(id, sourceEdits.parse(req.body.sources)) });
+        if (action === "preview") {
+          const inputs = mergeSourceEdits(await savedSourceInputs(id), sourceEdits.parse(req.body.sources));
+          const { files, skipped } = await discover(inputs);
+          return res.json({ count: files.length, images: files.filter(f => f.type === "image").length,
+            videos: files.filter(f => f.type === "video").length, skipped });
+        }
+        await updateGallery(id);
+        res.status(202).json(await importStatus(id));
+      } catch (error) {
+        res.status(error instanceof z.ZodError || error instanceof NextcloudError ? 400 : 502)
+          .json({ error: error instanceof NextcloudError ? error.message : "The Nextcloud request failed. Saved media is unchanged." });
+      }
+    });
+  }
   app.post("/api/admin/nextcloud/preview", requireAdmin, async (req, res) => {
     try {
       const { files, skipped } = await discover(nextcloudRequest.parse(req.body).sources);

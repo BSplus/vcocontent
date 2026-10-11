@@ -145,10 +145,26 @@ Das Konto braucht Lesezugriff auf die Ordner; reguläre Kontopasswörter nicht
 konfigurierten Instanz brauchen keine Konto-Konfiguration; ein Freigabepasswort
 kann der Admin pro Link im Dialog eingeben. Bei fehlgeschlagenem Zugriff
 erscheint vor der Albumanlage ein Zugriffs- oder Netzwerkfehler. Die
-Zugangsdaten werden nicht in Importtabellen gespeichert. Nach
-einem Serverneustart oder Abbruch trägt der Admin dieselben Links (und
-gegebenenfalls Freigabepasswörter) erneut im Event-Dialog ein und startet
-den Import dort erneut. Bereits gespeicherte Dateien werden nicht verdoppelt.
+ Quellen bleiben nach „Save sources“ und nach dem Erstimport dauerhaft
+ eventgebunden verschlüsselt gespeichert, getrennt vom maximal 24 Stunden
+ gültigen Wiederaufnahmemanifest. Die additive Entwicklungsmigration
+ `0005-nextcloud-sources.sql` ergänzt dafür eine private Tabelle und
+ durchlaufbezogene Ergebnisfelder. Produktionsschemaänderungen ausschließlich
+ über den unterstützten Publish-Schemaabgleich durchführen; weder App-Start
+ noch Deployment-Build führen diese Migration aus.
+ Nur Admins können die Links lesen oder ändern; Passwörter werden nie an
+ den Browser zurückgegeben. Leere Passwortfelder behalten gespeicherte
+ Passwörter; Ersetzen und „Remove saved password“ sind ausdrücklich möglich.
+ `SESSION_SECRET` muss stabil bleiben: dessen Änderung macht auch gespeicherte
+ Quellen unlesbar, solange keine gesonderte Schlüsselrotation umgesetzt ist.
+ Nach erneutem Öffnen, Neuladen und Serverneustart verwendet „Update gallery“
+ die gespeicherten Links und prüft Instanz und Zugang erneut. Bereits gespeicherte
+ Dateien werden weder verdoppelt noch erneut zur KI-Analyse eingeplant.
+ Entfernte Quellen, verschwundene Dateien oder geänderte Inhalte unter
+ demselben Quellpfad löschen bzw. ersetzen keine vorhandenen Medien.
+ Historische Events ohne Quellen benötigen einmalig neue Eingaben; gelöschte
+ alte Manifeste lassen sich nicht rekonstruieren. Ein leerer Scan zeigt
+ „No supported media found“, nicht einen erfolgreichen Medienimport.
 Interne Links werden als `/apps/files/files/ID?dir=/Ordner` oder als
 `/remote.php/dav/files/BENUTZER/Ordner` unterstützt; andere Ansichtslinks
 werden bewusst abgewiesen. Es gibt keine laufende Synchronisierung. Ein

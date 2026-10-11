@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { discover, resolveSource } from "../server/nextcloud.ts";
-import { startImport, importStatus, stopImportWorker } from "../server/nextcloud.ts";
+import { startImport, importStatus, stopImportWorker, updateGallery } from "../server/nextcloud.ts";
+import { readSources, saveSources } from "../server/nextcloud-sources.ts";
+import { db } from "../server/db.ts";
+import { nextcloudSources, mediaAnalysisJobs } from "../shared/schema.ts";
+import { eq } from "drizzle-orm";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { stopAnalysisWorker } from "../server/analysis-jobs.ts";
 import { pool } from "../server/db.ts";
 import { storage } from "../server/storage.ts";
@@ -48,6 +54,156 @@ function mockOrigin(origin, handler, transport = globalThis.fetch) {
   return (url, options) => new URL(url).origin === origin
     ? handler(url, options) : transport(url, options);
 }
+
+test("persistent private sources, password edits, restart and non-destructive current-run updates", { timeout: 60000 }, async () => {
+  const event = await storage.createEvent({ title: "Source persistence", description: "Synthetic only", date: new Date() });
+  const creator = await storage.createUser({ username: `nc-owner-${Date.now()}`, email: `nc-${Date.now()}@example.invalid`, password: "synthetic-hash" });
+  const gallery = await storage.createEvent({ title: "Creator boundary", description: "Synthetic only", date: new Date(), creatorId: creator.id });
+  const transport = globalThis.fetch;
+  const image = await sharp({ create: { width: 16, height: 16, channels: 3, background: "red" } }).jpeg().toBuffer();
+  const link = `${base}/s/SYNTHETIC_PERSISTENT`;
+  const second = `${base}/s/SYNTHETIC_SECOND`;
+  let password = "synthetic-private";
+  let entries = ["first.jpg"];
+  let denied = false;
+  let gets = 0, propfinds = 0;
+  globalThis.fetch = mockOrigin(base, (url, options) => {
+    const pathname = new URL(url).pathname;
+    if (options.method === "PROPFIND") {
+      propfinds++;
+      if (denied) return new Response("", { status: 403 });
+      assert.equal(Buffer.from(options.headers.Authorization.slice(6), "base64").toString(),
+        `${pathname.includes("SYNTHETIC_SECOND") ? "SYNTHETIC_SECOND:" : "SYNTHETIC_PERSISTENT:" + password}`);
+      return new Response(dav(pathname, pathname.includes("SYNTHETIC_SECOND") ? [] :
+        entries.map(name => [pathname + name, false, image.length])), { status: 207 });
+    }
+    gets++;
+    return new Response(image);
+  }, transport);
+  const finish = async () => {
+    for (let i = 0; i < 150; i++) {
+      const status = await importStatus(event.id);
+      if (["completed", "partial", "error"].includes(status.status)) return status;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error("Gallery update timed out");
+  };
+  let admin = true, authenticated = true, server;
+  const openApi = async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, res, next) => {
+      req.user = authenticated ? { id: 42, isAdmin: admin, isCreator: !admin } : undefined;
+      req.isAuthenticated = () => authenticated;
+      next();
+    });
+    server = await registerRoutes(app, { workers: false });
+    server.listen(0, "127.0.0.1"); await once(server, "listening");
+    return `http://127.0.0.1:${server.address().port}`;
+  };
+  let address = await openApi();
+  const api = (suffix, body) => transport(`${address}/api/admin/events/${event.id}/nextcloud${suffix}`,
+    body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  try {
+    assert.deepEqual(await readSources(event.id), []);
+    const savedResponse = await api("/sources", { sources: [{ link, password }, { link: second }] });
+    assert.equal(savedResponse.status, 200);
+    const saved = (await savedResponse.json()).sources;
+    assert.equal(saved.length, 2); assert.equal(saved[0].hasPassword, true);
+    assert.ok(!JSON.stringify(saved).includes(password));
+    assert.equal(propfinds, 0, "saving does not scan");
+    const [encrypted] = await db.select().from(nextcloudSources).where(eq(nextcloudSources.eventId, event.id));
+    assert.ok(!encrypted.encrypted.includes("SYNTHETIC_PERSISTENT"));
+    assert.ok(!encrypted.encrypted.includes(password));
+    // Separate Node process proves persistence does not rely on a module cache.
+    const restarted = await promisify(execFile)(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
+      `import {readSources} from './server/nextcloud-sources.ts'; import {pool} from './server/db.ts';
+       console.log(JSON.stringify(await readSources(${event.id}))); await pool.end();`]);
+    assert.deepEqual(JSON.parse(restarted.stdout.trim()), saved);
+    await new Promise(resolve => server.close(resolve)); address = await openApi();
+    assert.deepEqual((await (await api("/sources")).json()).sources, saved);
+    for (const role of ["anonymous", "creator"]) {
+      authenticated = role !== "anonymous"; admin = false;
+      for (const suffix of ["/sources", "/update", "/preview"])
+        assert.equal((await api(suffix, { sources: [] })).status, authenticated ? 403 : 401);
+      assert.equal((await api("/sources")).status, authenticated ? 403 : 401);
+    }
+    authenticated = true; admin = true;
+    assert.equal((await transport(`${address}/api/admin/events/${gallery.id}/nextcloud/sources`)).status, 404);
+    assert.equal((await transport(`${address}/api/admin/events/${gallery.id}/nextcloud/update`, { method: "POST" })).status, 404);
+    assert.ok(!JSON.stringify(await (await transport(`${address}/api/events/${event.id}`)).json()).includes(link));
+    await saveSources(event.id, saved.map(source => ({ id: source.id, link: source.link })));
+    assert.equal((await api("/update", {})).status, 202);
+    assert.deepEqual((await finish()).run, { found: 1, existing: 0, imported: 1, skipped: 0, failed: 0 });
+    // Initial analysis must settle before comparing an unchanged job across updates.
+    await stopAnalysisWorker();
+    const [item] = await storage.getMediaItems(event.id);
+    await storage.updateMediaItem(item.id, { caption: "Preserved manual caption", tags: ["manual-tag"] });
+    const before = await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id));
+    await stopImportWorker();
+    entries.push("new.jpg");
+    await updateGallery(event.id);
+    assert.deepEqual((await finish()).run, { found: 2, existing: 1, imported: 1, skipped: 0, failed: 0 });
+    assert.deepEqual(await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id)), before);
+    await stopImportWorker();
+    await updateGallery(event.id);
+    assert.deepEqual((await finish()).run, { found: 2, existing: 2, imported: 0, skipped: 0, failed: 0 });
+    assert.equal(gets, 2, "existing files never downloaded again");
+    assert.equal((await storage.getMediaItem(item.id)).caption, "Preserved manual caption");
+    assert.deepEqual((await storage.getMediaItem(item.id)).tags, ["manual-tag"]);
+    await stopImportWorker();
+    password = "replacement";
+    await saveSources(event.id, [{ ...saved[0], password }]);
+    assert.equal((await readSources(event.id)).length, 1, "removed source only removes source");
+    await updateGallery(event.id); await finish(); await stopImportWorker();
+    password = "";
+    await saveSources(event.id, [{ id: saved[0].id, link, removePassword: true }]);
+    assert.equal((await readSources(event.id))[0].hasPassword, false);
+    entries = [];
+    await updateGallery(event.id);
+    assert.deepEqual((await finish()).run, { found: 0, existing: 0, imported: 0, skipped: 0, failed: 0 });
+    assert.equal((await storage.getMediaItems(event.id)).length, 2);
+    await stopImportWorker();
+    denied = true;
+    const errorResponse = await api("/update", {});
+    assert.equal(errorResponse.status, 400);
+    const error = await errorResponse.json();
+    assert.match(error.error, /Access.*denied/);
+    assert.ok(!JSON.stringify(error).includes("SYNTHETIC"));
+    assert.equal((await importStatus(event.id)).status, "error");
+    assert.equal((await readSources(event.id)).length, 1);
+    assert.equal((await storage.getMediaItems(event.id)).length, 2);
+    denied = false;
+    process.env.NEXTCLOUD_BASE_URL = "https://changed.example.invalid";
+    const calls = propfinds;
+    await assert.rejects(() => updateGallery(event.id), /not supported/);
+    assert.equal(propfinds, calls);
+    process.env.NEXTCLOUD_BASE_URL = base;
+    // Concurrent scan starts are rejected before another scan or transfer.
+    const originalMock = globalThis.fetch;
+    let release;
+    globalThis.fetch = mockOrigin(base, async (url, options) => {
+      if (options.method === "PROPFIND") await new Promise(resolve => { release = resolve; });
+      return originalMock(url, options);
+    }, transport);
+    const scan = updateGallery(event.id);
+    while (!release) await new Promise(resolve => setTimeout(resolve, 20));
+    await assert.rejects(() => updateGallery(event.id), /already running/);
+    release(); await scan; await finish(); await stopImportWorker();
+    await saveSources(event.id, []);
+    assert.deepEqual(await readSources(event.id), []);
+    await assert.rejects(() => updateGallery(event.id), /1 to 10/);
+    await storage.deleteEvent(event.id);
+    assert.deepEqual(await db.select().from(nextcloudSources).where(eq(nextcloudSources.eventId, event.id)), []);
+  } finally {
+    process.env.NEXTCLOUD_BASE_URL = base;
+    await stopImportWorker();
+    globalThis.fetch = transport;
+    await storage.deleteEvent(event.id); await storage.deleteEvent(gallery.id);
+    await pool.query("delete from users where id=$1", [creator.id]);
+    await new Promise(resolve => server.close(resolve));
+  }
+});
 
 test("both trusted public instances preserve configured origins and installation paths", () => {
   try {
