@@ -486,8 +486,8 @@ export default function UploadModal({
        if(!nextOpen && (thumbnailBusy || sourcesBusy || importBusy || updateMutation.isPending || checkingSave || referenceImportRecovery?.status==="uploading")) return;
       onOpenChange(nextOpen);
     }}>
-       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+       <DialogContent className="block max-w-2xl max-h-[90dvh] overflow-y-auto">
+        <DialogHeader className="mb-4">
           <DialogTitle>
             {isEditing ? "Edit Event" : "Create New Event"}
           </DialogTitle>
