@@ -69,6 +69,35 @@ Free quota.
   references are rewritten. Once imported, neither browsing nor download needs
   Nextcloud. Video, event-image and profile-image policies are unchanged.
 
+
+## Archived comparison before the first upload-path change
+
+These are historical quality-90 measurements, not current optimized output.
+The current script retains the legacy comparator but uses the actual current
+preparer for its current output; the next section documents that newer policy.
+Command: `node --import tsx scripts/compare-image-downloads.mjs`.
+Outputs and side-by-side crops are excluded from Git/deployment under
+`generated-artifacts/image-quality/`. The comparison creates no media records,
+provider requests, jobs, bucket objects, reimport or deployment.
+
+Both are actual previously supplied VCO motorsport PNGs, not upscaled recognition
+fixtures. The first original is 5.8 MP and above 2560px; the second is a detailed
+field/track scene. The old samples fit at the first legacy quality step (86);
+the proposed samples fit at quality 90 without resizing.
+
+| Photo | Source dimensions / bytes | Previous download dimensions / bytes | New download dimensions / bytes | Old / new preview bytes | Old / new total stored bytes |
+|---|---|---|---|---|---|
+| Stock car #89 (`attached_assets/#89_3.png`) | 2160×2700 / 11,511,713 | 2048×2560 / 937,474 | 2160×2700 / 1,630,464 | 23,888 / 23,714 | 961,362 / 1,654,178 |
+| Wide field (`attached_assets/IMG_7464.png`) | 2560×1080 / 5,499,266 | 2560×1080 / 411,906 | 2560×1080 / 523,298 | 21,206 / 20,920 | 433,112 / 544,218 |
+
+Measured additional storage compared with the old path: **692,816 bytes**
+(stock car) and **111,106 bytes** (wide field). Each remains far below 5.1 MB.
+Compared with copying each full input, the new downloads save approximately
+9.88 MB and 4.98 MB respectively, without keeping a third file.
+Creator storage will generally increase relative to the previous destructive
+conversion: e.g. an exact-5-MB upload plus its actual preview, not a compressed
+replacement. This is intentional, still charged against the unchanged quotas.
+
 ## Small before/after comparison of this download change
 
 Command: `node --import tsx scripts/compare-image-downloads.mjs`.
@@ -118,6 +147,23 @@ For Low-Res, the source and old thumbnail are aligned to the new download's
 dimensions; the thumbnail is enlarged **only for inspection**, never in storage
 or delivery. High-Res crops use identical source coordinates without resizing.
 
+### Archived visual inspection of the first upload-path change
+
+Replit Agent inspected original/previous/proposed crops independently of an AI
+recognition result; this is not independently certified human ground truth.
+The stock-car crop checks grille mesh, front light, bumper edges and the small
+BS COMPETITION sponsor lettering. The proposed version retains edges and
+lettering well; the old resized version is slightly softer.
+The field crop checks track lettering/kerbs, distant cars, crowd and grass.
+Both compressed versions slightly smooth fine grass/crowd texture compared with
+the PNG, with less texture loss in the quality-90 candidate. No conspicuous
+block artifacts or severe degradation was visible in these crops.
+
+The comparison JPEGs concatenate original, old and proposed crops left-to-right;
+the old stock image is enlarged **only for this comparison**, never in storage.
+The initial visual crops were JPEG-encoded for inspection. The current script
+instead writes lossless PNG panels to avoid an extra JPEG encode in the review.
+
 ### Acceptance bounds and remaining coverage limits
 
 Quality 80 is an encoder floor, not a universal perceptual-quality guarantee.
@@ -139,6 +185,73 @@ before submitting; the service must not silently change their original bytes.
 Static PNG/GIF can be preserved for storage efficiency when a conversion would
 be larger. Official animated inputs are flattened as in the former path;
 Creator animation restrictions remain in place.
+
+
+## Supplied HiRes comparison: explicitly narrowed scope
+
+The user supplied `1_VCO_31035_HiRes_1791756944089.jpg` and
+`0_VCO_30912_HiRes_1791756944089.jpg` in response to the request for originals
+authorized for this local quality comparison. After their dimensions and
+pass-through behavior were established, the user explicitly chose to limit
+completion to these supplied sim-racing files, with large camera originals
+and compression fallbacks remaining unconfirmed. Neither source was modified.
+The actual `preparePhoto(..., "official")` function was run locally, without
+database, bucket, network, AI, or production calls. Measurements and resized
+overview images are excluded from Git/deployment under
+`generated-artifacts/image-quality/supplied-hires/`; the supplied sources are
+also excluded from Git/deployment.
+
+Reproduce with:
+`node --import tsx scripts/compare-image-downloads.mjs --supplied-hires`.
+This calls the actual production preparer, rather than a copied candidate
+encoder. It asserts download/preview byte bounds, supplied-JPEG byte equality,
+and source hashes unchanged after processing. Local measurements include
+source, historical download comparator, current download, preview, crop
+coordinates and SHA-256 hashes. Lossless PNG crops have panels in the order
+**original / historical / current**. The historical download is enlarged
+only for a same-coordinate display, never for application storage.
+
+| Supplied file | Source and download dimensions | Source/download bytes (identical) | Preview dimensions / bytes | Total stored bytes |
+|---|---|---|---|---|
+| `1_VCO_31035_HiRes` | 3840×2160 | 2,471,047 | 640×360 / 41,986 | 2,513,033 |
+| `0_VCO_30912_HiRes` | 3840×2160 | 2,895,490 | 640×360 / 42,636 | 2,938,126 |
+
+For context only, the historical max-2560px WebP path would produce:
+
+| Supplied file | Historical download dimensions / bytes | Historical preview bytes | Historical total bytes | Additional current total bytes |
+|---|---|---|---|---|
+| `1_VCO_31035_HiRes` | 2560×1440 / 828,340 | 43,090 | 871,430 | 1,641,603 |
+| `0_VCO_30912_HiRes` | 2560×1440 / 874,636 | 42,800 | 917,436 | 2,020,690 |
+
+Both historical downloads fit at quality 86. This historical comparison is
+not a required fallback or a proposed product change.
+
+Source and download SHA-256 equality was checked for each:
+
+- `1_VCO_31035_HiRes`:
+  `4111d0926a0cb1b19994a0c5aa85f6c2e1c8f9f554f31754967bee3085ee07ef`.
+- `0_VCO_30912_HiRes`:
+  `7f7298333d68cbfa0aa30cce4ed0103b572882675bf136fe11a45becb096eb60`.
+
+Both are **8.2944 MP**, below the requested 20–40-MP coverage, and below the
+5,000,000-byte download limit. Both JPEGs report an embedded profile and sRGB
+colour space. The production path correctly retains them byte-for-byte, so
+download colour, detail, existing compression and metadata are unchanged;
+there is no additional download encode or required resolution fallback.
+Combined download storage is **5,366,537 bytes**, preview storage **84,622
+bytes**, and total storage **5,451,159 bytes**. These are prospective two-object
+totals; no media objects were actually uploaded.
+
+After integrating the newer dynamic Low-Res policy, the same comparison was
+rerun through both production preparers. The supplied High-Res downloads,
+thumbnails, hashes and stored totals above remain unchanged. On-demand Low-Res
+downloads are now **1600×900 / 407,180 bytes** (`1_VCO_31035_HiRes`) and
+**1600×900 / 415,784 bytes** (`0_VCO_30912_HiRes`), each below 500,000 bytes.
+They are not persisted and do not add to the reported storage totals.
+Measurements and additional high/low comparison PNGs retain both the
+immediately preceding policy comparison and the older 2560px comparator;
+these are explicitly distinct comparisons. No claim about large-camera
+fallback quality follows from these additional measurements.
 
 ## Reliable provenance without a database migration
 
@@ -216,3 +329,51 @@ This task does **not** perform or add that operation.
 Historical compressed Creator files cannot regain discarded detail. The
 photographer must supply their original again; do not relabel, upscale or
 re-encode the historical file as a recovered original.
+
+## Supplied HiRes visual review and scope limits (continued)
+
+Four 512×512 source-coordinate crops were inspected as original / historical /
+current lossless PNG panels. This is an agent visual inspection, not independent
+human certification or a print-colour assessment.
+
+- Sebring car, `(1550, 790)`: number 91, TDK and bumper sponsor lettering,
+  wheel and livery edges. Original and current are visually identical, as
+  their byte hashes require. The historical enlarged panel softens small
+  lettering, fine asphalt texture and curved wheel/body edges.
+- Sebring flag/fence, `(850, 440)`: wire mesh, yellow lane marking, concrete
+  marks and black/white flag edge. Current retains the original fine lines;
+  historical resizing smooths the mesh and surface texture.
+- Field car, `(2240, 1320)`: purple/green livery, small sponsor lettering,
+  wheel spokes, tyre lettering and grass. Current matches original; the
+  historical panel is softer at thin lettering, spokes and grass edges.
+- Grandstand, `(2040, 690)`: brightly coloured clothing, faces and narrow
+  metal rails. Current matches original; historical fine edges and texture
+  are softened. These rendered crowd details are not camera face evidence.
+
+No additional download colour shift or compression artifact is introduced by
+the current pass-through; any source artifacts remain unchanged. No severe
+block artifacts or gross colour shift was apparent in the historical crops,
+but this does not establish perceptual quality outside these regions. The
+640×360 WebP previews are intentionally reduced and are not high-resolution
+download-quality evidence. Under the newer download policy described above,
+these are stored gallery thumbnails, **not** the dynamic Low-Res download.
+
+The inspected overviews show rendered sim-racing scenes (a car at Sebring with
+an iRacing-shirted marshal; cars and a grandstand). They are not evidence of
+large physical-camera sensor originals, dark sensor noise, or colour-critical
+camera workflows. They confirm the suitable-JPEG pass-through only. Forcing
+their recompression, upscaling, or adding noise would not exercise a required
+production fallback on a real large camera original. The visual
+20–40-MP optimization/fallback comparison is **not completed by this evidence**;
+it would need a separately authorized follow-up with appropriate sources.
+Quality 80 and the 70%-of-each-dimension floor remain technical limits, not
+a visual quality guarantee. Neither is reached by either supplied image.
+
+Verification: both script modes ran successfully; the existing five focused
+checks in `tests/media-objects.test.mjs` passed, including synthetic quality /
+resolution fallback and rejection. Those synthetic tests verify mechanical
+bounds only, not professional visual quality. No product code, limits,
+historical library, source file, connected database or production was changed.
+Following integration with the newer quality and Low-Res implementation, both
+script modes passed again and all six current media-object checks passed.
+The default-mode current measurements match the newer policy table above.
