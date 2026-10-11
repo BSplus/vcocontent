@@ -7,11 +7,11 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Client } from "@replit/object-storage";
 import { db, pool } from "../server/db.ts";
 import { storage } from "../server/storage.ts";
-import { mediaAnalysisJobs, events, referenceDocuments } from "../shared/schema.ts";
+import { mediaAnalysisJobs, mediaItems, mediaReservations, mediaCleanup, events, referenceDocuments } from "../shared/schema.ts";
 import { frameTarget, sampleVideo, cleanupVideoTemps, videoTool } from "../server/video-sampling.ts";
 import { mediaPolicy } from "../server/media-policy.ts";
 import { aggregateVideo, recognizeVideoBatch } from "../server/video-recognition.ts";
@@ -24,6 +24,9 @@ const albums = [];
 const ownedMediaIds = [];
 const realFetch = globalThis.fetch;
 const originalReader = Client.prototype.downloadAsStream;
+const originalUpload = Client.prototype.uploadFromBytes;
+const originalDelete = Client.prototype.delete;
+const previews = new Map();
 const previousBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
 const previousKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
 let videoBytes;
@@ -79,14 +82,23 @@ async function media() {
 test.before(() => {
   setAnalysisQueueTestScope([]);
   Client.prototype.downloadAsStream = () => Readable.from([videoBytes]);
+  Client.prototype.uploadFromBytes = async (key, bytes) => { previews.set(key, Buffer.from(bytes)); return {ok:true}; };
+  Client.prototype.delete = async key => { previews.delete(key); return {ok:true}; };
   mockProvider();
 });
 test.after(async () => {
   await stopAnalysisWorker();
   globalThis.fetch = realFetch; Client.prototype.downloadAsStream = originalReader;
+  Client.prototype.uploadFromBytes = originalUpload;
+  Client.prototype.delete = originalDelete;
   for (const [key, value] of [["AI_INTEGRATIONS_OPENAI_BASE_URL", previousBase], ["AI_INTEGRATIONS_OPENAI_API_KEY", previousKey]])
     if (value === undefined) delete process.env[key]; else process.env[key] = value;
-  for (const id of albums) await db.delete(events).where(eq(events.id, id));
+  for (const id of albums) {
+    await db.delete(mediaReservations).where(eq(mediaReservations.eventId, id));
+    await db.delete(mediaItems).where(eq(mediaItems.eventId, id));
+    await db.delete(events).where(eq(events.id, id));
+  }
+  if (previews.size) await db.delete(mediaCleanup).where(inArray(mediaCleanup.key, [...previews.keys()]));
   await pool.end();
   await rm(directory, { recursive: true, force: true });
   console.log("VIDEO_VALIDATION", JSON.stringify({ clips: metrics, liveRecognition: "unavailable: no authorized reviewed video set",
@@ -193,6 +205,34 @@ test("a deterministic corrupt original fails once without AI calls or changing i
   assert.deepEqual(saved.tags,item.tags);
   assert.deepEqual(videoBytes,Buffer.from("not a decodable container"));
 });
+test("preview replacement fences stale workers and journals unsuccessful object uploads", async () => {
+  const item = await media();
+  const token = randomUUID();
+  await db.insert(mediaAnalysisJobs).values({mediaId:item.id, fingerprint:itemAnalysisFingerprint(item),
+    status:"running",workerToken:token});
+  const bytes = await sharp({create:{width:160,height:90,channels:3,background:"red"}}).webp().toBuffer();
+  const count = previews.size;
+  assert.equal(await storage.replaceVideoPreview(item, "lost-token", bytes), false);
+  assert.equal(previews.size, count);
+  const upload = Client.prototype.uploadFromBytes;
+  let uploaded;
+  Client.prototype.uploadFromBytes = async (key, buffer) => {
+    uploaded = key; previews.set(key, Buffer.from(buffer));
+    await db.update(mediaAnalysisJobs).set({workerToken:"replacement-worker"})
+      .where(eq(mediaAnalysisJobs.mediaId,item.id));
+    return {ok:true};
+  };
+  try {
+    assert.equal(await storage.replaceVideoPreview(item, token, bytes), false);
+    assert.equal((await storage.getMediaItem(item.id)).thumbnail, item.thumbnail);
+    assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.eventId,item.eventId))).length,0);
+    assert.equal((await db.select().from(mediaCleanup).where(eq(mediaCleanup.key,uploaded))).length,1);
+  } finally {
+    Client.prototype.uploadFromBytes = upload;
+    await db.update(mediaAnalysisJobs).set({status:"failed",workerToken:null})
+      .where(eq(mediaAnalysisJobs.mediaId,item.id));
+  }
+});
 test("provider batches preserve timestamps, token usage and readability gates", async () => {
   videoBytes = await clip(20);
   await sampleVideo({ url: url() }, async sample => {
@@ -233,6 +273,9 @@ test("durable batches survive retries, edits, reference revisions and failed new
   assert.equal(saved.caption, "Caption edited during analysis");
   assert.equal(saved.identification[0].team, "Confirmed");
   const [completed] = await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id));
+  assert.match(saved.thumbnail, /^\/api\/media\/files\/thumb-/);
+  assert.ok(previews.get(saved.thumbnail.split("/").at(-1)).length < 100 * 1024);
+  assert.ok(completed.videoEvidence.posterSourceHash);
   assert.equal(completed.videoEvidence.providerRequests, 3);
   assert.equal(completed.videoEvidence.promptTokens, 400);
   assert.equal(completed.videoEvidence.usageUnavailableRequests, 1);

@@ -13,6 +13,8 @@ import { sampleVideo, SAMPLING_VERSION, cleanupVideoTemps } from "./video-sampli
 import { aggregateVideo, recognizeVideoBatch, type VideoEvidence } from "./video-recognition";
 import { classifyVideoFailure, videoFailureRecord, type VideoFailureStage } from "./video-failures";
 import { communityCaption, matchedPhotoCaption } from "./caption-proposal";
+import { storage } from "./storage";
+import { videoFrameThumbnail } from "./video-preview";
 
 // Database-wide budget, including multiple server processes. SDK retries are
 // disabled: only this queue owns retry/backoff and the persisted attempt count.
@@ -236,6 +238,15 @@ export async function drainAnalysisQueue() {
           if (!saved.length) throw new Error("Analysis lease expired");
           videoStage=previousStage;
         };
+        if (evidence.posterSourceHash !== sample.sourceHash) {
+          videoStage = "database_persistence";
+          // Saving a true preview does not depend on a successful provider call.
+          // Existing originals, captions, tags and frame evidence remain intact.
+          const preview = await videoFrameThumbnail(Buffer.from(sample.frames[0].image.split(",")[1], "base64"));
+          if (await storage.replaceVideoPreview(item, claimed.token, preview))
+            evidence.posterSourceHash = sample.sourceHash;
+          await persist();
+        }
         await persist();
         const pending = sample.frames.filter(f => !evidence!.frames.some(done => done.hash === f.hash));
         for (let i = 0; i < pending.length; i += 4) {

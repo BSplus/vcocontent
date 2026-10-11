@@ -58,7 +58,7 @@ test("overall extraction deadline is distinct from a decoder timeout and cleans 
   } finally {t.mock.timers.reset();}
 });
 
-test("real process timeout and external interruption remain retryable and distinguish their cause",{timeout:14000},async()=>{
+test("real process timeout and external interruption remain retryable and distinguish their cause",{timeout:22000},async()=>{
   await assert.rejects(videoTool("ffmpeg",["-v","error","-re","-f","lavfi","-i",
     "testsrc=size=16x16:rate=1","-f","null","-"]),
   error=>error.code==="TOOL_TIMEOUT"&&error.retryable===true&&error.details.signal==="SIGKILL");

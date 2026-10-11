@@ -5,7 +5,8 @@ import { isAITaggingConfigured } from "./utils/ai-tagger";
 import { db } from "./db";
 import { eq, and, or, sql, desc, lt, ilike, getTableColumns } from "drizzle-orm";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
-import { deleteMediaObject } from "./media-storage";
+import { deleteMediaObject, writeVideoPreview } from "./media-storage";
+import { randomUUID } from "crypto";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { creatorUsage, lockedCreatorBudget, publicEventPredicate, publicMediaPredicate, SAFETY_POLICY } from "./beta-policy";
@@ -542,6 +543,62 @@ class DatabaseStorage implements IStorage {
           photoToken:photo?`reservation:${reservation.id}`:null }).onConflictDoNothing();
       await tx.delete(mediaReservations).where(eq(mediaReservations.id, id));
     });
+  }
+
+  /** Replace an official video's derivative, fenced to this worker and source.
+   * A durable reservation protects the new object across crashes and cleanup.
+   * Creator derivatives require a separate safety decision, not this backfill.
+   */
+  async replaceVideoPreview(item: MediaItem, workerToken: string, bytes: Buffer): Promise<boolean> {
+    if (!item.eventId || item.type !== "video" || !bytes.length || bytes.length >= 100 * 1024) return false;
+    const reservationId = randomUUID();
+    const key = `thumb-${randomUUID()}.webp`;
+    const before = await db.transaction(async tx => {
+      const [event] = await tx.select().from(events).where(eq(events.id, item.eventId!)).for("update");
+      if (!event || event.creatorId) return undefined;
+      const [job] = await tx.select().from(mediaAnalysisJobs).where(and(
+        eq(mediaAnalysisJobs.mediaId, item.id), eq(mediaAnalysisJobs.workerToken, workerToken),
+        eq(mediaAnalysisJobs.status, "running"))).for("update");
+      const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id, item.id)).for("update");
+      if (!job || !current || current.url !== item.url || current.eventId !== item.eventId || current.type !== "video")
+        return undefined;
+      const [usage] = await tx.execute(sql`select
+        (select coalesce(sum(stored_bytes),0) from media_items where event_id=${item.eventId}) +
+        (select coalesce(sum(reserved_bytes),0) from media_reservations where event_id=${item.eventId}) as bytes`).then(r=>r.rows);
+      if (Number(usage.bytes) + Math.max(0, bytes.length - (current.lowBytes || 0)) > mediaPolicy.eventBytes)
+        throw new MediaLimitError("Event storage budget exceeded");
+      await tx.insert(mediaReservations).values({id:reservationId, eventId:item.eventId!,
+        creatorId:null, reservedBytes:bytes.length, storageKey:key, thumbnailKey:key});
+      return current;
+    });
+    if (!before) return false;
+    let committed = false;
+    try {
+      await writeVideoPreview(key, bytes);
+      committed = await db.transaction(async tx => {
+        const [event] = await tx.select().from(events).where(eq(events.id, item.eventId!)).for("update");
+        const [job] = await tx.select().from(mediaAnalysisJobs).where(and(
+          eq(mediaAnalysisJobs.mediaId, item.id), eq(mediaAnalysisJobs.workerToken, workerToken),
+          eq(mediaAnalysisJobs.status, "running"))).for("update");
+        const [reservation] = await tx.select().from(mediaReservations)
+          .where(eq(mediaReservations.id, reservationId)).for("update");
+        const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,item.id)).for("update");
+        if (!event || event.creatorId || !job || !reservation || !current || current.type !== "video" ||
+          current.url !== item.url || current.eventId !== item.eventId || current.thumbnail !== before.thumbnail) return false;
+        await tx.update(mediaItems).set({thumbnail:`/api/media/files/${key}`, lowBytes:bytes.length,
+          storedBytes:(current.storedBytes ?? (current.highBytes || 0) + (current.lowBytes || 0)) -
+            (current.lowBytes || 0) + bytes.length,
+        }).where(eq(mediaItems.id,item.id));
+        const oldKey = /^\/api\/media\/files\/(thumb-[0-9a-f-]{36}\.webp)$/.exec(current.thumbnail)?.[1];
+        if (oldKey) await tx.insert(mediaCleanup).values({key:oldKey,creatorId:null,
+          storedBytes:current.lowBytes || 0}).onConflictDoNothing();
+        await tx.delete(mediaReservations).where(eq(mediaReservations.id,reservationId));
+        return true;
+      });
+      return committed;
+    } finally {
+      if (!committed) await this.abandonMedia(reservationId);
+    }
   }
 
   async incrementDownloadCount(id: number): Promise<void> {

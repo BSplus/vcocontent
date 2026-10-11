@@ -9,6 +9,7 @@ import multer, { type Multer } from "multer";
 import sharp from "sharp";
 import { Client } from "@replit/object-storage";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
+import { createVideoPreview } from "./video-preview";
 import { preparePhoto, DOWNLOAD_BYTES, type ImageStrategy } from "./image-downloads";
 
 const TEMP_UPLOAD_DIR = path.join(tmpdir(), "vco-media-uploads");
@@ -202,14 +203,9 @@ async function performUploadMedia(
       await uploadFromFilename(storageKey, displayPath);
       await uploadFromFilename(thumbnailKey, thumbnailPath);
     } else {
+      const posterBytes = await createVideoPreview(file.path);
       if (beforePersist) await beforePersist(file.size+100*1024, { storageKey, thumbnailKey });
       await uploadFromFilename(storageKey, file.path);
-      // There is no video-frame extractor in this app yet. Save a small,
-      // generic poster rather than falsely presenting an analyzed frame.
-      const poster = Buffer.from(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><rect width="640" height="360" fill="#111827"/><circle cx="320" cy="180" r="48" fill="#1f2937" stroke="#9ca3af" stroke-width="3"/><path d="M307 151v58l45-29z" fill="#e5e7eb"/><text x="320" y="265" fill="#d1d5db" font-family="sans-serif" font-size="20" text-anchor="middle">Video</text></svg>',
-      );
-      const posterBytes = await sharp(poster).webp().toBuffer();
       thumbnailBytes = posterBytes.length;
       const posterResult = await getStorageClient().uploadFromBytes(
         thumbnailKey,
@@ -279,6 +275,13 @@ export async function deleteStoredMedia(saved: StoredMedia): Promise<void> {
 export function readMediaStream(key: string): Readable {
   assertStoredKey(key);
   return getStorageClient().downloadAsStream(key);
+}
+
+/** Only generated small previews; originals can never be overwritten through this helper. */
+export async function writeVideoPreview(key: string, bytes: Buffer): Promise<void> {
+  if (!/^thumb-[0-9a-f-]{36}\.webp$/.test(key) || !bytes.length || bytes.length >= 100 * 1024)
+    throw new Error("Invalid video preview");
+  checkUploadResult(await getStorageClient().uploadFromBytes(key, bytes, { compress: false }), "video preview");
 }
 
 /** Content type for a previously generated key, for the authorized route. */

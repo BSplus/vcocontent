@@ -7,6 +7,7 @@ import { VideoAnalysisFailure, classifyVideoFailure } from "./video-failures";
 
 export type FrameEvidence = { hash: string; timestamp: number; tags: string[]; vehicles: Identification[] };
 export type VideoEvidence = {
+  posterSourceHash?: string;
   sourceHash: string; duration: number; samplingMs: number;
   timestamps: number[]; frames: FrameEvidence[];
   providerRequests: number; analyzedFrames: number;

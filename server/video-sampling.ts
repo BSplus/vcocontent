@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
@@ -10,51 +9,13 @@ import sharp from "sharp";
 import { readMediaStream } from "./media-storage";
 import { mediaPolicy } from "./media-policy";
 import { VideoAnalysisFailure, classifyVideoFailure, type VideoFailureStage } from "./video-failures";
+import { videoTool, probeVideoFile } from "./video-tools";
+export { videoTool } from "./video-tools";
 
 export const SAMPLING_VERSION = "video-scenes-v1";
 const root = path.join(tmpdir(), "vco-video-analysis");
 export type VideoFrame = { timestamp: number; image: string; hash: string };
 export const frameTarget = (duration: number) => duration < 2 ? 3 : duration <= 30 ? 5 : duration <= 180 ? 8 : 12;
-
-/** No shell, URLs, stdin, audio, or unbounded process output. */
-export function videoTool(tool: "ffmpeg" | "ffprobe", args: string[], signal?: AbortSignal, diagnostics = false): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(tool, args, { stdio: ["ignore", "pipe", "pipe"], signal });
-    let output = ""; let size = 0;
-    let stderr = ""; let timedOut = false; let outputLimited = false;
-    const stage = tool === "ffprobe" ? "probe" : "frame_extraction";
-    const timer = setTimeout(() => { timedOut=true; child.kill("SIGKILL"); }, 8000);
-    const collect = (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > 65536) { outputLimited=true; child.kill("SIGKILL"); }
-      else output += chunk.toString();
-    };
-    child.stdout.on("data", collect);
-    child.stderr.on("data", chunk => {
-      stderr=(stderr+chunk.toString()).slice(-8192);
-      if (diagnostics) collect(chunk);
-    });
-    child.once("error", (error: NodeJS.ErrnoException) => {
-      clearTimeout(timer);
-      reject(new VideoAnalysisFailure(stage,
-        error.code==="ENOENT" ? "TOOL_MISSING" :
-        error.code==="EACCES" || error.code==="EPERM" ? "TOOL_ACCESS_DENIED" : "TOOL_INTERRUPTED",
-        !["ENOENT","EACCES","EPERM"].includes(error.code || "")));
-    });
-    child.once("close", (code, exitSignal) => {
-      clearTimeout(timer);
-      if (code === 0 && !timedOut && !outputLimited) return resolve(output);
-      const failureCode = timedOut ? "TOOL_TIMEOUT" : outputLimited ? "TOOL_OUTPUT_LIMIT" :
-        /unrecognized option|option .* not found/i.test(stderr) ? "TOOL_OPTION_UNSUPPORTED" :
-        /unknown decoder|decoder .* not found|decoding requested, but no decoder found/i.test(stderr) ? "CODEC_UNAVAILABLE" :
-        /invalid data found when processing input|not on whitelist|moov atom not found|unsupported codec/i.test(stderr) ? "INPUT_UNSUPPORTED" :
-        exitSignal ? "TOOL_INTERRUPTED" : "DECODE_FAILED";
-      reject(new VideoAnalysisFailure(stage,failureCode,
-        !["TOOL_OUTPUT_LIMIT","TOOL_OPTION_UNSUPPORTED","CODEC_UNAVAILABLE","INPUT_UNSUPPORTED"].includes(failureCode),
-        {exitCode:code,signal:exitSignal}));
-    });
-  });
-}
 
 /** Only stale interrupted directories are swept; live extraction has a 75s deadline. */
 export async function cleanupVideoTemps() {
@@ -95,18 +56,7 @@ export async function sampleVideo(item: { url: string }, consume: (value: {
       digest.update(chunk); callback(null, chunk);
     } }), createWriteStream(original, { mode: 0o600 }), { signal: controller.signal });
     stage="probe";
-    const probeOutput = await videoTool("ffprobe", ["-v", "error", "-protocol_whitelist", "file",
-      "-format_whitelist", "mov,matroska,webm",
-      "-show_entries", "format=duration:stream=codec_type,width,height", "-of", "json", original], controller.signal);
-    let probe;
-    try { probe=JSON.parse(probeOutput); } catch { throw new VideoAnalysisFailure("probe","PROBE_INVALID",false); }
-    if (!probe || typeof probe!=="object" || Array.isArray(probe))
-      throw new VideoAnalysisFailure("probe","PROBE_INVALID",false);
-    const duration = Number(probe.format?.duration);
-    const stream = probe.streams?.find((s: { codec_type: string }) => s.codec_type === "video");
-    if (!Number.isFinite(duration) || duration <= 0 || duration > 21600 || !stream ||
-        !stream.width || !stream.height || stream.width * stream.height > mediaPolicy.maxPixels)
-      throw new VideoAnalysisFailure("probe","DECODE_POLICY_LIMIT",false);
+    const { duration } = await probeVideoFile(original, controller.signal);
     stage="frame_extraction";
     const frames: VideoFrame[] = [];
     const signatures: Buffer[] = [];
