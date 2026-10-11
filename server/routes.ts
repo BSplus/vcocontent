@@ -13,7 +13,8 @@ import { isAITaggingConfigured, testManagedOpenAI, detectRaceNumbers } from "./u
 import { entryConflicts, proposeCaption, scenes } from "./caption-proposal";
 import { parseEntryFile } from "./entry-list";
 import multer from "multer";
-import { mediaUpload, uploadMedia, createMediaKeys, readMediaStream, getMediaContentType } from "./media-storage";
+import { mediaUpload, uploadMedia, createMediaKeys, readMediaStream, readVideoSource, getMediaContentType } from "./media-storage";
+import { legacyVideoSource, sendVideo } from "./video-delivery";
 import { analysisImageInput, recognitionImageInput } from "./image-analysis";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { randomUUID } from "crypto";
@@ -632,6 +633,13 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const dataUrl = variant === "file" ? record.url : record.thumbnail;
       const match = /^data:(image\/(?:jpeg|png|gif|webp)|video\/(?:mp4|webm|quicktime));base64,([A-Za-z0-9+/=\r\n]+)$/.exec(dataUrl);
       if (!match) return res.status(404).end();
+      if (variant === "file" && match[1].startsWith("video/")) {
+        res.setHeader("Content-Type", match[1]);
+        res.setHeader("Cache-Control", "private, no-store");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        await sendVideo(req, res, legacyVideoSource(match[2]));
+        return;
+      }
       let body = Buffer.from(match[2], "base64");
       if (body.length > 100 * 1024 * 1024) return res.status(413).end();
       if (variant === "thumbnail") {
@@ -646,6 +654,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       res.setHeader("X-Content-Type-Options", "nosniff");
       return res.send(body);
     } catch (error) {
+      if (error instanceof MediaLimitError) return res.status(413).type("json").json({ error: error.message });
       console.error("Legacy media delivery failed:", error);
       return res.status(500).json({ error: "Media unavailable" });
     }
@@ -670,6 +679,10 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       res.setHeader("Content-Type", getMediaContentType(key));
       res.setHeader("Cache-Control", "private, no-store");
       res.setHeader("X-Content-Type-Options", "nosniff");
+      if (getMediaContentType(key).startsWith("video/")) {
+        await sendVideo(req, res, await readVideoSource(key));
+        return;
+      }
       const stream = readMediaStream(key);
       stream.on("error", () => {
         if (!res.headersSent) res.status(502).end();

@@ -7,7 +7,7 @@ import ws from "ws";
 
 export const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-export async function uiBrowser() {
+export async function uiBrowser({ startupTimeout = 60000 } = {}) {
   const profile = `/tmp/vco-click-targets-${randomUUID()}`;
   const child = spawn(process.env.CHROMIUM_PATH || "/repl/tools/bin/chromium", [
     "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
@@ -17,7 +17,7 @@ export async function uiBrowser() {
   child.stderr.on("data", chunk => { output += chunk; });
   let socket;
   try {
-    const deadline = Date.now() + 15000;
+    const deadline = Date.now() + startupTimeout;
     while (!output.match(/DevTools listening on (ws:\/\/\S+)/) && Date.now() < deadline) {
       if (child.exitCode !== null) throw new Error(output);
       await delay(100);

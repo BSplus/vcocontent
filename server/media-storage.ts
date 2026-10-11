@@ -11,6 +11,8 @@ import { Client } from "@replit/object-storage";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { createVideoPreview } from "./video-preview";
 import { preparePhoto, DOWNLOAD_BYTES, type ImageStrategy } from "./image-downloads";
+import { Storage } from "@google-cloud/storage";
+import type { VideoSource } from "./video-delivery";
 
 const TEMP_UPLOAD_DIR = path.join(tmpdir(), "vco-media-uploads");
 
@@ -277,6 +279,8 @@ export function readMediaStream(key: string): Readable {
   return getStorageClient().downloadAsStream(key);
 }
 
+let videoBucket: Promise<ReturnType<Storage["bucket"]>> | undefined;
+
 /** Only generated small previews; originals can never be overwritten through this helper. */
 export async function writeVideoPreview(key: string, bytes: Buffer): Promise<void> {
   if (!/^thumb-[0-9a-f-]{36}\.webp$/.test(key) || !bytes.length || bytes.length >= 100 * 1024)
@@ -294,4 +298,37 @@ export function getMediaContentType(key: string): string {
   if (key.endsWith(".mov")) return "video/quicktime";
   if (key.endsWith(".webm")) return "video/webm";
   return "video/mp4";
+}
+
+export async function readVideoSource(key: string): Promise<VideoSource> {
+  assertStoredKey(key);
+  const file = (await getVideoBucket()).file(key);
+  const [metadata] = await file.getMetadata();
+  const size = Number(metadata.size);
+  if (!Number.isSafeInteger(size) || size <= 0 || !metadata.generation || metadata.contentEncoding) throw new Error("Invalid video object");
+  // Pin the generation so length and bytes cannot disagree during replacement.
+  const pinned = (await getVideoBucket()).file(key, { generation: metadata.generation });
+  return { size, open: range => pinned.createReadStream({ ...range, decompress: false }) };
+}
+
+function getVideoBucket() {
+  return videoBucket ??= (async () => {
+    const response = await fetch("http://127.0.0.1:1106/object-storage/default-bucket",
+      { signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error("Video storage unavailable");
+    const value = await response.json();
+    if (typeof value.bucketId !== "string" || !value.bucketId) throw new Error("Video storage unavailable");
+    const client = new Storage({
+      projectId: "",
+      timeout: 15_000,
+      retryOptions: { autoRetry: false },
+      credentials: {
+        type: "external_account", audience: "replit", subject_token_type: "access_token",
+        token_url: "http://127.0.0.1:1106/token",
+        credential_source: { url: "http://127.0.0.1:1106/credential", format: { type: "json", subject_token_field_name: "access_token" } },
+        universe_domain: "googleapis.com",
+      },
+    });
+    return client.bucket(value.bucketId);
+  })().catch(error => { videoBucket = undefined; throw error; });
 }

@@ -34,6 +34,7 @@ import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
 import { Link } from "wouter";
 import MediaRightsNotice from "@/components/media-rights-notice";
 import CommunityActions from "@/components/community-actions";
+import VideoPreview from "@/components/video-preview";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -84,7 +85,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (selectedItem) {
-        if (e.target instanceof HTMLElement && (e.target.closest('[role="menu"]') || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName))) return;
+        if (e.target instanceof HTMLElement && (e.target.closest('[role="menu"]') || ['INPUT', 'TEXTAREA', 'SELECT', 'VIDEO'].includes(e.target.tagName))) return;
         if (e.key === 'ArrowRight') {
           e.preventDefault();
           navigateNext();
@@ -275,23 +276,14 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
           </DialogHeader>
 
           <div className="relative aspect-video bg-black/20">
-            {selectedItem?.type === "video" && user && selectedItem.url
-              ? <video
-                  key={selectedItem.id}
-                  src={selectedItem.url}
-                  poster={selectedItem.thumbnail}
-                  controls
-                  preload="none"
-                  className="absolute inset-0 w-full h-full object-contain"
-                />
+            {selectedItem?.type === "video"
+              ? <VideoPreview key={selectedItem.id} src={selectedItem.url} poster={selectedItem.thumbnail}
+                  signedIn={!!user} className="absolute inset-0" />
               : <img
                   src={selectedItem?.thumbnail}
                   alt={selectedItem?.caption || "Media preview"}
                   className="absolute inset-0 w-full h-full object-contain"
                 />}
-            {selectedItem?.type === "video" && !user && (
-              <p className="absolute bottom-2 left-2 right-2 rounded bg-black/85 px-3 py-2 text-sm text-white">Sign in to play this video. The preview is still available.</p>
-            )}
 
             {/* Navigation buttons */}
             <div className="pointer-events-none absolute inset-0 flex items-center justify-between p-2">

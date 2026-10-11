@@ -21,6 +21,8 @@ import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import type { MediaIdentification } from "@/hooks/use-media-analysis";
 import { parseEditableTags, reconcileAnalysisTags } from "@/lib/reconcile-analysis-tags";
+import VideoPreview from "@/components/video-preview";
+import { useAuth } from "@/hooks/use-auth";
 
 interface EditMediaModalProps {
   open: boolean;
@@ -59,6 +61,7 @@ export default function EditMediaModal({
   onCloseAutoFocus,
 }: EditMediaModalProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
@@ -272,11 +275,8 @@ export default function EditMediaModal({
           <div className="space-y-2">
             <div className="relative aspect-video bg-black/20 rounded-lg overflow-hidden">
               {mediaItem.type === "video" ? (
-                <video
-                  src={mediaItem.url}
-                  controls
-                  className="w-full h-full object-contain"
-                />
+                open && <VideoPreview key={mediaItem.id} src={mediaItem.url}
+                  poster={mediaItem.thumbnail} signedIn={!!user} />
               ) : (
                 <img
                   src={mediaItem.url}

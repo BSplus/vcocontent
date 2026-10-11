@@ -11,6 +11,7 @@ import Footer from "@/components/footer";
 import MediaRightsNotice from "@/components/media-rights-notice";
 import CommunityActions from "@/components/community-actions";
 import { ShareMenu } from "@/components/share-menu";
+import VideoPreview from "@/components/video-preview";
 
 export default function MediaDetail() {
   const [, params] = useRoute("/media/:id");
@@ -43,11 +44,10 @@ export default function MediaDetail() {
         <h1 className="mt-5 text-2xl font-bold">{item.caption || "Esports racing media"}</h1>
         {item.type === "image" && <div className="mt-4"><CommunityActions kind="media" id={item.id} title={item.caption || "photo"} /></div>}
         <div className="mt-6 flex justify-center rounded-lg bg-black/40 p-3">
-          {item.type === "video" && user && item.url
-            ? <video controls preload="none" poster={item.thumbnail} src={item.url} className="max-h-[75vh] max-w-full" />
+          {item.type === "video"
+            ? <VideoPreview key={item.id} src={item.url} poster={item.thumbnail} signedIn={!!user} className="max-h-[75vh]" />
             : <img src={item.thumbnail} alt={item.caption || "Esports racing photo"} className="max-h-[75vh] max-w-full object-contain" />}
         </div>
-        {item.type === "video" && !user && <p className="mt-3">Sign in to watch this video.</p>}
         {item.photographer && <p className="mt-4">Photographer: {item.photographer}</p>}
         <div className="mt-6 flex flex-wrap gap-3">
           <ShareMenu url={window.location.href} title={item.caption || "VCO photo"} />

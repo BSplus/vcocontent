@@ -38,6 +38,7 @@ Preferred communication style: Simple, everyday language.
 - Creator media editing stays visible without hover and returns keyboard focus to its opener.
 - Focused browser checks: `node --test tests/ui-click-targets.test.mjs`. These use isolated API fixtures without database writes; they verify UI role boundaries, not authenticated backend ownership.
 - Public media search uses PostgreSQL results before pagination, with debounced input and URL-driven filters/pages; never re-filter returned pages in the browser.
+- Video playback: `npm run test:video-playback` checks real Chromium decoding, motion/time, pause/seek, touch, errors and real authorized file routes with synthetic identities/objects. Video originals support single HTTP byte ranges; thumbnails remain dialog openers. See `docs/video-preview-playback.md` for baseline findings and unconfirmed user-file limitations.
 - Error boundary implementation for graceful error handling
 - Font system using Orbitron for headings, Rajdhani for interactive elements, and Space Grotesk for body text
 

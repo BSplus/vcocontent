@@ -18,6 +18,7 @@ import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
 import EventTitle from "@/components/event-title";
 import { formatDate } from "@/lib/utils";
 import ArchiveFaq from "@/components/archive-faq";
+import VideoPreview from "@/components/video-preview";
 
 export default function HomePage() {
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
@@ -223,11 +224,10 @@ export default function HomePage() {
           {selectedMedia && <div className="space-y-4">
              <DialogTitle>Media preview</DialogTitle>
             <div className="relative flex min-h-40 items-center justify-center bg-black/30">
-              {selectedMedia.type === "video" && user && selectedMedia.url
-                ? <video key={selectedMedia.id} src={selectedMedia.url} poster={selectedMedia.thumbnail} controls preload="none" className="max-h-[65dvh] max-w-full" />
+              {selectedMedia.type === "video"
+                ? <VideoPreview key={selectedMedia.id} src={selectedMedia.url} poster={selectedMedia.thumbnail} signedIn={!!user} className="max-h-[65dvh]" />
                 : <img src={selectedMedia.thumbnail || selectedMedia.url} alt={selectedMedia.caption || "Media preview"} className="max-h-[65dvh] max-w-full object-contain" />}
             </div>
-            {selectedMedia.type === "video" && !user && <p className="text-sm text-foreground/75">Sign in to play this video. Its poster is shown above.</p>}
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>{selectedMedia.photographer && <p className="text-sm text-foreground/70">Photographer: {selectedMedia.photographer}</p>}{selectedMedia.caption && <p className="mt-1 text-sm">{selectedMedia.caption}</p>}</div>
               <DropdownMenu>
