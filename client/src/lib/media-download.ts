@@ -4,11 +4,12 @@ import { isCreatorOriginal } from "@shared/image-provenance";
 export type DownloadQuality = "high" | "low";
 
 export function downloadOptionLabel(item: MediaItem, quality: DownloadQuality): string {
-  const bytes = quality === "high" ? item.highBytes : item.lowBytes;
+  if (quality === "low") return "Low-Res · up to 0.50 MB";
+  const bytes = item.highBytes;
   const size = typeof bytes === "number" && bytes > 0
     ? `${(bytes / 1_000_000).toFixed(2)} MB`
     : "size unavailable";
-  const label = quality === "low" ? "Low-Res" : item.type === "video" ? "Video Download" :
+  const label = item.type === "video" ? "Video Download" :
     isCreatorOriginal(item.url) ? "Original Download · uploaded file" : "High-Res Download · optimized";
   return `${label} (${size})`;
 }

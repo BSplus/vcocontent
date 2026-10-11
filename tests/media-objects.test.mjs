@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { uploadMedia, createMediaKeys, readMediaStream } from "../server/media-storage.ts";
 import { mediaPolicy, MediaLimitError } from "../server/media-policy.ts";
-import { preparePhoto } from "../server/image-downloads.ts";
+import { preparePhoto, fitOfficialDownload } from "../server/image-downloads.ts";
 import { isCreatorOriginal } from "../shared/image-provenance.ts";
 import { mockMediaStorage } from "./helpers/memory-media-storage.mjs";
 
@@ -23,6 +23,27 @@ async function withFile(bytes,mime,fn) {
 const hash = data => createHash("sha256").update(data).digest("hex");
 async function read(key) {const chunks=[];for await(const chunk of readMediaStream(key))chunks.push(Buffer.from(chunk));return Buffer.concat(chunks);}
 const tiny = () => sharp({create:{width:96,height:64,channels:3,background:"#345678"}});
+
+test("official highest fitting quality wins at the exact 5,000,000-byte limit before any resize", async () => {
+  for (const target of [100, 98, 95, 90, 85, 80]) {
+    const calls = [];
+    const output = await fitOfficialDownload(async (scale, quality) => {
+      calls.push([scale, quality]);
+      return Buffer.alloc(quality === target ? 5_000_000 : 5_000_001);
+    });
+    assert.equal(output.length, 5_000_000);
+    assert.deepEqual(calls, [100, 98, 95, 90, 85, 80].slice(0, calls.length).map(q => [1, q]));
+    assert.equal(calls.at(-1)[1], target);
+  }
+  const calls = [];
+  await fitOfficialDownload(async (scale, quality) => {
+    calls.push([scale, quality]);
+    return Buffer.alloc(scale === .70 && quality === 80 ? 1 : 5_000_001);
+  });
+  assert.deepEqual(calls, [100,98,95,90,85,80].map(q=>[1,q])
+    .concat([90,85,80].map(q=>[.85,q]),[90,85,80].map(q=>[.70,q])));
+  await assert.rejects(fitOfficialDownload(async()=>Buffer.alloc(5_000_001)), /quality 80.*70%/);
+});
 
 test("creator static JPEG, PNG, WebP and GIF stay hash-identical with exactly two private objects",async()=>{
   for (const [format,mime] of [["jpeg","image/jpeg"],["png","image/png"],["webp","image/webp"],["gif","image/gif"]]) {

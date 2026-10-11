@@ -30,6 +30,7 @@ import { identifyEntries } from "./reference-matching";
 import { pipeline } from "stream/promises";
 import { withVisionBudget } from "./ai-budget";
 import { MediaBusyError } from "./media-work-budget";
+import { LowResolutionError } from "./low-resolution-download";
 import { registerReferenceRoutes } from "./reference-routes";
 import { canManage, eventPublic, mediaPublic, visibleEvents } from "./beta-access";
 import { communityLimits, creatorAllowed, safeState, safetyRetryAllowed, takeBetaRate } from "./beta-policy";
@@ -369,6 +370,9 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   });
 
   app.get("/api/media/:id/download", async (req, res) => {
+    const controller = new AbortController();
+    const abort = () => { if (!res.writableFinished) controller.abort(); };
+    res.once("close", abort);
     try {
       const id = Number(req.params.id);
       const quality = req.query.quality === undefined ? "high" : req.query.quality;
@@ -384,7 +388,8 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (req.query.operation!==undefined && (!req.user || !await validDownloadOperation(req.query.operation,req.user.id,id,quality)))
         return res.status(400).json({error:"Download authorization expired. Please request a new download."});
       const operation=typeof req.query.operation==="string"?req.query.operation:randomUUID();
-      const { stream, contentType, filename } = await downloadStream(item, quality);
+      const { stream, contentType, filename } = await downloadStream(item, quality, controller.signal);
+      if (res.destroyed) { stream.destroy(); return; }
       res.setHeader("Content-Type", contentType);
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Cache-Control", "private, no-store");
@@ -400,9 +405,17 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
           else await storage.incrementDownloadCount(id);
         } catch { console.error("Completed download statistics could not be recorded; do not retry file delivery."); }
       } finally { res.off("close", cancel); }
-    } catch {
+    } catch (error) {
       console.error("Media download delivery failed");
-      if (!res.headersSent && !res.destroyed) res.status(502).json({ error: "Media could not be downloaded" });
+      if (!res.headersSent && !res.destroyed) {
+        const known = error instanceof MediaBusyError || error instanceof MediaLimitError || error instanceof LowResolutionError;
+        res.status(error instanceof MediaBusyError ? 503 : error instanceof MediaLimitError ? 413 :
+          error instanceof LowResolutionError ? 422 : 502).json({
+          error: known ? error.message : "Media could not be downloaded. Please retry or choose another version.",
+        });
+      }
+    } finally {
+      res.off("close", abort);
     }
   });
 

@@ -45,3 +45,5 @@
 - [Local Neon test transport](local-neon-test-transport.md) — disable password pipelining for local trust-authenticated PostgreSQL; keep test transport separate from app runtime.
 - [Private deployment inspection](private-deployment-inspection.md) — a platform access redirect is not app-level media denial; inspect read-only through existing same-origin access when available.
 - [Browser media controls](browser-media-controls.md) — target native Play, scope error text, and force fresh requests when testing revoked sessions; retained media buffers can mislead.
+- [Node deadline fixtures](node-deadline-fixtures.md) — AbortSignal.timeout is unref'd; a hung synthetic stream needs a referenced timer/socket for the deadline test.
+- [Sharp promise cancellation](sharp-promise-cancellation.md) — destroy without an error; retain the CPU slot until bounded native work settles, then discard cancelled results.

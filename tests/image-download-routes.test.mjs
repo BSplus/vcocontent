@@ -19,6 +19,7 @@ import { isCreatorOriginal } from "../shared/image-provenance.ts";
 import { recognitionImageInput } from "../server/image-analysis.ts";
 import { startImport, importStatus, stopImportWorker } from "../server/nextcloud.ts";
 import { mockMediaStorage } from "./helpers/memory-media-storage.mjs";
+import { withMediaWorkBudget } from "../server/media-work-budget.ts";
 
 const store=mockMediaStorage();
 test.after(async()=>{store.restore();await stopImportWorker();await pool.end();});
@@ -91,6 +92,19 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
       // The count commits after streaming, not on the authorization request.
       for(let i=0;i<20 && (await storage.getMediaItem(item.id)).downloadCount!==1;i++) await new Promise(r=>setTimeout(r,20));
       assert.equal((await storage.getMediaItem(item.id)).downloadCount,1);
+      const writes = store.writes.length;
+      assert.equal((await request(`/api/media/${item.id}/download?quality=low`)).status,401);
+      const lowDelivery = await request(`/api/media/${item.id}/download?quality=low`,role);
+      assert.equal(lowDelivery.status,200);
+      assert.equal(lowDelivery.headers.get("content-type"),"image/webp");
+      assert.equal(lowDelivery.headers.get("content-disposition"),`attachment; filename="media-${item.id}-low.webp"`);
+      const lowBytes=Buffer.from(await lowDelivery.arrayBuffer());
+      assert.ok(lowBytes.length<=500_000);
+      const lowMeta=await sharp(lowBytes).metadata();
+      assert.deepEqual([lowMeta.width,lowMeta.height],[48,32]);
+      assert.equal(store.writes.length,writes);
+      for(let i=0;i<20 && (await storage.getMediaItem(item.id)).downloadCount!==2;i++) await new Promise(r=>setTimeout(r,20));
+      assert.equal((await storage.getMediaItem(item.id)).downloadCount,2);
       const recognition=await recognitionImageInput(item);
       assert.match(recognition,/^data:image\/webp;base64,/);
       assert.ok((await sharp(Buffer.from(recognition.split(",")[1],"base64")).metadata()).width<=1600);
@@ -154,8 +168,35 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
     assert.deepEqual((await storage.getMediaItem(old.id)).tags,["preserved"]);
     await db.update(mediaItems).set({isPremium:true}).where(eq(mediaItems.id,old.id));
     assert.equal((await request(`/api/media/${old.id}/download`,"owner")).status,403);
+    assert.equal((await request(`/api/media/${old.id}/download?quality=low`)).status,403);
     await db.update(mediaItems).set({isPremium:false,safetyStatus:"blocked"}).where(eq(mediaItems.id,old.id));
     assert.equal((await request(`/api/media/${old.id}/download`,"owner")).status,404);
+    assert.equal((await request(`/api/media/${old.id}/download?quality=low`)).status,404);
+
+    // Historical Base64 derives from the large field, not an unusable thumbnail.
+    const historical=await storage.createMediaItem({eventId:official.id,type:"image",
+      url:`data:image/webp;base64,${legacyBytes.toString("base64")}`,thumbnail:"broken-thumbnail",tags:["unchanged"],caption:"Unchanged"});
+    const legacyLow=await request(`/api/media/${historical.id}/download?quality=low`);
+    assert.equal(legacyLow.status,200);
+    assert.ok((await legacyLow.arrayBuffer()).byteLength<=500_000);
+    for(let i=0;i<20 && (await storage.getMediaItem(historical.id)).downloadCount!==1;i++) await new Promise(r=>setTimeout(r,20));
+    assert.equal((await storage.getMediaItem(historical.id)).downloadCount,1);
+    const originalUrl=historical.url;
+    await db.update(mediaItems).set({url:"data:image/png;base64,Y29ycnVwdA=="}).where(eq(mediaItems.id,historical.id));
+    const failedLow=await request(`/api/media/${historical.id}/download?quality=low`);
+    assert.ok(failedLow.status>=400);
+    assert.equal((await storage.getMediaItem(historical.id)).downloadCount,1);
+    await db.update(mediaItems).set({url:originalUrl}).where(eq(mediaItems.id,historical.id));
+    let release;
+    const held=new Promise(resolve=>{release=resolve;});
+    const jobs=Array.from({length:10},()=>withMediaWorkBudget(()=>held));
+    try {
+      assert.equal((await request(`/api/media/${historical.id}/download?quality=low`)).status,503);
+      assert.equal((await storage.getMediaItem(historical.id)).downloadCount,1);
+    } finally {release();await Promise.all(jobs);}
+    assert.equal((await storage.getMediaItem(historical.id)).url,originalUrl);
+    assert.deepEqual((await storage.getMediaItem(historical.id)).tags,["unchanged"]);
+    assert.equal((await storage.getMediaItem(historical.id)).caption,"Unchanged");
 
     // Genuine >5-MB authorized source, mocked DAV only. Sources remain remote;
     // downloads read App Storage after the cloud becomes unreachable.
@@ -183,13 +224,18 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
     assert.equal(gets,1);
     assert.equal(store.writes.length-beforeCloud,2);
     cloudUp=false;
-    const imported=(await storage.getMediaItems(official.id))[0];
+    const imported=(await storage.getMediaItems(official.id)).find(m=>m.id!==historical.id);
     assert.ok(imported.highBytes<=5_000_000);
     const offline=await request(`/api/media/${imported.id}/download`,"admin");
     assert.equal(offline.status,200);
     const m=await sharp(Buffer.from(await offline.arrayBuffer())).metadata();
     assert.deepEqual([m.width,m.height],[2160,2700]);
-    assert.equal((await request(`/api/media/${imported.id}/download?quality=low`)).status,200);
+    const importedLow=await request(`/api/media/${imported.id}/download?quality=low`);
+    assert.equal(importedLow.status,200);
+    const importedLowBytes=Buffer.from(await importedLow.arrayBuffer());
+    assert.ok(importedLowBytes.length<=500_000);
+    const importedLowMeta=await sharp(importedLowBytes).metadata();
+    assert.deepEqual([importedLowMeta.width,importedLowMeta.height],[1280,1600]);
     assert.equal((await request(`/api/media/${imported.id}/download?quality=high`)).status,401);
   } finally {
     await stopImportWorker();

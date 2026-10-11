@@ -15,8 +15,11 @@ Free quota.
 - **Official VCO:** high-resolution download at most **5,000,000 bytes**.
   Suitable static JPEG/WebP already within budget is retained without another
   lossy encode. Other sources try WebP (JPEG for JPEG sources, 4:4:4 chroma)
-  at quality **90, 85, 80 in original dimensions first**. Only if none fits,
-  try 85% and then 70% of the original dimensions at the same quality steps.
+  at quality **100, 98, 95, 90, 85, 80 in original dimensions first**.
+  The first fitting candidate wins; quality 100 is not lossless. Only if none
+  fits, try 85% and then 70% dimensions at the previous 90/85/80 steps.
+  Additional encodes remain inside the existing 60-second optimization budget
+  (each encode at most 20 seconds or the remaining budget, whichever is less).
   No upscaling. If the budget still cannot be met, reject with the explicit
   quality/resolution trade-off; do not go below quality 80 or 70% dimensions.
   A smaller static PNG/GIF is retained if converting it would inflate storage.
@@ -29,6 +32,30 @@ Free quota.
   at most **100,000 bytes**, derived directly from the input. Existing preview
   quality ladder is retained; smaller edges are a bounded fallback if necessary.
   There is no lower-size target and no enlargement.
+- **Low-Res download:** on demand from the saved high-resolution file or Creator
+  original, never normally from the thumbnail. Oriented WebP at most **1600px**
+  long edge and **500,000 bytes**, no enlargement, minimum size or padding.
+  Try quality 100/98/95/90/85/80; only if none fits, try 1280px then 960px
+  at those steps. Historical decodable Base64 photos use their large field too;
+  lost original detail cannot be recovered. Menu text is **Low-Res · up to
+  0.50 MB**; High-Res still displays actual stored bytes and provenance.
+  The `lowBytes` database value remains *thumbnail storage*, not download size.
+  No new object, persistent cache or quota/cleanup entry is created.
+  Sources are capped at the existing historical 100-MiB limit and configured
+  image pixel limit (40 MP by default). Modern inputs spool to bounded temporary
+  disk, cleaned on success, error or abort; historical Base64 decoding remains
+  bounded in memory. Processing shares two CPU slots and at most eight waiting
+  jobs with uploads/imports; queued requests do not open sources. Queue, read
+  and conversion share a 45-second cancellation deadline; encoding has a
+  30-second budget and individual Sharp operations at most ten seconds.
+  Disconnects remove queued work and abort reads. Sharp's native promise-based
+  encode cannot be interrupted by stream destruction: cancellation discards
+  the result and stops further steps, keeping the CPU slot until the current
+  bounded operation settles (up to ten seconds of cancellation grace).
+  Bounds are per process.
+  Too-busy requests return 503; input byte limit 413; unreadable/over-pixel-limit,
+  cancelled/timed-out or unfit photos return 422; missing/failed storage returns
+  502. These errors do not count as downloads.
 - **Accounting:** download bytes + preview bytes exactly once; at most
   **5,100,000 bytes per new photo**. Actual totals are reserved before either
   object write. Failed partial writes retain one conservative reservation total
@@ -42,27 +69,31 @@ Free quota.
   references are rewritten. Once imported, neither browsing nor download needs
   Nextcloud. Video, event-image and profile-image policies are unchanged.
 
-## Small comparison performed before changing the upload path
+## Small before/after comparison of this download change
 
-Command: `node scripts/compare-image-downloads.mjs`.
+Command: `node --import tsx scripts/compare-image-downloads.mjs`.
 Outputs and side-by-side crops are excluded from Git/deployment under
 `generated-artifacts/image-quality/`. The comparison creates no media records,
 provider requests, jobs, bucket objects, reimport or deployment.
 
 Both are actual previously supplied VCO motorsport PNGs, not upscaled recognition
-fixtures. The first original is 5.8 MP and above 2560px; the second is a detailed
-field/track scene. The old samples fit at the first legacy quality step (86);
-the proposed samples fit at quality 90 without resizing.
+fixtures. The first original is 5.8 MP; the second is a detailed field/track
+scene. “Before” means the immediately preceding full-resolution quality-90
+conversion and its stored thumbnail used as Low-Res. Both new High-Res samples
+fit at quality 100 without resizing; both new Low-Res samples fit at quality
+100 and 1600px. This is a small offline comparison, not the separate
+20–40-MP camera evaluation.
 
-| Photo | Source dimensions / bytes | Previous download dimensions / bytes | New download dimensions / bytes | Old / new preview bytes | Old / new total stored bytes |
+| Photo | Source dimensions / bytes | Previous High-Res dimensions / bytes | New High-Res dimensions / bytes | Previous Low-Res dimensions / bytes | New Low-Res dimensions / bytes |
 |---|---|---|---|---|---|
-| Stock car #89 (`attached_assets/#89_3.png`) | 2160×2700 / 11,511,713 | 2048×2560 / 937,474 | 2160×2700 / 1,630,464 | 23,888 / 23,714 | 961,362 / 1,654,178 |
-| Wide field (`attached_assets/IMG_7464.png`) | 2560×1080 / 5,499,266 | 2560×1080 / 411,906 | 2560×1080 / 523,298 | 21,206 / 20,920 | 433,112 / 544,218 |
+| Stock car #89 (`attached_assets/#89_3.png`) | 2160×2700 / 11,511,713 | 2160×2700 / 1,630,464 | 2160×2700 / 2,948,620 | 512×640 / 23,714 | 1280×1600 / 343,472 |
+| Wide field (`attached_assets/IMG_7464.png`) | 2560×1080 / 5,499,266 | 2560×1080 / 523,298 | 2560×1080 / 1,037,938 | 640×270 / 20,920 | 1600×675 / 416,938 |
 
-Measured additional storage compared with the old path: **692,816 bytes**
-(stock car) and **111,106 bytes** (wide field). Each remains far below 5.1 MB.
-Compared with copying each full input, the new downloads save approximately
-9.88 MB and 4.98 MB respectively, without keeping a third file.
+The thumbnails remain byte-identical: **23,714 / 20,920 bytes**.
+For *new conversions only*, total two-object storage changes from
+1,654,178 to **2,972,334 bytes** (stock car) and 544,218 to **1,058,858 bytes**
+(wide field). The dynamic Low-Res bytes above are not stored or charged.
+Each remains below 5.1 MB. No historical objects are changed.
 Creator storage will generally increase relative to the previous destructive
 conversion: e.g. an exact-5-MB upload plus its actual preview, not a compressed
 replacement. This is intentional, still charged against the unchanged quotas.
@@ -72,21 +103,25 @@ replacement. This is intentional, still charged against the unchanged quotas.
 Replit Agent inspected original/previous/proposed crops independently of an AI
 recognition result; this is not independently certified human ground truth.
 The stock-car crop checks grille mesh, front light, bumper edges and the small
-BS COMPETITION sponsor lettering. The proposed version retains edges and
-lettering well; the old resized version is slightly softer.
+BS COMPETITION sponsor lettering. The new Low-Res keeps noticeably clearer
+lettering, grille and headlight outlines than the enlarged old 640px thumbnail.
+The High-Res difference is subtler: quality 100 retains fine surface/mesh detail
+slightly better than quality 90, with no conspicuous new artifacts.
 The field crop checks track lettering/kerbs, distant cars, crowd and grass.
-Both compressed versions slightly smooth fine grass/crowd texture compared with
-the PNG, with less texture loss in the quality-90 candidate. No conspicuous
-block artifacts or severe degradation was visible in these crops.
+New Low-Res preserves car shapes, track lettering and kerb boundaries much
+better than the old thumbnail; distant crowd/grass detail is still limited by
+1600px. Both High-Res versions look close to the source at these crops, with
+slightly less fine grass/crowd smoothing at quality 100. Neither is lossless.
 
-The comparison JPEGs concatenate original, old and proposed crops left-to-right;
-the old stock image is enlarged **only for this comparison**, never in storage.
-These visual crops themselves are JPEG-encoded for inspection.
+The comparison PNGs concatenate source, before and after crops left-to-right.
+For Low-Res, the source and old thumbnail are aligned to the new download's
+dimensions; the thumbnail is enlarged **only for inspection**, never in storage
+or delivery. High-Res crops use identical source coordinates without resizing.
 
 ### Acceptance bounds and remaining coverage limits
 
 Quality 80 is an encoder floor, not a universal perceptual-quality guarantee.
-Quality 90 does not mean lossless. Reduced dimensions discard fine details,
+Quality 100 does not mean lossless. Reduced dimensions discard fine details,
 even at high encoder quality. The bounded fallback can discard up to 30% of
 each dimension (51% of pixels); sources still too large receive a clear error
 requesting an approved smaller source. There is no automatic/manual approval
@@ -119,7 +154,8 @@ Do not use UUIDv8 for other media strategies without explicitly revisiting this
 contract. Existing v4 Creator downloads remain labelled **High-Res Download ·
 optimized**, never “Original”. New marked files are **Original Download ·
 uploaded file**; shared labels include actual stored size throughout grids,
-home/top-shot actions and the detail page. Low-Res behavior is unchanged.
+home/top-shot actions and the detail page. Dynamic Low-Res displays its upper
+bound instead of misrepresenting the persisted thumbnail size.
 
 Moderation recognizes all four static formats and converts its bounded
 provider input to correctly labelled WebP without altering the stored original.
@@ -130,7 +166,8 @@ become public bucket URLs.
 
 `node scripts/test-image-downloads.mjs` creates disposable local PostgreSQL,
 pushes the current schema only there, and runs the focused media-object,
-route, quota, Creator, Nextcloud and download-access checks serially. Storage
+route, quota, Creator and download-access checks serially, including photo
+Nextcloud import and offline delivery through the route test. Storage
 and external providers are local mocks; the real app routes/ledger/streaming
 execute against synthetic accounts. Temporary database/storage are removed.
 PostgreSQL tools must be installed; no connected or production schema is changed.
@@ -139,8 +176,12 @@ Checks include SHA-256 equality for JPEG/PNG/WebP/GIF and exact-limit uploads,
 owner/admin actual download routes, false MIME/corruption/animation, no
 upscaling, >5-MB VCO input, quality and resolution fallback, preview byte cap,
 two writes, actual summed usage, parallel reservations, failed-write cleanup,
-historical labels, blocked/premium/anonymous access, completed delivery counting
-and downloads after a mocked Nextcloud outage. Type check and production build
+historical labels and large-source Low-Res delivery, EXIF orientation, exact
+500,000-byte limit and fallback ordering, empty/corrupt/truncated/pixel-bomb or
+over-byte-limit sources, abort/timeout/read-error cleanup, bounded queue and CPU
+slots, no download storage writes, blocked/premium/anonymous access, completed
+delivery counting and failed-delivery non-counting, plus downloads after a mocked
+Nextcloud outage. Type check and production build
 are separate (`npm run check`, `npm run build`).
 
 The initially connected database lacked a pre-existing photo-matching column
@@ -149,6 +190,13 @@ use the disposable local schema. Any setup needed for the normal preview is
 separate from this image change and must follow the existing development/
 publishing workflow. No live AI evaluation, production deployment or benchmark
 suite was run.
+
+The broader optional `tests/nextcloud.test.mjs` suite was also attempted: its
+mixed-video fixture currently expects three 12-byte container signatures to be
+imported as real videos, but the current decoder rejects them (0 versus 3).
+That unrelated video-fixture regression is not changed by this photo task and
+is excluded from the focused runner's defaults. Explicit file arguments still
+allow running the broader suite. No video behavior was relaxed to make it pass.
 
 ## Existing library and a possible later reimport
 

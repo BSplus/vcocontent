@@ -5,6 +5,16 @@ import { mediaPolicy, MediaLimitError } from "./media-policy";
 export type ImageStrategy = "official" | "creator-original";
 export const DOWNLOAD_BYTES = 5_000_000;
 export const PREVIEW_BYTES = 100_000;
+export const HIGH_QUALITIES = [100, 98, 95, 90, 85, 80] as const;
+export async function fitOfficialDownload(encode: (scale: number, quality: number) => Promise<Buffer>) {
+  for (const scale of [1, 0.85, 0.70]) {
+    for (const quality of scale === 1 ? HIGH_QUALITIES : [90, 85, 80]) {
+      const candidate = await encode(scale, quality);
+      if (candidate.length && candidate.length <= DOWNLOAD_BYTES) return candidate;
+    }
+  }
+  throw new MediaLimitError("Photo cannot fit 5 MB at quality 80 while retaining at least 70% of its dimensions. Provide an approved smaller source; no severely compressed download was saved.");
+}
 export class InvalidPhotoError extends Error {}
 const inputOptions = () => ({ limitInputPixels: mediaPolicy.maxPixels, failOn: "error" as const });
 
@@ -48,24 +58,20 @@ export async function preparePhoto(filename: string, mime: string, size: number,
   if (strategy === "official" && !(staticPhoto && size <= DOWNLOAD_BYTES && ["jpeg", "webp"].includes(metadata.format!))) {
     const started = Date.now();
     const jpeg = metadata.format === "jpeg";
-    let candidate: Buffer | undefined;
-    for (const scale of [1, 0.85, 0.70]) {
-      for (const quality of [90, 85, 80]) {
-        if (Date.now() - started > 60_000)
-          throw new MediaLimitError("Photo optimization exceeded its work budget. Provide a smaller source.");
-        let image = sharp(source, inputOptions()).rotate().timeout({ seconds: 20 });
-        if (scale < 1) image = image.resize({
-          width: Math.max(1, Math.floor((metadata.autoOrient?.width ?? metadata.width!) * scale)),
-          height: Math.max(1, Math.floor((metadata.autoOrient?.height ?? metadata.height!) * scale)),
-          fit: "inside", withoutEnlargement: true,
+    const candidate = await fitOfficialDownload(async (scale, quality) => {
+      const remaining = 60_000 - (Date.now() - started);
+      if (remaining < 1000)
+        throw new MediaLimitError("Photo optimization exceeded its work budget. Provide a smaller source.");
+      let image = sharp(source, inputOptions()).rotate().timeout({
+        seconds: Math.min(20, Math.floor(remaining / 1000)),
+      });
+      if (scale < 1) image = image.resize({
+        width: Math.max(1, Math.floor((metadata.autoOrient?.width ?? metadata.width!) * scale)),
+        height: Math.max(1, Math.floor((metadata.autoOrient?.height ?? metadata.height!) * scale)),
+        fit: "inside", withoutEnlargement: true,
         });
-        candidate = await (jpeg ? image.jpeg({quality, chromaSubsampling:"4:4:4"}) : image.webp({quality, effort:4})).toBuffer();
-        if (candidate && candidate.length <= DOWNLOAD_BYTES) break;
-      }
-      if (candidate && candidate.length <= DOWNLOAD_BYTES) break;
-    }
-    if (!candidate || candidate.length > DOWNLOAD_BYTES)
-      throw new MediaLimitError("Photo cannot fit 5 MB at quality 80 while retaining at least 70% of its dimensions. Provide an approved smaller source; no severely compressed download was saved.");
+      return (jpeg ? image.jpeg({quality, chromaSubsampling:"4:4:4"}) : image.webp({quality, effort:4})).toBuffer();
+    });
     // Do not inflate a small static PNG/GIF merely to change its format.
     if (!(staticPhoto && source.length <= DOWNLOAD_BYTES && source.length <= candidate.length)) {
       download = candidate;
