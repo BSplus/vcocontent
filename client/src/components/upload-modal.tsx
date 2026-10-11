@@ -29,6 +29,7 @@ import LegalLinks from "@/components/legal-links";
 import { creatorAssociationsKey, invalidateCommunityGalleryQueries } from "@/components/creator-gallery-association";
 import GalleryThumbnailSelector from "@/components/gallery-thumbnail-selector";
 import { eventImagePolicy } from "@shared/event-image-policy";
+import { EventSaveError, saveEvent } from "@/lib/event-save";
 
 interface UploadModalProps {
   open: boolean;
@@ -74,6 +75,12 @@ export default function UploadModal({
   const [importBusy, setImportBusy] = useState(false);
   const [previewBusy, setPreviewBusy] = useState(false);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  const baseline = useRef<Event | null>(null);
+  const [saveProblem, setSaveProblem] = useState<string | null>(null);
+  const [unknownSave, setUnknownSave] = useState(false);
+  const [checkingSave, setCheckingSave] = useState(false);
+  const [saveCheck, setSaveCheck] = useState<string | null>(null);
+  const attemptedChanges = useRef<Record<string, unknown>>({});
 
   const { data: eventData } = useQuery<Event>({
     queryKey: [`/api/events/${eventId}`],
@@ -219,7 +226,8 @@ export default function UploadModal({
   });
 
   useEffect(() => {
-    if (open && eventData && isEditing) {
+    if (open && eventData && isEditing && baseline.current?.id !== eventId) {
+      baseline.current = eventData;
       const eventWithRaceDetails = eventData as Event & { round?: string | number | null; track?: string | null };
       form.reset({
         title: eventData.title,
@@ -329,41 +337,29 @@ export default function UploadModal({
   const updateMutation = useMutation({
     retry: false,
     mutationFn: async (id: number) => {
+      if (unknownSave) throw new EventSaveError("unknown", "Check the saved event before submitting again.");
+      const previous = baseline.current;
+      if (!previous) throw new EventSaveError("rejected", "Wait until the event details have loaded.");
       const formData = form.getValues();
       const imageFields: Record<string, unknown> = {};
-      if ((formData.customThumbnail || null) !== (eventData?.customThumbnail || null)) {
+      if ((formData.customThumbnail || null) !== (previous.customThumbnail || null)) {
         imageFields.customThumbnail = formData.customThumbnail || null;
       }
-      if ((formData.coverImage || null) !== (eventData?.coverImage || null)) {
+      if ((formData.coverImage || null) !== (previous.coverImage || null)) {
         imageFields.coverImage = formData.coverImage || null;
       }
       const details: Record<string, unknown> = {};
       for (const field of ["title", "description", "round", "track", "seriesId"] as const) {
-        if ((formData[field] || null) !== (eventData?.[field] || null)) details[field] = formData[field];
+        if ((formData[field] || null) !== (previous[field] || null)) details[field] = formData[field] ?? null;
       }
-      if (new Date(formData.date).toISOString().slice(0, 10) !== new Date(eventData!.date).toISOString().slice(0, 10))
+      if (new Date(formData.date).toISOString().slice(0, 10) !== new Date(previous.date).toISOString().slice(0, 10))
         details.date = new Date(formData.date);
-
-      const res = await fetch(`/api/events/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          ...details,
-          ...imageFields,
-        }),
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || error.message || "Failed to update event");
-      }
-
-      return res.json();
+      setSaveProblem(null);
+      setSaveCheck(null);
+      attemptedChanges.current = { ...details, ...imageFields };
+      return saveEvent(id, attemptedChanges.current);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
       void invalidateCommunityGalleryQueries(queryClient);
@@ -375,18 +371,40 @@ export default function UploadModal({
       }
       onOpenChange(false);
       toast({
-        title: "Success",
-        description: "Event updated successfully",
+        title: result.saveStatus === "unchanged" ? "No changes" : "Event saved",
+        description: result.saveStatus === "unchanged" ? "The event details are unchanged." :
+          result.safetyCheckStatus === "unavailable" ? "Changes were saved. The current safety check status could not be loaded; check it before publishing." : "Event updated successfully",
       });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update event",
-        variant: "destructive",
-      });
+      const unknown = error instanceof EventSaveError && error.status === "unknown";
+      setUnknownSave(unknown);
+      setSaveProblem(unknown ? `Save status unknown. ${error.message} Your inputs are preserved. Check the saved event before submitting again.` : `Changes rejected. ${error.message}`);
     },
   });
+
+  const checkSavedEvent = async () => {
+    if (!eventId) return;
+    setCheckingSave(true);
+    try {
+      const response = await fetch(`/api/events/${eventId}`, { credentials: "include",
+        signal: AbortSignal.timeout(8000), headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error("read failed");
+      const current: Event = await response.json();
+      if (current?.id !== eventId || typeof current.title !== "string" || !Number.isFinite(+new Date(current.date)))
+        throw new Error("invalid read");
+      const different = Object.entries(attemptedChanges.current).filter(([field, value]) =>
+        field === "date" ? +new Date(value as string) !== +new Date(current.date) :
+          (value || null) !== ((current as unknown as Record<string, unknown>)[field] || null)).map(([field]) => field);
+      baseline.current = current;
+      setUnknownSave(false);
+      setSaveProblem(null);
+      setSaveCheck(different.length ? `Saved values differ for: ${different.join(", ")}. Your inputs are unchanged; review them before saving again.` :
+        "The saved event matches your submitted changes. Your inputs are unchanged.");
+    } catch {
+      setSaveProblem("Save status unknown. The saved event could not be loaded. Your inputs are preserved; try checking again.");
+    } finally { setCheckingSave(false); }
+  };
 
   const onSubmit = async (data: InsertEvent) => {
     if (thumbnailBusy) return;
@@ -417,6 +435,8 @@ export default function UploadModal({
         await createMutation.mutateAsync(data);
       }
     } catch (error) {
+      // Edit errors are displayed once, inline, by the mutation handler.
+      if (isEditing) return;
       console.error("Form submission error:", error);
       toast({
         title: "Error",
@@ -437,6 +457,10 @@ export default function UploadModal({
 
   useEffect(() => {
     if (!open) {
+      baseline.current = null;
+      setSaveProblem(null);
+      setUnknownSave(false);
+      setSaveCheck(null);
       form.reset();
       setThumbnailPreview(null);
       setGalleryThumbnailReference(null);
@@ -459,7 +483,7 @@ export default function UploadModal({
 
   return (
     <Dialog open={open} onOpenChange={nextOpen=>{
-       if(!nextOpen && (thumbnailBusy || sourcesBusy || importBusy || referenceImportRecovery?.status==="uploading")) return;
+       if(!nextOpen && (thumbnailBusy || sourcesBusy || importBusy || updateMutation.isPending || checkingSave || referenceImportRecovery?.status==="uploading")) return;
       onOpenChange(nextOpen);
     }}>
        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -469,6 +493,13 @@ export default function UploadModal({
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-4">
+          {saveProblem && <div role="alert" className="rounded-md border border-destructive/50 p-3 text-sm">
+            <p>{saveProblem}</p>
+            {unknownSave && <Button type="button" variant="outline" onClick={checkSavedEvent} disabled={checkingSave}>
+              {checkingSave ? "Checking..." : "Check saved event"}
+            </Button>}
+          </div>}
+          {saveCheck && <p role="status" className="text-sm">{saveCheck}</p>}
           {validationSummary.length > 0 && (
             <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
               <p className="font-medium">Please check the event details:</p>
@@ -698,14 +729,14 @@ export default function UploadModal({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={thumbnailBusy || createMutation.isPending || updateMutation.isPending || importBusy}
+              disabled={checkingSave || thumbnailBusy || createMutation.isPending || updateMutation.isPending || importBusy}
             >
               Cancel
             </Button>
              <Button
               type={createdEventId && !isEditing && imageSource !== "nextcloud" ? "button" : "submit"}
               onClick={createdEventId && !isEditing && imageSource !== "nextcloud" ? () => onOpenChange(false) : undefined}
-               disabled={thumbnailBusy || sourcesBusy || createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (!isEditing && !createdEventId && entryDraft.blocked) || (!isEditing && imageSource === "nextcloud" && !preview && !createdEventId)}
+               disabled={unknownSave || checkingSave || thumbnailBusy || sourcesBusy || createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (!isEditing && !createdEventId && entryDraft.blocked) || (!isEditing && imageSource === "nextcloud" && !preview && !createdEventId)}
               className="bg-primary text-black hover:bg-primary/90"
             >
                 {referenceImportRecovery?.status==="uploading" ? (

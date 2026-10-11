@@ -190,7 +190,12 @@ test("official creation and editing decode supported images in both fields befor
           date: new Date().toISOString(), [field]: image });
         assert.equal(result.status, method === "POST" ? 201 : 200, JSON.stringify(result));
         assert.equal(writes, before + 1);
-        assert.equal(result.body[field], image);
+        if (method === "POST") assert.equal(result.body[field], image);
+        else {
+          assert.equal(result.body.saveStatus, "saved");
+          assert.match(result.body[field], new RegExp(`/api/events/${event.id}/thumbnail\\?field=${field}`));
+          assert.equal(event[field], image);
+        }
       }
     }
     assert.equal((await save("POST", { title: "Preset", description: "Fixture", date: new Date(),

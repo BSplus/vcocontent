@@ -40,6 +40,7 @@ import { publicCreatorById } from "./creator-profiles";
 import { registerCreatorEventAssociationRoutes } from "./creator-event-association";
 import { EventImageError, validateOfficialEventImages, validateEventImages, publicEventThumbnails, registerEventThumbnailRoute } from "./event-thumbnails";
 import { registerPhotoMatchingRoutes } from "./photo-matching-routes";
+import { effectiveEventChanges } from "@shared/event-changes";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -152,6 +153,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
 
   // Update event (creator can only update own events, admin can update any)
   app.put("/api/events/:id", requireOwnershipOrAdmin('creatorId'), async (req, res) => {
+    let committed = false;
     try {
       const eventId = parseInt(req.params.id);
       const event = await storage.getEvent(eventId);
@@ -171,17 +173,36 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
         delete eventChanges.isPremium;
         delete eventChanges.creditCost;
       }
+      const changes = effectiveEventChanges(eventChanges, event);
+      if (!Object.keys(changes).length)
+        return res.json({ id: eventId, saveStatus: "unchanged" });
       const updatedEvent = await storage.updateEvent(eventId, {
-        ...eventChanges,
+        ...changes,
       });
-      if (event.creatorId && ["title","description","round","track","platform"].some(field=>field in eventChanges)) {
+      committed = true;
+      const saveStatus = updatedEvent.saveStatus || "saved";
+      let responseEvent: typeof event = updatedEvent;
+      if (saveStatus === "saved" && event.creatorId && ["title","description","round","track","platform"].some(field=>field in changes)) {
         await reviewEventSafety(eventId,event.creatorId);
+        const reviewed = await storage.getEvent(eventId);
+        if (!reviewed) throw new Error("Saved event status unavailable");
+        responseEvent = reviewed;
       }
-      res.json(await storage.getEvent(eventId));
-      void kickAnalysisWorker();
+      // Keep gallery references intact, but never echo historical Base64 payloads.
+      const previews = publicEventThumbnails(responseEvent);
+      res.json({ ...responseEvent, saveStatus,
+        coverImage: responseEvent.coverImage?.startsWith("data:") ? previews.coverImage : responseEvent.coverImage,
+        customThumbnail: responseEvent.customThumbnail?.startsWith("data:") ? previews.customThumbnail : responseEvent.customThumbnail });
+      void kickAnalysisWorker().catch(() => console.error("Post-save analysis wake-up failed"));
     } catch (error) {
+      if (committed) {
+        console.error("Event saved; subsequent safety status processing failed");
+        return res.json({ id: Number(req.params.id), saveStatus: "saved", safetyCheckStatus: "unavailable" });
+      }
       if (!(error instanceof EventImageError)) console.error('Error updating event:', error);
-      res.status(400).json({ error: error instanceof EventImageError ? error.message : "Failed to update event" });
+      const rejected = error instanceof EventImageError || error instanceof z.ZodError;
+      res.status(rejected ? 400 : 500).json({ error: error instanceof EventImageError ? error.message : "Failed to update event",
+        ...(rejected ? { saveStatus: "rejected" } : {}) });
     }
   });
 

@@ -83,7 +83,7 @@ for (const [width, role] of [[1440, "admin"], [390, "admin"], [390, "owner"], [1
         const body = JSON.parse(request.postData);
         writes.push(body);
         if (rejectSave) { status = 400; content = { error: "Thumbnail update was rejected." }; }
-        else { Object.assign(event, body); content = event; }
+        else { Object.assign(event, body); content = { ...event, saveStatus: "saved" }; }
       }
       void browser.command("Fetch.fulfillRequest", { requestId, responseCode: status,
         responseHeaders: [{ name: "Content-Type", value: type }],

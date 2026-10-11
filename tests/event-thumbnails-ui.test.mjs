@@ -42,7 +42,7 @@ for (const editing of [false, true]) test(`official ${editing ? "editing" : "cre
       if (["POST", "PUT"].includes(request.method) && ["/api/events", "/api/events/95001"].includes(path)) {
         const body = JSON.parse(request.postData); writes.push({ method: request.method, ...body });
         if (reject) { status = 400; content = { error: "Event thumbnail: Image must not exceed 40 megapixels (all frames combined)." }; }
-        else { event = { ...event, ...body }; content = event; status = editing ? 200 : 201; }
+        else { event = { ...event, ...body }; content = { ...event, saveStatus: "saved" }; status = editing ? 200 : 201; }
       }
       void browser.command("Fetch.fulfillRequest", { requestId, responseCode: status,
         responseHeaders: [{ name: "Content-Type", value: "application/json" }],

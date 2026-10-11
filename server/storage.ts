@@ -11,8 +11,10 @@ import connectPgSimple from "connect-pg-simple";
 import { creatorUsage, lockedCreatorBudget, publicEventPredicate, publicMediaPredicate, SAFETY_POLICY } from "./beta-policy";
 import { EventImageError, galleryFilePattern, galleryLegacyPattern, galleryThumbnailReference } from "./gallery-thumbnail-policy";
 import { eventImagePolicy } from "@shared/event-image-policy";
+import { effectiveEventChanges } from "@shared/event-changes";
 
 type SafeUser = Omit<User, "password">;
+type EventUpdateResult = Event & { saveStatus: "saved" | "unchanged" };
 function objectKeys(item: { url: string; thumbnail: string }): string[] {
   return [item.url, item.thumbnail]
     .map(url => /^\/api\/media\/files\/((?:media|thumb)-[0-9a-f-]{36}\.(?:jpg|png|gif|webp|mp4|mov|webm))$/.exec(url)?.[1])
@@ -47,7 +49,7 @@ interface IStorage {
   getEvents(): Promise<Event[]>;
   getEvent(id: number): Promise<Event | undefined>;
   createEvent(event: InsertEvent, entries?: EntryRow[]): Promise<Event>;
-  updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event>;
+  updateEvent(id: number, event: Partial<InsertEvent>): Promise<EventUpdateResult>;
   deleteEvent(id: number): Promise<{ success: boolean; message: string }>;
 
   // Series management
@@ -179,10 +181,12 @@ class DatabaseStorage implements IStorage {
     });
   }
 
-  async updateEvent(id: number, event: Partial<InsertEvent>): Promise<Event> {
+  async updateEvent(id: number, event: Partial<InsertEvent>): Promise<EventUpdateResult> {
     return db.transaction(async tx => {
     const [before] = await tx.select().from(events).where(eq(events.id,id)).for("update");
     if (!before) throw new Error("Event not found");
+    event = effectiveEventChanges(event, before);
+    if (!Object.keys(event).length) return { ...before, saveStatus: "unchanged" };
     // Recheck under row locks at the write boundary, including concurrent moderation.
     for (const field of ["customThumbnail", "coverImage"] as const) {
       const value = event[field];
@@ -220,7 +224,7 @@ class DatabaseStorage implements IStorage {
       throw new Error("Event not found");
     }
 
-    return result[0];
+    return { ...result[0], saveStatus: "saved" };
     });
   }
 
