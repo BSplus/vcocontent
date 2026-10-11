@@ -316,6 +316,18 @@ export const insertSeriesSchema = createInsertSchema(series).extend({
   creatorId: z.number().optional(),
 });
 
+// Only these fields may be edited. Unknown keys (including ownership and
+// timestamps from older full-record clients) are stripped, never persisted.
+export const updateSeriesSchema = z.object({
+  name: z.string().trim().min(1, "Series name is required").optional(),
+  logo: z.union([z.literal(""), z.string().url("Invalid logo URL")]).nullable().optional(),
+  description: z.string().max(1000, "Description cannot exceed 1000 characters").nullable().optional(),
+}).refine(data => Object.values(data).some(value => value !== undefined), {
+  message: "Provide a series name, logo or description to update",
+});
+
+export type UpdateSeries = z.infer<typeof updateSeriesSchema>;
+
 export const insertEventSchema = createInsertSchema(events).extend({
   title: z.string().min(1, "Title is required"),
   description: z.string().min(1, "Description is required"),

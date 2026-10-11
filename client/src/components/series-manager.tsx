@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Series, InsertSeries } from "@shared/schema";
+import { Series, InsertSeries, UpdateSeries, updateSeriesSchema } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +12,7 @@ import { apiRequest } from "@/lib/queryClient";
 export default function SeriesManager() {
   const [editingSeries, setEditingSeries] = useState<Series | null>(null);
   const [newLogo, setNewLogo] = useState<File | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -43,23 +44,31 @@ export default function SeriesManager() {
   });
 
   const updateSeriesMutation = useMutation({
-    mutationFn: async (data: Series) => {
-      const response = await apiRequest("PUT", `/api/series/${data.id}`, data);
+    retry: false,
+    mutationFn: async ({ id, changes }: { id: number; changes: UpdateSeries }) => {
+      const response = await apiRequest("PUT", `/api/series/${id}`, changes);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/series"] });
       setEditingSeries(null);
       setNewLogo(null);
+      setFormError(null);
       toast({
         title: "Success",
         description: "Series updated successfully",
       });
     },
     onError: (error) => {
+      let message = "Could not save the series. Please try again.";
+      try {
+        const data = JSON.parse(error.message);
+        if (typeof data.error === "string") message = data.error;
+      } catch { /* Network failures have no safe server message. */ }
+      setFormError(message);
       toast({
         title: "Error",
-        description: error.message,
+        description: message,
         variant: "destructive",
       });
     },
@@ -131,7 +140,17 @@ export default function SeriesManager() {
     }
 
     if (editingSeries.id) {
-      updateSeriesMutation.mutate(editingSeries);
+      const parsed = updateSeriesSchema.safeParse({
+        name: editingSeries.name,
+        logo: editingSeries.logo,
+        description: editingSeries.description,
+      });
+      if (!parsed.success) {
+        setFormError(parsed.error.issues.map(issue => issue.message).join(" "));
+        return;
+      }
+      setFormError(null);
+      updateSeriesMutation.mutate({ id: editingSeries.id, changes: parsed.data });
     } else {
       createSeriesMutation.mutate(editingSeries as InsertSeries);
     }
@@ -150,7 +169,7 @@ export default function SeriesManager() {
       <div className="flex flex-wrap justify-between items-center gap-3">
         <h2 className="text-2xl font-bold">Race Series Management</h2>
         <Button 
-          onClick={() => setEditingSeries({ name: '', logo: '', description: '' } as Series)}
+          onClick={() => { setFormError(null); setEditingSeries({ name: '', logo: '', description: '' } as Series); }}
           className="bg-primary text-black hover:bg-primary/90"
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -167,6 +186,7 @@ export default function SeriesManager() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
               <div>
                  <Input
                    aria-label="Series name"
@@ -216,7 +236,7 @@ export default function SeriesManager() {
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => setEditingSeries(null)}
+                  onClick={() => { setFormError(null); setEditingSeries(null); }}
                 >
                   Cancel
                 </Button>
@@ -253,7 +273,7 @@ export default function SeriesManager() {
                 <Button
                   variant="ghost"
                    aria-label={`Edit series ${s.name}`}
-                  onClick={() => setEditingSeries(s)}
+                  onClick={() => { setFormError(null); setEditingSeries(s); }}
                 >
                    <Pencil className="mr-1 h-4 w-4" /> Edit
                 </Button>

@@ -20,7 +20,7 @@ process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "synthetic-ai-key";
 process.env.MEDIA_ANALYSIS_CONCURRENCY = "2"; // Exercise the shared policy ceiling, independent of hosting settings.
 const { db, pool } = await import("../server/db.ts");
 const { eq, sql, inArray } = await import("drizzle-orm");
-const { users, events, mediaItems, mediaReservations, referenceDocuments, emailVerifications, betaRateLimits, safetyResults, safetyReviews, mediaAnalysisJobs, mediaCleanup } = await import("../shared/schema.ts");
+const { users, series, events, mediaItems, mediaReservations, referenceDocuments, emailVerifications, betaRateLimits, safetyResults, safetyReviews, mediaAnalysisJobs, mediaCleanup } = await import("../shared/schema.ts");
 const { storage } = await import("../server/storage.ts");
 const { setupAuth } = await import("../server/auth.ts");
 const { registerRoutes } = await import("../server/routes.ts");
@@ -40,6 +40,7 @@ setAnalysisQueueTestScope(fixtureNames);
 const cleanupFixtures=storage.cleanupObjects.bind(storage);
 storage.cleanupObjects=()=>cleanupFixtures(accountIds);
 const eventIds = [];
+const seriesIds = [];
 const safetyHashes = [];
 const rateKeys = [];
 let safetyMode = "clear", releaseSafety, reachedSafety, safetyCalls = 0, mailFails = false;
@@ -150,6 +151,7 @@ test.after(async()=>{
     await db.delete(referenceDocuments).where(inArray(referenceDocuments.ownerId,accountIds));
     await db.delete(mediaCleanup).where(inArray(mediaCleanup.creatorId,accountIds));
     await db.delete(events).where(inArray(events.creatorId,accountIds));
+    if (seriesIds.length) await db.delete(series).where(inArray(series.id,seriesIds));
     await db.delete(safetyReviews).where(inArray(safetyReviews.adminId,accountIds));
     await db.delete(users).where(inArray(users.id,accountIds));
     for (const id of accountIds) for (const prefix of ["verify-send:","verify-daily:","gallery:","upload:","safety:","analysis:","reference:","safety-admin:","storage-check:"])
@@ -170,6 +172,66 @@ test("strict safety categories fail closed and never use protected traits as a d
   assert.equal(parseSafetyResult({...clear,hateSymbolsOrGlorification:"uncertain",visibleTextAndSymbolsReviewed:false}).status,"error");
   assert.equal(parseSafetyResult({}).status,"error");
   assert.equal(parseSafetyResult({...clear,race:"synthetic"}).status,"error");
+});
+test("admin series PNG updates persist, ignore administrative fields and return safe validation errors", async () => {
+  const admin = await account({admin:true}), stranger = await account({creator:true}), viewer = await account();
+  const [record] = await db.insert(series).values({name:"Synthetic official series "+randomUUID(),logo:null,description:null}).returning();
+  seriesIds.push(record.id);
+  const path = `/api/series/${record.id}`;
+  const logo = "data:image/png;base64," + (await sharp({create:{width:16,height:16,channels:4,background:"#0088ff"}}).png().toBuffer()).toString("base64");
+  for (const cookie of [undefined, stranger.cookie, viewer.cookie]) {
+    assert.equal((await request(path,{cookie,method:"PUT",body:{logo}})).status, cookie ? 403 : 401);
+  }
+  const full = await request(path,{cookie:admin.cookie,method:"PUT",body:{...record,logo}});
+  assert.equal(full.status,200,JSON.stringify(full.data));
+  const edited = await request(path,{cookie:admin.cookie,method:"PUT",body:{
+    name:"Renamed synthetic series",description:"",id:record.id+1000,creatorId:stranger.id,createdAt:"invalid timestamp",
+  }});
+  assert.equal(edited.status,200);
+  const saved = (await request(path)).data;
+  assert.equal(saved.logo,logo); assert.equal(saved.name,"Renamed synthetic series"); assert.equal(saved.description,"");
+  assert.equal(saved.id,record.id); assert.equal(saved.creatorId,null);
+  assert.equal(saved.createdAt,record.createdAt.toISOString());
+  const replacementLogo = "data:image/png;base64," + (await sharp({create:{width:16,height:16,channels:4,background:"#00aa55"}}).png().toBuffer()).toString("base64");
+  assert.equal((await request(path,{cookie:admin.cookie,method:"PUT",body:{logo:replacementLogo}})).status,200);
+  assert.equal((await request(path)).data.logo,replacementLogo);
+  for (const body of [{name:" "},{description:"x".repeat(1001)},{logo:"private-invalid-payload"},{logo:123},{creatorId:123}]) {
+    const result = await request(path,{cookie:admin.cookie,method:"PUT",body});
+    assert.equal(result.status,400); assert.notEqual(result.data.error,"Failed to update series");
+    assert.doesNotMatch(JSON.stringify(result.data),/private-invalid-payload|ZodError|sql|createdAt/);
+  }
+  const originalUpdate = storage.updateSeries;
+  storage.updateSeries = async () => {throw new Error("synthetic private SQL and payload");};
+  try {
+    const failed = await request(path,{cookie:admin.cookie,method:"PUT",body:{logo}});
+    assert.equal(failed.status,500);
+    assert.deepEqual(failed.data,{error:"Could not save the series. Please try again."});
+  } finally {storage.updateSeries=originalUpdate;}
+});
+test("community series retain owner, verification, moderation and no-logo rules", async () => {
+  const owner = await account({creator:true}), stranger = await account({creator:true}), unverified = await account({creator:true,verified:false});
+  for (const creator of [owner,unverified]) {
+    const [record] = await db.insert(series).values({name:"Synthetic community series "+randomUUID(),creatorId:creator.id}).returning();
+    seriesIds.push(record.id);
+    const path = `/api/series/${record.id}`;
+    assert.equal((await request(path,{cookie:stranger.cookie,method:"PUT",body:{name:"Unauthorized"}})).status,403);
+    if (creator === unverified) {
+      assert.equal((await request(path,{cookie:creator.cookie,method:"PUT",body:{name:"Neutral synthetic name"}})).status,403);
+      continue;
+    }
+    assert.equal((await request(path,{cookie:owner.cookie,method:"PUT",body:{logo:"https://example.test/logo.png"}})).status,400);
+    assert.equal((await request(path,{cookie:owner.cookie,method:"PUT",body:{description:null,logo:""}})).status,200);
+    safetyMode = "blocked";
+    try {
+      assert.equal((await request(path,{cookie:owner.cookie,method:"PUT",body:{name:"Synthetic moderated "+randomUUID()}})).status,400);
+    } finally {safetyMode="clear";}
+    delete process.env.RESEND_API_KEY;
+    try {
+      assert.equal((await request(path,{cookie:owner.cookie,method:"PUT",body:{name:"Synthetic verified config"}})).status,403);
+    } finally {process.env.RESEND_API_KEY="synthetic-mail-key";}
+    const saved = (await storage.getSeries(record.id));
+    assert.equal(saved.name,record.name); assert.equal(saved.creatorId,owner.id);
+  }
 });
 test("public gallery pagination selects visible photos before offset and keeps owner/admin quarantine views",async()=>{
   const owner=await account({creator:true}),admin=await account({admin:true}),event=await gallery(owner);

@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, entryRowSchema, identificationSchema, users, events as eventsTable, mediaAnalysisJobs, mediaItems, type EntryRow } from "@shared/schema";
+import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, updateSeriesSchema, entryRowSchema, identificationSchema, users, events as eventsTable, mediaAnalysisJobs, mediaItems, type EntryRow } from "@shared/schema";
 import express from "express";
 import path from "path";
 import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
@@ -990,7 +990,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const seriesRecord = await storage.getSeries(parseInt(req.params.id));
       if (!seriesRecord || Array.isArray(seriesRecord)) return res.status(404).json({ error: "Series not found" });
       if (!canManageEvent(req.user, seriesRecord.creatorId)) return res.status(403).json({ error: "Forbidden" });
-      const { creatorId: _ignored, ...seriesData } = insertSeriesSchema.partial().parse(req.body);
+      const seriesData = updateSeriesSchema.parse(req.body);
       if (seriesRecord.creatorId && (!req.user!.emailVerifiedAt || !verificationConfigured()))
         return res.status(403).json({error:"Verify your email before updating a public community series."});
       if (seriesRecord.creatorId && (seriesData.logo || (await checkContent(JSON.stringify({...seriesRecord,...seriesData}))).status!=="approved"))
@@ -998,8 +998,21 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const series = await storage.updateSeries(parseInt(req.params.id), seriesData);
       res.json(series);
     } catch (error) {
-      console.error('Error updating series:', error);
-      res.status(400).json({ error: "Failed to update series" });
+      if (error instanceof z.ZodError) {
+        // Use fixed field messages, not provider/SQL errors or submitted values.
+        const messages: Record<string, string> = {
+          name: "Please enter a valid, non-empty series name.",
+          logo: "Please use a valid logo URL or PNG data URL, or leave the logo empty.",
+          description: "Description must be text of no more than 1000 characters, or empty.",
+        };
+        return res.status(400).json({
+          error: Array.from(new Set(error.issues.map(issue =>
+            messages[String(issue.path[0])] || "Provide a series name, logo or description to update."
+          ))).join(" "),
+        });
+      }
+      console.error('Error updating series');
+      res.status(500).json({ error: "Could not save the series. Please try again." });
     }
   });
 

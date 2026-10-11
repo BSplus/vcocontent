@@ -1,4 +1,4 @@
-import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries, type EntryRow } from "@shared/schema";
+import { User, Event, MediaItem, InsertUser, InsertEvent, InsertMediaItem, Series, InsertSeries, type UpdateSeries, type EntryRow } from "@shared/schema";
 import { users, events, eventEntries, referenceDocuments, mediaItems, mediaReservations, mediaCleanup, nextcloudFiles, nextcloudJobs, mediaAnalysisJobs, series as seriesTable } from "@shared/schema";
 import { analysisFingerprint, itemAnalysisFingerprint } from "./analysis-jobs";
 import { isAITaggingConfigured } from "./utils/ai-tagger";
@@ -51,7 +51,7 @@ interface IStorage {
   // Series management
   getSeries(id?: number): Promise<Series[] | Series | undefined>;
   createSeries(series: InsertSeries): Promise<Series>;
-  updateSeries(id: number, series: Partial<InsertSeries>): Promise<Series>;
+  updateSeries(id: number, series: UpdateSeries): Promise<Series>;
   deleteSeries(id: number): Promise<void>;
 
   // Media management
@@ -277,7 +277,7 @@ class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async updateSeries(id: number, series: Partial<InsertSeries>): Promise<Series> {
+  async updateSeries(id: number, series: UpdateSeries): Promise<Series> {
     const result = await db
       .update(seriesTable)
       .set(series)
