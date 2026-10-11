@@ -37,7 +37,7 @@ import { verificationConfigured } from "./email-verification";
 import { registerCommunityRoutes, issueDownloadOperation, validDownloadOperation, recordDownload } from "./community";
 import { publicCreatorById } from "./creator-profiles";
 import { registerCreatorEventAssociationRoutes } from "./creator-event-association";
-import { publicEventThumbnails, registerEventThumbnailRoute } from "./event-thumbnails";
+import { EventImageError, validateOfficialEventImages, publicEventThumbnails, registerEventThumbnailRoute } from "./event-thumbnails";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -170,7 +170,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
           if (!cover || cover.eventId!==event.id || cover.safetyStatus!=="approved" || !safeState(cover))
             return res.status(400).json({error:"Select an approved photo from this gallery; external images are not allowed."});
         }
-      }
+      } else await validateOfficialEventImages(eventChanges, event);
       if (!req.user!.isAdmin) {
         delete eventChanges.isPremium;
         delete eventChanges.creditCost;
@@ -183,8 +183,8 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       }
       res.json(await storage.getEvent(eventId));
     } catch (error) {
-      console.error('Error updating event:', error);
-      res.status(400).json({ error: "Failed to update event" });
+      if (!(error instanceof EventImageError)) console.error('Error updating event:', error);
+      res.status(400).json({ error: error instanceof EventImageError ? error.message : "Failed to update event" });
     }
   });
 
@@ -1140,11 +1140,12 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
     try {
       const { creatorId: _ignored, entryRows: _entryRows, ...details } = req.body;
       const eventData = insertEventSchema.parse({ ...details, isPremium: false });
+      await validateOfficialEventImages(eventData);
       const event = await storage.createEvent(eventData, creationEntries(req.body));
       res.status(201).json(event);
     } catch (error) {
-      console.error('Error creating event:', error);
-      res.status(400).json({ error: error instanceof Error && error.message.startsWith("Entry List:") ? error.message : "Failed to create event" });
+      if (!(error instanceof EventImageError)) console.error('Error creating event:', error);
+      res.status(400).json({ error: error instanceof EventImageError || error instanceof Error && error.message.startsWith("Entry List:") ? error.message : "Failed to create event" });
     }
   });
 

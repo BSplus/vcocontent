@@ -6,6 +6,8 @@ import { storage } from "./storage";
 import { eventPublic, mediaPublic } from "./beta-access";
 import { mediaPolicy } from "./media-policy";
 import { MediaBusyError, withMediaWorkBudget } from "./media-work-budget";
+import { eventImagePolicy } from "@shared/event-image-policy";
+import { readMediaStream } from "./media-storage";
 
 type Field = "customThumbnail" | "coverImage";
 export const DEFAULT_EVENT_IMAGE = "/attached_assets/%2389_3.png";
@@ -13,6 +15,87 @@ const filePattern = /^\/api\/media\/files\/(thumb-[0-9a-f-]{36}\.webp)$/;
 const legacyPattern = /^\/api\/media\/legacy\/([1-9][0-9]*)\/thumbnail$/;
 const inlinePattern = /^data:image\/(jpeg|png|gif|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
 const previews = new Map<string, Promise<Buffer>>();
+
+export class EventImageError extends Error {}
+
+async function validateImageBytes(input: Buffer, format?: string) {
+  if (!input.length || input.length > eventImagePolicy.bytes)
+    throw new EventImageError("Image file must not exceed 1 MiB.");
+  await withMediaWorkBudget(async () => {
+    try {
+      const image = sharp(input, { animated: true, limitInputPixels: eventImagePolicy.pixels, failOn: "warning" });
+      const info = await image.metadata();
+      if (!["jpeg", "png", "webp", "gif"].includes(info.format ?? "") || format && info.format !== format)
+        throw new EventImageError("Use JPEG, PNG, WebP or GIF; the image content must match its declared format.");
+      if (!info.width || !info.height || info.width * info.height > eventImagePolicy.pixels)
+        throw new EventImageError("Image must not exceed 40 megapixels (all frames combined).");
+      // Metadata alone accepts truncated files. Decode every frame before saving.
+      await image.raw().toBuffer();
+    } catch (error) {
+      if (error instanceof EventImageError) throw error;
+      if (error instanceof Error && /pixel limit/i.test(error.message))
+        throw new EventImageError("Image must not exceed 40 megapixels (all frames combined).");
+      throw new EventImageError("Image is damaged or cannot be decoded. Choose a valid JPEG, PNG, WebP or GIF.");
+    }
+  });
+}
+
+/** Validate only changed official fields; never retroactively reject historical values. */
+export async function validateOfficialEventImages(changes: Partial<Pick<Event, Field>>, previous?: Event) {
+  for (const field of ["customThumbnail", "coverImage"] as const) {
+    const value = changes[field];
+    if (value === undefined || value === null || value === "" || value === previous?.[field]) continue;
+    try {
+      if (value.startsWith("data:")) {
+        if (value.length > Math.ceil(eventImagePolicy.bytes * 4 / 3) + 100)
+          throw new EventImageError("Image file must not exceed 1 MiB.");
+        const match = inlinePattern.exec(value);
+        if (!match) throw new EventImageError("Use JPEG, PNG, WebP or GIF encoded as a Base64 image.");
+        const bytes = Buffer.from(match[2], "base64");
+        if (bytes.toString("base64") !== match[2])
+          throw new EventImageError("Image Base64 data is invalid.");
+        await validateImageBytes(bytes, match[1]);
+      } else if (value === DEFAULT_EVENT_IMAGE) {
+        // Trusted built-in preset, not a new upload (historical asset exceeds upload limits).
+        continue;
+      } else {
+        const file = filePattern.exec(value);
+        const legacy = legacyPattern.exec(value);
+        const media = previous && (file || legacy)
+          ? file ? await storage.findMediaByKey(file[1]) : await storage.getMediaItem(Number(legacy![1]))
+          : undefined;
+        if (!media || media.eventId !== previous?.id || media.type !== "image" || media.isPremium ||
+          (media.thumbnail !== value && !legacy) || !await mediaPublic(media, previous!))
+          throw new EventImageError("Choose an image file or a public, non-premium thumbnail from this event. External URLs, original files and other events' media are not allowed.");
+        if (file) {
+          const stream = readMediaStream(file[1]);
+          const timer = setTimeout(() => stream.destroy(new Error("Image read timed out")), 10000);
+          try {
+            const chunks: Buffer[] = [];
+            let size = 0;
+            for await (const chunk of stream) {
+              const bytes = Buffer.from(chunk);
+              size += bytes.length;
+              if (size > eventImagePolicy.bytes) throw new EventImageError("Image file must not exceed 1 MiB.");
+              chunks.push(bytes);
+            }
+            await validateImageBytes(Buffer.concat(chunks), "webp");
+          } finally { clearTimeout(timer); stream.destroy(); }
+        } else {
+          // Historical thumbnail URLs must still point to bounded, real image data.
+          const match = inlinePattern.exec(media.thumbnail);
+          if (!match || media.thumbnail.length > Math.ceil(eventImagePolicy.bytes * 4 / 3) + 100)
+            throw new EventImageError("This historical thumbnail cannot be validated. Choose an image file instead.");
+          await validateImageBytes(Buffer.from(match[2], "base64"), match[1]);
+        }
+      }
+    } catch (error) {
+      if (error instanceof MediaBusyError) throw new EventImageError("Image processing is busy. Please retry shortly.");
+      const label = field === "coverImage" ? "Cover image" : "Event thumbnail";
+      throw new EventImageError(`${label}: ${error instanceof EventImageError ? error.message : "Image could not be read. Choose another image or retry."}`);
+    }
+  }
+}
 
 function staticImage(value: string): boolean {
   if (!/^\/attached_assets\/[^/?#]+\.(?:png|jpe?g|gif|webp)$/i.test(value)) return false;

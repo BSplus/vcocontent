@@ -27,6 +27,7 @@ import { eventCreateRoute } from "@/lib/event-create-route";
 import EntryListEditor, { type EventEntryRow, type PendingEventReference } from "@/components/entry-list-editor";
 import LegalLinks from "@/components/legal-links";
 import { creatorAssociationsKey } from "@/components/creator-gallery-association";
+import { eventImagePolicy } from "@shared/event-image-policy";
 
 interface UploadModalProps {
   open: boolean;
@@ -45,6 +46,8 @@ export default function UploadModal({
   const { user } = useAuth();
   const isEditing = eventId !== null;
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const [thumbnailError, setThumbnailError] = useState<string | null>(null);
+  const [thumbnailBusy, setThumbnailBusy] = useState(false);
   const [validationSummary, setValidationSummary] = useState<string[]>([]);
   const [imageSource, setImageSource] = useState<"local" | "nextcloud">("local");
   const [links, setLinks] = useState<{ link: string; password: string }[]>([{ link: "", password: "" }]);
@@ -158,7 +161,7 @@ export default function UploadModal({
   });
 
   useEffect(() => {
-    if (eventData && isEditing) {
+    if (open && eventData && isEditing) {
       const eventWithRaceDetails = eventData as Event & { round?: string | number | null; track?: string | null };
       form.reset({
         title: eventData.title,
@@ -171,40 +174,47 @@ export default function UploadModal({
         track: eventWithRaceDetails.track ?? "",
       } as any);
 
-      if (eventData.customThumbnail) {
-        setThumbnailPreview(eventData.customThumbnail);
-      }
+      setThumbnailPreview(eventData.customThumbnail || null);
+      setThumbnailError(null);
     }
-  }, [eventData, isEditing, form]);
+  }, [open, eventData, isEditing, form]);
 
   useEffect(() => {
     if (open && eventId) setImportEventId(eventId);
   }, [open, eventId]);
 
-  const handleThumbnailChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleThumbnailChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = "";
     if (file) {
-      const MAX_FILE_SIZE = 1024 * 1024; // Event thumbnails are small metadata; media uses multipart.
-      if (file.size > MAX_FILE_SIZE) {
-        toast({
-          title: "Error",
-          description: `Event thumbnail too large. Maximum size is 1 MiB.`,
-          variant: "destructive",
+      setThumbnailError(null);
+      setThumbnailBusy(true);
+      try {
+        if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type))
+          throw new Error("Choose a JPEG, PNG, WebP or GIF image.");
+        if (file.size > eventImagePolicy.bytes) throw new Error("Event thumbnail too large. Maximum size is 1 MiB.");
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error("Image could not be read. Please try again."));
+          reader.readAsDataURL(file);
         });
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const dataUrl = reader.result as string;
+        const image = new Image();
+        image.src = dataUrl;
+        try { await image.decode(); }
+        catch { throw new Error("Image is damaged or cannot be decoded. Choose another image."); }
+        if (image.naturalWidth * image.naturalHeight > eventImagePolicy.pixels)
+          throw new Error("Event thumbnail must not exceed 40 megapixels.");
         setThumbnailPreview(dataUrl);
-        form.setValue("customThumbnail", dataUrl);
-      };
-      reader.readAsDataURL(file);
+        form.setValue("customThumbnail", dataUrl, { shouldDirty: true });
+      } catch (error) {
+        setThumbnailError((error as Error).message);
+      } finally { setThumbnailBusy(false); }
     }
   };
 
   const createMutation = useMutation({
+    retry: false, // Validation failures are final; creation must not be replayed automatically.
     mutationFn: async (data: InsertEvent) => {
       const { endpoint, creatorId } = eventCreateRoute(user, imageSource);
       const res = await fetch(endpoint, {
@@ -254,6 +264,7 @@ export default function UploadModal({
   });
 
   const updateMutation = useMutation({
+    retry: false,
     mutationFn: async (id: number) => {
       const formData = form.getValues();
 
@@ -268,7 +279,7 @@ export default function UploadModal({
           description: formData.description,
           date: new Date(formData.date),
           coverImage: formData.coverImage,
-          customThumbnail: thumbnailPreview,
+          customThumbnail: formData.customThumbnail,
           seriesId: formData.seriesId,
           round: formData.round,
           track: formData.track,
@@ -278,7 +289,7 @@ export default function UploadModal({
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.message || "Failed to update event");
+        throw new Error(error.error || error.message || "Failed to update event");
       }
 
       return res.json();
@@ -305,6 +316,7 @@ export default function UploadModal({
   });
 
   const onSubmit = async (data: InsertEvent) => {
+    if (thumbnailBusy) return;
     try {
       setValidationSummary([]);
       if (!isEditing && !createdEventId && entryDraft.blocked) {
@@ -353,6 +365,7 @@ export default function UploadModal({
     if (!open) {
       form.reset();
       setThumbnailPreview(null);
+      setThumbnailError(null);
       setImportEventId(null);
       setCreatedEventId(null);
       setEntryDraft({ rows: null, blocked: false });
@@ -368,7 +381,7 @@ export default function UploadModal({
 
   return (
     <Dialog open={open} onOpenChange={nextOpen=>{
-      if(!nextOpen && referenceImportRecovery?.status==="uploading") return;
+      if(!nextOpen && (thumbnailBusy || referenceImportRecovery?.status==="uploading")) return;
       onOpenChange(nextOpen);
     }}>
        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -488,7 +501,9 @@ export default function UploadModal({
               type="file"
               ref={thumbnailInputRef}
               className="hidden"
-              accept="image/*"
+              accept={eventImagePolicy.accept}
+              aria-label="Choose event thumbnail"
+              disabled={thumbnailBusy}
               onChange={handleThumbnailChange}
             />
              <div className="relative h-40 border rounded-lg overflow-hidden bg-black/20">
@@ -504,7 +519,9 @@ export default function UploadModal({
                 </div>
               )}
             </div>
-             <Button type="button" variant="outline" onClick={() => thumbnailInputRef.current?.click()}>
+             <p className="text-sm text-muted-foreground">{eventImagePolicy.help}</p>
+             {thumbnailError && <p role="alert" className="text-sm text-destructive">{thumbnailError}</p>}
+             <Button type="button" variant="outline" disabled={thumbnailBusy} onClick={() => thumbnailInputRef.current?.click()}>
                <Upload className="h-4 w-4 mr-2" /> Choose Thumbnail
              </Button>
           </div>
@@ -570,14 +587,14 @@ export default function UploadModal({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={createMutation.isPending || updateMutation.isPending || importBusy}
+              disabled={thumbnailBusy || createMutation.isPending || updateMutation.isPending || importBusy}
             >
               Cancel
             </Button>
              <Button
               type={createdEventId && !isEditing && imageSource !== "nextcloud" ? "button" : "submit"}
               onClick={createdEventId && !isEditing && imageSource !== "nextcloud" ? () => onOpenChange(false) : undefined}
-               disabled={createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (!isEditing && !createdEventId && entryDraft.blocked) || (imageSource === "nextcloud" && !preview && !createdEventId)}
+               disabled={thumbnailBusy || createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (!isEditing && !createdEventId && entryDraft.blocked) || (imageSource === "nextcloud" && !preview && !createdEventId)}
               className="bg-primary text-black hover:bg-primary/90"
             >
                 {referenceImportRecovery?.status==="uploading" ? (

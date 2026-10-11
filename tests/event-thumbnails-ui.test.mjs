@@ -7,6 +7,110 @@ const base = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMA
 const photo = (await sharp({ create: { width: 120, height: 80, channels: 3,
   background: "#fe315b" } }).webp().toBuffer()).toString("base64");
 const fallback = "/attached_assets/%2389_3.png";
+const selectedPhoto = (await sharp({ create: { width: 80, height: 60, channels: 3,
+  background: "#1188dd" } }).webp().toBuffer()).toString("base64");
+
+const button = label => `[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)}&&!b.disabled)`;
+async function click(browser, expression) {
+  await browser.wait(`!!(${expression})`);
+  const point = await browser.evaluate(`(()=>{const el=${expression};el.scrollIntoView({block:'center'});
+    const r=el.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+  await browser.command("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
+  await browser.command("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
+}
+
+for (const editing of [false, true]) test(`official ${editing ? "editing" : "creation"} keeps valid selection after rejected files and shows save errors`,
+  { timeout: 90000 }, async () => {
+    const browser = await uiBrowser(), writes = [], mockErrors = [];
+    let reject = true;
+    let event = { id: 95001, title: "Official image validation fixture", description: "Synthetic fixture",
+      creatorId: null, date: new Date().toISOString(), customThumbnail: `data:image/webp;base64,${photo}`,
+      coverImage: fallback, visibility: "published", isPremium: false };
+    browser.listeners.add(message => {
+      if (message.method !== "Fetch.requestPaused") return;
+      const { requestId, request } = message.params;
+      const path = new URL(request.url).pathname;
+      let content = [], status = 200;
+      if (path === "/api/user") content = { id: 99999, username: "synthetic-admin", isAdmin: true, isCreator: false };
+      if (path === "/api/admin/events" || path === "/api/events") content = [event];
+      if (path === "/api/events/95001") content = event;
+      if (path === "/api/admin/safety") content = { media: [], events: [] };
+      if (path === "/api/admin/media-usage") content = { total: { bytes: "0", count: "0", legacy: "0" },
+        byEvent: [], byCreator: [], cleanupCount: "0", policy: { eventBytes: 100000000, creatorBytes: 100000000,
+          eventCount: 1000, creatorCount: 1000 }, warningFraction: 0.8 };
+      if (["POST", "PUT"].includes(request.method) && ["/api/events", "/api/events/95001"].includes(path)) {
+        const body = JSON.parse(request.postData); writes.push({ method: request.method, ...body });
+        if (reject) { status = 400; content = { error: "Event thumbnail: Image must not exceed 40 megapixels (all frames combined)." }; }
+        else { event = { ...event, ...body }; content = event; status = editing ? 200 : 201; }
+      }
+      void browser.command("Fetch.fulfillRequest", { requestId, responseCode: status,
+        responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+        body: Buffer.from(JSON.stringify(content)).toString("base64") }).catch(error => mockErrors.push(String(error)));
+    });
+    const select = async (bytes, type, name) => {
+      await browser.evaluate(`(() => {
+        const input=document.querySelector('input[aria-label="Choose event thumbnail"]');
+        const data=new DataTransfer();
+        data.items.add(new File([Uint8Array.from(atob(${JSON.stringify(bytes)}),c=>c.charCodeAt(0))],
+          ${JSON.stringify(name)},{type:${JSON.stringify(type)}}));
+        input.files=data.files; input.dispatchEvent(new Event('change',{bubbles:true}));
+      })()`);
+      await browser.wait(`!document.querySelector('input[aria-label="Choose event thumbnail"]').disabled`);
+    };
+    const preview = `document.querySelector('img[alt="Thumbnail preview"]')?.getAttribute('src')`;
+    try {
+      await browser.command("Fetch.enable", { patterns: [{ urlPattern: "*/api/*" }] });
+      await browser.command("Emulation.setDeviceMetricsOverride", { width: editing ? 1600 : 390,
+        height: 1080, deviceScaleFactor: 1, mobile: !editing });
+      await browser.command("Page.navigate", { url: new URL("/admin/dashboard", base).href });
+      await click(browser, button(editing ? "Edit Event" : "Create VCO Event"));
+      await browser.wait(`!!document.querySelector('input[aria-label="Choose event thumbnail"]')`);
+      assert.equal(await browser.evaluate(`document.querySelector('input[type="file"][aria-label="Choose event thumbnail"]').accept.includes('image/*')`), false);
+      assert.equal(await browser.evaluate(`document.querySelector('[role="dialog"]').textContent.includes('JPEG, PNG, WebP or GIF')`), true);
+      if (!editing) {
+        await browser.evaluate(`(() => {
+          for(const [id,value] of [['title','New official fixture'],['description','Synthetic event description']]){
+            const input=document.getElementById(id);
+            const proto=id==='description'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
+            Object.getOwnPropertyDescriptor(proto,'value').set.call(input,value);
+            input.dispatchEvent(new Event('input',{bubbles:true}));
+          }
+        })()`);
+      }
+      await select(selectedPhoto, "image/webp", "valid.webp");
+      const selected = await browser.evaluate(preview);
+      assert.equal(selected, `data:image/webp;base64,${selectedPhoto}`);
+      assert.equal(await browser.evaluate(`document.querySelector('img[alt="Thumbnail preview"]').naturalWidth>0`), true);
+      for (const [bytes, type, name, error] of [
+        [Buffer.from("<svg/>").toString("base64"), "image/svg+xml", "vector.svg", "Choose a JPEG"],
+        [Buffer.from("broken").toString("base64"), "image/png", "broken.png", "damaged"],
+        [Buffer.alloc(1048577).toString("base64"), "image/png", "large.png", "1 MiB"],
+      ]) {
+        await select(bytes, type, name);
+        await browser.wait(`document.querySelector('[role="dialog"] [role="alert"]')?.textContent.includes(${JSON.stringify(error)})`);
+        assert.equal(await browser.evaluate(preview), selected, "rejected file preserves valid selection");
+        assert.equal(writes.length, 0, "file-picker rejection does not submit");
+      }
+      // Same file can be selected again after a failed attempt, and clears the inline error.
+      await select(selectedPhoto, "image/webp", "valid.webp");
+      assert.equal(await browser.evaluate(`!!document.querySelector('[role="dialog"] [role="alert"]')`), false);
+      await click(browser, button(editing ? "Update Event" : "Create Event"));
+      await browser.wait(`document.body.innerText.includes('all frames combined).') && !!${button(editing ? "Update Event" : "Create Event")}`);
+      await browser.wait(`document.body.innerText.includes('Event thumbnail: Image must not exceed')`);
+      assert.equal(writes.length, 1);
+      assert.equal(writes[0].customThumbnail, selected);
+      assert.equal(await browser.evaluate(preview), selected);
+      assert.equal(event.customThumbnail, `data:image/webp;base64,${photo}`, "rejected save leaves stored value unchanged");
+      reject = false;
+      await click(browser, button(editing ? "Update Event" : "Create Event"));
+      await browser.wait(editing ? `!document.querySelector('[role="dialog"]')` : `!!${button("Done")}`);
+      assert.equal(writes.length, 2);
+      assert.equal(writes[1].customThumbnail, selected);
+      assert.equal(writes[1].method, editing ? "PUT" : "POST");
+      assert.deepEqual(mockErrors, []);
+      assert.deepEqual(browser.errors, []);
+    } finally { await browser.close(); }
+  });
 
 for (const width of [1600, 390]) test(`event thumbnails, error recovery and refreshed selection work at ${width}px`,
   { timeout: 90000 }, async () => {
