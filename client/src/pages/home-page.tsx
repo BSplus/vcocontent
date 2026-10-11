@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
 import EventTitle from "@/components/event-title";
 import { formatDate } from "@/lib/utils";
+import ArchiveFaq from "@/components/archive-faq";
 
 export default function HomePage() {
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
@@ -212,6 +213,8 @@ export default function HomePage() {
               <p className="border-l-2 border-foreground/25 py-2 pl-4 text-sm text-foreground/70">Older event galleries will collect here as the season goes on.</p>
             )}
           </section>
+
+          <ArchiveFaq />
         </div>
       </main>
 

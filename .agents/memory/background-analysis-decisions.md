@@ -41,7 +41,7 @@ Run shared-database worker tests with exclusive queue consumers, serializing tes
 
 **Why:** Parallel processes can claim another test's durable job, bypass that process's network mock, and consume shared provider slots. Failures then look like retry or lease bugs despite correct worker behavior.
 
-**How to apply:** Keep focused worker verification isolated from the running app; do not weaken global concurrency or fencing to make process-local mocks pass.
+**How to apply:** Keep focused worker verification isolated from the running app; a fixture-only claim scope protects the mocked process from real jobs, not its test jobs from an unrestricted preview consumer. Pause the preview worker before these checks and restore it afterward; do not weaken global concurrency or fencing to make process-local mocks pass.
 
 For video validation, a dedicated human-annotated benchmark must not become a prerequisite. Use a small authorized existing clip selection and an ordinary compact editorial review table.
 

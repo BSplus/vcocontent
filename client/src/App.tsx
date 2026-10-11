@@ -24,6 +24,7 @@ import PrivacyPolicy from "@/pages/privacy-policy";
 import CreditsPage from "@/pages/credits";
 import AccountPage from "@/pages/account";
 import NavigationScroll from "@/components/navigation-scroll";
+import PageMetadata from "@/components/page-metadata";
 import { useEffect } from "react";
 import React from 'react';
 
@@ -118,6 +119,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <NavigationScroll />
+          <PageMetadata />
           <Router />
           <Toaster />
         </AuthProvider>

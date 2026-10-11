@@ -8,7 +8,7 @@ const __dirname = dirname(__filename);
 import { type Server } from "http";
 import viteConfig from "../vite.config";
 import { nanoid } from "nanoid";
-import { seoHtml } from "./seo";
+import { canonicalRedirect, seoHtml } from "./seo";
 
 const viteLogger = createLogger();
 
@@ -56,6 +56,8 @@ export async function setupVite(app: Express, server: Server) {
     const url = req.originalUrl;
 
     try {
+      const redirect = canonicalRedirect(req);
+      if (redirect) return res.redirect(301, redirect);
       const clientTemplate = path.resolve(
         __dirname,
         "..",
@@ -71,7 +73,7 @@ export async function setupVite(app: Express, server: Server) {
       );
       const page = await vite.transformIndexHtml(url, template);
       const result = await seoHtml(req, page);
-      res.status(result.status).set({ "Content-Type": "text/html" }).end(result.html);
+      res.status(result.status).set({ "Content-Type": "text/html", "Cache-Control": "private, no-store" }).end(result.html);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
       next(e);
@@ -79,8 +81,7 @@ export async function setupVite(app: Express, server: Server) {
   });
 }
 
-export function serveStatic(app: Express) {
-  const distPath = path.resolve(__dirname, "public");
+export function serveStatic(app: Express, distPath = path.resolve(__dirname, "public")) {
 
   if (!fs.existsSync(distPath)) {
     throw new Error(
@@ -88,14 +89,18 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  // index:false ensures "/" also passes through the public HTML/meta renderer.
+  app.use(express.static(distPath, { index: false }));
 
   // fall through to index.html if the file doesn't exist
   app.use("*", async (req, res, next) => {
     try {
+      const redirect = canonicalRedirect(req);
+      if (redirect) return res.redirect(301, redirect);
       const html = await fs.promises.readFile(path.resolve(distPath, "index.html"), "utf-8");
       const result = await seoHtml(req, html);
-      res.status(result.status).type("html").send(result.html);
+      res.status(result.status).setHeader("Cache-Control", "private, no-store");
+      res.type("html").send(result.html);
     } catch (error) {
       next(error);
     }

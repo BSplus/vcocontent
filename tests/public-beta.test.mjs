@@ -29,6 +29,7 @@ const { parseSafetyResult, checkContent, reviewMediaSafety } = await import("../
 const { stopAnalysisWorker, drainAnalysisQueue, analysisStatus, setAnalysisQueueTestScope } = await import("../server/analysis-jobs.ts");
 const { stopImportWorker } = await import("../server/nextcloud.ts");
 const { seoHtml } = await import("../server/seo.ts");
+const { searchData } = await import("../server/public-search-data.ts");
 
 const originalFetch = globalThis.fetch;
 const mail = [];
@@ -282,6 +283,12 @@ test("photo approval, draft/publish, manual text versions, private quarantine an
     body:{decision:"approve",reason:"Stale version must not be approved.",version:uncertain.data.contentVersion+1,policy:SAFETY_POLICY}})).status,409);
   assert.equal((await request(`/api/admin/safety/media/${uncertain.data.id}/review`,{cookie:admin.cookie,method:"POST",body:{decision:"approve",reason:"Neutral synthetic picture; false alarm.",version:uncertain.data.contentVersion,policy:SAFETY_POLICY}})).status,200);
   assert.equal((await request(`/api/media/${uncertain.data.id}`)).status,200);
+  const discoverablePhotos = await searchData.images(event.id);
+  assert.ok(discoverablePhotos.some(item => item.id === safe.data.id));
+  assert.ok(discoverablePhotos.some(item => item.id === uncertain.data.id));
+  assert.ok(!discoverablePhotos.some(item => item.id === blocked.data.id));
+  assert.ok(discoverablePhotos.every(item => !("url" in item) && !("identification" in item)));
+  assert.ok((await searchData.events("all",1,500,owner.id)).some(item=>item.id===event.id));
   const restarted=await promisify(execFile)(process.execPath,["--import","tsx","--input-type=module","-e",
     `const {storage}=await import('./server/storage.ts');const {safeState}=await import('./server/beta-policy.ts');
     const {pool}=await import('./server/db.ts');console.log(JSON.stringify([safeState(await storage.getMediaItem(${uncertain.data.id})),safeState(await storage.getMediaItem(${blocked.data.id}))]));await pool.end();`],
@@ -289,9 +296,13 @@ test("photo approval, draft/publish, manual text versions, private quarantine an
   assert.deepEqual(JSON.parse(restarted.stdout.trim()),[true,false],"A fresh server process uses durable approval/quarantine, not an in-memory permit");
   assert.equal((await request(`/api/admin/events/${event.id}/visibility`,{cookie:admin.cookie,method:"PATCH",body:{hidden:true}})).status,200);
   assert.equal((await publish(owner,event.id)).status,403);
+  assert.equal((await searchData.images(event.id)).length,0);
+  assert.ok(!(await searchData.events("all",1,500,owner.id)).some(item=>item.id===event.id));
   for (const path of [`/api/events/${event.id}`,`/api/media/${safe.data.id}`,safe.data.thumbnail]) assert.equal((await originalFetch(base+path)).status,404);
   assert.equal((await request(`/api/admin/events/${event.id}/visibility`,{cookie:admin.cookie,method:"PATCH",body:{hidden:false}})).status,200);
   await request(`/api/admin/users/${owner.id}`,{cookie:admin.cookie,method:"PATCH",body:{action:"suspend_creator"}});
+  assert.equal((await searchData.images(event.id)).length,0);
+  assert.ok(!(await searchData.creators()).some(item=>item.id===owner.id));
   assert.equal((await request("/api/creator/events",{cookie:owner.cookie})).status,403);
   assert.equal((await request(`/api/events/${event.id}`)).status,404);
   const seo=await seoHtml({originalUrl:`/media/${safe.data.id}`}, "<head></head>");
@@ -502,7 +513,7 @@ test("a newly stored private account avatar stays private through self activatio
   const owner=await account();
   const picture=await sharp({create:{width:64,height:64,channels:3,background:"#15694e"}}).webp().toBuffer();
   await db.update(users).set({creatorStatus:null,profileImage:`data:image/webp;base64,${picture.toString("base64")}`}).where(eq(users.id,owner.id));
-  assert.equal((await request(`/api/users/${owner.id}`)).data.profileImage,null);
+  assert.equal((await request(`/api/users/${owner.id}`)).status,404,"Ordinary accounts have no public creator profile before activation");
   assert.equal((await request("/api/creator/request",{cookie:owner.cookie,method:"POST",body:{}})).status,200);
   assert.equal((await request(`/api/users/${owner.id}`)).data.profileImage,null);
   assert.equal((await creatorUsage(db,owner.id)).bytes,picture.length);

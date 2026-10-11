@@ -51,6 +51,29 @@ export default function MediaDetail() {
         {item.photographer && <p className="mt-4">Photographer: {item.photographer}</p>}
         <div className="mt-6 flex flex-wrap gap-3">
           <ShareMenu url={window.location.href} title={item.caption || "VCO photo"} />
+          <Button variant="outline" onClick={async () => {
+            const configuredCanonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href;
+            let sourceUrl = `${window.location.origin}${window.location.pathname}`;
+            if (configuredCanonical) {
+              try {
+                const canonical = new URL(configuredCanonical);
+                if (canonical.protocol === "https:" && canonical.pathname === window.location.pathname && !canonical.search && !canonical.hash && !canonical.username && !canonical.password) sourceUrl = canonical.href;
+              } catch {
+                // Ignore malformed canonical metadata and use the current page URL.
+              }
+            }
+            const credit = [
+              item.photographer?.trim() ? `Photographer: ${item.photographer.trim()}` : "",
+              item.caption?.trim() || "",
+              `Source: ${sourceUrl}`,
+            ].filter(Boolean).join("\n");
+            try {
+              await navigator.clipboard.writeText(credit);
+              toast({ title: "Credit and source copied" });
+            } catch {
+              toast({ title: "Could not copy credit and source", description: "Check clipboard permissions and try again.", variant: "destructive" });
+            }
+          }}>Copy credit &amp; source</Button>
           {user
             ? <Button onClick={() => download("high")}>{downloadOptionLabel(item, "high")}</Button>
             : <Button asChild><Link href="/auth">{downloadOptionLabel(item, "high")} · Register or sign in</Link></Button>}

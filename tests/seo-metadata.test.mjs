@@ -2,14 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { storage } from "../server/storage.ts";
 import { seoHtml, publicSiteUrl } from "../server/seo.ts";
+import { searchData } from "../server/public-search-data.ts";
 
 test("public event and image pages return escaped, indexable server HTML", async () => {
   const previousSite = process.env.PUBLIC_SITE_URL;
   const getEvent = storage.getEvent;
   const getMediaItem = storage.getMediaItem;
+  const images = searchData.images;
   const template = "<!doctype html><html><head></head><body>App</body></html>";
   try {
     process.env.PUBLIC_SITE_URL = "https://photos.example.test";
+    searchData.images = async () => [];
     storage.getEvent = async id => id === 8 ? { id, title: 'Race & "Test" <Cup>', description: "A great <race>", isPremium: false } : undefined;
     storage.getMediaItem = async id => id === 3 ? {
       id, eventId: 8, type: "image", caption: 'Start <script>alert("x")</script>',
@@ -17,7 +20,7 @@ test("public event and image pages return escaped, indexable server HTML", async
     } : undefined;
     const event = await seoHtml({ path: "/", originalUrl: "/events/8?source=share" }, template);
     assert.equal(event.status, 200);
-    assert.match(event.html, /<title>Race &amp; &quot;Test&quot; &lt;Cup&gt; \| VCO Media Database<\/title>/);
+    assert.match(event.html, /<title[^>]*>Race &amp; &quot;Test&quot; &lt;Cup&gt; \| VCO Media Database<\/title>/);
     assert.match(event.html, /name="description" content="A great &lt;race&gt;"/);
     assert.match(event.html, /rel="canonical" href="https:\/\/photos.example.test\/events\/8"/);
     const image = await seoHtml({ path: "/", originalUrl: "/media/3" }, template);
@@ -30,6 +33,7 @@ test("public event and image pages return escaped, indexable server HTML", async
   } finally {
     storage.getEvent = getEvent;
     storage.getMediaItem = getMediaItem;
+    searchData.images = images;
     if (previousSite === undefined) delete process.env.PUBLIC_SITE_URL;
     else process.env.PUBLIC_SITE_URL = previousSite;
   }
@@ -37,8 +41,10 @@ test("public event and image pages return escaped, indexable server HTML", async
 
 test("unconfigured or invalid site URLs never become canonical URLs", async () => {
   const previousSite = process.env.PUBLIC_SITE_URL;
+  const events = searchData.events;
   try {
-    for (const url of ["http://photos.example.test", "https://photos.example.test/path", "https://user:pass@photos.example.test"]) {
+    searchData.events = async () => [];
+    for (const url of ["http://photos.example.test", "https://photos.example.test/path", "https://user:pass@photos.example.test", "https://preview.replit.dev", "https://localhost"]) {
       process.env.PUBLIC_SITE_URL = url;
       assert.equal(publicSiteUrl(), null);
     }
@@ -47,6 +53,7 @@ test("unconfigured or invalid site URLs never become canonical URLs", async () =
     assert.match(result.html, /name="robots" content="noindex,follow"/);
     assert.ok(!result.html.includes('rel="canonical"'));
   } finally {
+    searchData.events = events;
     if (previousSite === undefined) delete process.env.PUBLIC_SITE_URL;
     else process.env.PUBLIC_SITE_URL = previousSite;
   }
