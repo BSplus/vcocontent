@@ -1,5 +1,6 @@
 import express, { type Express, type ErrorRequestHandler, type Request } from "express";
 import { PROFILE_JSON_BYTES, PROFILE_IMAGE_SIZE_MESSAGE } from "../shared/profile-image-limits";
+import { profileFailure } from "../shared/profile-errors";
 
 const isProfileUpdate = (req: Request) =>
   req.method === "PATCH" && /^\/api\/account\/profile\/?$/i.test(req.path);
@@ -14,7 +15,10 @@ export function registerRequestParsers(app: Express) {
   app.use((req, res, next) => (isProfileUpdate(req) ? profileJson : isEventSave(req) ? eventJson : standardJson)(req, res, next));
   app.use(express.urlencoded({ extended: false, limit: "64kb" }));
   const sizeError: ErrorRequestHandler = (error, req, res, next) => {
+    if (isProfileUpdate(req) && error?.type === "entity.parse.failed")
+      return void res.status(400).json(profileFailure("validation"));
     if (error?.type !== "entity.too.large") return next(error);
+    if (isProfileUpdate(req)) return void res.status(413).json(profileFailure("request_size"));
     res.status(413).json({
       error: isProfileUpdate(req)
         ? `The profile request is too large. ${PROFILE_IMAGE_SIZE_MESSAGE}`

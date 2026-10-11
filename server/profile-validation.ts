@@ -1,53 +1,42 @@
-import { z } from "zod";
 import sharp from "sharp";
 import { PROFILE_IMAGE_SOURCE_BYTES, PROFILE_IMAGE_DATA_URL_LENGTH, PROFILE_IMAGE_SIZE_MESSAGE } from "../shared/profile-image-limits";
+export { profileUpdateSchema } from "../shared/profile-validation";
 
-export class ProfileImageSizeError extends Error {
+export class ProfileImageError extends Error {
+  constructor(public reason: "size" | "format" | "unreadable" | "dimensions") { super(reason); }
+}
+export class ProfileImageSizeError extends ProfileImageError {
   constructor() {
-    super(PROFILE_IMAGE_SIZE_MESSAGE);
+    super("size");
+    this.message = PROFILE_IMAGE_SIZE_MESSAGE;
   }
 }
-
-const nullableText = (max: number) => z.string().trim().max(max).transform(value => value || null).nullable().optional();
-const externalLink = (instagram = false) => z.string().trim().max(2048).transform((value, ctx) => {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password ||
-      (instagram && !["instagram.com", "www.instagram.com"].includes(url.hostname.toLowerCase())))
-      throw new Error("Invalid link");
-    return url.toString();
-  } catch {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: instagram ? "Use an Instagram profile URL." : "Use an HTTP or HTTPS link." });
-    return z.NEVER;
-  }
-}).nullable().optional();
-
-export const profileUpdateSchema = z.object({
-  username: z.string().trim().min(3).max(80),
-  bio: z.string().trim().max(500),
-  profileImage: z.string().max(PROFILE_IMAGE_DATA_URL_LENGTH, PROFILE_IMAGE_SIZE_MESSAGE).nullable().optional(),
-  coverImage: z.string().max(PROFILE_IMAGE_DATA_URL_LENGTH, PROFILE_IMAGE_SIZE_MESSAGE).nullable().optional(),
-  displayName: nullableText(80),
-  publicContactEmail: z.union([z.string().trim().email().max(254), z.literal("")]).transform(value => value || null).nullable().optional(),
-  websiteUrl: externalLink(),
-  instagramUrl: externalLink(true),
-}).strict();
 
 export async function normalizeProfileImage(value: string, cover = false) {
   if (value.length > PROFILE_IMAGE_DATA_URL_LENGTH) throw new ProfileImageSizeError();
   if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value))
-    throw new Error("Choose a JPEG, PNG or WebP image.");
+    throw new ProfileImageError("format");
   const source = Buffer.from(value.split(",")[1], "base64");
   if (source.length > PROFILE_IMAGE_SOURCE_BYTES) throw new ProfileImageSizeError();
-  if (!source.length) throw new Error("Choose a JPEG, PNG or WebP image.");
-  const info = await sharp(source, { animated: true, limitInputPixels: 40000000 }).metadata();
+  if (!source.length) throw new ProfileImageError("unreadable");
+  try {
+  const info = await sharp(source, { animated: true, limitInputPixels: false }).metadata();
+  if ((info.width || 0) * (info.height || 0) > 40000000) throw new ProfileImageError("dimensions");
   if (!["jpeg", "png", "webp"].includes(info.format || "") || (info.pages || 1) > 1 ||
     source.includes(Buffer.from("acTL")) || source.includes(Buffer.from("ANIM")))
-    throw new Error("Choose a still JPEG, PNG or WebP image.");
-  const normalized = await sharp(source, { limitInputPixels: 40000000 }).rotate()
+    throw new ProfileImageError("format");
+  const normalized = await sharp(source, { limitInputPixels: 40000000, failOn: "error" }).rotate()
     .resize(cover ? 1920 : 256, cover ? 640 : 256, { fit: "cover", withoutEnlargement: true })
     .webp({ quality: 75 }).toBuffer();
-  if (normalized.length > (cover ? 250000 : 100000)) throw new Error("Image could not fit its size limit.");
+  if (normalized.length > (cover ? 250000 : 100000)) throw new ProfileImageError("dimensions");
   return { buffer: normalized, dataUrl: `data:image/webp;base64,${normalized.toString("base64")}` };
+  } catch (error) {
+    if (error instanceof ProfileImageError) throw error;
+    // Only known decoder failures establish that the supplied file is unreadable.
+    // Resource/system failures remain technical errors, with no private details.
+    const message = error instanceof Error ? error.message : "";
+    if (/unsupported image format|corrupt|truncated|premature end|invalid (?:header|chunk)|(?:pngload|jpegload|webpload)|VipsJpeg|not a known file format|insufficient image data/i.test(message))
+      throw new ProfileImageError("unreadable");
+    throw error;
+  }
 }

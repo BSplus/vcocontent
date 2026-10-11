@@ -99,7 +99,7 @@ export async function creatorUsage(executor: any, creatorId: number) {
 export async function lockedCreatorBudget(tx: any, creatorId: number, bytes = 0, photos = 0, galleries = 0, replacementCredit = 0) {
   const result = await tx.execute(sql`select is_admin,quota_exception,suspended,creator_status from users where id=${creatorId} for update`);
   const user = result.rows[0];
-  if (!user || user.suspended || user.creator_status === "rejected") throw new MediaLimitError("Creator access is blocked.");
+  if (!user || user.suspended || user.creator_status === "rejected") throw new MediaLimitError("Creator access is blocked.", "permission");
   if (user.is_admin) return;
   const limits = communityLimitsFor(user.quota_exception);
   const used = await creatorUsage(tx,creatorId);
@@ -109,5 +109,5 @@ export async function lockedCreatorBudget(tx: any, creatorId: number, bytes = 0,
   if (photos && used.photos+photos>limits.photos) throw new MediaLimitError(`You have reached the maximum of ${limits.photos.toLocaleString("en-US")} photos.`);
   if (bytes && (used.unknown || used.bytes+bytes>limits.bytes)) throw new MediaLimitError(used.unknown
     ? used.pendingCleanup ? "Storage cleanup is pending. Try again shortly or ask an administrator." : "Storage usage needs an administrator check before more files can be uploaded."
-    : `Your storage is full (${limits.bytes/1_000_000} MB).`);
+    : `Your storage is full (${limits.bytes/1_000_000} MB).`, used.unknown ? used.pendingCleanup ? "storage_cleanup" : "storage_unknown" : "storage_full");
 }

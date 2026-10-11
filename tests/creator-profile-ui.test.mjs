@@ -12,6 +12,7 @@ test("creator profile, follow, name previews, following list and visual profile 
   const oversized = await profileImageBytes(3_000_001);
   const browser=await uiBrowser(), mockErrors=[], writes=[];
   let following=false, failFollow=false, owner=false;
+  let profileFailure;
   const creator={id:64200,username:"FixtureCreator",displayName:"Fixture Photographer",isCreator:true,
     creatorStatus:"approved",bio:"Fixture motorsport photographer",profileImage:poster,coverImage:poster,
     publicContactEmail:null,websiteUrl:"https://example.invalid/",instagramUrl:null};
@@ -21,7 +22,7 @@ test("creator profile, follow, name previews, following list and visual profile 
   browser.listeners.add(event=>{
     if(event.method!=="Fetch.requestPaused")return;
     const {request,requestId}=event.params, path=new URL(request.url).pathname;
-    let body=[],status=200;
+    let body=[],status=200,raw=false;
     if(path==="/api/user")body=user();
     else if(path===`/api/users/${creator.id}`)body=profile();
     else if(path===`/api/creators/${creator.id}/follow`){
@@ -30,12 +31,14 @@ test("creator profile, follow, name previews, following list and visual profile 
     }
     else if(path==="/api/account/following")body={items:following?[profile()]:[],hasMore:false};
     else if(path==="/api/account/profile"){
-      const data=JSON.parse(request.postData);writes.push(data);Object.assign(creator,data);body=user();
+      const data=JSON.parse(request.postData);writes.push(data);
+      if(profileFailure) { status=profileFailure.status;body=profileFailure.body;raw=!!profileFailure.raw;profileFailure=undefined; }
+      else { Object.assign(creator,data);body=user(); }
     }
     else if(path==="/api/account/downloads" || path==="/api/account/favorites")body={items:[],hasMore:false};
     else if(path==="/api/media/policy")body={community:true,imageBytes:5000000,videoBytes:0,maxPixels:40000000};
-    browser.command("Fetch.fulfillRequest",{requestId,responseCode:status,responseHeaders:[{name:"Content-Type",value:"application/json"}],
-      body:Buffer.from(JSON.stringify(body)).toString("base64")}).catch(error=>{
+    browser.command("Fetch.fulfillRequest",{requestId,responseCode:status,responseHeaders:[{name:"Content-Type",value:raw?"text/html":"application/json"}],
+      body:Buffer.from(raw?body:JSON.stringify(body)).toString("base64")}).catch(error=>{
         if(!String(error).includes("Invalid InterceptionId"))mockErrors.push(String(error));
       });
   });
@@ -47,6 +50,11 @@ test("creator profile, follow, name previews, following list and visual profile 
     const raw=atob(${JSON.stringify(bytes.toString("base64"))}), data=Uint8Array.from(raw,c=>c.charCodeAt(0));
     const transfer=new DataTransfer();transfer.items.add(new File([data],"fixture.jpg",{type:${JSON.stringify(type)}}));
     const input=document.getElementById(${JSON.stringify(id)});input.files=transfer.files;input.dispatchEvent(new Event("change",{bubbles:true}));
+  })()`);
+  const setField=async(id,value)=>browser.evaluate(`(()=>{
+    const e=document.getElementById(${JSON.stringify(id)});
+    Object.getOwnPropertyDescriptor(e.tagName==="TEXTAREA"?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});
+    e.dispatchEvent(new Event('input',{bubbles:true}));
   })()`);
   try{
     for(const width of [1280,390]){
@@ -111,6 +119,84 @@ test("creator profile, follow, name previews, following list and visual profile 
       assert.equal(writes.length,count+1);
       assert.equal(Buffer.from(writes.at(-1).profileImage.split(",")[1],"base64").length,3_000_000);
       assert.equal(Buffer.from(writes.at(-1).coverImage.split(",")[1],"base64").length,3_000_000);
+      // Several local errors appear at once, with accessible links and first-error focus.
+      const start=writes.length;
+      await setField("profile-username","x");
+      await setField("profile-public-email","invalid");
+      await setField("profile-website","ftp://example.invalid");
+      await setField("profile-instagram","https://wrong.invalid/person");
+      await click("Save profile");
+      await browser.wait(`document.querySelectorAll('[aria-invalid="true"]').length===4 && document.activeElement.id==='profile-username'`);
+      assert.equal(writes.length,start);
+      assert.ok(await browser.evaluate(`[...document.querySelectorAll('[aria-invalid="true"]')].every(e=>!!document.getElementById(e.getAttribute('aria-describedby')))`));
+      await setField("profile-public-email","still-invalid");
+      assert.equal(await browser.evaluate(`document.querySelectorAll('[aria-invalid="true"]').length`),4);
+      await setField("profile-username","CorrectedUsername");
+      await browser.wait(`document.querySelectorAll('[aria-invalid="true"]').length===3`);
+      await setField("profile-public-email","public@example.invalid");
+      await setField("profile-website","http://example.invalid");
+      await setField("profile-instagram","http://www.instagram.com/fixture");
+      // A server-confirmed conflict leaves all text and both selected previews unchanged.
+      const beforeImages=await browser.evaluate(`[...document.querySelectorAll('img[alt$="preview"]')].map(e=>e.getAttribute('src'))`);
+      profileFailure={status:409,body:{code:"username_taken",error:"private SQL",fieldErrors:{username:"This username is already taken. Choose another username."}}};
+      await click("Save profile");
+      await browser.wait(`document.querySelector('#profile-username').getAttribute('aria-invalid')==='true' && document.activeElement.id==='profile-username' && ${readyButton("Save profile")}`);
+      assert.equal(await browser.evaluate(`document.querySelector('#profile-username').value`),"CorrectedUsername");
+      assert.deepEqual(await browser.evaluate(`[...document.querySelectorAll('img[alt$="preview"]')].map(e=>e.getAttribute('src'))`),beforeImages);
+      assert.equal(await browser.evaluate(`document.body.innerText.includes('private SQL')`),false);
+      await setField("profile-username","AnotherUsername");
+      await browser.wait(`document.querySelector('[role="alert"]')?.textContent.includes('Your corrections are ready')`);
+      assert.equal(await browser.evaluate(`document.querySelector('[role="alert"]').textContent.includes('already taken')`),false);
+      await click("Save profile");
+      await browser.wait(`document.body.innerText.includes('Your profile was updated') && ${readyButton("Save profile")}`);
+      // Every global cause supplies its own action, without losing entered text.
+      for(const [status,code,part] of [
+        [409,"storage_full","Remove unused files"],
+        [503,"storage_unknown","administrator check"],
+        [503,"storage_cleanup","Wait a little"],
+        [503,"safety_unavailable","Try saving again later"],
+        [400,"safety_uncertain","No policy violation"],
+        [400,"safety_blocked","Review them against"],
+        [401,"authentication","Sign in again"],
+        [403,"permission","Contact an administrator"],
+        [429,"rate_limit","Wait up to an hour"],
+        [500,"server","Try again later"],
+      ]) {
+        await setField("profile-bio",`Retained ${code}`);
+        profileFailure={status,body:{code,error:"private provider payload"}};
+        await click("Save profile");
+        await browser.wait(`document.querySelector('[role="alert"]')?.textContent.includes(${JSON.stringify(part)}) && ${readyButton("Save profile")}`);
+        assert.equal(await browser.evaluate(`document.querySelector('#profile-bio').value`),`Retained ${code}`);
+        assert.equal(await browser.evaluate(`document.querySelectorAll('[aria-invalid="true"]').length`),0);
+        assert.equal(await browser.evaluate(`document.body.innerText.includes('private provider payload')`),false);
+      }
+      // An unsupported server response is a technical failure, never raw text.
+      profileFailure={status:502,body:"<html>private upstream failure</html>",raw:true};
+      await click("Save profile");
+      await browser.wait(`document.querySelector('[role="alert"]')?.textContent.includes('server could not complete') && ${readyButton("Save profile")}`);
+      // Simulate a lost save response; do not promise the profile was unchanged.
+      await browser.evaluate(`(()=>{
+        const original=window.fetch;
+        window.fetch=(url,init)=>{if(url==='/api/account/profile'){window.fetch=original;return Promise.reject(new TypeError('private connection error'));}return original(url,init);};
+      })()`);
+      await click("Save profile");
+      await browser.wait(`document.querySelector('[role="alert"]')?.textContent.includes('changes may already have been saved') && ${readyButton("Save profile")}`);
+      await click("Save profile");
+      await browser.wait(`document.body.innerText.includes('Your profile was updated') && ${readyButton("Save profile")}`);
+      // Cover errors focus the cover action, never the profile-photo action.
+      await pick("profile-cover",source);
+      await browser.wait(`document.querySelector('img[alt="Creator cover preview"]').getAttribute('src')?.length===2000023`);
+      profileFailure={status:400,body:{code:"validation",fieldErrors:{coverImage:"Creator cover image is damaged or could not be read. Export it again or choose another file."}}};
+      await click("Save profile");
+      await browser.wait(`document.activeElement.id==='profile-cover-action' && ${readyButton("Save profile")}`);
+      assert.equal(await browser.evaluate(`document.querySelector('#profile-image-action').getAttribute('aria-invalid')`),"false");
+      assert.equal(await browser.evaluate(`document.querySelector('img[alt="Creator cover preview"]').getAttribute('src').length`),2000023);
+      await pick("profile-cover",source);
+      await browser.wait(`document.querySelector('#profile-cover-action').getAttribute('aria-invalid')==='false'`);
+      await click("Save profile");
+      await browser.wait(`document.body.innerText.includes('Your profile was updated') && ${readyButton("Save profile")}`);
+      assert.ok(await browser.evaluate(`document.documentElement.scrollWidth<=innerWidth+1`));
+      creator.username="FixtureCreator";
       creator.displayName="Fixture Photographer";creator.publicContactEmail=null;
     }
     assert.deepEqual(mockErrors,[]);assert.deepEqual(browser.errors,[]);

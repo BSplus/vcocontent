@@ -11,9 +11,12 @@ process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = "https://profile-test.invalid";
 process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "synthetic";
 const originalFetch = globalThis.fetch;
 let safetyImages = 0, rejectNext = false, rejectAtImage = Infinity;
+let safetyMode = "approved", beforeSafety;
 const fingerprints = [];
 globalThis.fetch = async (input, init) => {
   if (!String(input).startsWith("https://profile-test.invalid")) return originalFetch(input, init);
+  if (beforeSafety) { const action = beforeSafety; beforeSafety = undefined; await action(); }
+  if (safetyMode === "error") return new Response("private provider failure", {status:503});
   const body = JSON.parse(init.body);
   const parts=body.messages[1].content;
   const text=parts.find(part=>part.type==="text")?.text || "";
@@ -24,7 +27,7 @@ globalThis.fetch = async (input, init) => {
   const prohibited = rejectNext || safetyImages === rejectAtImage; rejectNext = false;
   return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({
     sexualized: prohibited ? "prohibited" : "clear", pornography: "clear", racistOrDehumanizing: "clear",
-    hateSymbolsOrGlorification: "clear", visibleTextAndSymbolsReviewed: true,
+    hateSymbolsOrGlorification: safetyMode === "review" ? "uncertain" : "clear", visibleTextAndSymbolsReviewed: true,
   }) } }] }), { headers: { "Content-Type": "application/json" } });
 };
 const { db, pool } = await import("../server/db.ts");
@@ -90,6 +93,10 @@ test.after(async () => {
   // Delete only synthetic safety fingerprints associated with this fixture's text.
   if(fingerprints.length) await db.delete(safetyResults).where(inArray(safetyResults.fingerprint,fingerprints));
   globalThis.fetch = originalFetch; await pool.end();
+});
+test.beforeEach(async () => {
+  safetyMode = "approved";
+  await db.execute(sql`delete from beta_rate_limits where key = any(${`{${fixtureIds.map(id => `profile:${id}`).join(",")}}`}::text[])`);
 });
 
 test("public profiles whitelist fields, preserve unique URLs, and never default contact email", async () => {
@@ -305,4 +312,111 @@ test("public images and contact fields can be removed explicitly", async () => {
   const profile = await publicCreatorById(creator.id);
   assert.equal(profile.coverImage, null); assert.equal(profile.profileImage, null);
   assert.equal(profile.publicContactEmail, null); assert.equal(profile.displayName, null);
+});
+
+test("multiple known field errors are returned together without echoing values", async () => {
+  const before = await storage.getUser(stranger.id);
+  const result = await request("/api/account/profile", stranger, "PATCH", {
+    username: "x", bio: "private".repeat(100), displayName: "x".repeat(81),
+    publicContactEmail: "sensitive-invalid", websiteUrl: "https://private:secret@example.invalid", instagramUrl: "https://wrong.invalid",
+  });
+  assert.equal(result.status, 400);
+  assert.deepEqual(Object.keys(result.data.fieldErrors).sort(), ["username","bio","displayName","publicContactEmail","websiteUrl","instagramUrl"].sort());
+  assert.equal(JSON.stringify(result.data).includes("private"), false);
+  assert.deepEqual(await storage.getUser(stranger.id), before);
+});
+
+test("a real update collision targets Username, while duplicate public display names are allowed", async () => {
+  const before = await storage.getUser(stranger.id);
+  const denied = await request("/api/account/profile", stranger, "PATCH", {username: creator.username, bio: `Conflict ${id}`});
+  assert.equal(denied.status, 409);
+  assert.deepEqual(denied.data.fieldErrors, {username:"This username is already taken. Choose another username."});
+  assert.equal(denied.data.code, "username_taken");
+  assert.deepEqual(await storage.getUser(stranger.id), before);
+  const accepted = await request("/api/account/profile", stranger, "PATCH", {username:stranger.username, bio:"", displayName:creator.username});
+  assert.equal(accepted.status, 200);
+});
+
+test("each image target reports corrupt, animated, oversized and excessive pixel sources", async () => {
+  const png = await sharp({create:{width:32,height:32,channels:3,background:"#113355"}}).png().toBuffer();
+  const animated = Buffer.concat([png, Buffer.from("acTL")]);
+  const largePixels = await sharp({create:{width:7000,height:6000,channels:3,background:"#113355"}}).png().toBuffer();
+  const before = await storage.getUser(stranger.id);
+  for (const field of ["profileImage", "coverImage"]) {
+    for (const [source, mime, expected] of [
+      [Buffer.from("private-corrupt-file"),"png",/damaged or could not be read/],
+      [animated,"png",/supported static JPEG/],
+      [await profileImageBytes(3_000_001),"jpeg",/3 MB/],
+      [largePixels,"png",/Reduce its pixel dimensions/],
+    ]) {
+      const result = await request("/api/account/profile",stranger,"PATCH",{
+        username:stranger.username,bio:"Must not persist",[field]:`data:image/${mime};base64,${source.toString("base64")}`,
+      });
+      assert.equal(result.status,400);
+      assert.match(result.data.fieldErrors[field], expected);
+      assert.match(result.data.fieldErrors[field], field === "profileImage" ? /^Profile photo/ : /^Creator cover image/);
+      assert.deepEqual(Object.keys(result.data.fieldErrors), [field]);
+      assert.deepEqual(await storage.getUser(stranger.id), before);
+      await db.execute(sql`delete from beta_rate_limits where key=${`profile:${stranger.id}`}`);
+    }
+  }
+  const both = await request("/api/account/profile",stranger,"PATCH",{username:stranger.username,bio:"",profileImage:"data:image/png;base64,YQ==",coverImage:"data:image/png;base64,Yg=="});
+  assert.deepEqual(Object.keys(both.data.fieldErrors).sort(), ["coverImage","profileImage"]);
+});
+
+test("uncertain inspection and service outage are not claimed as proven policy violations", async () => {
+  const before = await storage.getUser(stranger.id);
+  for (const mode of ["review","error"]) {
+    safetyMode = mode;
+    const result = await request("/api/account/profile",stranger,"PATCH",{username:stranger.username,bio:`${mode} ${id}`});
+    assert.equal(result.status,mode === "review" ? 400 : 503);
+    assert.equal(result.data.code,mode === "review" ? "safety_uncertain" : "safety_unavailable");
+    assert.deepEqual(result.data.fieldErrors,{});
+    assert.equal(result.data.error.includes("private provider"),false);
+    assert.deepEqual(await storage.getUser(stranger.id), before);
+  }
+});
+
+test("quota errors, access races, rate limits and technical database errors preserve saved data", async () => {
+  const {mediaCleanup, events, mediaItems} = await import("../shared/schema.ts");
+  const before = await storage.getUser(stranger.id);
+  const key = `profile-error-fixture-${id}`;
+  const image = `data:image/png;base64,${(await sharp({create:{width:32,height:32,channels:3,background:"#987654"}}).png().toBuffer()).toString("base64")}`;
+  try {
+    for (const [bytes, expected] of [[500_000_000,"storage_full"],[null,"storage_cleanup"]]) {
+      await db.insert(mediaCleanup).values({key,creatorId:stranger.id,storedBytes:bytes}).onConflictDoUpdate({target:mediaCleanup.key,set:{storedBytes:bytes}});
+      const result = await request("/api/account/profile",stranger,"PATCH",{username:stranger.username,bio:`quota ${bytes} ${id}`,coverImage:image});
+      assert.equal(result.data.code,expected);
+      assert.deepEqual(await storage.getUser(stranger.id),before);
+    }
+  } finally { await db.delete(mediaCleanup).where(eq(mediaCleanup.key,key)); }
+  // Unknown historical object size, with no pending cleanup, requires an administrator.
+  const [event] = await db.insert(events).values({title:"Synthetic quota fixture",description:"fixture",date:new Date(),creatorId:stranger.id}).returning();
+  try {
+    await db.insert(mediaItems).values({eventId:event.id,type:"image",url:`/api/media/files/${id}.png`,thumbnail:`/api/media/files/${id}.webp`});
+    const unknown = await request("/api/account/profile",stranger,"PATCH",{username:stranger.username,bio:`unknown quota ${id}`,profileImage:image});
+    assert.equal(unknown.status,503); assert.equal(unknown.data.code,"storage_unknown");
+    assert.deepEqual(await storage.getUser(stranger.id),before);
+  } finally {
+    await db.delete(mediaItems).where(eq(mediaItems.eventId,event.id));
+    await db.delete(events).where(eq(events.id,event.id));
+  }
+  // Change access while safety is running, so the locked recheck must reject it.
+  beforeSafety = () => db.update(users).set({creatorStatus:"rejected"}).where(eq(users.id,stranger.id));
+  const denied = await request("/api/account/profile",stranger,"PATCH",{username:stranger.username,bio:`race ${id}`,displayName:"Do not save"});
+  assert.equal(denied.status,403);
+  await db.update(users).set({creatorStatus:before.creatorStatus}).where(eq(users.id,stranger.id));
+  assert.deepEqual(await storage.getUser(stranger.id),before);
+  await db.execute(sql`insert into beta_rate_limits(key,count,reset_at) values (${`profile:${stranger.id}`},8,now()+interval '1 hour') on conflict(key) do update set count=8,reset_at=excluded.reset_at`);
+  const rate = await request("/api/account/profile",stranger,"PATCH",{username:stranger.username,bio:"rate"});
+  assert.equal(rate.status,429); assert.equal(rate.data.code,"rate_limit");
+  await db.execute(sql`delete from beta_rate_limits where key=${`profile:${stranger.id}`}`);
+  const execute = db.execute;
+  db.execute = async () => { throw new Error("SQL sensitive secret"); };
+  try {
+    const failure = await request("/api/account/profile",stranger,"PATCH",{username:stranger.username,bio:"technical"});
+    assert.equal(failure.status,500); assert.equal(failure.data.code,"server");
+    assert.equal(JSON.stringify(failure.data).includes("secret"),false);
+  } finally { db.execute = execute; }
+  assert.deepEqual(await storage.getUser(stranger.id),before);
 });

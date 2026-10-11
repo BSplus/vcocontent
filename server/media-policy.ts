@@ -20,4 +20,6 @@ export const mediaPolicy = {
   zipBytes: 100 * mib,
 };
 
-export class MediaLimitError extends Error {}
+export class MediaLimitError extends Error {
+  constructor(message: string, public code?: "storage_full" | "storage_unknown" | "storage_cleanup" | "permission") { super(message); }
+}

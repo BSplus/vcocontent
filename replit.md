@@ -31,6 +31,7 @@ Preferred communication style: Simple, everyday language.
 
 **Click-target conventions:**
 - App-owned system copy is English, including API errors and new import status. Preserve user content, proper names, legal wording and historical stored errors. See `docs/system-text-audit.md`.
+- Profile-save errors use a bounded code/field-error contract while retaining `error` for older consumers. Text/link validation is shared by server and editor; login Username alone is unique, not Public display name. Ambiguous safety results never prove a policy violation or identify a particular field. Failed responses retain drafts; lost responses must not promise rollback. Focused checks: `node scripts/test-image-downloads.mjs tests/creator-profiles.test.mjs tests/profile-errors.test.mjs`, plus `node --test tests/creator-profile-ui.test.mjs` with the preview serving.
 - Public media search is labeled “Search media”; it searches media metadata, not a separate event catalog.
 - “Recent events” and “Creator events” identify event-list destinations; upcoming listings are calendar information, not gallery links.
 - “Preview” opens a dialog, “Media details” navigates to the media page, and “Download options” opens the existing quality menu. Download counts are statistics.
