@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { pageMetadata } from "../shared/pagination.ts";
 import { uiBrowser, delay } from "./helpers/ui-browser.mjs";
 
 test("image/video editors preserve removed tags and refresh completed identification on desktop/touch", { timeout: 120000 }, async () => {
@@ -20,7 +21,8 @@ test("image/video editors preserve removed tags and refresh completed identifica
     else if (path === "/api/creator/usage") body = {bytes:0,galleries:1,photos:1,limits:{bytes:500000000,galleries:5,photos:1000,imageBytes:5000000},exception:false};
     else if (path === "/api/events" || path === "/api/creator/events") body = [event];
     else if (path === `/api/events/${event.id}`) body = event;
-    else if (path === "/api/media" || path === "/api/creator/media" || path === `/api/events/${event.id}/media`) body = [media];
+    else if (path === "/api/media" || path === "/api/creator/media" || path === `/api/events/${event.id}/media`) body =
+      new URL(request.url).searchParams.get("pagination")==="true" ? {...pageMetadata(1,1,48),items:[media]} : [media];
     else if (path === `/api/media/${media.id}` && request.method === "PUT") {
       const changes = JSON.parse(request.postData);
       writes.push(changes);

@@ -49,3 +49,5 @@
 - [Node deadline fixtures](node-deadline-fixtures.md) — AbortSignal.timeout is unref'd; a hung synthetic stream needs a referenced timer/socket for the deadline test.
 - [Sharp promise cancellation](sharp-promise-cancellation.md) — destroy without an error; retain the CPU slot until bounded native work settles, then discard cancelled results.
 - [Photo number evidence](photo-number-evidence.md) — masked-prefix rereads need repeat/positive controls; user permits only an automatic safeguard, not a new confirmation step.
+- [Inactive tab fixtures](inactive-tab-fixtures.md) — malformed object mocks can crash JSX in inactive tabs before unrelated browser controls appear.
+- [Polling cancellation](polling-cancellation.md) — skip periodic refresh while a request is running, or latency above the interval can prevent any page from loading.

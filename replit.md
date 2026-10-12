@@ -169,3 +169,9 @@ Preferred communication style: Simple, everyday language.
 - Development additive setup: `node --import tsx scripts/apply-dev-process-schema.mjs`. Production migration/release requires separate approval; ensure every public reader uses the new visibility and safety gates before enabling beta writes. Do not assume the development and production databases are isolated.
 - Historical public images remain unreviewed legacy content. New public image/profile/cover/text versions require the applicable gate. Changing safety prompts/categories requires a safety policy version bump.
 - Tests must mock mail and AI, use synthetic images, isolate queue consumers and clean only their own storage objects. Do not send real verification mail during routine tests.
+
+## Pagination
+- Visible page counters use the literal `PAGE X OF Y`; totals must describe the same accessible, filtered rows as the list. Do not infer the last page from a full page of results.
+- Search and event-media APIs retain array responses by default; `pagination=true` opts into `{ items, page, pageSize, total, totalPages, hasMore }`. Existing account and thumbnail envelopes include the same metadata.
+- Photo matching retains 500-photo cursor navigation. A shifted/deleted boundary returns `positionReset`, the first page and confirmed totals; the UI clears selection and confirmation and explains the reset.
+- Pagination regressions: `node scripts/test-image-downloads.mjs tests/pagination-api.test.mjs tests/media-search-api.test.mjs tests/community-studio.test.mjs tests/creator-profiles.test.mjs tests/photo-matching.test.mjs` (disposable database), and `node --import tsx --test --test-concurrency=1 tests/pagination-ui.test.mjs tests/media-search-browser.test.mjs tests/event-gallery-thumbnail-ui.test.mjs client/src/components/photo-matching-controls.test.mjs` against the running preview.

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { uiBrowser, delay } from "../../../tests/helpers/ui-browser.mjs";
+import { pageMetadata } from "../../../shared/pagination.ts";
 
 const base = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
 const eventId = 95601;
@@ -41,7 +42,7 @@ test("event photo matching settings, preserved replacement consent, protected it
     else if (path === `/api/events/${eventId}/photo-matching` && request.method === "GET") {
       apiReads.push("GET");
       pollCount++;
-      body = { enabled: patches.some(patch => patch.enabled), platform: patches.at(-1)?.platform ?? null, photos: photoRows() };
+      body = { ...pageMetadata(3,1,500), enabled: patches.some(patch => patch.enabled), platform: patches.at(-1)?.platform ?? null, photos: photoRows() };
     } else if (path === `/api/events/${eventId}/photo-matching` && request.method === "PATCH") {
       const payload = JSON.parse(request.postData); patches.push(payload); body = { ...payload, photos: photoRows() };
     } else if (path === `/api/events/${eventId}/photo-matching/process` && request.method === "POST") {

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { uiBrowser, delay } from "./helpers/ui-browser.mjs";
+import { pageMetadata } from "../shared/pagination.ts";
 
 const base = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
 const poster = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="navy"/></svg>');
@@ -29,13 +30,15 @@ test("typing searches beyond 48 items; URL, filters, paging, cancellation and er
         const page = Number(url.searchParams.get("page") || 1);
         requests.push({ q, fields, type, page });
         const terms = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
-        body = items.filter(item => (type === "all" || type === item.type)
-          && terms.every(term => fields.some(field => String(item[field]).toLowerCase().includes(term))))
-          .slice((page - 1) * 48, page * 48);
+        const matches = items.filter(item => (type === "all" || type === item.type)
+          && terms.every(term => fields.some(field => String(item[field]).toLowerCase().includes(term))));
+        const metadata = pageMetadata(matches.length,page,48);
+        body = matches.slice((metadata.page - 1) * 48, metadata.page * 48);
         if (q === "slow") { await delay(1100); body = [{ ...items[0], caption: "Obsolete slow response" }]; }
         if (q === "fresh") body = [{ ...items[0], caption: "Fresh response" }];
         if (q === "error") { responseCode = 500; body = { error: "Fixture API failure" }; }
         if (q === "loading") await delay(800);
+        if (responseCode === 200) body = { ...((q === "slow" || q === "fresh") ? pageMetadata(body.length,1,48) : metadata), items: body };
       }
       await browser.command("Fetch.fulfillRequest", {
         requestId, responseCode,
@@ -82,7 +85,7 @@ test("typing searches beyond 48 items; URL, filters, paging, cancellation and er
     await type("MAHLE"); // No Enter or button: the two caption-only items are beyond the initial page.
     await settled("MAHLE", 2);
     assert.equal(await browser.evaluate("history.length"), historyLength, "debounce replaces, not pushes history");
-    assert.match(await browser.evaluate(`document.querySelector('section[aria-label="Search results"] [role="status"]').textContent`), /2 media items on page 1/);
+    assert.match(await browser.evaluate(`document.querySelector('section[aria-label="Search results"] [role="status"]').textContent`), /2 media items · PAGE 1 OF 1/);
     await type("mahle racing"); await settled("mahle racing", 2);
     await type("TEAM MAHLE"); await submit(); await settled("TEAM MAHLE", 2);
     const interactiveIds = await browser.evaluate(`[...document.querySelectorAll('article a[href^="/media/"]')].map(a=>a.getAttribute('href'))`);

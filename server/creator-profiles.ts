@@ -3,6 +3,7 @@ import { and, eq, inArray, asc, desc, sql } from "drizzle-orm";
 import { creatorFollows, users } from "@shared/schema";
 import { db } from "./db";
 import { storage } from "./storage";
+import { pageMetadata } from "@shared/pagination";
 import { requireAuth } from "./middleware/auth";
 import { creatorAllowed, takeBetaRate } from "./beta-policy";
 
@@ -57,19 +58,23 @@ export function registerCreatorProfiles(app: Express) {
     try {
       const page = Number(req.query.page ?? 1);
       if (!Number.isSafeInteger(page) || page < 1 || page > 10000) return res.status(400).json({ error: "Invalid page." });
+      const predicate = and(eq(creatorFollows.userId, req.user!.id), eq(users.suspended, false),
+        sql`coalesce(${users.creatorStatus},'none') <> 'rejected' and
+          (${users.isAdmin} or ${users.isCreator} or ${users.creatorStatus}='approved')`);
+      const [count] = await db.select({total:sql<number>`count(*)::int`}).from(creatorFollows)
+        .innerJoin(users,eq(users.id,creatorFollows.creatorId)).where(predicate);
+      const metadata = pageMetadata(count.total,page,24);
       const records = await db.select({ user: users,
         followerCount: sql<number>`(select count(*)::int from creator_follows cf join users fu on fu.id=cf.user_id
           where cf.creator_id=${users.id} and not fu.suspended)`,
       }).from(creatorFollows).innerJoin(users, eq(users.id, creatorFollows.creatorId))
-        .where(and(eq(creatorFollows.userId, req.user!.id), eq(users.suspended, false),
-          sql`coalesce(${users.creatorStatus},'none') <> 'rejected' and
-            (${users.isAdmin} or ${users.isCreator} or ${users.creatorStatus}='approved')`))
-        .orderBy(desc(creatorFollows.createdAt), desc(creatorFollows.id)).limit(25).offset((page - 1) * 24);
+        .where(predicate)
+        .orderBy(desc(creatorFollows.createdAt), desc(creatorFollows.id)).limit(24).offset((metadata.page - 1) * 24);
       res.setHeader("Cache-Control", "private, no-store");
       res.json({ items: records.slice(0, 24).map(row => publicCreator(
         // Following cards do not need large cover photos.
         { ...row.user, profileCoverImage: null }, { followerCount: Number(row.followerCount), following: true })),
-        hasMore: records.length > 24 });
+        ...metadata });
     } catch { res.status(503).json({ error: "Your followed creators could not be loaded." }); }
   });
 }

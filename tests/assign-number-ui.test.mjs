@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { pageMetadata } from "../shared/pagination.ts";
 import { mkdir, writeFile } from "node:fs/promises";
 import { uiBrowser } from "./helpers/ui-browser.mjs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -47,7 +48,8 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
       exception: false, adminExempt: true, eventStats: [{ eventId: event.id, photos: 2, videos: 0, downloads: 0 }] };
     else if (path === "/api/creator/events" || path === "/api/admin/events" || path === "/api/events") body = [event];
     else if (path === `/api/events/${event.id}`) body = event;
-    else if (path === "/api/creator/media" || path === "/api/media" || path === `/api/events/${event.id}/media`) body = media;
+    else if (path === "/api/creator/media" || path === "/api/media" || path === `/api/events/${event.id}/media`) body =
+      url.searchParams.get("pagination")==="true" ? {...pageMetadata(media.length,1,48),items:media} : media;
     else if (path === "/api/admin/media-usage") body = {
       total: { bytes: "0", count: "2", legacy: "0", legacyTextBytes: "0" }, byEvent: [], byCreator: [],
       cleanupCount: "0", policy: { eventBytes: 500000000, creatorBytes: 500000000, eventCount: 500, creatorCount: 500 }, warningFraction: 0.8,

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Image as ImageIcon } from "lucide-react";
+import type { PageMetadata } from "@shared/pagination";
+import PageStatus from "@/components/page-status";
 
 type ThumbnailOption = { id: number; reference: string; preview: string; caption: string | null };
-type ThumbnailPage = { photos: ThumbnailOption[]; hasMore: boolean; page: number };
+type ThumbnailPage = PageMetadata & { photos: ThumbnailOption[] };
 
 export default function GalleryThumbnailSelector({ eventId, selectedReference, selectedPreview, onSelect }: {
   eventId: number;
@@ -14,6 +16,7 @@ export default function GalleryThumbnailSelector({ eventId, selectedReference, s
   const [pages, setPages] = useState<ThumbnailOption[][]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [totalPages, setTotalPages] = useState<number>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryPage, setRetryPage] = useState(1);
@@ -38,10 +41,11 @@ export default function GalleryThumbnailSelector({ eventId, selectedReference, s
       if (!Array.isArray(result.photos)) throw new Error("The photo list was not valid.");
       setPages(current => {
         const next = [...current];
-        next[targetPage - 1] = result.photos;
+        next[result.page - 1] = result.photos;
         return next;
       });
-      setPage(targetPage);
+      setPage(result.page);
+      setTotalPages(result.totalPages);
       setHasMore(result.hasMore);
     } catch (cause) {
       if (controller.signal.aborted) return;
@@ -55,6 +59,7 @@ export default function GalleryThumbnailSelector({ eventId, selectedReference, s
     setPages([]);
     setPage(1);
     setHasMore(true);
+    setTotalPages(undefined);
     void loadPage(1);
     return () => request.current?.abort();
     // eventId controls the resource lifetime; loadPage intentionally reads the current id.
@@ -93,10 +98,10 @@ export default function GalleryThumbnailSelector({ eventId, selectedReference, s
       </button>)}
     </div>}
     {photos.length > 0 && <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-xs text-muted-foreground">Page {page}{loading ? " · Loading…" : ""}</p>
+      <PageStatus page={page} totalPages={!loading && !error ? totalPages : undefined} />
       <div className="flex gap-2">
-        {page > 1 && <Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => void loadPage(page - 1)}>Previous photos</Button>}
-        {hasMore && <Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => void loadPage(page + 1)}>More photos</Button>}
+        <Button type="button" size="sm" variant="outline" disabled={loading || !!error || page === 1} onClick={() => void loadPage(page - 1)}>Previous photos</Button>
+        <Button type="button" size="sm" variant="outline" disabled={loading || !!error || !hasMore} onClick={() => void loadPage(page + 1)}>More photos</Button>
       </div>
     </div>}
   </section>;

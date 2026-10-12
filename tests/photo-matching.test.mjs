@@ -324,8 +324,10 @@ test("queued opt-out work does not call Vision, and older photos remain selectab
   })));
   const first=await (await api(`/api/events/${e.id}/photo-matching`)).json();
   assert.equal(first.photos.length,500);assert.ok(first.nextCursor);
+  assert.equal(first.page,1);assert.equal(first.totalPages,2);assert.equal(first.total,502);
   const second=await (await api(`/api/events/${e.id}/photo-matching?before=${first.nextCursor}`)).json();
   assert.ok(second.photos.some(photo=>photo.id===p.id));assert.equal(second.nextCursor,null);
+  assert.equal(second.page,2);assert.equal(second.totalPages,2);assert.equal(second.hasMore,false);
   assert.equal((await api(`/api/events/${e.id}/photo-matching?before=invalid`)).status,400);
 });
 

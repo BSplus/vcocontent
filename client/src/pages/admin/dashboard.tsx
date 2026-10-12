@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import type { PageEnvelope } from "@shared/pagination";
+import PageStatus from "@/components/page-status";
+import { usePageState } from "@/hooks/use-page-state";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -46,7 +49,7 @@ export default function AdminDashboard() {
   const [editMediaModalOpen, setEditMediaModalOpen] = useState(false);
   const [activeMediaEventId, setActiveMediaEventId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("events");
-  const [mediaPage, setMediaPage] = useState(1);
+  const [mediaPage, setMediaPage] = usePageState(activeMediaEventId ?? "none");
   const [eventSearch, setEventSearch] = useState("");
   const [reviewSelection, setReviewSelection] = useState<{
     kind: "media" | "events";
@@ -118,10 +121,14 @@ export default function AdminDashboard() {
     policy: { eventBytes: number; creatorBytes: number; eventCount: number; creatorCount: number };
     warningFraction: number;
   }>({ queryKey: ["/api/admin/media-usage"] });
-  const { data: eventMediaItems = [] } = useQuery<MediaItem[]>({
-    queryKey: [`/api/events/${activeMediaEventId}/media?page=${mediaPage}`],
+  const { data: eventMediaData, isFetching: eventMediaBusy, isError: eventMediaError, refetch: refetchEventMedia } = useQuery<PageEnvelope<MediaItem>>({
+    queryKey: [`/api/events/${activeMediaEventId}/media?page=${mediaPage}&pagination=true`],
     enabled: !!activeMediaEventId,
   });
+  const eventMediaItems = eventMediaData?.items ?? [];
+  useEffect(() => {
+    if (!eventMediaBusy && !eventMediaError && eventMediaData) setMediaPage(eventMediaData.page);
+  }, [eventMediaData, eventMediaBusy, eventMediaError, setMediaPage]);
   
   // Log any errors for debugging
   if (eventsError) console.error("Error loading events:", eventsError);
@@ -369,6 +376,8 @@ export default function AdminDashboard() {
                 {/* Display media items for selected event */}
                 {(() => {
                   const event = eventsArray.find(e => e.id === activeMediaEventId);
+                  if (eventMediaError) return <div role="alert"><p>Could not load event media.</p><Button onClick={() => void refetchEventMedia()}>Try again</Button></div>;
+                  if (eventMediaBusy && !eventMediaData) return <p role="status">Loading event media…</p>;
                   
                   if (eventMediaItems.length === 0) {
                     return (
@@ -434,9 +443,9 @@ export default function AdminDashboard() {
                         ))}
                       </div>
                        <div className="flex flex-wrap justify-center gap-3 mt-4">
-                        <Button variant="outline" disabled={mediaPage === 1} onClick={() => setMediaPage(mediaPage - 1)}>Previous</Button>
-                        <span className="self-center">Page {mediaPage}</span>
-                        <Button variant="outline" disabled={eventMediaItems.length < 48} onClick={() => setMediaPage(mediaPage + 1)}>Next</Button>
+                        <Button variant="outline" disabled={eventMediaBusy || eventMediaData?.page === 1} onClick={() => setMediaPage(mediaPage - 1)}>Previous</Button>
+                        <PageStatus className="self-center" page={eventMediaData?.page ?? mediaPage} totalPages={!eventMediaBusy ? eventMediaData?.totalPages : undefined} />
+                        <Button variant="outline" disabled={eventMediaBusy || !eventMediaData?.hasMore} onClick={() => setMediaPage(mediaPage + 1)}>Next</Button>
                       </div>
                     </div>
                   );

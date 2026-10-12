@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import EventTitle from "@/components/event-title";
 import SafeEventImage from "@/components/safe-event-image";
+import PageStatus from "@/components/page-status";
 
 export const EVENTS_PER_PAGE = 8;
 
@@ -41,6 +42,7 @@ export default function DashboardEventList({
   const [page, setPage] = useState(1);
   useEffect(() => setPage(1), [search]);
   const { matches, pageCount, currentPage, visible } = getEventPage(events, search, page);
+  useEffect(() => setPage(currentPage), [currentPage]);
   const counts = new Map<number, { photos: number; videos: number; downloads: number }>();
   for (const item of mediaItems) {
     if (item.eventId === null) continue;
@@ -94,7 +96,7 @@ export default function DashboardEventList({
       )}
       {matches.length > EVENTS_PER_PAGE && (
         <nav aria-label={`${title} pages`} className="mt-3 flex flex-wrap items-center justify-end gap-2 text-sm">
-          <span className="mr-auto text-muted-foreground">Page {currentPage} of {pageCount}</span>
+          <PageStatus className="mr-auto" page={currentPage} totalPages={pageCount} />
           <Button size="sm" variant="outline" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</Button>
           <Button size="sm" variant="outline" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next</Button>
         </nav>

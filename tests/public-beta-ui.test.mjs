@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { pageMetadata } from "../shared/pagination.ts";
 import { uiBrowser, delay } from "./helpers/ui-browser.mjs";
 
 test("mobile verified creator activation, gallery/photo upload and publication need no payment or wizard",{timeout:90000},async()=>{
@@ -21,7 +22,8 @@ test("mobile verified creator activation, gallery/photo upload and publication n
     } else if(path==="/api/creator/events" || path==="/api/events") data=gallery?[gallery]:[];
     else if(path==="/api/creator/usage") data={bytes:photo?1200:0,galleries:gallery?1:0,photos:photo?1:0,limits:{bytes:500000000,galleries:5,photos:1000,imageBytes:5000000},exception:false};
     else if(path==="/api/media/policy") data={community:true,imageBytes:5000000,videoBytes:0,zipBytes:100000000,zipCount:100,maxPixels:40000000,displayEdge:2560};
-    else if(path==="/api/creator/media" || path===`/api/events/${gallery?.id}/media`) data=photo?[photo]:[];
+    else if(path==="/api/creator/media" || path===`/api/events/${gallery?.id}/media`) data=
+      new URL(request.url).searchParams.get("pagination")==="true" ? {...pageMetadata(photo?1:0,1,48),items:photo?[photo]:[]} : photo?[photo]:[];
     else if(path===`/api/events/${gallery?.id}/media/upload`) {
       photo={id:78103,eventId:gallery.id,type:"image",caption:"Synthetic photo",url:"/synthetic-private-file",thumbnail:"data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="48"><rect width="64" height="48" fill="#175943"/></svg>'),
         tags:["Day"],identification:[],safetyStatus:"approved",isPremium:false};data=photo;

@@ -177,8 +177,10 @@ test("favorites filter quarantined items before pagination, never expose another
   await db.insert(communityFavorites).values(batch.map(item=>({userId:b.id,mediaId:item.id})));
   const first=await (await request("/api/account/favorites","GET",b)).json();
   assert.equal(first.items.length,24);assert.equal(first.hasMore,true);
+  assert.equal(first.total,26);assert.equal(first.totalPages,2);assert.equal(first.page,1);
   const next=await (await request("/api/account/favorites?page=2","GET",b)).json();
   assert.equal(next.items.length,2);assert.equal(next.hasMore,false);
+  assert.equal(next.total,26);assert.equal(next.totalPages,2);assert.equal(next.page,2);
   assert.equal(new Set([...first.items,...next.items].map(item=>item.id)).size,26);
   assert.ok([...first.items,...next.items].every(item=>!batch.slice(0,2).some(hidden=>hidden.id===item.id)));
   const other=await (await request("/api/account/favorites","GET",a)).json();

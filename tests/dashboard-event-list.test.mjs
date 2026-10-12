@@ -36,6 +36,6 @@ test("empty and no-match states differ, rows show stats and actions, pagination 
   assert.match(rows, /1 Videos/);
   assert.match(rows, /5 Downloads/);
   assert.match(rows, /Manage Media/);
-  assert.match(rows, /Page 1 of 3/);
+  assert.match(rows.replace(/<!--.*?-->/g,""), /PAGE 1 OF 3/);
   assert.match(rows, /disabled=""[^>]*>Previous/);
 });

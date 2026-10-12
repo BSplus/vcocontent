@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { pageMetadata } from "../shared/pagination.ts";
 import { uiBrowser, delay } from "./helpers/ui-browser.mjs";
 
 const base = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
@@ -56,6 +57,7 @@ test("click targets on desktop and touch with isolated API fixtures (no database
     else if (path.startsWith("/api/users/")) body = { username: "Fixture creator", id: 64001, isCreator: true };
     else if (path.endsWith("/analysis")) body = { status: "idle" };
     else if (path === "/api/credits") body = { credits: 0 };
+    if (Array.isArray(body) && new URL(request.url).searchParams.get("pagination")==="true") body={...pageMetadata(body.length,1,48),items:body};
     browser.command("Fetch.fulfillRequest", {
       requestId, responseCode: status,
       responseHeaders: [{ name: "Content-Type", value: "application/json" }],

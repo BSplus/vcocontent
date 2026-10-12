@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import SafeEventImage from "@/components/safe-event-image";
+import PageStatus from "@/components/page-status";
 
 export default function CreatorGalleryCards({events,mediaItems,eventCounts,search,actions}:{
   title:string;events:Event[];mediaItems:MediaItem[];
@@ -14,6 +15,7 @@ export default function CreatorGalleryCards({events,mediaItems,eventCounts,searc
   const [page,setPage]=useState(1);
   useEffect(()=>setPage(1),[search]);
   const {visible,pageCount,currentPage}=getEventPage(events,search,page);
+  useEffect(()=>setPage(currentPage),[currentPage]);
   return <section aria-label="My Galleries">
     {!visible.length && <p role="status" className="border border-dashed p-8">No galleries match your search.</p>}
     <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -36,9 +38,9 @@ export default function CreatorGalleryCards({events,mediaItems,eventCounts,searc
         </article>;
       })}
     </div>
-    {pageCount>1 && <nav aria-label="Gallery pages" className="mt-5 flex items-center justify-between gap-3">
+    {pageCount>1 && <nav aria-label="Gallery pages" className="mt-5 flex flex-wrap items-center justify-between gap-3">
       <Button variant="outline" disabled={currentPage===1} onClick={()=>setPage(currentPage-1)}>Previous</Button>
-      <span>Page {currentPage} of {pageCount}</span>
+      <PageStatus page={currentPage} totalPages={pageCount} />
       <Button variant="outline" disabled={currentPage===pageCount} onClick={()=>setPage(currentPage+1)}>Next</Button>
     </nav>}
   </section>;

@@ -81,6 +81,15 @@ test("public caption search filters the complete stock before paging without cha
     const defaults = await search("/api/media?q=MAHLE");
     assert.deepEqual(ids(defaults), [...expected, fieldOnly.id].sort((a, b) => a - b));
     const second = await search("/api/media?page=2");
+    const paginated = await search("/api/media?page=999&pagination=true");
+    assert.equal(paginated.total,first.length+second.length);
+    assert.equal(paginated.totalPages,2);
+    assert.equal(paginated.page,2);
+    assert.equal(paginated.hasMore,false);
+    assert.deepEqual(paginated.items,second);
+    const filteredPage = await search("/api/media?q=MAHLE&fields=caption&type=image&pagination=true");
+    assert.equal(filteredPage.total,2);
+    assert.equal(filteredPage.totalPages,1);
     assert.ok(second.some(row => row.id === target.id));
     assert.ok(!second.some(row => first.some(item => item.id === row.id)));
     for (const row of [...first, ...second, ...defaults]) {

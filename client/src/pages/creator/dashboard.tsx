@@ -28,6 +28,9 @@ import CreatorGalleryAssociation, {
 import { Badge } from "@/components/ui/badge";
 import ProfileSettings from "@/components/profile-settings";
 import AssignNumberAction from "@/components/assign-number-dialog";
+import type { PageEnvelope } from "@shared/pagination";
+import PageStatus from "@/components/page-status";
+import { usePageState } from "@/hooks/use-page-state";
 
 export default function CreatorDashboard() {
   const queryClient = useQueryClient();
@@ -82,13 +85,16 @@ export default function CreatorDashboard() {
     },
     onError: (error: Error) => toast({ title: "Retry unavailable", description: error.message, variant: "destructive" }),
   });
-  const [mediaPage, setMediaPage] = useState(1);
-  useEffect(() => setMediaPage(1), [selectedEventId]);
-  const { data: eventMediaItems = [] } = useQuery<MediaItem[]>({
-    queryKey: [`/api/events/${selectedEventId}/media?page=${mediaPage}`, user?.id ?? "signed-out"],
+  const [mediaPage, setMediaPage] = usePageState(`${user?.id}:${selectedEventId}`);
+  const { data: eventMediaData, isFetching: eventMediaBusy, isError: eventMediaError, refetch: refetchEventMedia } = useQuery<PageEnvelope<MediaItem>>({
+    queryKey: [`/api/events/${selectedEventId}/media?page=${mediaPage}&pagination=true`, user?.id ?? "signed-out"],
     enabled: !!selectedEventId,
     refetchInterval:activeTab==="media"?5000:false,
   });
+  const eventMediaItems = eventMediaData?.items ?? [];
+  useEffect(() => {
+    if (!eventMediaBusy && !eventMediaError && eventMediaData) setMediaPage(eventMediaData.page);
+  }, [eventMediaData, eventMediaBusy, eventMediaError, setMediaPage]);
 
   const getEventStats = (eventId: number) => {
     const stats=usage?.eventStats?.find(row=>row.eventId===eventId);
@@ -337,6 +343,8 @@ export default function CreatorDashboard() {
                 {/* Display media items for selected event */}
                 {(() => {
                   const event = events.find(e => e.id === selectedEventId);
+                  if (eventMediaError) return <div role="alert"><p>Could not load event media.</p><Button onClick={() => void refetchEventMedia()}>Try again</Button></div>;
+                  if (eventMediaBusy && !eventMediaData) return <p role="status">Loading event media…</p>;
                   
                   if (eventMediaItems.length === 0) {
                     return (
@@ -403,10 +411,10 @@ export default function CreatorDashboard() {
                           </Card>
                         ))}
                       </div>
-                      <div className="flex justify-center gap-3 mt-4">
-                        <Button variant="outline" disabled={mediaPage === 1} onClick={() => setMediaPage(mediaPage - 1)}>Previous</Button>
-                        <span className="self-center">Page {mediaPage}</span>
-                        <Button variant="outline" disabled={eventMediaItems.length < 48} onClick={() => setMediaPage(mediaPage + 1)}>Next</Button>
+                      <div className="flex flex-wrap justify-center gap-3 mt-4">
+                        <Button variant="outline" disabled={eventMediaBusy || eventMediaData?.page === 1} onClick={() => setMediaPage(mediaPage - 1)}>Previous</Button>
+                        <PageStatus className="self-center" page={eventMediaData?.page ?? mediaPage} totalPages={!eventMediaBusy ? eventMediaData?.totalPages : undefined} />
+                        <Button variant="outline" disabled={eventMediaBusy || !eventMediaData?.hasMore} onClick={() => setMediaPage(mediaPage + 1)}>Next</Button>
                       </div>
                     </div>
                   );

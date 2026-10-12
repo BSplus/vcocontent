@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { pageMetadata } from "../shared/pagination.ts";
 import sharp from "sharp";
 import { uiBrowser, delay } from "./helpers/ui-browser.mjs";
 
@@ -34,7 +35,7 @@ for (const editing of [false, true]) test(`official ${editing ? "editing" : "cre
       if (path === "/api/user") content = { id: 99999, username: "synthetic-admin", isAdmin: true, isCreator: false };
       if (path === "/api/admin/events" || path === "/api/events") content = [event];
       if (path === "/api/events/95001") content = event;
-      if (path === "/api/events/95001/thumbnail-options") content = { photos: [], hasMore: false, page: 1 };
+      if (path === "/api/events/95001/thumbnail-options") content = { photos: [], ...pageMetadata(0,1,24) };
       if (path === "/api/admin/safety") content = { media: [], events: [] };
       if (path === "/api/admin/media-usage") content = { total: { bytes: "0", count: "0", legacy: "0" },
         byEvent: [], byCreator: [], cleanupCount: "0", policy: { eventBytes: 100000000, creatorBytes: 100000000,

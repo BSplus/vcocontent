@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { pageMetadata } from "../shared/pagination.ts";
 import sharp from "sharp";
 import { uiBrowser } from "./helpers/ui-browser.mjs";
 
@@ -87,7 +88,10 @@ for (const [width, role] of [[1440, "admin"], [390, "admin"], [390, "owner"], [1
       }
       void browser.command("Fetch.fulfillRequest", { requestId, responseCode: status,
         responseHeaders: [{ name: "Content-Type", value: type }],
-        body: type === "image/webp" ? content : Buffer.from(JSON.stringify(content)).toString("base64") }).catch(() => {});
+        body: type === "image/webp" ? content : Buffer.from(JSON.stringify(
+          content.photos ? {...content,...pageMetadata(content.hasMore ? 25 : content.page === 2 ? 25 : content.photos.length,content.page,24)} :
+          Array.isArray(content) && url.searchParams.get("pagination")==="true" ? {...pageMetadata(content.length,1,48),items:content} : content
+        )).toString("base64") }).catch(() => {});
     });
     try {
       await browser.command("Fetch.enable", { patterns: [{ urlPattern: "*/api/*" }] });

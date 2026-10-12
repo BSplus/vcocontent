@@ -9,6 +9,7 @@ import { publicEventPredicate, publicMediaPredicate } from "./beta-policy";
 import { requireAuth } from "./middleware/auth";
 import { registerCommunityProfile } from "./community-profile";
 import { registerCreatorProfiles } from "./creator-profiles";
+import { pageMetadata } from "@shared/pagination";
 
 const preview = (id:number, thumbnail:string) => thumbnail.startsWith("data:") ? `/api/media/legacy/${id}/thumbnail` : thumbnail;
 export async function communityTarget(kind:string,id:number) {
@@ -80,18 +81,22 @@ export function registerCommunityRoutes(app:Express) {
       const page=Number(req.query.page ?? 1);
       if (!Number.isSafeInteger(page)||page<1||page>100000) return res.status(400).json({error:"Invalid page."});
       const table=section==="favorites"?favorites:downloadHistory;
+      const predicate = and(eq(table.userId,req.user!.id),publicEventPredicate(),sql`(${mediaItems.id} is null or ${publicMediaPredicate()})`,
+        eq(events.isPremium,false),sql`(${mediaItems.id} is null or not ${mediaItems.isPremium})`);
+      const eventJoin = section==="favorites"
+        ? sql`${events.id}=coalesce(${mediaItems.eventId},${favorites.eventId})`
+        : eq(events.id,mediaItems.eventId);
+      const [count] = await db.select({ total: sql<number>`count(*)::int` }).from(table)
+        .leftJoin(mediaItems,eq(table.mediaId,mediaItems.id)).innerJoin(events,eventJoin).where(predicate);
+      const metadata = pageMetadata(count.total,page,24);
       const rows=await db.select({
         rowId:table.id,mediaId:mediaItems.id,eventId:events.id,title:events.title,caption:mediaItems.caption,
         thumbnail:mediaItems.thumbnail,date:table.createdAt,
         quality:section==="downloads"?downloadHistory.quality:sql<string>`null`,
       }).from(table)
         .leftJoin(mediaItems,eq(table.mediaId,mediaItems.id))
-        .innerJoin(events,section==="favorites"
-          ? sql`${events.id}=coalesce(${mediaItems.eventId},${favorites.eventId})`
-          : eq(events.id,mediaItems.eventId))
-        .where(and(eq(table.userId,req.user!.id),publicEventPredicate(),sql`(${mediaItems.id} is null or ${publicMediaPredicate()})`,
-          eq(events.isPremium,false),sql`(${mediaItems.id} is null or not ${mediaItems.isPremium})`))
-        .orderBy(desc(table.createdAt),desc(table.id)).limit(25).offset((page-1)*24);
+        .innerJoin(events,eventJoin).where(predicate)
+        .orderBy(desc(table.createdAt),desc(table.id)).limit(24).offset((metadata.page-1)*24);
       const items=await Promise.all(rows.slice(0,24).map(async row=>{
         // Never trust a saved external/gallery cover: resolve a currently public photo.
         const cover=row.mediaId ? undefined : (await storage.getPublicEventMediaItems(row.eventId,1,1))[0];
@@ -100,7 +105,7 @@ export function registerCommunityRoutes(app:Express) {
           thumbnail:row.mediaId && row.thumbnail ? preview(row.mediaId,row.thumbnail) : cover?preview(cover.id,cover.thumbnail):null,
           date:row.date,quality:row.quality,href:row.mediaId?`/media/${row.mediaId}`:`/events/${row.eventId}`};
       }));
-      res.json({items,hasMore:rows.length>24});
+      res.json({...metadata,items});
     } catch {res.status(503).json({error:"Your collection could not be loaded."});}
   });
 }

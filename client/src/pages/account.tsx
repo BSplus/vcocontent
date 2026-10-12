@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bookmark, Download, ArrowUpRight, ChevronLeft, ChevronRight, CircleUserRound, Image as ImageIcon, Users, UserRound } from "lucide-react";
@@ -10,10 +10,12 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { formatDate } from "@/lib/utils";
 import CreatorIdentity, { type PublicCreator } from "@/components/creator-identity";
+import type { PageEnvelope } from "@shared/pagination";
+import PageStatus from "@/components/page-status";
+import { usePageState } from "@/hooks/use-page-state";
 
 type FavoriteItem = { kind: "media" | "event"; id: number; title: string; thumbnail: string | null; eventTitle: string; href: string; date: string };
 type DownloadItem = { historyId: number; id: number; title: string; thumbnail: string | null; eventTitle: string; href: string; date: string; quality: string };
-type PageEnvelope<T> = { items: T[]; hasMore: boolean };
 type AccountTab = "downloads" | "favorites" | "following" | "settings";
 
 function PanelSkeleton() {
@@ -28,13 +30,13 @@ export default function AccountPage() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
   const search = useSearch();
   const active = (new URLSearchParams(search).get("tab") || "downloads") as AccountTab;
   const tab = (["downloads", "favorites", "following", "settings"].includes(active) ? active : "downloads") as AccountTab;
+  const [page, setPage] = usePageState(`${user?.id}:${tab}`);
   const endpoint = tab === "favorites" ? "favorites" : "downloads";
   const queryKey = [`/api/account/${endpoint}?page=${page}`, user?.id ?? "signed-out"];
-  const { data, isLoading, isError, refetch } = useQuery<PageEnvelope<FavoriteItem | DownloadItem>>({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery<PageEnvelope<FavoriteItem | DownloadItem>>({
     queryKey,
     enabled: !!user && tab !== "settings" && tab !== "following",
     staleTime: 0,
@@ -52,6 +54,12 @@ export default function AccountPage() {
     staleTime: 0,
     retry: false,
   });
+  const confirmedData = tab === "following" ? followingQuery.data : data;
+  const busy = tab === "following" ? followingQuery.isFetching : isFetching;
+  const failed = tab === "following" ? followingQuery.isError : isError;
+  useEffect(() => {
+    if (!busy && !failed && confirmedData) setPage(confirmedData.page);
+  }, [confirmedData, busy, failed, setPage]);
   const changeTab = (next: AccountTab) => {
     setPage(1);
     setLocation(`/account?tab=${next}`);
@@ -83,7 +91,7 @@ export default function AccountPage() {
       </nav>
 
       {tab === "following" ? <section>
-        <div className="mb-5 flex items-end justify-between gap-3"><div><p className="vco-kicker">The photographers you follow</p><h2 className="mt-2 text-2xl">Following</h2></div><span className="text-xs uppercase tracking-widest text-muted-foreground">Page {page}</span></div>
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><p className="vco-kicker">The photographers you follow</p><h2 className="mt-2 text-2xl">Following</h2></div><PageStatus page={followingQuery.data?.page ?? page} totalPages={!busy && !failed ? followingQuery.data?.totalPages : undefined} /></div>
         {followingQuery.isLoading ? <PanelSkeleton /> : followingQuery.isError ? <div role="alert" className="border border-destructive/40 bg-card px-5 py-8 text-center"><p className="text-lg">Your following list is temporarily unavailable.</p><Button variant="outline" className="mt-4" onClick={() => void followingQuery.refetch()}>Try again</Button></div> : !followingQuery.data?.items.length ? <div className="border border-dashed border-border bg-card/50 px-6 py-14 text-center">
           <Users className="mx-auto h-8 w-8 text-primary" /><h3 className="mt-4 text-xl">Your circuit starts here</h3><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Follow a photographer to keep their public galleries close at hand.</p>
           <Button asChild className="vco-button mt-5 min-h-11 bg-primary text-primary-foreground"><Link href="/creator-events">Discover creator galleries</Link></Button>
@@ -95,10 +103,10 @@ export default function AccountPage() {
             <div className="min-w-0 flex-1"><CreatorIdentity creator={creator} className="text-lg font-bold" /><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{creator.bio || "VCO creator"}</p><p className="mt-2 text-xs text-muted-foreground">{creator.followerCount ?? 0} followers</p></div>
           </article>)}
         </div>}
-        {!followingQuery.isLoading && !followingQuery.isError && followingQuery.data?.items.length ? <nav aria-label="Following pages" className="mt-7 flex items-center justify-between border-t border-border pt-4">
-          <Button variant="outline" className="min-h-11" disabled={page === 1} onClick={() => setPage(value => Math.max(1, value - 1))}><ChevronLeft className="mr-1 h-4 w-4" />Previous</Button>
-          <span className="text-sm text-muted-foreground">Page {page}</span>
-          <Button variant="outline" className="min-h-11" disabled={!followingQuery.data?.hasMore} onClick={() => setPage(value => value + 1)}>Next<ChevronRight className="ml-1 h-4 w-4" /></Button>
+        {!followingQuery.isLoading && !followingQuery.isError && followingQuery.data?.items.length ? <nav aria-label="Following pages" className="mt-7 flex flex-wrap gap-2 items-center justify-between border-t border-border pt-4">
+          <Button variant="outline" className="min-h-11" disabled={busy || followingQuery.data.page === 1} onClick={() => setPage(value => Math.max(1, value - 1))}><ChevronLeft className="mr-1 h-4 w-4" />Previous</Button>
+          <PageStatus page={followingQuery.data.page} totalPages={!busy ? followingQuery.data.totalPages : undefined} />
+          <Button variant="outline" className="min-h-11" disabled={busy || !followingQuery.data?.hasMore} onClick={() => setPage(value => value + 1)}>Next<ChevronRight className="ml-1 h-4 w-4" /></Button>
         </nav> : null}
       </section> : tab === "settings" ? <section className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
         <div className="space-y-6">
@@ -121,7 +129,7 @@ export default function AccountPage() {
           </div>
         </aside>
       </section> : <>
-        <div className="mb-5 flex items-end justify-between gap-3"><div><p className="vco-kicker">{tab === "favorites" ? "Kept close" : "Your recent deliveries"}</p><h2 className="mt-2 text-2xl">{tab === "favorites" ? "My Favorites" : "My Downloads"}</h2></div><span className="text-xs uppercase tracking-widest text-muted-foreground">Page {page}</span></div>
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><p className="vco-kicker">{tab === "favorites" ? "Kept close" : "Your recent deliveries"}</p><h2 className="mt-2 text-2xl">{tab === "favorites" ? "My Favorites" : "My Downloads"}</h2></div><PageStatus page={data?.page ?? page} totalPages={!busy && !failed ? data?.totalPages : undefined} /></div>
         {isLoading ? <PanelSkeleton /> : isError ? <div role="alert" className="border border-destructive/40 bg-card px-5 py-8 text-center"><p className="text-lg">This account list is temporarily unavailable.</p><Button variant="outline" className="mt-4" onClick={() => void refetch()}>Try again</Button></div> : !data?.items.length ? <div className="border border-dashed border-border bg-card/50 px-6 py-14 text-center">
           {tab === "favorites" ? <Bookmark className="mx-auto h-8 w-8 text-primary" /> : <Download className="mx-auto h-8 w-8 text-primary" />}
           <h3 className="mt-4 text-xl">{tab === "favorites" ? "Nothing saved just yet" : "No completed downloads yet"}</h3>
@@ -150,10 +158,10 @@ export default function AccountPage() {
             </article>;
           })}
         </div>}
-        {!isLoading && !isError && data?.items.length ? <nav aria-label={`${tab} pages`} className="mt-7 flex items-center justify-between border-t border-border pt-4">
-          <Button variant="outline" className="min-h-11" disabled={page === 1} onClick={() => setPage(value => Math.max(1, value - 1))}><ChevronLeft className="mr-1 h-4 w-4" />Previous</Button>
-          <span className="text-sm text-muted-foreground">Page {page}</span>
-          <Button variant="outline" className="min-h-11" disabled={!data?.hasMore} onClick={() => setPage(value => value + 1)}>Next<ChevronRight className="ml-1 h-4 w-4" /></Button>
+        {!isLoading && !isError && data?.items.length ? <nav aria-label={`${tab} pages`} className="mt-7 flex flex-wrap gap-2 items-center justify-between border-t border-border pt-4">
+          <Button variant="outline" className="min-h-11" disabled={busy || data.page === 1} onClick={() => setPage(value => Math.max(1, value - 1))}><ChevronLeft className="mr-1 h-4 w-4" />Previous</Button>
+          <PageStatus page={data.page} totalPages={!busy ? data.totalPages : undefined} />
+          <Button variant="outline" className="min-h-11" disabled={busy || !data?.hasMore} onClick={() => setPage(value => value + 1)}>Next<ChevronRight className="ml-1 h-4 w-4" /></Button>
         </nav> : null}
       </>}
     </main>

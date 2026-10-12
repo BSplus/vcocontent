@@ -6,6 +6,7 @@ import { storage } from "./storage";
 import { events, mediaItems, mediaAnalysisJobs } from "@shared/schema";
 import { analysisStatus, enqueueAnalysis, kickAnalysisWorker, AnalysisUnavailable } from "./analysis-jobs";
 import { reviewEventSafety } from "./content-safety";
+import { pageMetadata } from "@shared/pagination";
 
 export function registerPhotoMatchingRoutes(app: Express, requireCreator: RequestHandler) {
   const managed = async (req: any, res: any) => {
@@ -19,9 +20,23 @@ export function registerPhotoMatchingRoutes(app: Express, requireCreator: Reques
   app.get("/api/events/:id/photo-matching", requireCreator, async (req,res) => {
     try {
       const event = await managed(req,res); if (!event) return;
-      const before = req.query.before===undefined ? undefined : Number(req.query.before);
+      let before = req.query.before===undefined ? undefined : Number(req.query.before);
+      const expectedPage = req.query.page === undefined ? undefined : Number(req.query.page);
       if (before!==undefined && (!Number.isSafeInteger(before) || before<1))
         return res.status(400).json({error:"Invalid photo page."});
+      if (expectedPage !== undefined && (!Number.isSafeInteger(expectedPage) || expectedPage < 1 || expectedPage > 1000000))
+        return res.status(400).json({error:"Invalid photo page."});
+      const predicate = and(eq(mediaItems.eventId,event.id),eq(mediaItems.type,"image"));
+      const [count] = await db.select({
+        total:sql<number>`count(*)::int`,
+        preceding:sql<number>`count(*) filter (where ${before ?? 0} > 0 and ${mediaItems.id} >= ${before ?? 0})::int`,
+        boundary:sql<number>`count(*) filter (where ${mediaItems.id} = ${before ?? 0})::int`,
+      }).from(mediaItems).where(predicate);
+      const positionReset = !!before && (!count.boundary || count.preceding === 0 ||
+        count.preceding % 500 !== 0 || count.preceding >= count.total ||
+        (expectedPage !== undefined && expectedPage !== count.preceding / 500 + 1));
+      if (positionReset) before = undefined;
+      const metadata = pageMetadata(count.total, before ? count.preceding / 500 + 1 : 1,500);
       const photos = await db.select({id:mediaItems.id,caption:mediaItems.caption,captionSource:mediaItems.captionSource,
         identificationManual:mediaItems.identificationManual,matchStatus:mediaItems.photoMatchStatus,
         status:sql<string>`case when ${mediaAnalysisJobs.status}='completed' and ${mediaAnalysisJobs.recognition} is not null
@@ -30,10 +45,10 @@ export function registerPhotoMatchingRoutes(app: Express, requireCreator: Reques
             ${event.photoMatchingRevision}=${mediaAnalysisJobs.photoMatchingRevision})) then 'queued'
           else coalesce(${mediaAnalysisJobs.status},'not_requested') end`,
         error:mediaAnalysisJobs.error}).from(mediaItems).leftJoin(mediaAnalysisJobs,eq(mediaAnalysisJobs.mediaId,mediaItems.id))
-        .where(and(eq(mediaItems.eventId,event.id),eq(mediaItems.type,"image"),
+        .where(and(predicate,
           before ? sql`${mediaItems.id}<${before}` : undefined)).orderBy(desc(mediaItems.id)).limit(501);
       const page=photos.slice(0,500);
-      res.json({enabled:event.photoMatchingEnabled,platform:event.platform,photos:page,
+      res.json({...metadata,positionReset,enabled:event.photoMatchingEnabled,platform:event.platform,photos:page,
         nextCursor:photos.length>500 ? page[page.length-1].id : null});
     } catch {res.status(503).json({error:"Photo matching status could not be loaded."});}
   });

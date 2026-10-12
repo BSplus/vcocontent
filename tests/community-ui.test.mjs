@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { uiBrowser,delay } from "./helpers/ui-browser.mjs";
+import { pageMetadata } from "../shared/pagination.ts";
 
 const base=process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
 const poster="data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><rect width="640" height="400" fill="#20354a"/></svg>');
@@ -43,6 +44,8 @@ test("community actions, private account and studio work with keyboard and narro
     else if(path===`/api/events/${gallery.id}`)body=gallery;
     else if(path.startsWith("/api/users/"))body=user;
     else if(path==="/api/media/policy")body={community:true,imageBytes:5000000,videoBytes:0,maxPixels:40000000,zipCount:100,zipBytes:104857600};
+    if (Array.isArray(body) && new URL(request.url).searchParams.get("pagination") === "true") body = {...pageMetadata(body.length,1,48),items:body};
+    if (path.startsWith("/api/account/") && Array.isArray(body.items)) body = {...body,...pageMetadata(body.items.length,1,24)};
     browser.command("Fetch.fulfillRequest",{requestId,responseCode:status,responseHeaders:[{name:"Content-Type",value:"application/json"}],body:Buffer.from(JSON.stringify(body)).toString("base64")}).catch(e=>{
       // Navigation can cancel an intercepted query before fulfillment; this is not an app exception.
       if(!String(e).includes("Invalid InterceptionId")) mockErrors.push(String(e));

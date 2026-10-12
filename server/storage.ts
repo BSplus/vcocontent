@@ -334,11 +334,24 @@ class DatabaseStorage implements IStorage {
 
   async listPublicMedia(page = 1, limit = 48, search = "", type?: "image" | "video",
     fields: ("caption" | "photographer" | "tags" | "identification")[] = ["caption", "photographer", "tags", "identification"]): Promise<MediaItem[]> {
-    if (search && !fields.length) return [];
+    return this.publicMediaQuery(search, type, fields)
+      .orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit);
+  }
+
+  async countPublicMedia(search = "", type?: "image" | "video",
+    fields: ("caption" | "photographer" | "tags" | "identification")[] = ["caption", "photographer", "tags", "identification"]): Promise<number> {
+    const [row] = await db.select({ total: sql<number>`count(*)::int` })
+      .from(this.publicMediaQuery(search, type, fields).as("matching_media"));
+    return row.total;
+  }
+
+  private publicMediaQuery(search: string, type: "image" | "video" | undefined,
+    fields: ("caption" | "photographer" | "tags" | "identification")[]) {
     const terms = search.trim().split(/\s+/).filter(Boolean).slice(0,12).map(word=>`%${word.replace(/[\\%_]/g,"\\$&")}%`);
     return db.select(mediaListColumns).from(mediaItems)
       .leftJoin(events, eq(mediaItems.eventId, events.id))
       .where(and(
+        search && !fields.length ? sql`false` : undefined,
         publicEventPredicate(), publicMediaPredicate(), eq(mediaItems.isPremium, false),
         or(eq(events.isPremium, false), sql`${events.id} is null`),
         ...(type ? [eq(mediaItems.type, type)] : []),
@@ -350,9 +363,7 @@ class DatabaseStorage implements IStorage {
             where concat_ws(' ',ident->>'number',ident->>'team',ident->>'drivers',ident->>'vehicle',
               ident->>'manufacturer',ident->>'racingClass',ident->>'discipline') ilike ${term})`] : []),
         )),
-      ))
-      .orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit)
-      .then(rows => rows);
+      ));
   }
 
   async getMediaItems(eventId: number, page = 1, limit = 48): Promise<MediaItem[]> {
@@ -364,6 +375,17 @@ class DatabaseStorage implements IStorage {
 
   async getEventThumbnailOptions(event: Event, page = 1): Promise<MediaItem[]> {
     if (event.isPremium) return [];
+    return this.thumbnailOptionsQuery(event).orderBy(desc(mediaItems.id)).limit(25).offset((page - 1) * 24);
+  }
+
+  async countEventThumbnailOptions(event: Event): Promise<number> {
+    if (event.isPremium) return 0;
+    const [row] = await db.select({ total: sql<number>`count(*)::int` })
+      .from(this.thumbnailOptionsQuery(event).as("eligible_photos"));
+    return row.total;
+  }
+
+  private thumbnailOptionsQuery(event: Event) {
     // Filter before pagination so videos or pending photos cannot hide later choices.
     // Only bounded inline thumbnails are read, never gallery originals.
     return db.select({ ...mediaListColumns, url: sql<string>`''` }).from(mediaItems)
@@ -374,16 +396,25 @@ class DatabaseStorage implements IStorage {
             sql`${mediaItems.contentVersion} = ${mediaItems.safetyVersion}`)),
         or(sql`${mediaItems.thumbnail} ~ '^/api/media/files/thumb-[0-9a-f-]{36}\\.webp$'`,
           and(sql`${mediaItems.thumbnail} ~ '^data:image/(jpeg|png|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$'`,
-            sql`length(${mediaItems.thumbnail}) <= ${Math.ceil(eventImagePolicy.bytes * 4 / 3) + 100}`))))
-      .orderBy(desc(mediaItems.id)).limit(25).offset((page - 1) * 24);
+            sql`length(${mediaItems.thumbnail}) <= ${Math.ceil(eventImagePolicy.bytes * 4 / 3) + 100}`))));
   }
 
   async getPublicEventMediaItems(eventId: number, page = 1, limit = 48): Promise<MediaItem[]> {
+    return this.publicEventMediaQuery(eventId).orderBy(desc(mediaItems.id)).limit(limit).offset((page-1)*limit);
+  }
+
+  async countEventMedia(eventId: number, manager: boolean): Promise<number> {
+    const source = manager ? db.select({ id: mediaItems.id }).from(mediaItems).where(eq(mediaItems.eventId, eventId))
+      : this.publicEventMediaQuery(eventId);
+    const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(source.as("event_media"));
+    return row.total;
+  }
+
+  private publicEventMediaQuery(eventId: number) {
     return db.select(mediaListColumns).from(mediaItems)
       .innerJoin(events,eq(mediaItems.eventId,events.id))
       .where(and(eq(mediaItems.eventId,eventId),eq(events.isPremium,false),
-        publicEventPredicate(),publicMediaPredicate()))
-      .orderBy(desc(mediaItems.id)).limit(limit).offset((page-1)*limit);
+        publicEventPredicate(),publicMediaPredicate()));
   }
 
   async getMediaItem(id: number): Promise<MediaItem | undefined> {

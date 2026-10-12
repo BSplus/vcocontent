@@ -6,6 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import type { PageMetadata } from "@shared/pagination";
+import PageStatus from "@/components/page-status";
 
 interface MatchingPhoto {
   id: number;
@@ -17,11 +19,12 @@ interface MatchingPhoto {
   matchStatus: string | null;
 }
 
-interface MatchingResponse {
+interface MatchingResponse extends PageMetadata {
   enabled: boolean;
   platform: string | null;
   nextCursor?: number | null;
   photos: MatchingPhoto[];
+  positionReset?: boolean;
 }
 
 interface PhotoMatchingControlsProps {
@@ -62,15 +65,35 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
   const [previousPages, setPreviousPages] = useState<Array<number | undefined>>([]);
   const previousCaptions = useRef<string | null>(null);
   const platformInitialized = useRef(false);
+  const request = useRef<AbortController | null>(null);
+  const previousPhotoIds = useRef<string | null>(null);
+  const [positionNotice, setPositionNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async (quiet = false) => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     if (!quiet) setLoading(true);
     try {
-      const response = await fetch(`/api/events/${eventId}/photo-matching${before ? `?before=${before}` : ""}`, { credentials: "include" });
+      const response = await fetch(`/api/events/${eventId}/photo-matching${before ? `?before=${before}&page=${previousPages.length + 1}` : ""}`, { credentials: "include", signal: controller.signal });
       if (!response.ok) throw new Error(await readError(response, "Could not load photo matching."));
       const result = await response.json() as MatchingResponse;
+      if (controller.signal.aborted) return;
       if (!Array.isArray(result.photos)) throw new Error("The server returned an invalid photo matching response.");
       const photos = result.photos.slice(0, 500);
+      const ids = JSON.stringify(photos.map(photo => [photo.id, photo.identificationManual]));
+      if (result.positionReset || (previousPhotoIds.current !== null && previousPhotoIds.current !== ids)) {
+        setSelected(new Set());
+        setReplacePreserved(new Set());
+        setConfirmed(false);
+        setLocalResults({});
+      }
+      previousPhotoIds.current = ids;
+      if (result.positionReset) {
+        setBefore(undefined);
+        setPreviousPages([]);
+        setPositionNotice("The photo list changed. Returned to the first page and cleared the selection.");
+      }
       if (!platformInitialized.current) {
         setPlatformDraft(result.platform || "");
         platformInitialized.current = true;
@@ -90,13 +113,17 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
       setData({ ...result, photos });
       setError(null);
     } catch (reason) {
+      if (controller.signal.aborted) return;
       setError(reason instanceof Error ? reason.message : "Could not load photo matching.");
     } finally {
-      if (!quiet) setLoading(false);
+      if (request.current === controller) {
+        request.current = null;
+        if (!controller.signal.aborted) setLoading(false);
+      }
     }
-  }, [eventId, before, queryClient]);
+  }, [eventId, before, previousPages.length, queryClient]);
 
-  useEffect(()=>{setBefore(undefined);setPreviousPages([]);previousCaptions.current=null;},[eventId]);
+  useEffect(()=>{setBefore(undefined);setPreviousPages([]);previousCaptions.current=null;previousPhotoIds.current=null;setPositionNotice(null);},[eventId]);
 
   useEffect(() => {
     setData(null);
@@ -107,10 +134,15 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
     wasActive.current = false;
     platformInitialized.current = false;
     void refresh();
+    return () => request.current?.abort();
   }, [eventId, refresh]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => void refresh(true), 4000);
+    // Polling must not repeatedly abort slow initial/page requests. Explicit
+    // refreshes and resource changes still cancel obsolete requests.
+    const timer = window.setInterval(() => {
+      if (!request.current) void refresh(true);
+    }, 4000);
     return () => window.clearInterval(timer);
   }, [refresh]);
   const active=data?.photos.some(photo=>isActive(photo.status)) ?? false;
@@ -265,7 +297,7 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
                     <article key={photo.id} className="space-y-2 rounded-md border p-3">
                       <div className="flex items-start gap-3">
                         <Checkbox id={`match-photo-${eventId}-${photo.id}`} checked={selected.has(photo.id)}
-                          disabled={protectedIdentification || processing || selected.size >= 50 && !selected.has(photo.id)}
+                            disabled={loading || !!error || protectedIdentification || processing || selected.size >= 50 && !selected.has(photo.id)}
                           onCheckedChange={value => toggleSelected(photo.id, value === true)}
                           aria-label={`Select photo ${photo.id}`} className="mt-1" />
                         <div className="min-w-0 flex-1">
@@ -302,15 +334,19 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
                 })}
               </div>
             )}
-            {(before || data.nextCursor) && <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" disabled={!previousPages.length || processing} onClick={()=>{
+            {positionNotice && <p role="status" className="text-sm text-muted-foreground">{positionNotice}</p>}
+            <div className="flex flex-wrap items-center gap-2">
+              <PageStatus page={data.page} totalPages={!loading && !error ? data.totalPages : undefined} />
+              <Button type="button" variant="outline" disabled={loading || !!error || data.page === 1 || !previousPages.length || processing} onClick={()=>{
+                setPositionNotice(null);
                 setBefore(previousPages[previousPages.length-1]);setPreviousPages(previousPages.slice(0,-1));
               }}>Newer photos</Button>
-              <Button type="button" variant="outline" disabled={!data.nextCursor || processing} onClick={()=>{
+              <Button type="button" variant="outline" disabled={loading || !!error || !data.hasMore || !data.nextCursor || processing} onClick={()=>{
+                setPositionNotice(null);
                 setPreviousPages([...previousPages,before]);setBefore(data.nextCursor!);
               }}>Older photos</Button>
               <span className="text-xs text-muted-foreground">Up to 500 photos per page. Changing pages clears the selection.</span>
-            </div>}
+            </div>
             {selected.size > 0 && (
               <div className="space-y-3 rounded-md border border-primary/25 bg-primary/5 p-3">
                 <p className="text-sm font-medium">{selected.size} of 50 photos selected</p>

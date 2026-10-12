@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { pageMetadata } from "@shared/pagination";
 import type { Event } from "@shared/schema";
 import { createHash } from "crypto";
 import sharp from "sharp";
@@ -179,8 +180,9 @@ export function registerEventThumbnailRoute(app: Express) {
       const event = await storage.getEvent(id);
       if (!event) return res.status(404).json({ error: "Gallery not found." });
       if (!canManage(req.user, event)) return res.status(403).json({ error: "You cannot edit this gallery." });
-      const photos = await storage.getEventThumbnailOptions(event, page);
-      res.json({ page, hasMore: photos.length > 24, photos: photos.slice(0, 24).map(photo => ({
+      const metadata = pageMetadata(await storage.countEventThumbnailOptions(event),page,24);
+      const photos = await storage.getEventThumbnailOptions(event, metadata.page);
+      res.json({ ...metadata, photos: photos.slice(0, 24).map(photo => ({
         id: photo.id, caption: photo.caption, reference: galleryThumbnailReference(photo, event),
         preview: galleryThumbnailReference(photo, event),
       })) });

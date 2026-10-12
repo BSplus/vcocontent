@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { pageMetadata } from "../shared/pagination.ts";
 import { uiBrowser, delay } from "./helpers/ui-browser.mjs";
 
 const base = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
@@ -121,7 +122,7 @@ test("official media has priority; multiple attributed community galleries retai
     if (path === "/api/user") return { status: 401, body: { error: "Signed out" } };
     if (path === `/api/events/${official.id}`) return { body: official };
     if (path === `/api/events/${own.id}`) return { body: own };
-    if (path === `/api/events/${official.id}/media`) return { body: [photo] };
+    if (path === `/api/events/${official.id}/media`) return { body: { ...pageMetadata(1,1,48),items:[photo] } };
     if (path === `/api/events/${official.id}/community-galleries`) {
       communityRequests++;
       return fail ? { status: 500, body: { error: "Synthetic failure" } } : { body: empty ? [] :
@@ -153,7 +154,7 @@ test("official media has priority; multiple attributed community galleries retai
     await browser.wait("document.body.innerText.includes('No creator galleries are linked to this event yet.')");
     const count = communityRequests;
     await browser.command("Page.navigate", { url: new URL(`/events/${own.id}`, base).href });
-    await browser.wait("document.body.textContent.includes('Alice gallery fixture') && document.body.innerText.includes('By Alice fixture')");
+    await browser.wait("document.body.textContent.includes('Alice gallery fixture') && document.body.innerText.replace(/\\s+/g,' ').includes('By Alice fixture')");
     await delay(150);
     assert.equal(communityRequests, count, "creator pages never fetch official community lists");
     assert.equal(await browser.evaluate("document.body.innerText.includes('Community galleries')"), false);

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useSearch, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { MediaItem } from "@shared/schema";
@@ -8,8 +8,8 @@ import MediaGrid from "@/components/media-grid";
 import { AdvancedSearch } from "@/components/advanced-search";
 import MainNavigation from "@/components/main-navigation";
 import { parseSearchParams, parseSearchPage, serializeSearchParams, SearchFilters } from "@/lib/search-params";
-
-const PAGE_SIZE = 48;
+import type { PageEnvelope } from "@shared/pagination";
+import PageStatus from "@/components/page-status";
 
 export default function SearchResults() {
   const search = useSearch();
@@ -26,12 +26,21 @@ export default function SearchResults() {
 
   // The URL is the applied search, including its page. A new search always drops page.
   // Query keys isolate responses; consuming the query signal cancels obsolete requests.
-  const { data: mediaItems = [], isFetching, isPending, isError, refetch } = useQuery<MediaItem[]>({
-    queryKey: [`/api/media?page=${page}&q=${encodeURIComponent(query)}&type=${filters.mediaType}&fields=${filters.fields.join(",")}`],
+  const { data, isFetching, isPending, isError, refetch } = useQuery<PageEnvelope<MediaItem>>({
+    queryKey: [`/api/media?page=${page}&q=${encodeURIComponent(query)}&type=${filters.mediaType}&fields=${filters.fields.join(",")}&pagination=true`],
     staleTime: 30000,
     retry: false,
   });
   const busy = pendingInput || isFetching || isPending;
+  const mediaItems = data?.items ?? [];
+  useEffect(() => {
+    if (!busy && !isError && data && data.page !== page) {
+      // Correct only the page, retaining all filters and unknown URL parameters.
+      const params = new URLSearchParams(search);
+      if (data.page === 1) params.delete("page"); else params.set("page", String(data.page));
+      setLocation(params.size ? `/search?${params}` : "/search", { replace: true });
+    }
+  }, [data, busy, isError, page, search, setLocation]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -64,7 +73,7 @@ export default function SearchResults() {
             ) : (
               <>
                 <p className="text-sm text-foreground/75 mb-5" role="status" aria-live="polite">
-                  {mediaItems.length} media items on page {page}.
+                  {mediaItems.length} media items · <PageStatus page={data!.page} totalPages={data!.totalPages} />
                 </p>
                 {mediaItems.length ? <MediaGrid key={search} items={mediaItems} /> : (
                   <div className="rounded-lg border border-border bg-card text-center py-12 px-4">
@@ -77,9 +86,9 @@ export default function SearchResults() {
               </>
             )}
             <nav aria-label="Search result pages" className="flex justify-center gap-3 mt-8">
-              <Button variant="outline" disabled={busy || page === 1} onClick={() => navigate(query, filters, false, page - 1)}>Previous</Button>
-              <span className="self-center">Page {page}</span>
-              <Button variant="outline" disabled={busy || isError || mediaItems.length < PAGE_SIZE} onClick={() => navigate(query, filters, false, page + 1)}>Next</Button>
+              <Button variant="outline" disabled={busy || isError || !data || data.page === 1} onClick={() => navigate(query, filters, false, page - 1)}>Previous</Button>
+              <PageStatus className="self-center" page={data?.page ?? page} totalPages={!busy && !isError ? data?.totalPages : undefined} />
+              <Button variant="outline" disabled={busy || isError || !data?.hasMore} onClick={() => navigate(query, filters, false, page + 1)}>Next</Button>
             </nav>
           </section>
         </div>

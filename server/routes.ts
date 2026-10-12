@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
+import { pageMetadata } from "@shared/pagination";
 import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, updateSeriesSchema, entryRowSchema, identificationSchema, users, events as eventsTable, mediaAnalysisJobs, mediaItems, type EntryRow } from "@shared/schema";
 import express from "express";
 import path from "path";
@@ -589,16 +590,20 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   // Get event media
   app.get("/api/events/:id/media", async (req, res) => {
     try {
-      const page = mediaPage(req.query.page);
-      if (!page) return res.status(400).json({ error: "Invalid page" });
+      const requestedPage = mediaPage(req.query.page);
+      if (!requestedPage) return res.status(400).json({ error: "Invalid page" });
       const event = await storage.getEvent(parseInt(req.params.id));
       if (!event) return res.status(404).json({ error: "Event not found" });
       const manager = canManage(req.user,event);
       if (!manager && !await eventPublic(event)) return res.status(404).json({error:"Event not found"});
-      if (event.isPremium) return res.json([]);
+      const paginated = req.query.pagination === "true";
+      const metadata = paginated ? pageMetadata(event.isPremium ? 0 : await storage.countEventMedia(event.id, manager), requestedPage, 48) : undefined;
+      const page = metadata?.page ?? requestedPage;
+      if (event.isPremium) return res.json(metadata ? { ...metadata, items: [] } : []);
       const media = manager ? await storage.getMediaItems(event.id,page)
         : await storage.getPublicEventMediaItems(event.id,page);
-      res.json(manager ? media : media.map(publicMedia));
+      const items = manager ? media : media.map(publicMedia);
+      res.json(metadata ? { ...metadata, items } : items);
     } catch (error) {
       console.error('Error fetching event media:', error);
       res.status(500).json({ error: "Failed to fetch event media" });
@@ -620,9 +625,13 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (fields !== undefined && (typeof fields !== "string" || fields.length > 64 ||
           (fields !== "" && fields.split(",").some(field => !["caption", "photographer", "tags", "identification"].includes(field)))))
         return res.status(400).json({ error: "Invalid search fields" });
-      return res.json((await storage.listPublicMedia(page, 48, search || "",
-        type === "image" || type === "video" ? type : undefined,
-        fields === undefined ? undefined : fields === "" ? [] : fields.split(",") as ("caption" | "photographer" | "tags" | "identification")[])).map(publicMedia));
+      const selectedType = type === "image" || type === "video" ? type : undefined;
+      const selectedFields = fields === undefined ? undefined : fields === "" ? [] :
+        fields.split(",") as ("caption" | "photographer" | "tags" | "identification")[];
+      const metadata = req.query.pagination === "true"
+        ? pageMetadata(await storage.countPublicMedia(search || "", selectedType, selectedFields), page, 48) : undefined;
+      const items = (await storage.listPublicMedia(metadata?.page ?? page, 48, search || "", selectedType, selectedFields)).map(publicMedia);
+      return res.json(metadata ? { ...metadata, items } : items);
     } catch (error) {
       console.error('Error fetching all media:', error);
       res.status(500).json({ error: "Failed to fetch media" });
