@@ -121,7 +121,8 @@ test("four completed tags-only historical photos upgrade only explicitly selecte
     const saved=await storage.getMediaItem(photos[i].id);
     assert.equal(saved.identification[0].team,"Apex");assert.ok(saved.tags.includes("Helmet"));
     if(i<2){assert.equal(saved.captionSource,"photo_automatic");assert.match(saved.caption,/#007 Apex/);
-      assert.match(saved.caption,/Registered lineup: Registered One; Registered Two/);
+      assert.match(saved.caption,/#007 Apex — Prototype — Registered One; Registered Two$/);
+      assert.doesNotMatch(saved.caption,/Registered lineup:|registered Line-up/i);
       for(const text of ["iRacing","IMSA","Round 2","Sebring","20 September 2026"])assert.ok(saved.caption.includes(text));}
     else assert.equal(saved.caption,`${587+i}.jpg`);
   }
@@ -149,9 +150,10 @@ test("manual empty/editorial captions and identifications remain protected, even
   const ps=await Promise.all([
     photo(e,{caption:"",captionSource:"manual"}),
     photo(e,{caption:"IPTC text",captionSource:"preserved"}),
-    photo(e,{caption:"Editorial.jpg",captionSource:"manual"}),
+    photo(e,{caption:"Editorial Registered lineup: original text",captionSource:"manual"}),
     photo(e,{caption:"Manual identity",identificationManual:true,identification:[{...visible,team:"Human team",source:"manual"}]}),
     photo(e,{caption:"",captionSource:"preserved"}),
+    photo(e,{caption:"Registered lineup: Original; Lineup",captionSource:"preserved"}),
   ]);
   scope(ps);
   const res=await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:ps.map(p=>p.id),confirmed:true,
@@ -160,10 +162,31 @@ test("manual empty/editorial captions and identifications remain protected, even
   for(const p of ps.slice(0,3)){const done=await settled(p.id);assert.equal(done.caption,p.caption);}
   assert.equal((await storage.getMediaItem(ps[3].id)).identification[0].team,"Human team");
   assert.equal((await settled(ps[4].id)).caption,"","historical empty preserved text also requires individual consent");
+  assert.equal((await settled(ps[5].id)).caption,ps[5].caption,"stored lineup labels are not cleaned up");
   const before=calls;
   await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:[ps[4].id],confirmed:true,replacePreservedIds:[ps[4].id]},"owner");
   assert.match((await settled(ps[4].id)).caption,/#007 Apex/);
   assert.equal(calls,before,"confirmed historical replacement reuses saved observations");
+});
+
+test("reading stored captions never cleans up lineup labels; future caption previews use plain complete names",async()=>{
+  const e=await album(),p=await photo(e);scope([p]);
+  await enqueueAnalysis(p);const generated=await settled(p.id);
+  const before=calls,audits=auditCalls;
+  for(const captionSource of ["photo_automatic","preserved","manual"]){
+    const caption="Historical Registered lineup: Original One / Original Two";
+    await db.update(mediaItems).set({caption,captionSource}).where(eq(mediaItems.id,p.id));
+    const gallery=await (await api(`/api/events/${e.id}/media`,undefined,"anonymous")).json();
+    assert.equal(gallery.find(row=>row.id===p.id).caption,caption);
+    const detail=await (await api(`/api/media/${p.id}`,undefined,"anonymous")).json();
+    assert.equal(detail.caption,caption);
+    const preview=await api(`/api/media/${p.id}/caption-preview`,{});
+    assert.equal(preview.status,200);
+    assert.match((await preview.json()).suggestion,/#007 Apex — Prototype — Registered One; Registered Two$/);
+    assert.equal((await storage.getMediaItem(p.id)).caption,caption,"suggestions do not save or clean up history");
+  }
+  assert.match(generated.caption,/#007 Apex — Prototype — Registered One; Registered Two$/);
+  assert.equal(calls,before);assert.equal(auditCalls,audits);
 });
 
 test("upload and Nextcloud initial jobs honour opt-in, placeholders and upload AI decision",async()=>{

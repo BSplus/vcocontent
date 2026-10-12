@@ -29,9 +29,11 @@ export function proposeCaption(
   const date = new Date(event.date).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
   const context = [event.title, event.round, event.track, date].filter(Boolean).join(" · ");
   const suggestion = safeMatch
-    ? `${context} — #${safeMatch.number} ${safeMatch.team}, ${safeMatch.car}, ${safeMatch.drivers}`
+    ? `${context} — ${[`#${safeMatch.number} ${safeMatch.team}`.trim(), safeMatch.car, safeMatch.drivers].filter(Boolean).join(" — ")}`
     : `${context}${scene ? ` — ${scene}` : ""}`;
-  return { numbers, matches, ambiguous: numbers.length !== 1 || matches.length !== 1, suggestion: suggestion.slice(0, 1000) };
+  // Keep the complete lineup or fall back to context, never a partial name.
+  return { numbers, matches, ambiguous: numbers.length !== 1 || matches.length !== 1,
+    suggestion: (suggestion.length <= 1000 ? suggestion : context).slice(0, 1000) };
 }
 
 /** Conservative automatic captions never turn tags or registered lineups into
@@ -60,8 +62,8 @@ export function matchedPhotoCaption(
     (row.source === "reference" || (manuallyConfirmed && row.source === "manual")) && /^\d{1,4}$/.test(row.number) &&
     (manuallyConfirmed || !!row.team));
   const vehicles = matched ? captionEntries.map(row =>
-    [`#${row.number} ${row.team}`, row.vehicle,
-      row.drivers ? `Registered lineup: ${row.drivers}` : null].filter(Boolean).join(" — ")) : [];
+    [`#${row.number} ${row.team}`.trim(), row.vehicle,
+      row.drivers].filter(Boolean).join(" — ")) : [];
   // Do not partially truncate a lineup into a misleading fragment.
   const full = [context, ...vehicles].join(" | ");
   return {caption:(full.length <= 1000 ? full : context).slice(0,1000),

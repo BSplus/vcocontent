@@ -19,6 +19,9 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
   const user = { id: 64901, username: "Fixture creator", emailVerifiedAt: "2026-01-01", isCreator: true,
     isAdmin: true, creatorStatus: "approved" };
   const image = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240"><rect width="400" height="240" fill="#273d45"/></svg>');
+  const vehicleCaption = "#77 Northstar Motorsport — Vantage GT3 — M. Vale / J. Ibarra";
+  const addedCaption = `Added caption — ${vehicleCaption}`;
+  const correctedCaption = `Corrected replacement caption — ${vehicleCaption}`;
   let media = [];
   let writes = [];
   let failFirstOptions = false;
@@ -78,7 +81,7 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
           options: [
             { id: "entry-77", number: "77", identification: { number: "77", team: "Northstar Motorsport", drivers: "M. Vale / J. Ibarra",
               vehicle: "Vantage GT3", manufacturer: "Aston Martin", racingClass: "GT3", source: "reference" },
-              contexts: ["Race 2", "Registered lineup"], conflict: true, ...(replacement ? { caption: "Corrected replacement caption — #77 Northstar Motorsport" } : { caption: "Added caption — #77 Northstar Motorsport" }) },
+              contexts: ["Race 2", "Registered lineup"], conflict: true, caption: replacement ? correctedCaption : addedCaption },
             { id: "entry-8", number: "8", identification: { number: "8", team: "Paddock Works", drivers: "L. Chen",
               vehicle: "R9", manufacturer: "Rennsport", racingClass: "GT3", source: "reference" },
               contexts: ["Qualifying", "Class GT3"], conflict: false, caption: "Caption for #8 Paddock Works" },
@@ -93,7 +96,7 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
         body = { error: "Reference snapshot changed. Reload and choose a number again." };
       } else {
         media = media.map(item => item.id === Number(path.split("/")[3]) ? {
-          ...item, caption: payload.replaceIndex === undefined ? "Added caption — #77 Northstar Motorsport" : "Corrected replacement caption — #77 Northstar Motorsport",
+          ...item, caption: payload.replaceIndex === undefined ? addedCaption : correctedCaption,
           identification: [{ number: "77", team: "Northstar Motorsport", drivers: "M. Vale / J. Ibarra", source: "reference" }],
         } : item);
         body = media.find(item => item.id === Number(path.split("/")[3]));
@@ -209,6 +212,7 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
         await browser.wait(`document.querySelector('[role="dialog"]')?.innerText.includes('conflicting reference details')`);
         await browser.evaluate(`document.querySelector('[role="dialog"] [role="radio"]').click()`);
         await browser.wait(`document.querySelector('[role="dialog"]')?.innerText.includes('Corrected replacement caption')`);
+        assert.equal(await browser.evaluate(`document.querySelector('[role="dialog"]')?.innerText.includes(${JSON.stringify(correctedCaption)})`), true);
         const bounds=await browser.evaluate(`(()=>{const r=document.querySelector('[role="dialog"]').getBoundingClientRect();
           return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:innerWidth,height:innerHeight};})()`);
         assert.ok(bounds.left>=0 && bounds.right<=bounds.width && bounds.top>=0 && bounds.bottom<=bounds.height,
@@ -230,6 +234,7 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
         await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.includes('Save assignment')).click()`);
         await browser.wait(`!document.querySelector('[role="dialog"]')`);
         await browser.wait(`document.body.innerText.includes('Corrected replacement caption')`);
+        assert.equal(await browser.evaluate(`document.body.innerText.includes(${JSON.stringify(correctedCaption)})`), true);
         assert.equal(writes.length, 2);
         assert.equal(writes[0].snapshot, "snapshot-replace");
         assert.equal(writes[0].selectionId, "entry-77");

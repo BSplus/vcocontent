@@ -73,8 +73,14 @@ session, platform, series or event-context corrections. Existing recognition is
 reused; there is no new recognition request or caption language-model request.
 Independent safety review is not disabled by this reuse. Conflicting reference
 identity or an unmatched vehicle produces a context-only caption, not invented
-identity. Driver text is explicitly a registered lineup, never a claim about a
-pictured/physically driving person.
+identity. Driver names are the registered lineup for the number, never a claim
+about a pictured/physically driving person. Captions place names directly after
+the vehicle, without a lineup prefix: `#007 North Racing — Porsche 911 — A. One / B. Two`.
+The same formatting applies to manual number-assignment previews and saves and
+caption suggestions. Missing drivers add no separator; exceeding the 1000-character
+limit falls back to event context rather than cutting a lineup. This format change
+does not clean up stored captions or change provenance/replacement protections;
+it applies only when captions are subsequently generated through the normal flows.
 
 Disabling matching fences queued/in-progress automatic writes and preserves saved
 results. Re-enabling does not scan history; explicit selection can reuse stored

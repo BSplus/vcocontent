@@ -158,7 +158,8 @@ test("protected manual, imported/editorial and intentionally cleared captions re
     assert.equal(response.status,200);const saved=await response.json();
     assert.equal(saved.captionSource,"manual");assert.equal(saved.identificationManual,true);
     assert.equal(saved.caption,listed.options[0].caption);
-    assert.match(saved.caption,/Registered lineup: One; Two/);
+    assert.match(saved.caption,/#007 Apex — Prototype — One; Two$/);
+    assert.doesNotMatch(saved.caption,/Registered lineup:|registered Line-up/i);
     assert.match(saved.caption,/Fixture platform.*Fixture series.*Fixture race/);
   }
 });
@@ -174,6 +175,23 @@ test("photos/videos correct a single vehicle and preserve other entries, tags an
     const search=await storage.listPublicMedia(1,48,"Apex",undefined,["identification"]);
     assert.ok(search.some(item=>item.id===m.id));
     assert.equal((await storage.getMediaItems(e.id))[0].caption,saved.caption);
+    assert.equal(saved.caption,listed.options[0].caption);
+    assert.match(saved.caption,/#007 Apex — Prototype — One; Two/);
+    assert.match(saved.caption,/#99 Keep team — Keep car — Keep lineup$/);
+  }
+});
+test("assignment previews and saved captions omit missing drivers and never truncate a complete lineup",async()=>{
+  for(const kind of ["missing","overflow"]){
+    const e=await album(null,kind==="overflow"?{title:"x".repeat(990)}:{}),m=await photo(e);
+    await doc(e,[row("007","Apex",{drivers:kind==="missing"?"":"Complete driver / ".repeat(29)})]);
+    const listed=await options(m),preview=listed.options[0].caption;
+    if(kind==="missing")assert.match(preview,/#007 Apex — Prototype$/);
+    else assert.doesNotMatch(preview,/#007|Complete driver/);
+    assert.ok(preview.length<=1000);
+    const response=await assign(m,listed);
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).caption,preview);
+    assert.equal((await storage.getMediaItem(m.id)).caption,preview);
   }
 });
 test("reference edits, deletion, session/context changes and concurrent editor edits reject stale saves",async()=>{
