@@ -10,6 +10,9 @@ import { uiBrowser, delay } from "./helpers/ui-browser.mjs";
 const preview = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
 const entryPatterns = ["*/src/main.tsx*", "*/assets/index-*.js"];
 const cssPatterns = ["*/src/index.css*", "*/assets/index-*.css"];
+const fontPatterns = ["*.woff2*", "*.woff*"];
+const brandFonts = [400, 500, 600, 700].map(weight => `${weight} 16px "IBM Plex Sans Condensed"`)
+  .concat('800 16px "Big Shoulders Display"');
 const visible = selector => `(() => {
   const el = document.querySelector(${JSON.stringify(selector)});
   return !!el && getComputedStyle(el).visibility !== "hidden" &&
@@ -99,6 +102,8 @@ test("preview: an error during the very first React render reveals the actual bo
   try {
     await b.command("Page.navigate", { url: preview + "/" });
     await b.wait(`document.querySelector('#root h1')?.textContent === 'Something went wrong'`);
+    // The boundary is committed before the bounded initial font wait completes.
+    await b.wait(visible("#root h1"));
     assert.equal(await b.evaluate(visible("#root h1")), true);
     assert.equal(await b.evaluate("document.querySelector('#app-startup')"), null);
     assert.ok(await b.evaluate(`document.querySelector('#root button').textContent.includes('Reload')`));
@@ -115,6 +120,68 @@ async function assertApp(b) {
 for (const mode of ["preview", "production"]) {
   const withBase = run => mode === "production" ? production(run) : run(preview);
   for (const width of [1280, 390]) {
+    test(`${mode} ${width}: delayed brand fonts cannot flash a larger fallback font`, { timeout: 60000 }, () => withBase(async base => {
+      const b = await browserAt(width);
+      const held = [];
+      await intercept(b, fontPatterns, req => held.push(req.requestId));
+      try {
+        await b.command("Page.navigate", { url: base + "/" });
+        await waitForHeld(held);
+        await b.wait(`document.querySelector('#root main') && getComputedStyle(document.documentElement).getPropertyValue('--vco-app-styles').trim() === 'ready'`);
+        await delay(300);
+        assert.equal(await b.evaluate(visible("#root main")), false, "styled content must not paint in fallback fonts while brand fonts load");
+        await assertShell(b);
+        await Promise.all(held.splice(0).map(requestId => b.command("Fetch.continueRequest", { requestId })));
+        await assertApp(b);
+        assert.ok(await b.evaluate(`${JSON.stringify(brandFonts)}.every(font => document.fonts.check(font))`));
+        assert.equal(await b.evaluate("document.documentElement.hasAttribute('data-vco-font-fallback')"), false);
+      } finally { await b.close(); }
+    }));
+
+    test(`${mode} ${width}: a font timeout reveals usable content without a later font swap`, { timeout: 60000 }, () => withBase(async base => {
+      const b = await browserAt(width);
+      const held = [];
+      await intercept(b, fontPatterns, req => held.push(req.requestId));
+      const metrics = `(() => {
+        const title = document.querySelector('#root h1');
+        const range = document.createRange(); range.selectNodeContents(title);
+        const rect = range.getBoundingClientRect();
+        return {family:getComputedStyle(title).fontFamily,width:rect.width,height:rect.height,body:getComputedStyle(document.body).fontFamily};
+      })()`;
+      try {
+        await b.command("Page.navigate", { url: base + "/" });
+        await waitForHeld(held);
+        await assertApp(b);
+        assert.equal(await b.evaluate("document.documentElement.hasAttribute('data-vco-font-fallback')"), true);
+        const before = await b.evaluate(metrics);
+        assert.doesNotMatch(before.family, /Big Shoulders/);
+        await Promise.all(held.splice(0).map(requestId => b.command("Fetch.continueRequest", { requestId })));
+        await b.wait(`${JSON.stringify(brandFonts)}.every(font => document.fonts.check(font))`);
+        await delay(300);
+        assert.deepEqual(await b.evaluate(metrics), before, "late font arrival must not change painted typography or text dimensions");
+        // A later visit with fonts already cached can use the VCO typography.
+        await b.command("Fetch.disable");
+        await b.command("Network.setCacheDisabled", { cacheDisabled: false });
+        await b.command("Page.reload");
+        await assertApp(b);
+        assert.equal(await b.evaluate("document.documentElement.hasAttribute('data-vco-font-fallback')"), false);
+      } finally { await b.close(); }
+    }));
+
+    test(`${mode} ${width}: unavailable fonts do not block the application`, { timeout: 60000 }, () => withBase(async base => {
+      const b = await browserAt(width);
+      await intercept(b, fontPatterns, req => {
+        void b.command("Fetch.failRequest", { requestId:req.requestId,errorReason:"Failed" });
+      });
+      try {
+        await b.command("Page.navigate", { url: base + "/" });
+        await assertApp(b);
+        assert.equal(await b.evaluate("document.documentElement.hasAttribute('data-vco-font-fallback')"), true);
+        assert.ok(await b.evaluate(`document.documentElement.scrollWidth <= innerWidth + 1`));
+        assert.equal(await b.evaluate(visible("#root h1")), true);
+      } finally { await b.close(); }
+    }));
+
     test(`${mode} ${width}: cold entry and hard reload never show public text; first commit reveals app`, { timeout: 90000 }, () => withBase(async base => {
       const b = await browserAt(width);
       const held = [];

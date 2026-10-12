@@ -6,8 +6,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["IBM Plex Sans Condensed", "sans-serif"],
-        display: ["Big Shoulders Display", "sans-serif"],
+        sans: ["var(--vco-font-sans)"],
+        display: ["var(--vco-font-display)"],
       },
       borderRadius: {
         lg: "var(--radius)",

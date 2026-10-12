@@ -11,7 +11,15 @@
 /* Keep centered layouts still when a route gains or loses its scrollbar. */
 html {
   --vco-app-styles: ready;
+  --vco-font-sans: "IBM Plex Sans Condensed", sans-serif;
+  --vco-font-display: "Big Shoulders Display", sans-serif;
   scrollbar-gutter: stable;
+}
+
+/* A slow/failed font request must not keep the app hidden or cause a late swap. */
+html[data-vco-font-fallback] {
+  --vco-font-sans: Arial, sans-serif;
+  --vco-font-display: "Arial Narrow", Arial, sans-serif;
 }
 
 @supports not (scrollbar-gutter: stable) {
@@ -64,13 +72,13 @@ html {
 
   body {
     @apply antialiased bg-background text-foreground;
-    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-family: var(--vco-font-sans);
     font-size: 16px;
     color: #ACB6C0;
   }
 
   h1, h2 {
-    font-family: "Big Shoulders Display", sans-serif;
+    font-family: var(--vco-font-display);
     font-weight: 800;
     line-height: 0.94;
     letter-spacing: -0.025em;
@@ -79,7 +87,7 @@ html {
   }
 
   h3, h4, h5, h6 {
-    font-family: "Big Shoulders Display", sans-serif;
+    font-family: var(--vco-font-display);
     font-weight: 800;
     line-height: 1.12;
     letter-spacing: -0.015em;
@@ -88,7 +96,7 @@ html {
   }
 
   button, input, select, textarea {
-    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-family: var(--vco-font-sans);
   }
 
   button:not(:disabled), [role="button"] {

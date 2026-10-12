@@ -26,6 +26,7 @@
         const html = document.documentElement;
         html.setAttribute("data-app-starting", "");
         let ready = false, committed = false, failed = false, frame = 0;
+        let fontsStarted = false, fontsReady = false;
         let slowTimer;
         function updateNotice() {
           if (ready || !html.hasAttribute("data-app-starting")) return;
@@ -46,11 +47,39 @@
             document.addEventListener("DOMContentLoaded", updateNotice, { once:true });
           } else updateNotice();
         }
+        function prepareFonts() {
+          fontsStarted = true;
+          let finished = false;
+          const finish = usable => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(fontTimer);
+            // Freeze the fallback for this page visit, so late font downloads
+            // cannot resize content after it is already visible.
+            if (!usable) html.setAttribute("data-vco-font-fallback", "");
+            fontsReady = true;
+            revealWhenStyled();
+          };
+          const fontTimer = setTimeout(() => finish(false), 2000);
+          if (!document.fonts?.load) { finish(false); return; }
+          const fonts = [400, 500, 600, 700].map(weight => `${weight} 16px "IBM Plex Sans Condensed"`);
+          fonts.push('800 16px "Big Shoulders Display"');
+          Promise.all(fonts.map(font => document.fonts.load(font, "VCO Media Database")))
+            .then(async faces => {
+              await document.fonts.ready;
+              finish(faces.every(loaded => loaded.length > 0));
+            })
+            .catch(() => finish(false));
+        }
         function revealWhenStyled() {
           if (ready || !committed) return;
           // This marker comes from the app stylesheet, not the inline shell.
           if (getComputedStyle(html).getPropertyValue("--vco-app-styles").trim() !== "ready") {
             frame = requestAnimationFrame(revealWhenStyled);
+            return;
+          }
+          if (!fontsReady) {
+            if (!fontsStarted) prepareFonts();
             return;
           }
           ready = true;
