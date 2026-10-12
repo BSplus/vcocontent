@@ -1,6 +1,6 @@
 import { escapeHtml, renderEmailLayout } from "./layout";
 
-const SUBJECT = "Verify your email | VCO Content Database";
+const SUBJECT = "Verify your email | VCO";
 const HEADLINE = "ONE CLICK.\nYOU’RE IN.";
 const INTRO = "Welcome to the VCO Content Database.";
 const BODY =
@@ -102,7 +102,7 @@ export function verificationEmail(
     "If the button does not work, copy and paste this verification link into your browser:",
     href,
     "",
-    "© Virtual Competition Organisation (VC) GmbH",
+    "© Virtual Competition Organisation (VCO) GmbH",
   ].join("\n");
 
   return { subject: SUBJECT, html, text };

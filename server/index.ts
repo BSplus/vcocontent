@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { registerSeoRoutes } from "./seo-routes";
 import { verifyRecognitionSchema } from "./recognition-schema-readiness";
 import { registerRequestParsers } from "./request-parsers";
+import { startTransactionalEmailWorker } from "./transactional-emails";
 
 const app = express();
 
@@ -106,6 +107,7 @@ process.on('unhandledRejection', (reason) => {
   registerSeoRoutes(app);
 
   const server = await registerRoutes(app);
+  startTransactionalEmailWorker();
 
   if (app.get("env") === "development") {
     await setupVite(app, server);

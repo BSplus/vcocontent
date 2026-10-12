@@ -35,6 +35,7 @@
 - [Drizzle array interpolation](drizzle-array-interpolation.md) — raw SQL array interpolation can expand into lists; bind PostgreSQL arrays explicitly.
 - [FFmpeg failure codes](ffmpeg-failure-codes.md) — nonzero exit statuses vary across versions; preserve actual codes rather than assuming exit 1.
 - [Beta mail setup](beta-launch-setup.md) — sender domain is vco-esports.com; workspace settings do not prove live readiness, and provider acceptance differs from inbox delivery.
+- [Transactional email boundaries](transactional-email-boundaries.md) — reuse approved branding; community/payment notifications require separate activation, and missing workflows remain dependencies.
 - [Legal release boundaries](legal-release-boundaries.md) — free downloads do not determine reuse licences; creator terms and rights require explicit operator approval.
 - [Eventbezogene Caption-Ausnahme](community-caption-boundary.md) — Matching nur nach Event-Opt-in; registrierte Lineups sind kein Beweis abgebildeter Personen, geschützte Texte bleiben geschützt.
 - [Optimistische Browseraktionen](optimistic-browser-actions.md) — neuer sichtbarer Zustand beweist keine abgeschlossene Mutation; vor Folgeaktionen auf aktive Buttons warten.

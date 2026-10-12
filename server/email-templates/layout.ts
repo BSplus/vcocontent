@@ -69,7 +69,7 @@ export function renderEmailLayout({ preheader, content }: EmailLayoutOptions): s
         </table>
         <table role="presentation" width="600" border="0" cellspacing="0" cellpadding="0" style="width:100%; max-width:600px; border-collapse:collapse;">
           <tr>
-            <td align="center" style="padding:17px 18px 0; color:#6f7b87; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:11px; line-height:17px;">© Virtual Competition Organisation (VC) GmbH</td>
+            <td align="center" style="padding:17px 18px 0; color:#82909d; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:11px; line-height:17px;">© Virtual Competition Organisation (VCO) GmbH</td>
           </tr>
         </table>
       </td>

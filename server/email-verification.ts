@@ -1,7 +1,5 @@
 import type { Express } from "express";
 import { createHash, randomBytes } from "crypto";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { users, emailVerifications } from "@shared/schema";
@@ -10,18 +8,11 @@ import { publicSiteUrl } from "./seo";
 import { takeBetaRate } from "./beta-policy";
 import { verificationConfigured } from "./beta-config";
 import { verificationEmail } from "./email-templates/verification";
+import { sendBrandedEmail } from "./email-delivery";
+import { enqueueTransactionalEmail } from "./transactional-emails";
 export { verificationConfigured } from "./beta-config";
 
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
-let logoContent: Promise<string> | undefined;
-function emailLogo() {
-  return logoContent ||= readFile(resolve(process.cwd(), "attached_assets/VCO_2021_reg_White_Trans.png"))
-    .then(bytes => bytes.toString("base64"))
-    .catch(() => {
-      logoContent = undefined;
-      throw new Error("Verification email brand asset is unavailable.");
-    });
-}
 export async function sendVerification(user: {id:number;email:string;emailVerifiedAt:Date|null}) {
   if (user.emailVerifiedAt) return {status:200,error:undefined,sent:false};
   if (!verificationConfigured()) return {status:503,error:"Email verification is not configured. Please try again later."};
@@ -36,14 +27,7 @@ export async function sendVerification(user: {id:number;email:string;emailVerifi
     if (!siteUrl) throw new Error("Verification email origin is unavailable.");
     const url = `${siteUrl}/auth#verify=${token}`;
     const template = verificationEmail(siteUrl, url);
-    const response = await fetch("https://api.resend.com/emails", {
-      method:"POST",headers:{"Authorization":`Bearer ${process.env.RESEND_API_KEY}`,"Content-Type":"application/json",
-        "Idempotency-Key":`verification-${hash}`},
-      body:JSON.stringify({from:process.env.RESEND_FROM,to:[user.email],...template,
-        attachments:[{filename:"vco-logo.png",content:await emailLogo(),content_type:"image/png",content_id:"vco-logo"}]}),
-      signal:AbortSignal.timeout(10000),
-    });
-    if (!response.ok) throw new Error("Delivery rejected");
+    await sendBrandedEmail(user.email, template, `verification-${hash}`);
     return {status:200,sent:true};
   } catch {
     await db.delete(emailVerifications).where(and(eq(emailVerifications.userId,user.id),eq(emailVerifications.tokenHash,hash)));
@@ -68,7 +52,16 @@ export function registerVerificationRoutes(app: Express) {
         const redeemed = await tx.execute(sql`update email_verifications set used_at=now()
           where token_hash=${tokenHash(token)} and used_at is null and expires_at>now() returning user_id`);
         if (!redeemed.rows.length) return false;
-        await tx.update(users).set({emailVerifiedAt:new Date()}).where(eq(users.id,Number(redeemed.rows[0].user_id)));
+        const userId = Number(redeemed.rows[0].user_id);
+        const [verified] = await tx.update(users).set({emailVerifiedAt:new Date()})
+          .where(and(eq(users.id,userId),sql`${users.emailVerifiedAt} is null`))
+          .returning({id:users.id,isCreator:users.isCreator,creatorStatus:users.creatorStatus,suspended:users.suspended});
+        if (verified) {
+          await enqueueTransactionalEmail(tx, "welcome", userId);
+          // An administrator can approve Creator access before email confirmation.
+          if (verified.isCreator && verified.creatorStatus === "approved" && !verified.suspended)
+            await enqueueTransactionalEmail(tx, "creator-welcome", userId);
+        }
         return true;
       });
       res.status(result?200:400).json(result?{verified:true}:{error:"Invalid, expired or already used verification link."});

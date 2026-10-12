@@ -13,6 +13,7 @@ import { creatorUsage, lockedCreatorBudget, publicEventPredicate, publicMediaPre
 import { EventImageError, galleryFilePattern, galleryLegacyPattern, galleryThumbnailReference } from "./gallery-thumbnail-policy";
 import { eventImagePolicy } from "@shared/event-image-policy";
 import { effectiveEventChanges } from "@shared/event-changes";
+import { enqueueTransactionalEmail } from "./transactional-emails";
 
 type SafeUser = Omit<User, "password">;
 type EventUpdateResult = Event & { saveStatus: "saved" | "unchanged" };
@@ -660,14 +661,16 @@ class DatabaseStorage implements IStorage {
   }
 
   async updateUserCreatorStatus(userId: number, status: 'pending' | 'approved' | 'rejected'): Promise<SafeUser> {
-    const result = await db
-      .update(users)
-      .set({
-        creatorStatus: status,
-        isCreator: status === 'approved'
-      })
-      .where(eq(users.id, userId))
-      .returning();
+    const result = await db.transaction(async tx => {
+      const [before] = await tx.select().from(users).where(eq(users.id, userId)).for("update");
+      const updated = await tx.update(users).set({
+        creatorStatus: status, isCreator: status === 'approved',
+      }).where(eq(users.id, userId)).returning();
+      if (status === "approved" && updated[0]?.emailVerifiedAt && !updated[0].suspended &&
+        !(before?.isCreator && before.creatorStatus === "approved"))
+        await enqueueTransactionalEmail(tx, "creator-welcome", userId);
+      return updated;
+    });
 
     if (result.length === 0) {
       throw new Error("User not found");

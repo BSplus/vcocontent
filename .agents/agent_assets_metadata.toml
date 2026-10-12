@@ -84,3 +84,31 @@ mtime_ms = 1791812901055
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/1da96b74-d682-4ff6-91a3-7fb753e5662c/515b8603-0996-46d6-ad52-34a0b9834996"
 storage_version_token = "1791812946732363"
 content_type = "image/png"
+
+[[outputs]]
+id = "TtzDYLZl0cRTbMZIBfupw"
+uri = "file://generated-artifacts/transactional-email-preview/creator-welcome.png"
+type = "image"
+title = "Creator welcome email — preview"
+description = "Approved VCO styling with actual standard Creator limits. Browser preview using a synthetic trusted origin; no real message sent."
+logical_id = "411305f7-2a89-4458-90a2-410ab9f64247"
+content_hash = "sha256:ad1048567e8699d213366d5ec9049fd3009963d4634781d5482af7093ea7f230"
+size = 58415
+mtime_ms = 1791817448034
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/411305f7-2a89-4458-90a2-410ab9f64247/68cba3e4-2a02-46ca-9809-16b128e0d14e"
+storage_version_token = "1791817670362391"
+content_type = "image/png"
+
+[[outputs]]
+id = "Ck9wxsZwhNmnIbQWW_K87"
+uri = "file://generated-artifacts/transactional-email-preview/welcome.png"
+type = "image"
+title = "Account welcome email — preview"
+description = "New post-verification welcome template. Mobile browser preview; actual mail-client rendering and inbox delivery have not been tested."
+logical_id = "e926f53e-4df3-40c1-8ed3-1e36aaa64614"
+content_hash = "sha256:b6cad946c2ef536e971500b5d2adea66bf945ff3cfe39e61821844e2424b9e3f"
+size = 51982
+mtime_ms = 1791817448018
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/e926f53e-4df3-40c1-8ed3-1e36aaa64614/d9ce5315-2a75-4c55-8fff-efb3f06abe7b"
+storage_version_token = "1791817671176288"
+content_type = "image/png"

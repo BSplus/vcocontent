@@ -37,6 +37,7 @@ import { communityLimits, creatorAllowed, safeState, safetyRetryAllowed, takeBet
 import { registerBetaRoutes } from "./beta-routes";
 import { checkContent, reviewEventSafety, reviewMediaSafety } from "./content-safety";
 import { verificationConfigured } from "./email-verification";
+import { enqueueTransactionalEmail } from "./transactional-emails";
 import { registerCommunityRoutes, issueDownloadOperation, validDownloadOperation, recordDownload } from "./community";
 import { publicCreatorById } from "./creator-profiles";
 import { registerCreatorEventAssociationRoutes } from "./creator-event-association";
@@ -1192,8 +1193,14 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       // does not upload or replace a historical picture.
       const safety = await checkContent(JSON.stringify({username:req.user!.username,bio:req.user!.bio}));
       if (safety.status!=="approved") return res.status(403).json({error:"Your public profile text could not be approved."});
-      const [activated] = await db.update(users).set({isCreator:true,creatorStatus:"approved"})
-        .where(sql`${users.id}=${req.user!.id} and not ${users.suspended} and coalesce(${users.creatorStatus},'pending')<>'rejected' and ${users.emailVerifiedAt} is not null`).returning();
+      const activated = await db.transaction(async tx => {
+        const [before] = await tx.select().from(users).where(eq(users.id, req.user!.id)).for("update");
+        const [updated] = await tx.update(users).set({isCreator:true,creatorStatus:"approved"})
+          .where(sql`${users.id}=${req.user!.id} and not ${users.suspended} and coalesce(${users.creatorStatus},'pending')<>'rejected' and ${users.emailVerifiedAt} is not null`).returning();
+        if (updated && !(before?.isCreator && before.creatorStatus === "approved"))
+          await enqueueTransactionalEmail(tx, "creator-welcome", updated.id);
+        return updated;
+      });
       if (!activated) return res.status(403).json({error:"Creator activation is blocked."});
       const {password,...user} = activated;
       res.json(user);

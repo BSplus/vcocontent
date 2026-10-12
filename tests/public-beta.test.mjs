@@ -20,7 +20,8 @@ process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "synthetic-ai-key";
 process.env.MEDIA_ANALYSIS_CONCURRENCY = "2"; // Exercise the shared policy ceiling, independent of hosting settings.
 const { db, pool } = await import("../server/db.ts");
 const { eq, sql, inArray } = await import("drizzle-orm");
-const { users, series, events, mediaItems, mediaReservations, referenceDocuments, emailVerifications, betaRateLimits, safetyResults, safetyReviews, mediaAnalysisJobs, mediaCleanup } = await import("../shared/schema.ts");
+const { users, series, events, mediaItems, mediaReservations, referenceDocuments, emailVerifications, betaRateLimits, safetyResults, safetyReviews, mediaAnalysisJobs, mediaCleanup, transactionalEmails } = await import("../shared/schema.ts");
+const { drainTransactionalEmails, enqueueTransactionalEmail } = await import("../server/transactional-emails.ts");
 const { storage } = await import("../server/storage.ts");
 const { setupAuth } = await import("../server/auth.ts");
 const { registerRoutes } = await import("../server/routes.ts");
@@ -33,6 +34,7 @@ const { searchData } = await import("../server/public-search-data.ts");
 
 const originalFetch = globalThis.fetch;
 const mail = [];
+const mailRequests = [];
 const objects = new Map();
 const accountIds = [];
 const fixtureNames = [];
@@ -43,13 +45,14 @@ const eventIds = [];
 const seriesIds = [];
 const safetyHashes = [];
 const rateKeys = [];
-let safetyMode = "clear", releaseSafety, reachedSafety, safetyCalls = 0, mailFails = false;
+let safetyMode = "clear", releaseSafety, reachedSafety, safetyCalls = 0, mailFails = false, mailStatus = 200;
 const clear = {sexualized:"clear",pornography:"clear",racistOrDehumanizing:"clear",hateSymbolsOrGlorification:"clear",visibleTextAndSymbolsReviewed:true};
 globalThis.fetch = async (input,init) => {
   const url = String(input?.url || input);
   if (url.startsWith("https://api.resend.com/")) {
     mail.push(JSON.parse(init.body));
-    return new Response("{}",{status:mailFails?500:200});
+    mailRequests.push({body:JSON.parse(init.body),key:init.headers["Idempotency-Key"]});
+    return new Response('{"detail":"provider-private-information"}',{status:mailFails?500:mailStatus});
   }
   if (url.startsWith("https://mock-openai.invalid")) {
     const request = JSON.parse(init.body);
@@ -115,7 +118,8 @@ async function account({verified=true,admin=false,creator=false}={}) {
   assert.equal(result.data.isAdmin,false);assert.equal(result.data.emailVerifiedAt,null);assert.equal(result.data.credits,"0");
   if (verified) {
     const token = mail.at(-1).text.match(/#verify=([a-f0-9]{64})/)[1];
-    assert.equal((await request("/api/email-verification/confirm",{method:"POST",body:{token}})).status,200);
+    rateKeys.push(`verify-confirm:${createHash("sha256").update(ip).digest("hex")}`);
+    assert.equal((await request("/api/email-verification/confirm",{ip,method:"POST",body:{token}})).status,200);
   }
   if (admin || creator) await db.update(users).set({isAdmin:admin,isCreator:creator,creatorStatus:creator?"approved":"none"}).where(eq(users.id,result.data.id));
   return {id:result.data.id,cookie:result.cookie};
@@ -287,11 +291,106 @@ test("incomplete visual inspection cannot be approved, including review results 
     assert.equal((await storage.getMediaItem(item.id)).url,result.data.url);
   } finally {await stopAnalysisWorker();safetyMode="clear";}
 });
+test("transactional welcome, creator and first-publication emails are confirmed, deduplicated and retried safely",async()=>{
+  // This suite runs only against its disposable PostgreSQL instance.
+  await db.delete(transactionalEmails);
+  const user=await account({verified:false});
+  const token=mail.at(-1).text.match(/#verify=([a-f0-9]{64})/)[1];
+  assert.equal((await db.select().from(transactionalEmails)).length,0);
+  const confirmed=await Promise.all([1,2].map(()=>request("/api/email-verification/confirm",{method:"POST",body:{token}})));
+  assert.deepEqual(confirmed.map(r=>r.status).sort(),[200,400]);
+  const activated=await Promise.all([1,2].map(()=>request("/api/creator/request",{cookie:user.cookie,method:"POST"})));
+  // The existing shared safety-review lease can reject an overlapping request.
+  assert.ok(activated.some(r=>r.status===200));
+  assert.ok(activated.every(r=>[200,403].includes(r.status)));
+  assert.equal((await request("/api/creator/request",{cookie:user.cookie,method:"POST"})).status,200);
+  assert.equal((await db.select().from(transactionalEmails)).length,2);
+  const event=await gallery(user);
+  const stranger=await account({creator:true});
+  // Remove this unrelated fixture's welcome event, not the test recipient's.
+  await db.delete(transactionalEmails).where(eq(transactionalEmails.userId,stranger.id));
+  assert.equal((await publish(stranger,event.id)).status,403);
+  assert.equal((await db.select().from(transactionalEmails)).length,2);
+  assert.equal((await publish(user,event.id)).status,200);
+  assert.equal((await publish(user,event.id)).status,200);
+  assert.equal((await publish(user,event.id,false)).status,200);
+  assert.equal((await publish(user,event.id)).status,200);
+  assert.equal((await db.select().from(transactionalEmails)).length,3);
+  const originalKey=process.env.RESEND_API_KEY;
+  delete process.env.RESEND_API_KEY;
+  await drainTransactionalEmails();
+  process.env.RESEND_API_KEY=originalKey;
+  assert.ok((await db.select().from(transactionalEmails)).every(row=>row.attempts===0));
+  const start=mailRequests.length;
+  mailFails=true;
+  try {await drainTransactionalEmails();} finally {mailFails=false;}
+  assert.ok((await db.select().from(transactionalEmails)).every(row=>row.status==="pending" && row.attempts===1));
+  assert.equal((await request("/api/user",{cookie:user.cookie})).data.isCreator,true);
+  assert.equal((await request(`/api/events/${event.id}`)).status,200);
+  assert.equal((await request(`/api/events/${event.id}`,{cookie:user.cookie,method:"PUT",
+    body:{title:"Changed after transient provider failure"}})).status,200);
+  await db.update(transactionalEmails).set({nextAttemptAt:new Date(0)});
+  await Promise.all([drainTransactionalEmails(),drainTransactionalEmails()]);
+  const rows=await db.select().from(transactionalEmails);
+  assert.ok(rows.every(row=>row.status==="accepted" && row.acceptedAt && row.attempts===2));
+  assert.ok(rows.every(row=>row.content===null && row.recipient===null));
+  const sent=mailRequests.slice(start);
+  assert.equal(sent.length,6);
+  for (const row of rows) {
+    const attempts=sent.filter(request=>request.key===`vco-${row.key}`);
+    assert.equal(attempts.length,2);
+    assert.deepEqual(attempts[0].body,attempts[1].body,"Retries must preserve the idempotent payload");
+    assert.equal(attempts[1].body.from,process.env.RESEND_FROM);
+    assert.ok(attempts[1].body.text.includes(process.env.PUBLIC_SITE_URL));
+    assert.doesNotMatch(attempts[1].body.text,/#verify=|#reset=|provider-private/);
+  }
+  const creator=sent.find(request=>request.key===`vco-creator-welcome:${user.id}`);
+  assert.match(creator.body.text,/5 galleries[\s\S]*1,000 photos[\s\S]*500 MB/);
+  const before=mail.length;
+  await drainTransactionalEmails();
+  await publish(user,event.id,false);
+  await publish(user,event.id);
+  await request("/api/creator/request",{cookie:user.cookie,method:"POST"});
+  await drainTransactionalEmails();
+  assert.equal(mail.length,before,"Ordinary repeated events must not send again");
+
+  const hidden=await gallery(user);
+  await publish(user,hidden.id);
+  await db.update(events).set({adminHidden:true}).where(eq(events.id,hidden.id));
+  await drainTransactionalEmails();
+  assert.equal(mail.length,before,"A now-hidden gallery must not be promoted");
+  assert.equal((await db.select().from(transactionalEmails).where(eq(transactionalEmails.galleryId,hidden.id)))[0].status,"skipped");
+
+  const failedUser=await account();
+  mailStatus=422;
+  try {await drainTransactionalEmails();} finally {mailStatus=200;}
+  assert.equal((await db.select().from(transactionalEmails).where(eq(transactionalEmails.userId,failedUser.id)))[0].status,"failed");
+  assert.ok((await request("/api/user",{cookie:failedUser.cookie})).data.emailVerifiedAt);
+  await db.transaction(async tx=>{
+    await tx.update(users).set({bio:"Account state survives queue failure"}).where(eq(users.id,user.id));
+    await enqueueTransactionalEmail(tx,"gallery-published",user.id,2147483647);
+  });
+  assert.equal((await db.select().from(users).where(eq(users.id,user.id)))[0].bio,"Account state survives queue failure");
+  const admin=await account({admin:true});
+  for (let i=0;i<2;i++) assert.equal((await request(`/api/admin/users/${failedUser.id}`,{cookie:admin.cookie,
+    method:"PATCH",body:{action:"approve_creator"}})).status,200);
+  assert.equal((await db.select().from(transactionalEmails)
+    .where(eq(transactionalEmails.key,`creator-welcome:${failedUser.id}`))).length,1);
+  const earlyApproved=await account({verified:false});
+  const earlyToken=mail.at(-1).text.match(/#verify=([a-f0-9]{64})/)[1];
+  assert.equal((await request(`/api/admin/users/${earlyApproved.id}`,{cookie:admin.cookie,
+    method:"PATCH",body:{action:"approve_creator"}})).status,200);
+  assert.equal((await db.select().from(transactionalEmails).where(eq(transactionalEmails.userId,earlyApproved.id))).length,0);
+  assert.equal((await request("/api/email-verification/confirm",{method:"POST",body:{token:earlyToken}})).status,200);
+  assert.deepEqual((await db.select().from(transactionalEmails).where(eq(transactionalEmails.userId,earlyApproved.id)))
+    .map(row=>row.kind).sort(),["creator-welcome","welcome"]);
+});
+
 test("register → single-use email verification → self activation, including failure and cooldown",async()=>{
   const user = await account({verified:false});
   const email = mail.at(-1);
   assert.equal(email.from, process.env.RESEND_FROM);
-  assert.equal(email.subject, "Verify your email | VCO Content Database");
+  assert.equal(email.subject, "Verify your email | VCO");
   assert.match(email.html, />VERIFY EMAIL</);
   assert.match(email.html, /cid:vco-logo/);
   assert.equal(email.attachments[0].content_id, "vco-logo");
@@ -316,6 +415,7 @@ test("register → single-use email verification → self activation, including 
   const expiredToken = mail.at(-1).text.match(/#verify=([a-f0-9]{64})/)[1];
   await db.update(emailVerifications).set({expiresAt:new Date(0)}).where(eq(emailVerifications.userId,expired.id));
   assert.equal((await request("/api/email-verification/confirm",{method:"POST",body:{token:expiredToken}})).status,400);
+  assert.equal((await db.select().from(transactionalEmails).where(eq(transactionalEmails.userId,expired.id))).length,0);
   await db.delete(betaRateLimits).where(eq(betaRateLimits.key,`verify-send:${expired.id}`));
   mailFails=true;
   assert.equal((await request("/api/email-verification/send",{cookie:expired.cookie,method:"POST"})).status,502);

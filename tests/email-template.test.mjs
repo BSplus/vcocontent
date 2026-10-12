@@ -9,7 +9,7 @@ const url = `${origin}/auth#verify=${"a".repeat(64)}`;
 
 test("verification template preserves copy, direct links and a useful text alternative", () => {
   const email = verificationEmail(origin, url);
-  assert.equal(email.subject, "Verify your email | VCO Content Database");
+  assert.equal(email.subject, "Verify your email | VCO");
   assert.match(email.html, /ONE CLICK\.<br>YOU’RE IN\./);
   assert.match(email.text, /ONE CLICK\.\nYOU’RE IN\./);
   assert.match(email.html, />VERIFY EMAIL</);
@@ -19,7 +19,7 @@ test("verification template preserves copy, direct links and a useful text alter
   assert.match(email.text, /Verify your email address to activate your account and get started\./);
   for (const content of [email.html, email.text]) {
     assert.equal((content.match(/Virtual Competition Organisation/g) || []).length, 1);
-    assert.match(content, /© Virtual Competition Organisation \(VC\) GmbH/);
+    assert.match(content, /© Virtual Competition Organisation \(VCO\) GmbH/);
     assert.doesNotMatch(content, /© VCO/);
   }
   assert.match(email.html, /cid:vco-logo/);

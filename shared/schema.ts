@@ -258,6 +258,23 @@ export const betaRateLimits = pgTable("beta_rate_limits", {
   resetAt: timestamp("reset_at").notNull(),
 });
 
+/** Small transactional outbox; only confirmed Phase 1 events can enqueue. */
+export const transactionalEmails = pgTable("transactional_emails", {
+  key: text("key").primaryKey(),
+  kind: text("kind").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  galleryId: integer("gallery_id").references(() => events.id, { onDelete: "cascade" }),
+  content: jsonb("content").$type<{subject: string; html: string; text: string}>(),
+  recipient: text("recipient"),
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  nextAttemptAt: timestamp("next_attempt_at").notNull().defaultNow(),
+  acceptedAt: timestamp("accepted_at"),
+}, table => ({
+  due: index("transactional_emails_due_idx").on(table.status, table.nextAttemptAt),
+}));
+
 export const safetyResults = pgTable("safety_results", {
   fingerprint: text("fingerprint").primaryKey(),
   status: text("status").notNull(),

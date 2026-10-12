@@ -11,6 +11,7 @@ import { verificationConfigured } from "./email-verification";
 import { reviewEventSafety, reviewMediaSafety } from "./content-safety";
 import { getOpenAIClient } from "./utils/ai-tagger";
 import { reconcileCreatorStorage } from "./beta-storage-reconcile";
+import { enqueueTransactionalEmail } from "./transactional-emails";
 
 export function registerBetaRoutes(app: Express) {
   app.post("/api/admin/creator-storage/:id/reconcile",requireAdmin,async(req,res)=>{
@@ -73,6 +74,8 @@ export function registerBetaRoutes(app: Express) {
           !owner.emailVerifiedAt || !verificationConfigured() || current.adminHidden || !safeState(current)))
           return {error:"Verify your email and pass the gallery safety check before publishing. Hidden or suspended galleries cannot be republished."};
         const [updated] = await tx.update(events).set({visibility:published?"published":"draft"}).where(eq(events.id,id)).returning();
+        if (published && current.creatorId && current.visibility !== "published")
+          await enqueueTransactionalEmail(tx, "gallery-published", current.creatorId, id);
         return {event:updated};
       });
       return result.error ? res.status(403).json({error:result.error}) : res.json(result.event);
