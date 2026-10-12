@@ -113,7 +113,7 @@ class DatabaseStorage implements IStorage {
   }
 
   async getAllUsers(): Promise<SafeUser[]> {
-    const result = await db.select().from(users);
+    const result = await db.select().from(users).orderBy(desc(users.createdAt), desc(users.id));
     return result.map(({ password, ...user }) => user);
   }
 
