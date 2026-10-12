@@ -11,6 +11,7 @@ import { fixtures, review } from "./fixtures/motorsport/reviewed.mjs";
 import { evaluateRecognition, compareReviewedRuns } from "./helpers/recognition-evaluation.mjs";
 import { recognizeMotorsportImage } from "../server/utils/motorsport-recognition.ts";
 import { TAG_MODEL } from "../server/utils/ai-tagger.ts";
+import { fixtures as controls } from "./fixtures/motorsport/controls.mjs";
 after(()=>pool.end());
 const visible = (number="89") => ({number,team:"",drivers:"",vehicle:"Race Car",manufacturer:"",racingClass:"",discipline:"",source:"visual"});
 const row = (fields={}) => ({number:"89",team:"Season Team",car:"Stock Car",drivers:"Listed A, Listed B",...fields});
@@ -18,7 +19,7 @@ const doc = (rows, extras={}) => ({scope:"season",kind:"entry",session:null,upda
 test("authorized reviewed photo inputs are complete, immutable and cover the requested scenes", async () => {
   assert.match(review.authorization, /authorized EVERYTHING/);
   assert.match(review.reviewer, /visual inspection/);
-  assert.equal(fixtures.length, 16);
+  assert.equal(fixtures.length, 17);
   assert.equal(new Set(fixtures.map(f => f.id)).size, fixtures.length);
   const coverage = new Set(fixtures.flatMap(f => f.coverage));
   for (const required of ["cockpit", "standalone-helmet", "standalone-paddock", "gt3-body", "gt4-body",
@@ -58,6 +59,15 @@ test("reviewed expectations exercise parser/reference contracts, NOT live recogn
     }
     if (f.id === "gt4-front") assert.equal(matched[0].drivers, "", "unmatched entry stays unknown");
   }
+});
+test("leading-zero pixel control is separate from the unchanged natural-photo comparison",async()=>{
+  assert.equal(controls.length,1);
+  const f=controls[0];
+  const bytes=await readFile(new URL(`./fixtures/motorsport/${f.file}`,import.meta.url));
+  assert.equal(createHash("sha256").update(bytes).digest("hex"),f.sha256);
+  assert.deepEqual(f.expected.numbers,["007"]);
+  assert.match(f.source,/Synthetic/);
+  assert.deepEqual(evaluateRecognition(f,{tags:[],vehicles:[visible("007")]}),[]);
 });
 test("the evaluator catches visible omissions, unsupported classes and physical identity claims", () => {
   const f = fixtures.find(f => f.id === "partial-number");

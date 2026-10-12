@@ -1,6 +1,9 @@
 import { and, eq, or, isNull } from "drizzle-orm";
 import { db } from "./db";
 import { referenceDocuments, eventEntries, type Event, type EntryRow, type Identification } from "@shared/schema";
+import { supportedPhotoObservations } from "./utils/photo-number-evidence";
+// Only photo callers require pixel provenance. Video reference matching keeps
+// its existing aggregation policy; explicitly manual assignments are protected.
 
 export const normalizedNumber = (number: string) => number.replace(/^0+(?=\d)/, "");
 export const seasonYear = (event: Event) => event.referenceSeasonYear || new Date(event.date).getUTCFullYear();
@@ -29,11 +32,13 @@ function vehicleConflict(visible: string, registered: string) {
   return !specificA.every(word=>specificB.includes(word)) && !specificB.every(word=>specificA.includes(word));
 }
 /** Result/event/session overrides merge available fields, not guesses. */
-export function matchReferences(visible: Identification[], documents: MatchDocument[], session: string | null, eventTitle = "", strictPhoto = false): Identification[] {
+export function matchReferences(visible: Identification[], documents: MatchDocument[], session: string | null, eventTitle = "", strictPhoto = false, requirePhotoEvidence = false): Identification[] {
   const applicable = documents.filter(d => !d.session || d.session === session);
   const priority = (d: MatchDocument) => (d.scope === "event" ? 10 : 0) + (d.session ? 4 : 0) + (d.kind === "result" ? 2 : 0);
   applicable.sort((a, b) => priority(a) - priority(b) || +new Date(a.updatedAt) - +new Date(b.updatedAt));
-  return visible.map((observed): Identification => {
+  return visible.map((input): Identification => {
+    if (requirePhotoEvidence && input.source === "manual") return input;
+    const observed = requirePhotoEvidence ? supportedPhotoObservations([input])[0] : input;
     let entry: EntryRow | undefined, ambiguous = false;
     if (observed.number) {
       const rowPriority = (document:MatchDocument,row:EntryRow) => priority(document)+
@@ -60,8 +65,9 @@ export function matchReferences(visible: Identification[], documents: MatchDocum
         if (strictPhoto && ambiguous) entry=undefined;
       }
     }
-    if (strictPhoto && entry && (vehicleConflict(observed.vehicle,entry.car) || [
-      [observed.team,entry.team],[observed.manufacturer,entry.manufacturer],
+    if (strictPhoto && entry && [{vehicle:observed.vehicle,team:observed.team,manufacturer:observed.manufacturer},
+      ...(observed.referenceConstraints || [])].some(hint=>vehicleConflict(hint.vehicle,entry!.car) || [
+      [hint.team,entry!.team],[hint.manufacturer,entry!.manufacturer],
     ].some(([a,b])=>a && b && a.trim().toLowerCase()!==b.trim().toLowerCase()))) {
       entry=undefined;
     }
@@ -78,8 +84,8 @@ export function matchReferences(visible: Identification[], documents: MatchDocum
     return { ...observed, drivers: "", source: "visual" };
   });
 }
-export async function identifyEntries(event: Event, visible: Identification[], session: string | null, executor: Pick<typeof db, "select"> = db, strictPhoto = false) {
+export async function identifyEntries(event: Event, visible: Identification[], session: string | null, executor: Pick<typeof db, "select"> = db, strictPhoto = false, requirePhotoEvidence = false) {
   const documents = await executor.select().from(referenceDocuments).where(applicableDocuments(event));
   const legacy = await executor.select().from(eventEntries).where(eq(eventEntries.eventId, event.id));
-  return matchReferences(visible, [...documents, ...(legacy.length ? [{ scope: "event", kind: "entry", session: null, rows: legacy, updatedAt: new Date(0) }] : [])], session,event.title,strictPhoto);
+  return matchReferences(visible, [...documents, ...(legacy.length ? [{ scope: "event", kind: "entry", session: null, rows: legacy, updatedAt: new Date(0) }] : [])], session,event.title,strictPhoto,requirePhotoEvidence);
 }

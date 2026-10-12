@@ -12,6 +12,9 @@ test("public caption search filters the complete stock before paging without cha
   const { storage } = await import("../server/storage.ts");
   const { users, events, mediaItems } = await import("../shared/schema.ts");
   const { registerRoutes } = await import("../server/routes.ts");
+    const { matchReferences } = await import("../server/reference-matching.ts");
+    const { PHOTO_NUMBER_POLICY } = await import("../server/utils/photo-number-evidence.ts");
+    const { eq } = await import("drizzle-orm");
   const { stopImportWorker } = await import("../server/nextcloud.ts");
   const { stopAnalysisWorker } = await import("../server/analysis-jobs.ts");
   let server;
@@ -95,6 +98,38 @@ test("public caption search filters the complete stock before paging without cha
       `/api/media?q=${"x".repeat(101)}`]) {
       assert.equal((await fetch(base + path)).status, 400);
     }
+    const seen={number:"01",team:"",drivers:"",vehicle:"Prototype",manufacturer:"",
+      racingClass:"",discipline:"",source:"visual"};
+    const refs=[{scope:"event",kind:"entry",session:null,updatedAt:new Date(),rows:[
+      {number:"1",team:"BMW M Verstappen Sim Racing",car:"BMW M Hybrid V8",drivers:"Registered lineup"},
+    ]}];
+    // Demonstrate the historical chain (01 -> 1 -> team/lineup) only in the
+    // disposable database. A saved reference result remains searchable.
+    const wrong=await photo(official,{caption:"618.jpg",tags:["Prototype"],
+      identification:matchReferences([seen],refs,null)});
+    const legitimate=await photo(official,{caption:"Legitimate entry",identification:
+       matchReferences([{...seen,vehicleRegion:[0,0,1000,1000],numberEvidence:PHOTO_NUMBER_POLICY}],refs,null,"",true,true)});
+    const manual=await photo(official,{caption:"Protected caption",identificationManual:true,
+      identification:[{...seen,number:"1",team:"Verstappen Sim Racing",drivers:"Manual lineup",source:"manual"}]});
+    await photo(official,{caption:"Unverified veto hint, not an identity",identification:[
+      {...seen,number:"",referenceConstraints:[{vehicle:"",manufacturer:"",team:"BMW M Verstappen Sim Racing"}]},
+    ]});
+    const before=[wrong.id,legitimate.id,manual.id].sort((a,b)=>a-b);
+    for (const fields of ["identification","caption,photographer,tags,identification"]) {
+      assert.deepEqual(ids(await search(`/api/media?q=verstap&fields=${fields}`)),before);
+    }
+    assert.deepEqual(await search("/api/media?q=verstap&fields=caption,photographer,tags"),[]);
+    const corrected=matchReferences([seen],refs,null,"",true,true);
+    await db.update(mediaItems).set({identification:corrected}).where(eq(mediaItems.id,wrong.id));
+    for(const q of ["verstap","VERSTAPPEN","versta","stapp"]) {
+      assert.deepEqual(ids(await search(`/api/media?q=${q}&fields=identification`)),[legitimate.id,manual.id]);
+      assert.deepEqual(ids(await search(`/api/media?q=${q}`)),[legitimate.id,manual.id]);
+    }
+    const saved=await storage.getMediaItem(wrong.id);
+    assert.equal(saved.caption,"618.jpg");assert.deepEqual(saved.tags,["Prototype"]);
+    assert.equal(saved.identification[0].number,"");assert.equal(saved.identification[0].drivers,"");
+    assert.equal((await storage.getMediaItem(legitimate.id)).identification[0].number,"01");
+    assert.equal((await storage.getMediaItem(manual.id)).identificationManual,true);
   } finally {
     await stopImportWorker(); await stopAnalysisWorker();
     if (server?.listening) { server.close(); await once(server, "close"); }

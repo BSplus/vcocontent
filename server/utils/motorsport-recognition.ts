@@ -1,6 +1,8 @@
 import { z } from "zod";
-import { identificationSchema, type Identification } from "@shared/schema";
+import { identificationSchema,photoVehicleRegionSchema, type Identification } from "@shared/schema";
 import { getOpenAIClient, parseTagResponse, TAG_MODEL } from "./ai-tagger";
+import {verifyPhotoObservations} from "./photo-number-evidence";
+import {localizePhotoNumbers} from "./photo-number-localizer";
 
 const vehicle = z.object({
   number: z.string().max(4).default(""),
@@ -15,6 +17,7 @@ const vehicle = z.object({
   manufacturer: z.string().max(160).default(""),
   racingClass: z.string().max(160).default(""),
   discipline: z.string().max(160).default(""),
+  vehicleRegion:photoVehicleRegionSchema.optional().catch(undefined),
 });
 export function parseRecognition(raw: string): { tags: string[]; vehicles: Identification[] } {
   const parsed = z.object({ tags: z.array(z.string()).max(40), vehicles: z.array(vehicle).max(12) }).parse(JSON.parse(raw));
@@ -28,10 +31,11 @@ export function parseRecognition(raw: string): { tags: string[]; vehicles: Ident
     drivers: "", source: "visual",
   }));
   tags=tags.filter(tag=>!["GT3","GT4"].includes(tag) || vehicles.some(v=>v.racingClass.toUpperCase()===tag));
-  return { tags:tags.slice(0,12), vehicles: vehicles.filter(v => Object.entries(v).some(([k, value]) => k !== "source" && value)) };
+  return { tags:tags.slice(0,12), vehicles: vehicles.filter(v => Object.entries(v).some(([k, value]) => !["source","vehicleRegion"].includes(k) && value)) };
 }
 
-export async function recognizeMotorsportImage(image: string) {
+// Raw extraction is exposed for frozen-baseline evaluation, never a route flag.
+export async function extractMotorsportImage(image: string) {
   const client = getOpenAIClient();
   if (!client) throw new Error("AI recognition unavailable");
   // Reuse the exact controlled vocabulary rather than a parallel taxonomy.
@@ -53,9 +57,18 @@ For EACH visible vehicle record a complete race number ONLY if clearly readable;
 Leave unknown fields empty. Team requires readable team branding, not a guessed sponsor. No drivers, faces, helmet identity or guesses.
 Do not call a Stock Car GT Car. Use Race Car when type/class cannot be determined; don't guess manufacturer/model or GT3/GT4 from appearance alone.
 Include classReadable for each vehicle: true ONLY when a specific racing-class marking is readable, never based on body shape. Otherwise leave racingClass empty; do not emit GT3/GT4 tags without this evidence.
-Multiple cars can have different entries. Don't assign one vehicle's identity to the whole photo.` },
+Multiple cars can have different entries. Don't assign one vehicle's identity to the whole photo.
+Include an optional vehicleRegion:[left,top,width,height], the tight whole-car rectangle normalized 0..1000 in full-image coordinates, to locate which car a description concerns. An uncertain location must be omitted.` },
       { role: "user", content: [{ type: "image_url", image_url: { url: image, detail: "high" } }] }],
     }, { timeout: 25000, maxRetries: 0 });
     return parseRecognition(result.choices[0]?.message?.content || "");
   } catch { throw new Error("AI recognition could not be completed"); }
+}
+
+export async function recognizeMotorsportImage(image:string) {
+  try {
+    const parsed=await extractMotorsportImage(image);
+    const anchored=parsed.vehicles.some(v=>v.number) ? (await localizePhotoNumbers(image,parsed.vehicles)).vehicles : parsed.vehicles;
+    return {...parsed,vehicles:await verifyPhotoObservations(image,anchored)};
+  } catch {throw new Error("AI recognition could not be completed");}
 }

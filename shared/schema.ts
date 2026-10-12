@@ -112,6 +112,11 @@ export const entryRowSchema = z.object({
   session: z.string().trim().max(120).optional(),
 });
 export type EntryRow = z.infer<typeof entryRowSchema>;
+// Normalized full-image [left, top, width, height], not panel coordinates.
+export const photoVehicleRegionSchema=z.tuple([
+  z.number().finite().min(0).max(1000),z.number().finite().min(0).max(1000),
+  z.number().finite().positive().max(1000),z.number().finite().positive().max(1000),
+]).refine(([x,y,w,h])=>x+w<=1000&&y+h<=1000,"Region outside image");
 export const identificationSchema = z.object({
   number: z.string().trim().regex(/^[0-9]{0,4}$/),
   team: z.string().trim().max(160),
@@ -121,6 +126,16 @@ export const identificationSchema = z.object({
   racingClass: z.string().trim().max(160),
   discipline: z.string().trim().max(160),
   source: z.enum(["reference", "visual", "manual"]).default("manual"),
+  // Server provenance for independently checked PHOTO numbers; absent on
+  // historical observations and video detections. Not a physical-driver claim.
+  numberEvidence: z.enum(["vehicle-crop-v2"]).optional(),
+  numberPanelRegion:photoVehicleRegionSchema.optional(),
+  vehicleRegion:photoVehicleRegionSchema.optional(),
+  // Unverified weak-reader hints: veto-only, never identity evidence or search
+  // fields, never copied into a newly localized car's displayed metadata.
+  referenceConstraints:z.array(z.object({
+    vehicle:z.string().max(160),manufacturer:z.string().max(160),team:z.string().max(160),
+  })).max(12).optional(),
 });
 export type Identification = z.infer<typeof identificationSchema>;
 export const referenceDocuments = pgTable("reference_documents", {

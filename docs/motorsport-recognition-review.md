@@ -106,3 +106,16 @@ Offline parser/request tests and live accuracy are reported separately.
 Handwritten test responses cannot establish that a model correctly sees a photo.
 Future prompt/model candidates must use the same reviewed expectations and
 must not trade number/class safety for a higher aggregate score.
+
+## Number-evidence follow-up — 11 October 2026
+
+See [the focused number-evidence investigation](photo-number-evidence-review.md)
+for the verified live cases 618/601/643, frozen additional image expectations,
+rejected early experiments, the withdrawn global pixel/tile guard and the
+vehicle-local automatic candidate whose real-pixel quality approval is still open,
+isolated search checks and the limited operator correction recommendation.
+**Known false-number cases are rejected. The additional pixel/OCR candidate
+now preserves the 007 control, but still misses 89 once in three repetitions
+(17/18 critical checks). After this limit was disclosed, the operator approved
+the improvement without requiring perfect recognition or further model research.
+Targets remain unchanged; no production correction or publication occurred.**

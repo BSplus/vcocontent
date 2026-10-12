@@ -43,6 +43,7 @@ import { registerCreatorEventAssociationRoutes } from "./creator-event-associati
 import { EventImageError, validateOfficialEventImages, validateEventImages, publicEventThumbnails, registerEventThumbnailRoute } from "./event-thumbnails";
 import { registerPhotoMatchingRoutes } from "./photo-matching-routes";
 import { effectiveEventChanges } from "@shared/event-changes";
+import {supportedPhotoObservations} from "./utils/photo-number-evidence";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -872,12 +873,13 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
         captionDetections.set(id, cached);
         void result.catch(() => { if (captionDetections.get(id)?.result === result) captionDetections.delete(id); });
       }
-      const detected=stored ? {numbers:stored.recognition!.map(row=>row.number).filter(Boolean),
+      const detected=stored ? {numbers:supportedPhotoObservations(stored.recognition!).map(row=>row.number).filter(Boolean),
+        vehicles:supportedPhotoObservations(stored.recognition!),
         scene:(stored.generatedTags || []).includes("Starting Grid") ? "Start" as const :
           (stored.generatedTags || []).includes("Race Action") ? "Race Action" as const : null} : await cached!.result;
       const scene = requestedScene || detected.scene;
-      const identified=media.identificationManual ? media.identification : await identifyEntries(event,detected.numbers.map(number=>({
-        number,team:"",drivers:"",vehicle:"",manufacturer:"",racingClass:"",discipline:"",source:"visual" as const})),media.recognitionSession);
+      const identified=media.identificationManual ? media.identification :
+        await identifyEntries(event,detected.vehicles.filter(v=>v.number),media.recognitionSession,db,true,true);
       const entries=identified.filter(row=>row.source!=="visual").map(row=>({
         number:row.number,team:row.team,car:row.vehicle,drivers:row.drivers}));
       const result = proposeCaption(event, entries, media.identificationManual ? identified.map(row=>row.number).filter(Boolean) : detected.numbers, scene);

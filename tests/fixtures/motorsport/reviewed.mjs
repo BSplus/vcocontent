@@ -85,4 +85,9 @@ export const fixtures = [
     ["obscured-numbers", "partial-number"],
     "Controlled occlusion of the last digit of 107. The remaining 10 is not a complete number; the unmasked sibling and its entry list must not complete it.",
     { requiredTagGroups: [["GT Car"]], unknownFields: ["number", "drivers", "racingClass"], vehicleCount: { min: 1, max: 1 } }),
+  sample("live-618", "1478afdfd8572329503affe8bd1e205fb56c02268491b726b358108043ac0db2",
+    "Read-only authenticated original from verified https://vco-content-studio.replit.app, media 618, Event 224; operator-reported screenshot",
+    ["prototype-body", "logo-not-number", "unknown-numbers"],
+    "Green/black prototype matches the reported screenshot. Foreground nose is the outlined FLIVERIES i logo, not 01. Stylized fender logos are not number panels; distant background cars establish no complete number. Original 3840x2160 and pixel crops inspected before evaluation. No replacement team or number is established.",
+    { requiredTagGroups: [], unknownFields: ["number", "team", "drivers", "racingClass"] }),
 ];

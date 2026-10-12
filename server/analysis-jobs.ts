@@ -7,6 +7,7 @@ import { mediaAnalysisJobs, mediaItems, events, series } from "@shared/schema";
 import { analysisImageInput, recognitionImageInput } from "./image-analysis";
 import { categorizeContent, generateTagsForImage, isAITaggingConfigured } from "./utils/ai-tagger";
 import { recognizeMotorsportImage } from "./utils/motorsport-recognition";
+import {supportedPhotoObservations} from "./utils/photo-number-evidence";
 import { identifyEntries } from "./reference-matching";
 import { withVisionBudget, VisionBusy } from "./ai-budget";
 import { sampleVideo, SAMPLING_VERSION, cleanupVideoTemps } from "./video-sampling";
@@ -271,7 +272,8 @@ export async function drainAnalysisQueue() {
       });
     }
     const result = claimed.referenceOnly && claimed.recognition
-      ? { tags: claimed.generatedTags || [], vehicles: claimed.recognition }
+      ? { tags: claimed.generatedTags || [], vehicles:item.type==="image"
+          ? supportedPhotoObservations(claimed.recognition) : claimed.recognition }
       : videoResult ? videoResult
       : tagOnly
         ? { tags: await withVisionBudget(async () => generateTagsForImage(await analysisImageInput(item.thumbnail))), vehicles: null }
@@ -306,7 +308,7 @@ export async function drainAnalysisQueue() {
       }
       const merged = claimed.referenceOnly ? current.tags || [] : Array.from(new Set([...manualTags,...freshTags])).slice(0,100);
       const identification = current.identificationManual || !result.vehicles ? current.identification : event
-        ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx,owned.photoWorkflow) : result.vehicles;
+        ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx,owned.photoWorkflow,item.type==="image") : result.vehicles;
       const category = claimed.referenceOnly ? current.category : await categorizeContent(merged);
       const [eventSeries] = event?.seriesId ? await tx.select({name:series.name}).from(series).where(eq(series.id,event.seriesId)) : [];
       const proposal = owned.photoWorkflow && event && !current.identificationManual

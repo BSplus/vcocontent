@@ -93,6 +93,22 @@ test.before(async () => {
         sexualized:"clear",pornography:"clear",racistOrDehumanizing:"clear",hateSymbolsOrGlorification:"clear",visibleTextAndSymbolsReviewed:true,
       })}}]}),{headers:{"Content-Type":"application/json"}});
     }
+    const prompt=JSON.parse(options.body).messages[0]?.content || "";
+    if(prompt.includes("Localize complete")){
+      const visible=providerResult.vehicles;
+      return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify({
+        vehicles:visible.map((v,i)=>({number:v.numberReadable?v.number:"",vehicleRegion:[i*1000/visible.length,0,1000/visible.length,1000]})),scene:null,
+      })}}]}),{headers:{"Content-Type":"application/json"}});
+    }
+    if(prompt.includes("Independently inspect the full image")) {
+      const visible=providerResult.vehicles.filter(v=>v.numberReadable && v.number);
+      const output={fullImageReadings:visible.map((v,i)=>({
+        number:v.number,vehicleRegion:[i*1000/visible.length,0,1000/visible.length,1000],
+        panelRegion:[i*1000/visible.length+100/visible.length,200,100/visible.length,100],
+      })),vehicleReadings:visible.map((v,i)=>({vehicleIndex:i,number:v.number}))};
+      return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify(output)}}]}),
+        {headers:{"Content-Type":"application/json"}});
+    }
     providerCalls++;
     if (gate) await gate;
     return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: JSON.stringify(providerResult) }, finish_reason: "stop" }] }),

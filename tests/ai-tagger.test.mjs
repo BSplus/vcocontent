@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import sharp from "sharp";
 const { parseTagResponse, generateTagsForImage, isAITaggingConfigured, detectRaceNumbers } = await import("../server/utils/ai-tagger.ts");
 
 test("accepts only allowed tags and removes duplicates", () => {
@@ -110,12 +111,23 @@ test("number detection only accepts visible-number JSON and rejects model-invent
   }), { headers: { "content-type": "application/json" } });
   try {
     let request;
+    const image="data:image/webp;base64,"+(await sharp({create:{width:64,height:64,channels:3,background:"white"}}).webp().toBuffer()).toString("base64");
     globalThis.fetch = async (_url, options) => {
-      request = JSON.parse(options.body);
-      return response('{"numbers":["007","12","007"],"scene":"Start","team":"Model guess"}');
+      const body=JSON.parse(options.body);
+      if(body.messages[0].content.includes("Independently inspect the full image"))
+        return response(JSON.stringify({fullImageReadings:[
+          {number:"007",vehicleRegion:[0,0,500,1000],panelRegion:[100,200,100,100]},
+          {number:"12",vehicleRegion:[500,0,500,1000],panelRegion:[600,200,100,100]},
+        ],vehicleReadings:[
+          {vehicleIndex:0,number:"007"},{vehicleIndex:1,number:"12"},
+        ]}));
+      request = body;
+      return response('{"vehicles":[{"number":"007","vehicleRegion":[0,0,500,1000]},{"number":"12","vehicleRegion":[500,0,500,1000]}],"scene":"Start","team":"Model guess"}');
     };
-    assert.deepEqual(await detectRaceNumbers("data:image/webp;base64,AAAA"), { numbers: ["007", "12"], scene: "Start" });
-    assert.equal(request.messages[1].content[1].type, "image_url");
+    const detected=await detectRaceNumbers(image);
+    assert.deepEqual(detected.numbers,["007","12"]);assert.equal(detected.scene,"Start");
+    assert.ok(detected.vehicles.every(v=>!v.team&&!v.drivers&&!v.racingClass));
+    assert.equal(request.messages[1].content.find(c=>c.type==="image_url").type,"image_url");
     globalThis.fetch = async () => response('{"numbers":["7","unknown"],"scene":"Start"}');
     await assert.rejects(detectRaceNumbers("data:image/webp;base64,AAAA"), { message: "Image number detection failed" });
     globalThis.fetch = async () => new Response("private-provider-error", { status: 502 });

@@ -16,9 +16,9 @@ import {matchReferences} from "../server/reference-matching.ts";
 
 const realFetch=globalThis.fetch;
 const eventIds=[],userIds=[],seriesIds=[];
-let server,base,admin,owner,other,calls=0,gate,entered,providerFailure=false,visionVehicle="";
+let server,base,admin,owner,other,calls=0,auditCalls=0,gate,entered,providerFailure=false,visionVehicle="",visionNumber="007",auditNumber="007";
 const image="data:image/webp;base64,"+(await sharp({create:{width:32,height:32,channels:3,background:"green"}}).webp().toBuffer()).toString("base64");
-const visible={number:"007",team:"",drivers:"",vehicle:"",manufacturer:"",racingClass:"",discipline:"",source:"visual"};
+const visible={number:"007",vehicleRegion:[0,0,1000,1000],team:"",drivers:"",vehicle:"",manufacturer:"",racingClass:"",discipline:"",source:"visual"};
 const entry={number:"7",team:"Apex",car:"Prototype",drivers:"Registered One; Registered Two",manufacturer:"",racingClass:"",discipline:""};
 const wait=async fn=>{
   for(let i=0;i<300;i++){if(await fn()) return;await new Promise(r=>setTimeout(r,20));}
@@ -59,11 +59,21 @@ test.before(async()=>{
     const body=JSON.parse(options.body);
     if(body.messages[0].content.includes("publication safety reviewer"))return new Response(JSON.stringify({choices:[{finish_reason:"stop",
       message:{content:JSON.stringify({sexualized:"clear",pornography:"clear",racistOrDehumanizing:"clear",hateSymbolsOrGlorification:"clear",visibleTextAndSymbolsReviewed:true})}}]}));
+    if(body.messages[0].content.includes("Independently inspect the full image")) {
+      auditCalls++;
+      return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify({
+        fullImageReadings:auditNumber?[{number:auditNumber,vehicleRegion:[0,0,1000,1000],panelRegion:[250,250,300,300]}]:[],
+        vehicleReadings:auditNumber?[{vehicleIndex:0,number:auditNumber}]:[],
+      })}}]}),{headers:{"Content-Type":"application/json"}});
+    }
+    if(body.messages[0].content.includes("Localize complete"))return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify({
+      vehicles:[{number:visionNumber,vehicleRegion:[0,0,1000,1000]}],scene:"Race Action",
+    })}}]}),{headers:{"Content-Type":"application/json"}});
     calls++;entered?.();if(gate)await gate;
     if(providerFailure)throw new Error("fixture-private-provider-payload");
     const structured=body.messages[0].content.includes("vehicles:");
     return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:structured
-      ?JSON.stringify({tags:["Race Car","Day"],vehicles:[{...visible,vehicle:visionVehicle,numberReadable:true}]})
+      ?JSON.stringify({tags:["Race Car","Day"],vehicles:[{...visible,number:visionNumber,vehicle:visionVehicle,numberReadable:true}]})
       :"Race Car, Day"}}]}),{headers:{"Content-Type":"application/json"}});
   };
   const app=express();app.use(express.json());app.use((req,_res,next)=>{
@@ -294,4 +304,47 @@ test("queued opt-out work does not call Vision, and older photos remain selectab
   const second=await (await api(`/api/events/${e.id}/photo-matching?before=${first.nextCursor}`)).json();
   assert.ok(second.photos.some(photo=>photo.id===p.id));assert.equal(second.nextCursor,null);
   assert.equal((await api(`/api/events/${e.id}/photo-matching?before=invalid`)).status,400);
+});
+
+test("both photo paths and legacy reuse suppress the Verstap false match",async()=>{
+  for (const workflow of [false,true]) {
+    const e=await album(workflow);
+    await storage.replaceEventEntries(e.id,[{...entry,number:"1",team:"BMW M Verstappen Sim Racing"}]);
+    const p=await photo(e,{caption:"Protected editorial text",tags:["Helmet"],manualTags:["Helmet"]});scope([p]);
+    const falseIdentity={...visible,number:"01",team:"BMW M Verstappen Sim Racing",
+      drivers:entry.drivers,source:"reference"};
+    await db.update(mediaItems).set({identification:[falseIdentity]}).where(eq(mediaItems.id,p.id));
+    const search=async()=> (await (await api("/api/media?q=verstap&fields=identification",undefined,"anonymous")).json()).filter(r=>r.id===p.id);
+    assert.equal((await search()).length,1,"reproduced false hit before isolated correction");
+    visionNumber="01";auditNumber="";
+    try {
+      const beforeAudits=auditCalls;
+      const res=workflow
+        ? await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:[p.id],confirmed:true})
+        : await api(`/api/media/${p.id}/analyze`,{reanalyse:true});
+      assert.equal(res.status,202);
+      const saved=await settled(p.id);
+      assert.equal(saved.identification[0].number,"");
+      assert.equal(saved.identification[0].team,"");
+      assert.equal(saved.identification[0].drivers,"");
+      assert.equal(saved.identification[0].source,"visual");
+      assert.equal(saved.caption,p.caption);assert.ok(saved.tags.includes("Helmet"));
+      assert.equal((await search()).length,0);
+      assert.equal(auditCalls-beforeAudits,1,"empty independent reading does not need a crop request");
+      // Historical readable=true did not retain audit provenance. Reuse only
+      // local data during a reference correction, without silently reanalysing.
+      await db.update(mediaAnalysisJobs).set({recognition:[{...visible,number:"01"}]})
+        .where(eq(mediaAnalysisJobs.mediaId,p.id));
+      await db.update(mediaItems).set({identification:[falseIdentity]}).where(eq(mediaItems.id,p.id));
+      const before=calls, audits=auditCalls;
+      await storage.replaceEventEntries(e.id,[{...entry,number:"1",team:"BMW M Verstappen Sim Racing"}]);
+      const rematched=await settled(p.id);
+      assert.equal(rematched.identification[0].number,"");assert.equal(rematched.identification[0].drivers,"");
+      assert.equal((await search()).length,0);
+      assert.equal(calls,before);assert.equal(auditCalls,audits);
+      const preview=await api(`/api/media/${p.id}/caption-preview`,{});
+      assert.equal(preview.status,200);
+      assert.doesNotMatch(JSON.stringify(await preview.json()),/Verstappen|Registered One/);
+    } finally {visionNumber="007";auditNumber="007";}
+  }
 });
