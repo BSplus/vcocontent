@@ -1,5 +1,5 @@
 import { formatDate } from "@/lib/utils";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { useAuth } from "@/hooks/use-auth";
 import UploadModal from "@/components/upload-modal";
 import LegalLinks from "@/components/legal-links";
 import Footer from "@/components/footer";
+import MainNavigation from "@/components/main-navigation";
 import MediaUploadModal from "@/components/media-upload-modal";
 import EditMediaModal from "@/components/edit-media-modal";
 import EventTitle from "@/components/event-title";
@@ -31,6 +32,13 @@ import AssignNumberAction from "@/components/assign-number-dialog";
 import type { PageEnvelope } from "@shared/pagination";
 import PageStatus from "@/components/page-status";
 import { usePageState } from "@/hooks/use-page-state";
+
+function StudioFrame({ children }: { children: ReactNode }) {
+  return <div className="min-h-[100dvh] bg-background">
+    <MainNavigation />
+    {children}
+  </div>;
+}
 
 export default function CreatorDashboard() {
   const queryClient = useQueryClient();
@@ -111,27 +119,29 @@ export default function CreatorDashboard() {
 
   if (eventsLoading || mediaLoading || usageLoading) {
     return (
-      <div className="min-h-[100dvh] bg-background px-5 py-8 sm:px-8" role="status" aria-label="Loading Creator Studio">
-        <div className="mx-auto max-w-6xl animate-pulse space-y-8">
-          <div className="h-3 w-40 bg-secondary" />
-          <div className="h-12 w-72 max-w-full bg-secondary" />
-          <div className="flex gap-3 border-b border-border pb-4"><div className="h-10 w-28 bg-secondary" /><div className="h-10 w-36 bg-secondary" /><div className="h-10 w-24 bg-secondary" /></div>
-          <div className="grid gap-4 sm:grid-cols-3">{[0, 1, 2].map(item => <div key={item} className="h-28 border border-border bg-card" />)}</div>
-          <div className="h-56 border border-border bg-card" />
-          <span className="sr-only">Loading creator events and usage</span>
-        </div>
-      </div>
+      <StudioFrame>
+        <main className="min-h-[calc(100dvh-72px)] px-5 py-8 sm:px-8" role="status" aria-label="Loading Creator Studio">
+          <div className="mx-auto max-w-6xl animate-pulse space-y-8">
+            <div className="h-3 w-40 bg-secondary" />
+            <div className="h-12 w-72 max-w-full bg-secondary" />
+            <div className="flex gap-3 border-b border-border pb-4"><div className="h-10 w-28 bg-secondary" /><div className="h-10 w-36 bg-secondary" /><div className="h-10 w-24 bg-secondary" /></div>
+            <div className="grid gap-4 sm:grid-cols-3">{[0, 1, 2].map(item => <div key={item} className="h-28 border border-border bg-card" />)}</div>
+            <div className="h-56 border border-border bg-card" />
+            <span className="sr-only">Loading creator events and usage</span>
+          </div>
+        </main>
+      </StudioFrame>
     );
   }
   if (eventsError || mediaError) {
-    return <div role="alert" className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <p>Creator data could not be loaded.</p>
+    return <StudioFrame><main role="alert" className="min-h-[calc(100dvh-72px)] flex flex-col items-center justify-center gap-4 px-4 text-center">
+      <p>Creator data could not be loaded.</p>
       <Button onClick={() => window.location.reload()}>Reload page</Button>
-    </div>;
+    </main></StudioFrame>;
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <StudioFrame>
       <header className="border-b border-primary/20">
         <div className="container mx-auto px-4 py-6">
           <p className="vco-kicker">VCO · Creator workspace</p>
@@ -487,6 +497,6 @@ export default function CreatorDashboard() {
           }}
         />
       )}
-    </div>
+    </StudioFrame>
   );
 }
