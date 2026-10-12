@@ -61,14 +61,14 @@ content_type = "text/html"
 id = "6VloHebQBxJIExKR-_MAd"
 uri = "file://generated-artifacts/email-refinement/mobile.png"
 type = "image"
-title = "Refined verification email — mobile"
-description = "390 px browser preview of the refined template. Synthetic verification URL; no real account token. Actual mail-client rendering may differ."
+title = "Updated headline — mobile preview"
+description = "ONE CLICK. and YOU’RE IN. on separate lines, with a blank line between them. Browser preview with a synthetic verification URL."
 logical_id = "5be9e36a-dcd0-437b-bdad-284005e4894c"
-content_hash = "sha256:38c08409b2ad6b6bed20a0fcba9ee304c2e9995f2ed8150a464e48d5a1f5a73d"
-size = 50686
-mtime_ms = 1791812901036
-storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/5be9e36a-dcd0-437b-bdad-284005e4894c/3ecba84c-37f6-47e6-b82a-50c360ee9f0b"
-storage_version_token = "1791812946049170"
+content_hash = "sha256:a6b023bbd50f780e3c86048ee4f668131ce25680285a8f6470221972b095d9fc"
+size = 50799
+mtime_ms = 1791813500532
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/5be9e36a-dcd0-437b-bdad-284005e4894c/dca2c561-4092-44ec-8dfe-10be5413163e"
+storage_version_token = "1791813517042450"
 content_type = "image/png"
 
 [[outputs]]

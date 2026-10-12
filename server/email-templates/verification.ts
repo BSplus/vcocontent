@@ -1,7 +1,7 @@
 import { escapeHtml, renderEmailLayout } from "./layout";
 
 const SUBJECT = "Verify your email | VCO Content Database";
-const HEADLINE = "ONE CLICK. YOU’RE IN.";
+const HEADLINE = "ONE CLICK.\n\nYOU’RE IN.";
 const INTRO = "Welcome to the VCO Content Database.";
 const BODY =
   "Verify your email address to activate your account and get started.";
@@ -50,7 +50,7 @@ export function verificationEmail(
   const escapedHref = escapeHtml(href);
   const content = `<tr>
   <td class="email-gutter" style="padding:31px 44px 29px;">
-    <h1 class="email-headline" style="margin:0 0 17px; color:#e6e9eb; font-family:'Big Shoulders Display','Arial Narrow',Arial,sans-serif; font-size:48px; font-weight:800; letter-spacing:-0.5px; line-height:50px; text-transform:uppercase;">${escapeHtml(HEADLINE)}</h1>
+    <h1 class="email-headline" style="margin:0 0 17px; color:#e6e9eb; font-family:'Big Shoulders Display','Arial Narrow',Arial,sans-serif; font-size:48px; font-weight:800; letter-spacing:-0.5px; line-height:50px; text-transform:uppercase;">${escapeHtml(HEADLINE).replaceAll("\n", "<br>")}</h1>
     <p class="email-mobile-copy" style="margin:0 0 8px; color:#dbe1e6; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:18px; font-weight:600; line-height:27px;">${escapeHtml(INTRO)}</p>
     <p class="email-mobile-copy" style="margin:0 0 19px; color:#aeb9c3; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:16px; line-height:25px;">${escapeHtml(BODY)}</p>
     <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 0 19px;">
