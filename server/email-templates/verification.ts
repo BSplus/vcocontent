@@ -1,7 +1,7 @@
 import { escapeHtml, renderEmailLayout } from "./layout";
 
 const SUBJECT = "Verify your email | VCO Content Database";
-const HEADLINE = "ONE CLICK.\n\nYOU’RE IN.";
+const HEADLINE = "ONE CLICK.\nYOU’RE IN.";
 const INTRO = "Welcome to the VCO Content Database.";
 const BODY =
   "Verify your email address to activate your account and get started.";

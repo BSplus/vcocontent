@@ -10,8 +10,8 @@ const url = `${origin}/auth#verify=${"a".repeat(64)}`;
 test("verification template preserves copy, direct links and a useful text alternative", () => {
   const email = verificationEmail(origin, url);
   assert.equal(email.subject, "Verify your email | VCO Content Database");
-  assert.match(email.html, /ONE CLICK\.<br><br>YOU’RE IN\./);
-  assert.match(email.text, /ONE CLICK\.\n\nYOU’RE IN\./);
+  assert.match(email.html, /ONE CLICK\.<br>YOU’RE IN\./);
+  assert.match(email.text, /ONE CLICK\.\nYOU’RE IN\./);
   assert.match(email.html, />VERIFY EMAIL</);
   assert.doesNotMatch(email.subject, /\[TEST\]/);
   assert.doesNotMatch(email.html, /VCO&nbsp; \/ &nbsp;ACCOUNT|VERIFY EMAIL ADDRESS/);
@@ -72,8 +72,7 @@ for (const width of [1280, 390, 320]) {
         assert.ok(state.ctaHeight >= 44 && state.ctaHeight <= 48);
         if (width < 500) {
           assert.equal(state.headlineSize, 29);
-          // The requested blank headline line adds one 32px mobile line.
-          assert.ok(state.ctaTop < 532);
+          assert.ok(state.ctaTop < 500);
         }
         assert.notEqual(state.background, "rgba(0, 0, 0, 0)");
         const image = await browser.command("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });

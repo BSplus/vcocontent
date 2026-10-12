@@ -61,14 +61,14 @@ content_type = "text/html"
 id = "6VloHebQBxJIExKR-_MAd"
 uri = "file://generated-artifacts/email-refinement/mobile.png"
 type = "image"
-title = "Updated headline — mobile preview"
-description = "ONE CLICK. and YOU’RE IN. on separate lines, with a blank line between them. Browser preview with a synthetic verification URL."
+title = "VCO headline — compact spacing"
+description = "Two headline lines with tight spacing and no blank line. Mobile browser preview; synthetic verification URL."
 logical_id = "5be9e36a-dcd0-437b-bdad-284005e4894c"
-content_hash = "sha256:a6b023bbd50f780e3c86048ee4f668131ce25680285a8f6470221972b095d9fc"
-size = 50799
-mtime_ms = 1791813500532
-storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/5be9e36a-dcd0-437b-bdad-284005e4894c/dca2c561-4092-44ec-8dfe-10be5413163e"
-storage_version_token = "1791813517042450"
+content_hash = "sha256:1f8b8b326966e5b0721d52c3eefa0596ea7afa3c6e8758f765a0960108444d37"
+size = 50801
+mtime_ms = 1791815186110
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/5be9e36a-dcd0-437b-bdad-284005e4894c/f45838b7-a036-4d7c-a3f3-a9c329144789"
+storage_version_token = "1791815247593450"
 content_type = "image/png"
 
 [[outputs]]
