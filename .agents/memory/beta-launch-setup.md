@@ -3,11 +3,11 @@ name: Beta mail setup
 description: User-reported Resend configuration and the sending domain for beta emails.
 ---
 
-Der Nutzer meldet: „Resend ist jetzt konfiguriert. Also die Domain updates.vco-esports.com“.
+Der Nutzer hat den gewünschten Absender auf die Domain vco-esports.com umgestellt und meldet, dass deren Einrichtung in Resend noch bevorsteht. Die zuvor eingerichtete Versanddomain war updates.vco-esports.com.
 
-**Why:** Der Nutzer hat die zuvor verschobene Einrichtung als konfiguriert gemeldet.
+**Why:** Der Nutzer hat den Wechsel der Versanddomain ausdrücklich mitgeteilt; die neue Domain ist laut seiner Meldung noch nicht fertig konfiguriert.
 
-**How to apply:** Resend nicht mehr als bewusst verschoben behandeln. Die gemeldete Versanddomain ist updates.vco-esports.com. Die Meldung ersetzt weder die Prüfung der App-Konfiguration noch einen Zustellungstest und ist keine Freigabe zur Veröffentlichung oder zum Umgehen der Verifizierung.
+**How to apply:** vco-esports.com als gewünschte Versanddomain behandeln, nicht mehr updates.vco-esports.com. Die neue Domain nicht ohne Prüfung als verifiziert ansehen. Die Meldung ersetzt weder die Prüfung der App-Konfiguration noch einen Zustellungstest und ist keine Freigabe zur Veröffentlichung oder zum Umgehen der Verifizierung.
 
 Die Mailbereitschaft immer am laufenden veröffentlichten Prozess prüfen, nicht allein anhand vorhandener Workspace-Secrets.
 
