@@ -34,18 +34,18 @@ export default function MediaDetail() {
 
   return <div className="min-h-screen bg-background">
     <MainNavigation />
-    <main className="container mx-auto px-4 py-8">
+    <main className="container mx-auto break-words px-4 py-5 md:py-8">
       {isLoading ? <p>Loading media…</p> : isError || !item ? <p>Media not found.</p> : <>
         <Link href={`/events/${item.eventId}`} className="text-primary underline">Back to event gallery</Link>
         <h1 className="mt-5 text-2xl font-bold">{item.caption || "Esports racing media"}</h1>
         {item.type === "image" && <div className="mt-4"><CommunityActions kind="media" id={item.id} title={item.caption || "photo"} /></div>}
-        <div className="mt-6 flex justify-center rounded-lg bg-black/40 p-3">
+        <div className="mt-4 md:mt-6 flex justify-center rounded-lg bg-black/40 p-1 md:p-3">
           {item.type === "video"
             ? <VideoPreview key={item.id} src={item.url} poster={item.thumbnail} signedIn={!!user} className="max-h-[75vh]" />
             : <img src={item.thumbnail} alt={item.caption || "Esports racing photo"} className="max-h-[75vh] max-w-full object-contain" />}
         </div>
         {item.photographer && <p className="mt-4">Photographer: {item.photographer}</p>}
-        <div className="mt-6 flex flex-wrap gap-3">
+        <div className="mt-4 md:mt-6 flex flex-wrap gap-2 md:gap-3 [&>button]:min-h-11 [&>a]:min-h-11">
           <ShareMenu url={window.location.href} title={item.caption || "VCO photo"} />
           <Button variant="outline" onClick={async () => {
             const configuredCanonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href;

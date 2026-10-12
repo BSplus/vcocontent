@@ -20,13 +20,16 @@ async function playback({views=true,errors=true,widths=[1280,390]}={}) {
   };
   const state=()=>browser.evaluate(`(()=>{const v=document.querySelector('video');return v&&({time:v.currentTime,paused:v.paused,error:v.error?.code,ready:v.readyState,width:v.videoWidth,height:v.videoHeight,inline:v.playsInline,src:v.currentSrc})})()`);
   const visit=async path=>{
+    await browser.evaluate("window.fixtureNavigating = true");
     await browser.command("Page.navigate",{url:fixture.base+path});
+    await browser.wait("!window.fixtureNavigating && !document.documentElement.hasAttribute('data-app-starting')");
     const item = /^\/media\/(\d+)/.exec(path);
     const caption = item ? fixture.media.find(row=>row.id===Number(item[1]))?.caption : "Moving H264 fixture";
     await browser.wait(`!!document.querySelector('main') && document.body.textContent.includes(${JSON.stringify(caption)})`);
   };
   const click=async selector=>{
     await browser.wait(`!!document.querySelector(${JSON.stringify(selector)})`);
+    await browser.wait(`!!document.querySelector(${JSON.stringify(selector)}) && !document.documentElement.hasAttribute('data-app-starting')`);
     const point=await browser.evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});el.scrollIntoView({block:'center'});const r=el.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
     await tap(point);
   };
@@ -82,6 +85,7 @@ async function playback({views=true,errors=true,widths=[1280,390]}={}) {
   };
   try {
     await browser.command("Network.enable");
+    await browser.command("Network.setCacheDisabled",{cacheDisabled:true});
     await browser.command("Network.setCookie",{name:"fixture-role",value:"admin",url:fixture.base,path:"/"});
     for(const width of views ? widths : []) {
       touch=width===390;
@@ -89,6 +93,16 @@ async function playback({views=true,errors=true,widths=[1280,390]}={}) {
       await browser.command("Emulation.setTouchEmulationEnabled",{enabled:width===390});
       await visit(`/events/${fixture.event.id}`);
       await click('button[aria-label="Preview video: Moving H264 fixture"]');await exercise();
+       if (touch) {
+         const point=await browser.evaluate(`(()=>{const r=document.querySelector('video').getBoundingClientRect();return{x:r.x+r.width*.7,y:r.y+r.height*.4}})()`);
+         await browser.command("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[point]});
+         for(let step=1;step<=6;step++){
+           await browser.command("Input.dispatchTouchEvent",{type:"touchMove",touchPoints:[{x:point.x-step*18,y:point.y}]});
+           await delay(20);
+         }
+         await browser.command("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});
+         assert.ok((await state()).src.includes(fixture.keys[0]),"video touches must not navigate the gallery");
+       }
       console.log("Playback checked",width,"gallery");
       await browser.evaluate(`void(window.oldVideo=document.querySelector('video'))`);
       await click('button[aria-label="Next media item"]');
@@ -133,10 +147,11 @@ async function playback({views=true,errors=true,widths=[1280,390]}={}) {
     await browser.evaluate(`(()=>{const v=document.querySelector('video');v.src+='?fixture=denied';v.load()})()`);
     await message("You do not have permission");fixture.media[0].isPremium=false;
     fixture.objects.delete(fixture.keys[0]);
-    await browser.evaluate(`(()=>{const v=document.querySelector('video');v.src+='?fixture=missing';v.load()})()`);
+    await visit("/media/91101");
     await message("temporarily unavailable");
     const removed=fixture.media.shift();
-    await browser.evaluate(`(()=>{const v=document.querySelector('video');v.src+='?fixture=deleted';v.load()})()`);
+    // Keep the rendered item while forcing a fresh, non-buffered file request.
+    await browser.evaluate(`(()=>{const v=document.querySelector('video'), src=v.src;v.pause();v.removeAttribute('src');v.load();v.src=src+'?fixture=deleted';v.load()})()`);
     await message("missing or is no longer available");
     fixture.media.unshift(removed);
     await browser.command("Network.setCookie",{name:"fixture-role",value:"anonymous",url:fixture.base,path:"/"});

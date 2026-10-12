@@ -1,0 +1,12 @@
+@media (max-width: 767px) {
+  .mobile-media-preview.mobile-media-preview {
+    overflow-wrap: anywhere;
+    max-height: calc(100dvh - max(1rem, env(safe-area-inset-top, 0px)) - max(1rem, env(safe-area-inset-bottom, 0px)));
+  }
+  .mobile-media-preview > button:last-child {
+    min-width: 44px;
+    min-height: 44px;
+    top: 0;
+    right: 0;
+  }
+}

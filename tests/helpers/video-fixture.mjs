@@ -10,6 +10,11 @@ import { Storage } from "@google-cloud/storage";
 import { Client } from "@replit/object-storage";
 import { storage } from "../../server/storage.ts";
 import { registerRoutes } from "../../server/routes.ts";
+import { pageMetadata } from "../../shared/pagination.ts";
+
+// The real video bucket is process-cached. Its mocked methods must resolve the
+// current fixture rather than keep serving a previous test's objects forever.
+let activeVideoFixture;
 
 /** Isolated test server: synthetic identities/data and real file route handlers.
  * No sessions, files, database rows, buckets or provider calls are modified. */
@@ -75,16 +80,17 @@ export async function videoFixture({ register = registerRoutes, store = storage 
     streams.push(stream);
     return stream;
   };
+  activeVideoFixture = { objects, open, objectRanges, metadataRead: () => metadataReads++ };
   Storage.prototype.bucket = () => ({
     file: (key, options={}) => ({
       async getMetadata() {
-        metadataReads++;
-        if (!objects.has(key)) throw new Error("Missing object");
-        return [{ size: String(objects.get(key).length), generation: "1" }];
+        activeVideoFixture.metadataRead();
+        if (!activeVideoFixture.objects.has(key)) throw new Error("Missing object");
+        return [{ size: String(activeVideoFixture.objects.get(key).length), generation: "1" }];
       },
       createReadStream: range => {
-        objectRanges.push({key,options,range});
-        return open(key, range);
+        activeVideoFixture.objectRanges.push({key,options,range});
+        return activeVideoFixture.open(key, range);
       },
     }),
   });
@@ -116,11 +122,16 @@ export async function videoFixture({ register = registerRoutes, store = storage 
   app.get("/api/user", (req, res) => req.user ? res.json(req.user) : res.status(401).json({message:"Sign in required"}));
   app.get("/api/events", (_req,res)=>res.json([event]));
   app.get(`/api/events/${event.id}`, (_req,res)=>res.json(event));
-  app.get(`/api/events/${event.id}/media`, (_req,res)=>res.json(media));
+  const mediaList = (req, res) => {
+    if (req.query.pagination !== "true") return res.json(media);
+    const meta = pageMetadata(media.length, Number(req.query.page || 1), 48);
+    res.json({ ...meta, items: media.slice((meta.page - 1) * 48, meta.page * 48) });
+  };
+  app.get(`/api/events/${event.id}/media`, mediaList);
   app.get(`/api/events/${event.id}/community-galleries`, (_req,res)=>res.json([]));
   app.get("/api/media/top-shots", (_req,res)=>res.json(media.slice(0,2)));
   app.get("/api/media/creator-top", (_req,res)=>res.json([]));
-  app.get("/api/media", (_req,res)=>res.json(media));
+  app.get("/api/media", mediaList);
   app.get("/api/media/:id", (req,res,next)=>{
     if (!/^\d+$/.test(req.params.id)) return next();
     const item = media.find(item=>item.id===Number(req.params.id));
@@ -145,6 +156,7 @@ export async function videoFixture({ register = registerRoutes, store = storage 
         getEvent:originals.getEvent,cleanupObjects:originals.cleanupObjects,getUser:originals.getUser});
       globalThis.fetch=originals.fetch; Storage.prototype.bucket=originals.bucket;
       Client.prototype.downloadAsStream=originals.read;
+      activeVideoFixture = undefined;
       await rm(temp,{recursive:true,force:true});
     },
   };

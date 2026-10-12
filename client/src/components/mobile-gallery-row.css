@@ -1,0 +1,18 @@
+.mobile-gallery-card { min-width: 0; }
+.mobile-gallery-card > * { height: 100%; }
+@media (max-width: 767px) {
+  .mobile-gallery-row.mobile-gallery-row {
+    display: flex;
+    position: relative;
+    gap: 12px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    padding: 2px;
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+  .mobile-gallery-row::-webkit-scrollbar { display: none; }
+  .mobile-gallery-card { flex: 0 0 88%; scroll-snap-align: start; }
+  .mobile-gallery-row[data-single="true"] .mobile-gallery-card { flex-basis: 100%; }
+}

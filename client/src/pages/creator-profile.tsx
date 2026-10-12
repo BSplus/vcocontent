@@ -10,6 +10,7 @@ import MediaGrid from "@/components/media-grid";
 import MainNavigation from "@/components/main-navigation";
 import type { PublicCreator } from "@/components/creator-identity";
 import { useAuth } from "@/hooks/use-auth";
+import MobileGalleryRow from "@/components/mobile-gallery-row";
 
 type CreatorProfileData = PublicCreator & {
   bio: string | null;
@@ -87,7 +88,7 @@ export default function CreatorProfile() {
       </section>
       <section className="pt-10">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><p className="vco-kicker">On the circuit</p><h2 className="mt-2 text-3xl sm:text-4xl">Published galleries</h2></div><span className="text-sm text-muted-foreground">{creatorEvents.length} {creatorEvents.length === 1 ? "gallery" : "galleries"}</span></div>
-        {eventsError ? <div role="alert" className="border border-destructive/30 bg-card p-7 text-center"><p>Published galleries are temporarily unavailable.</p><Button variant="outline" className="mt-4" onClick={() => void retryEvents()}>Try again</Button></div> : creatorEvents.length ? <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{creatorEvents.map(event=><EventCard key={event.id} event={event} />)}</div> : <div className="border border-dashed border-border bg-card/50 px-6 py-14 text-center"><CalendarDays className="mx-auto h-8 w-8 text-primary" /><h3 className="mt-4 text-xl">No public galleries yet</h3><p className="mt-2 text-sm text-muted-foreground">New work will appear here once it’s published.</p></div>}
+        {eventsError ? <div role="alert" className="border border-destructive/30 bg-card p-7 text-center"><p>Published galleries are temporarily unavailable.</p><Button variant="outline" className="mt-4" onClick={() => void retryEvents()}>Try again</Button></div> : creatorEvents.length ? <MobileGalleryRow label="Published galleries" className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{creatorEvents.map(event=><EventCard key={event.id} event={event} />)}</MobileGalleryRow> : <div className="border border-dashed border-border bg-card/50 px-6 py-14 text-center"><CalendarDays className="mx-auto h-8 w-8 text-primary" /><h3 className="mt-4 text-xl">No public galleries yet</h3><p className="mt-2 text-sm text-muted-foreground">New work will appear here once it’s published.</p></div>}
       </section>
       {topMediaItems.length > 0 && <section className="mt-14 border-t border-border pt-10"><div className="mb-6 flex items-end gap-3"><Star className="mb-1 h-5 w-5 text-primary" /><div><p className="vco-kicker">Selected frames</p><h2 className="mt-2 text-3xl">Most popular work</h2></div></div><MediaGrid items={topMediaItems} /></section>}
       {mediaError && <p role="status" className="mt-8 text-sm text-muted-foreground">Popular media is temporarily unavailable.</p>}

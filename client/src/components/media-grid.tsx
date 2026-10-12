@@ -35,6 +35,8 @@ import { Link } from "wouter";
 import MediaRightsNotice from "@/components/media-rights-notice";
 import CommunityActions from "@/components/community-actions";
 import VideoPreview from "@/components/video-preview";
+import { usePhotoSwipe } from "@/hooks/use-photo-swipe";
+import "./media-preview-mobile.css";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -80,6 +82,15 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
       setSelectedItem(items[prevIndex]);
     }
   };
+
+  const swipe = usePhotoSwipe(selectedItem?.type === "image", () => {
+    let index = selectedItemIndex - 1;
+    while (index >= 0 && items[index].type !== "image") index--;
+    if (index >= 0) { setSelectedItemIndex(index); setSelectedItem(items[index]); }
+  }, () => {
+    const offset = items.slice(selectedItemIndex + 1).findIndex(item => item.type === "image");
+    if (offset >= 0) { const index = selectedItemIndex + 1 + offset; setSelectedItemIndex(index); setSelectedItem(items[index]); }
+  });
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -262,7 +273,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
         setSelectedItem(null);
         setSelectedItemIndex(-1);
       }}>
-        <DialogContent className="w-[calc(100%-1rem)] max-w-4xl max-h-[95dvh] overflow-y-auto" onCloseAutoFocus={(event) => {
+        <DialogContent className="mobile-media-preview w-[calc(100%-1rem)] max-w-4xl max-h-[95dvh] overflow-y-auto p-3 md:p-6" onCloseAutoFocus={(event) => {
           if (openerRef.current?.isConnected) {
             event.preventDefault();
             openerRef.current.focus();
@@ -275,7 +286,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
             {selectedItem?.caption && <p className="text-sm text-foreground/80">{selectedItem.caption}</p>}
           </DialogHeader>
 
-          <div className="relative aspect-video bg-black/20">
+          <div {...swipe} style={{ touchAction: selectedItem?.type === "image" ? "pan-y pinch-zoom" : "auto" }} className="relative aspect-[4/3] md:aspect-video bg-black/20">
             {selectedItem?.type === "video"
               ? <VideoPreview key={selectedItem.id} src={selectedItem.url} poster={selectedItem.thumbnail}
                   signedIn={!!user} className="absolute inset-0" />
@@ -333,7 +344,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   </p>
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex w-full flex-wrap gap-2 [&>button]:min-h-11 md:w-auto">
                 {selectedItem?.type === "image" && <CommunityActions kind="media" id={selectedItem.id} title={selectedItem.caption || "photo"} />}
                 {user?.isAdmin && (
                   <Button

@@ -126,3 +126,17 @@ mtime_ms = 1791843858884
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/893c19d5-d0e8-4e70-aee5-6c06e490ecb1/552d9f8c-2842-418b-8d92-beac102b96a1"
 storage_version_token = "1791843879725475"
 content_type = "text/html"
+
+[[outputs]]
+id = "1ID7ZCjY6EfetsQPPl7tO"
+uri = "file://generated-artifacts/mobile-navigation/comparison-home-390.png"
+type = "image"
+title = "Mobile Startseite: Vorher / Nachher"
+description = "Vergleich bei 390 px mit denselben isolierten Testdaten. Kompakter Header, kleinere Startsektion und wischbare Galerie-Reihen mit unterer Schnellnavigation."
+logical_id = "5bc8c384-fff3-4160-a55b-5c7286659194"
+content_hash = "sha256:7cb43c22c4be1eafe3feec09ea0ed4aedd8209e5c2c2915fb3f580f6adb98393"
+size = 427826
+mtime_ms = 1791846757955
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/5bc8c384-fff3-4160-a55b-5c7286659194/7808e9b8-22a3-4fd0-8298-ba7e8a18aa19"
+storage_version_token = "1791847395282972"
+content_type = "image/png"
