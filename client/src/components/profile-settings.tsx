@@ -10,6 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { queryClient } from "@/lib/queryClient";
+import { hasActivePublicCreatorProfile } from "@shared/creator-profile-access";
+import { Link } from "wouter";
+import { ArrowUpRight } from "lucide-react";
 
 interface ProfileSettingsProps {
   user: User;
@@ -179,6 +182,7 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
         showFailure(profileMessages.connection); return;
       }
       const updatedUser = result as User;
+      await queryClient.cancelQueries({ queryKey: ["/api/user"] });
       if (queryClient.getQueryData<User | null>(["/api/user"])?.id === userId) {
         queryClient.setQueryData(["/api/user"], updatedUser);
       }
@@ -213,7 +217,14 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
   return (
     <section className="border border-border bg-card p-5 sm:p-7" aria-labelledby="profile-settings-heading">
       <div className="mb-6 flex items-start justify-between gap-4">
-        <div><p className="vco-kicker">Public profile</p><h2 id="profile-settings-heading" className="mt-3 text-2xl">Profile settings</h2><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Your sign-in username stays yours. Public display name, contact and portfolio links are optional; your private account email is never copied here.</p></div>
+        <div className="min-w-0"><p className="vco-kicker">Public profile</p><h2 id="profile-settings-heading" className="mt-3 text-2xl">Profile settings</h2><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Your sign-in username stays yours. Public display name, contact and portfolio links are optional; your private account email is never copied here.</p>
+          {hasActivePublicCreatorProfile(user) && <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Link href={`/creator/${user.id}`} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              View public profile <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
+            </Link>
+            <span className="text-xs text-muted-foreground">Shows your saved public profile, not unsaved edits.</span>
+          </div>}
+        </div>
         <div className="hidden h-10 w-10 shrink-0 items-center justify-center border border-primary/30 bg-primary/10 text-primary sm:flex"><UserRound aria-hidden="true" className="h-5 w-5" /></div>
       </div>
       <form ref={formRef} noValidate className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,.65fr)]" onSubmit={save}>

@@ -88,8 +88,8 @@ for (const role of ["creator", "admin"]) {
       };
       const navigate = async (path, mobile) => {
         if (mobile) await openMenu();
-        const selector = path === "/search"
-          ? `header a[href="/search"]`
+        const selector = path === "/search" || path === "/account"
+          ? `header a[href="${path}"]`
           : `${mobile ? "#mobile-navigation" : 'nav[aria-label="Main navigation"]'} a[href="${path}"]`;
         await click(selector);
         await browser.wait(`location.pathname === ${JSON.stringify(path)}`);

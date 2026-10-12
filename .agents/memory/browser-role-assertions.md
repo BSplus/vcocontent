@@ -15,6 +15,17 @@ Browser polling expressions should return booleans, not DOM elements; serialize 
 
 **How to apply:** Use explicit boolean conditions, wait for the previous dialog and its pointer lock to disappear, and query the relevant section rather than the first global alert.
 
+Wait for destination-specific content after navigation, not just a shared header,
+and filter responsive controls by visibility before selecting the first match.
+
+**Why:** A shared header can satisfy a readiness check on the page being left;
+desktop and mobile controls can coexist in the DOM even when one is hidden.
+Both produce misleading missing-control failures in otherwise working flows.
+
+**How to apply:** Require the target page's heading or content together with
+the control, and select a visible control rather than testing visibility only
+after choosing the first DOM match.
+
 Mock all background endpoints with their real response shapes, including
 features not directly under test. A valid element can disappear between a wait
 and an interaction if an unrelated query subsequently crashes its parent.

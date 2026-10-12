@@ -5,10 +5,10 @@ import { db } from "./db";
 import { storage } from "./storage";
 import { pageMetadata } from "@shared/pagination";
 import { requireAuth } from "./middleware/auth";
-import { creatorAllowed, takeBetaRate } from "./beta-policy";
+import { takeBetaRate } from "./beta-policy";
+import { hasActivePublicCreatorProfile } from "@shared/creator-profile-access";
 
-export const activeCreator = (user: Parameters<typeof creatorAllowed>[0]) =>
-  !!user && user.creatorStatus !== "rejected" && creatorAllowed(user);
+export const activeCreator = hasActivePublicCreatorProfile;
 type ProfileUser = Pick<typeof users.$inferSelect, "id" | "username" | "isCreator" | "creatorStatus" | "bio" |
   "profileImage" | "profileImagePublic" | "displayName" | "profileCoverImage" | "profileCoverPublic" |
   "publicContactEmail" | "websiteUrl" | "instagramUrl">;

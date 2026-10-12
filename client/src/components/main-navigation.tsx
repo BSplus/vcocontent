@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Loader2, Menu, Search, Settings, Users, X, CircleUserRound } from "lucide-react";
+import { Loader2, Menu, Search, Settings, Users, X } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import ProfileAvatar from "@/components/profile-avatar";
 
 const links = [
   { href: "/", label: "Home" },
@@ -27,9 +28,9 @@ export default function MainNavigation() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-md">
-      <div className="mx-auto flex min-h-[72px] max-w-[1492px] items-center justify-between gap-4 px-5 sm:px-6 lg:px-9">
+      <div className="mx-auto flex min-h-[72px] max-w-[1492px] items-center justify-between gap-2 px-5 sm:gap-4 sm:px-6 lg:px-9">
         <Link href="/" aria-label="VCO Media Database home" className="flex shrink-0 items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-          <img src="/attached_assets/VCO_2021_reg_White_Trans.png" alt="VCO" className="h-10 w-auto sm:h-12" />
+          <img src="/attached_assets/VCO_2021_reg_White_Trans.png" alt="VCO" className="h-9 w-auto sm:h-12" />
           <span className="hidden border-l border-foreground/20 pl-3 text-[11px] font-bold leading-tight tracking-[0.16em] text-foreground sm:block md:text-xs">
             MEDIA<br className="hidden sm:block" /> DATABASE
           </span>
@@ -43,7 +44,6 @@ export default function MainNavigation() {
             </Link>
           ))}
           {creatorAccessAvailable && (user?.isCreator || user?.isAdmin || user?.creatorStatus === "approved") && <Link href="/creator/dashboard" aria-current={isActive("/creator/dashboard") ? "page" : undefined} className={itemClasses("/creator/dashboard")}>Creator Studio</Link>}
-          {user && <Link href="/account" className={itemClasses("/account")}><CircleUserRound className="mr-1.5 h-4 w-4" />My account</Link>}
           {user?.isAdmin && (
             <>
               <Link href="/admin/dashboard" className={itemClasses("/admin/dashboard")}><Settings className="mr-1.5 h-4 w-4" />Admin</Link>
@@ -53,7 +53,8 @@ export default function MainNavigation() {
         </nav>
 
         <div className="hidden shrink-0 items-center gap-2 2xl:flex">
-          <Button asChild className="vco-button h-10 bg-primary px-4 text-primary-foreground hover:bg-primary/90">
+          {user && <ProfileAvatar username={user.username} profileImage={user.profileImage} />}
+          <Button asChild className="vco-button h-11 bg-primary px-4 text-primary-foreground hover:bg-primary/90">
             <Link href="/search" aria-current={location === "/search" ? "page" : undefined} aria-label="Search media"><Search className="mr-2 h-4 w-4" />Search media</Link>
           </Button>
           {!user ? (
@@ -74,10 +75,11 @@ export default function MainNavigation() {
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 2xl:hidden">
-          <Button asChild size="icon" className="h-10 w-10 bg-primary text-primary-foreground" aria-label="Search media">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2 2xl:hidden">
+          <Button asChild size="icon" className="h-11 w-11 bg-primary text-primary-foreground" aria-label="Search media">
             <Link href="/search" aria-current={location === "/search" ? "page" : undefined}><Search className="h-5 w-5" /></Link>
           </Button>
+          {user && <ProfileAvatar username={user.username} profileImage={user.profileImage} />}
           <Button
             variant="outline"
             size="icon"
@@ -85,7 +87,7 @@ export default function MainNavigation() {
             aria-expanded={mobileOpen}
             aria-controls="mobile-navigation"
             onClick={() => setMobileOpen((open) => !open)}
-            className="h-10 w-10"
+            className="h-11 w-11"
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
@@ -101,7 +103,6 @@ export default function MainNavigation() {
               </Link>
             ))}
             {creatorAccessAvailable && (user?.isCreator || user?.isAdmin || user?.creatorStatus === "approved") && <Link href="/creator/dashboard" onClick={closeMenu} aria-current={isActive("/creator/dashboard") ? "page" : undefined} className={`${itemClasses("/creator/dashboard")} col-span-2`}>Creator Studio</Link>}
-            {user && <Link href="/account" onClick={closeMenu} className={`${itemClasses("/account")} col-span-2`}><CircleUserRound className="mr-2 h-4 w-4" />My account</Link>}
             {user?.isAdmin && (
               <>
                 <Link href="/admin/dashboard" onClick={closeMenu} className={`${itemClasses("/admin/dashboard")} col-span-2`}><Settings className="mr-2 h-4 w-4" />Admin dashboard</Link>

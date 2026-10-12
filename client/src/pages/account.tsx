@@ -117,7 +117,6 @@ export default function AccountPage() {
               <div className="flex flex-wrap justify-between gap-2 py-3"><dt className="text-muted-foreground">Email</dt><dd className="break-all font-semibold">{user?.email || "Not available"}</dd></div>
               <div className="flex flex-wrap justify-between gap-2 py-3"><dt className="text-muted-foreground">Email status</dt><dd className="font-semibold">{user?.emailVerifiedAt ? "Verified" : "Verification pending"}</dd></div>
             </dl>
-            {user?.isCreator && <Button asChild variant="outline" className="mt-3 min-h-11"><Link href={`/creator/${user.id}`}><CircleUserRound className="mr-2 h-4 w-4" />View public creator profile</Link></Button>}
           </div>
         </div>
         <aside className="border border-primary/25 bg-primary/[0.04] p-5 sm:p-7">

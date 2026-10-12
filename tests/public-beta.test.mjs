@@ -434,9 +434,28 @@ test("photo approval, draft/publish, manual text versions, private quarantine an
   const event=await gallery(owner);
   assert.equal(event.visibility,"draft");assert.equal(event.safetyStatus,"approved");
   assert.equal((await request(`/api/events/${event.id}`)).status,404);
+  // The existing public-profile endpoints never become owner/admin previews.
+  for (const cookie of [undefined, owner.cookie, admin.cookie]) {
+    const list = await request(`/api/events/creator/${owner.id}`, { cookie });
+    assert.equal(list.status, 200);
+    assert.ok(!list.data.some(row => row.id === event.id));
+  }
   const safe=await upload(owner,event.id);
   assert.equal(safe.status,201);assert.equal(safe.data.safetyStatus,"approved");
+  for (const cookie of [undefined, owner.cookie, admin.cookie]) {
+    const top = await request(`/api/media/top/creator/${owner.id}`, { cookie });
+    assert.equal(top.status, 200);
+    assert.ok(!top.data.some(row => row.id === safe.data.id));
+  }
   assert.equal((await publish(owner,event.id)).status,200);
+  const guestGalleries = await request(`/api/events/creator/${owner.id}`);
+  const ownGalleries = await request(`/api/events/creator/${owner.id}`, { cookie: owner.cookie });
+  assert.deepEqual(ownGalleries.data, guestGalleries.data);
+  assert.ok(ownGalleries.data.some(row => row.id === event.id));
+  const guestWork = await request(`/api/media/top/creator/${owner.id}`);
+  const ownWork = await request(`/api/media/top/creator/${owner.id}`, { cookie: owner.cookie });
+  assert.deepEqual(ownWork.data, guestWork.data);
+  assert.ok(ownWork.data.some(row => row.id === safe.data.id));
   assert.equal((await request(`/api/media/${safe.data.id}`)).status,200);
   assert.equal((await request(`/api/media/${safe.data.id}/download`,{method:"POST"})).status,401);
   assert.equal((await request(`/api/media/${safe.data.id}/download`,{method:"POST",cookie:owner.cookie})).status,200);

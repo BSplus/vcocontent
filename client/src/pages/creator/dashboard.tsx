@@ -32,6 +32,7 @@ import AssignNumberAction from "@/components/assign-number-dialog";
 import type { PageEnvelope } from "@shared/pagination";
 import PageStatus from "@/components/page-status";
 import { usePageState } from "@/hooks/use-page-state";
+import { hasActivePublicCreatorProfile } from "@shared/creator-profile-access";
 
 function StudioFrame({ children }: { children: ReactNode }) {
   return <div className="min-h-[100dvh] bg-background">
@@ -149,14 +150,20 @@ export default function CreatorDashboard() {
             Creator Studio
           </h1>
           <LegalLinks />
-          <div className="flex gap-2 mt-4">
+          <div className="mt-4 flex flex-wrap gap-2">
             <Button asChild variant="outline">
               <Link href="/">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Home
               </Link>
             </Button>
+            {hasActivePublicCreatorProfile(user) && <Button asChild variant="outline" className="min-h-11">
+              <Link href={`/creator/${user?.id}`}>
+                View public profile<ArrowUpRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>}
           </div>
+          {hasActivePublicCreatorProfile(user) && <p className="mt-2 text-xs text-muted-foreground">This opens the saved public version of your profile, not unsaved edits.</p>}
         </div>
       </header>
 
@@ -223,7 +230,7 @@ export default function CreatorDashboard() {
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4 border-b border-border pb-5"><div className="flex h-14 w-14 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-xl font-bold text-primary">{user?.username?.slice(0,1).toUpperCase()}</div><div><p className="font-semibold">{user?.username}</p><p className="text-sm text-muted-foreground">{user?.email}</p></div></div>
                 <p className="text-sm leading-relaxed text-foreground/75">Public creator information and galleries remain subject to the existing moderation and visibility checks.</p>
-                <div className="flex flex-wrap gap-3"><Button asChild variant="outline" className="min-h-11"><Link href={`/creator/${user?.id}`}>View public profile<ArrowUpRight className="ml-2 h-4 w-4" /></Link></Button><Button asChild className="min-h-11 bg-primary text-primary-foreground"><Link href="/account">My downloads & favorites</Link></Button></div>
+                <div className="flex flex-wrap gap-3">{hasActivePublicCreatorProfile(user) && <Button asChild variant="outline" className="min-h-11"><Link href={`/creator/${user?.id}`}>View public profile<ArrowUpRight className="ml-2 h-4 w-4" /></Link></Button>}<Button asChild className="min-h-11 bg-primary text-primary-foreground"><Link href="/account">My downloads & favorites</Link></Button></div>
               </CardContent>
             </Card>
           </div>

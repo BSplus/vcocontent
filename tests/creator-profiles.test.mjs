@@ -165,6 +165,36 @@ test("public profiles whitelist fields, preserve unique URLs, and never default 
   assert.equal(await publicCreatorById(0), null);
 });
 
+test("admins without creator flags use the same public whitelist and image approvals as visitors", async () => {
+  const before = await storage.getUser(viewer.id);
+  try {
+    await db.update(users).set({ isAdmin: true, isCreator: false, creatorStatus: "none",
+      profileImage: "synthetic-avatar", profileCoverImage: "synthetic-cover",
+      profileImagePublic: false, profileCoverPublic: false }).where(eq(users.id, viewer.id));
+    for (const viewerId of [undefined, viewer.id, creator.id]) {
+      const profile = await publicCreatorById(viewer.id, viewerId);
+      assert.equal(profile.profileUrl, `/creator/${viewer.id}`);
+      assert.equal(profile.profileImage, null);
+      assert.equal(profile.coverImage, null);
+      for (const field of ["email", "password", "credits", "emailVerifiedAt", "isAdmin"])
+        assert.equal(field in profile, false);
+    }
+    await db.update(users).set({ profileImagePublic: true, profileCoverPublic: true }).where(eq(users.id, viewer.id));
+    const ownerProfile = await publicCreatorById(viewer.id, viewer.id);
+    assert.deepEqual(ownerProfile, await publicCreatorById(viewer.id));
+    assert.equal(ownerProfile.profileImage, "synthetic-avatar");
+    assert.equal(ownerProfile.coverImage, "synthetic-cover");
+    assert.equal((await request(`/api/creators/${viewer.id}/follow`, viewer, "PUT")).status, 400);
+    for (const state of [{ suspended: true }, { suspended: false, creatorStatus: "rejected" }]) {
+      await db.update(users).set(state).where(eq(users.id, viewer.id));
+      assert.equal(await publicCreatorById(viewer.id, viewer.id), null);
+    }
+  } finally {
+    const { id: ignored, ...fields } = before;
+    await db.update(users).set(fields).where(eq(users.id, viewer.id));
+  }
+});
+
 test("links are HTTP/HTTPS only, reject embedded credentials and non-Instagram hosts", () => {
   const core = { username: creator.username, bio: "" };
   for (const websiteUrl of ["javascript:alert(1)", "data:text/html,test", "ftp://example.org", "https://user:pass@example.org"])
