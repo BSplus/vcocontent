@@ -1,10 +1,10 @@
 ---
-name: Deferred beta mail setup
-description: User-approved deferral of Resend configuration from the beta preparation.
+name: Beta mail setup
+description: User-reported Resend configuration and the sending domain for beta emails.
 ---
 
-Der Nutzer hat festgelegt: „Wir richten Resend später ein.“
+Der Nutzer meldet: „Resend ist jetzt konfiguriert. Also die Domain updates.vco-esports.com“.
 
-**Why:** Die Maildienst-Einrichtung wurde ausdrücklich auf später verschoben.
+**Why:** Der Nutzer hat die zuvor verschobene Einrichtung als konfiguriert gemeldet.
 
-**How to apply:** Die technische Beta-Vorbereitung darf mit dokumentiertem offenem Mail-Setup abgeschlossen werden. Keine betriebsbereite Mailzustellung behaupten und die Verschiebung nicht als Freigabe zur Veröffentlichung oder zum Umgehen der Verifizierung behandeln.
+**How to apply:** Resend nicht mehr als bewusst verschoben behandeln. Die gemeldete Versanddomain ist updates.vco-esports.com. Die Meldung ersetzt weder die Prüfung der App-Konfiguration noch einen Zustellungstest und ist keine Freigabe zur Veröffentlichung oder zum Umgehen der Verifizierung.
