@@ -41,6 +41,10 @@ test.before(async () => {
     getUser: async () => ({ id: 8310, emailVerifiedAt: new Date(), creatorStatus: "approved", suspended: false }),
     getMediaItem: async id => photos.find(p => p.id === id),
     findMediaByKey: async key => photos.find(p => p.thumbnail === `/api/media/files/${key}`),
+    countEventThumbnailOptions: async ev => {
+      if (optionsFail) throw new Error("synthetic");
+      return ev.isPremium ? 0 : photos.filter(p => galleryThumbnailReference(p, ev)).length;
+    },
     getEventThumbnailOptions: async (ev, page) => {
       if (optionsFail) throw new Error("synthetic");
       return photos.filter(p => galleryThumbnailReference(p, ev)).slice((page - 1) * 24, (page - 1) * 24 + 25);

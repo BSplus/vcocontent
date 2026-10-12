@@ -2,6 +2,7 @@ import { pgTable, text, serial, integer, timestamp, boolean, decimal, bigint, in
 import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { boundedGalleryThumbnailSql } from "./media-query-policy";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -192,6 +193,15 @@ export const mediaItems = pgTable("media_items", {
   index("media_url_idx").on(table.url).where(sql`${table.url} like '/api/media/files/%'`),
   index("media_thumbnail_idx").on(table.thumbnail).where(sql`${table.thumbnail} like '/api/media/files/%'`),
   index("media_popular_idx").on(table.downloadCount),
+  index("media_caption_search_idx").using("gin", table.caption.op("gin_trgm_ops")),
+  index("media_photographer_search_idx").using("gin", table.photographer.op("gin_trgm_ops")),
+  index("media_identification_search_idx").using("gin", sql`(${table.identification}::text) gin_trgm_ops`),
+  // Cover count predicates without reading gallery rows or their TOAST payloads.
+  index("media_event_count_idx").on(table.eventId, table.type, table.isPremium,
+    table.safetyStatus, table.safetyPolicy, table.contentVersion, table.safetyVersion, table.id),
+  index("media_thumbnail_options_idx").on(table.eventId, table.safetyStatus,
+    table.safetyPolicy, table.contentVersion, table.safetyVersion, table.id)
+    .where(sql`${table.type} = 'image' and not ${table.isPremium} and ${boundedGalleryThumbnailSql(table.thumbnail)}`),
 ]);
 
 export const communityLikes = pgTable("community_likes", {

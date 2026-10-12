@@ -51,3 +51,4 @@
 - [Photo number evidence](photo-number-evidence.md) — masked-prefix rereads need repeat/positive controls; user permits only an automatic safeguard, not a new confirmation step.
 - [Inactive tab fixtures](inactive-tab-fixtures.md) — malformed object mocks can crash JSX in inactive tabs before unrelated browser controls appear.
 - [Polling cancellation](polling-cancellation.md) — skip periodic refresh while a request is running, or latency above the interval can prevent any page from loading.
+- [Performance measurement boundary](performance-measurement-boundary.md) — local plan improvements are comparative evidence, not VM latency promises; isolate timed phases.

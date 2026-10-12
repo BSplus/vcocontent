@@ -26,6 +26,9 @@ try {
   await exec("createdb",["-h","127.0.0.1","-p",String(pgPort),"-U","vco_test","photo_test"]);
   const env={...process.env,DATABASE_URL:`postgresql://vco_test@127.0.0.1:${pgPort}/photo_test?sslmode=disable`,
     NODE_ENV:"development"};
+  // Search indexes use a standard PostgreSQL extension, only in this disposable DB.
+  await exec("psql",["-h","127.0.0.1","-p",String(pgPort),"-U","vco_test","-d","photo_test",
+    "-v","ON_ERROR_STOP=1","-c","CREATE EXTENSION IF NOT EXISTS pg_trgm"]);
   await exec(process.execPath,["node_modules/drizzle-kit/bin.cjs","push","--force"],{env,maxBuffer:2_000_000});
   proxy=new WebSocketServer({port:0,host:"127.0.0.1"});
   await once(proxy,"listening");
@@ -39,6 +42,7 @@ try {
     socket.on("error",()=>tcp.destroy());
   });
   env.VCO_TEST_PG_PROXY=String(proxy.address().port);
+  env.VCO_TEST_PG_PORT=String(pgPort);
   env.VCO_TEST_OBJECTS=path.join(directory,"fixture-objects");
   env.NODE_OPTIONS=`--import=${path.resolve("tests/helpers/local-postgres-transport.mjs")} --import=${path.resolve("tests/helpers/local-object-storage.mjs")}`;
   const files=process.argv.slice(2);

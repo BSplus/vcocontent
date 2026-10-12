@@ -11,7 +11,8 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { creatorUsage, lockedCreatorBudget, publicEventPredicate, publicMediaPredicate, SAFETY_POLICY } from "./beta-policy";
 import { EventImageError, galleryFilePattern, galleryLegacyPattern, galleryThumbnailReference } from "./gallery-thumbnail-policy";
-import { eventImagePolicy } from "@shared/event-image-policy";
+import { boundedGalleryThumbnailSql } from "@shared/media-query-policy";
+import { planMediaSearchTerms } from "./media-search-plan";
 import { effectiveEventChanges } from "@shared/event-changes";
 import { enqueueTransactionalEmail } from "./transactional-emails";
 
@@ -334,20 +335,22 @@ class DatabaseStorage implements IStorage {
 
   async listPublicMedia(page = 1, limit = 48, search = "", type?: "image" | "video",
     fields: ("caption" | "photographer" | "tags" | "identification")[] = ["caption", "photographer", "tags", "identification"]): Promise<MediaItem[]> {
-    return this.publicMediaQuery(search, type, fields)
+    const terms = await planMediaSearchTerms(search, fields.includes("identification"));
+    return this.publicMediaQuery(search, type, fields, terms)
       .orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit);
   }
 
   async countPublicMedia(search = "", type?: "image" | "video",
     fields: ("caption" | "photographer" | "tags" | "identification")[] = ["caption", "photographer", "tags", "identification"]): Promise<number> {
+    const terms = await planMediaSearchTerms(search, fields.includes("identification"));
     const [row] = await db.select({ total: sql<number>`count(*)::int` })
-      .from(this.publicMediaQuery(search, type, fields).as("matching_media"));
+      .from(this.publicMediaQuery(search, type, fields, terms).as("matching_media"));
     return row.total;
   }
 
   private publicMediaQuery(search: string, type: "image" | "video" | undefined,
-    fields: ("caption" | "photographer" | "tags" | "identification")[]) {
-    const terms = search.trim().split(/\s+/).filter(Boolean).slice(0,12).map(word=>`%${word.replace(/[\\%_]/g,"\\$&")}%`);
+    fields: ("caption" | "photographer" | "tags" | "identification")[],
+    terms: Awaited<ReturnType<typeof planMediaSearchTerms>>) {
     return db.select(mediaListColumns).from(mediaItems)
       .leftJoin(events, eq(mediaItems.eventId, events.id))
       .where(and(
@@ -355,13 +358,19 @@ class DatabaseStorage implements IStorage {
         publicEventPredicate(), publicMediaPredicate(), eq(mediaItems.isPremium, false),
         or(eq(events.isPremium, false), sql`${events.id} is null`),
         ...(type ? [eq(mediaItems.type, type)] : []),
-        ...terms.map(term=>or(
+        ...terms.map(({term,jsonPrefilter})=>or(
           ...(fields.includes("caption") ? [ilike(mediaItems.caption, term)] : []),
           ...(fields.includes("photographer") ? [ilike(mediaItems.photographer, term)] : []),
           ...(fields.includes("tags") ? [sql`${mediaItems.tags}::text ilike ${term}`] : []),
-          ...(fields.includes("identification") ? [sql`exists(select 1 from jsonb_array_elements(${mediaItems.identification}) ident
+          // A search term has no whitespace, so it cannot cross concat_ws field
+          // boundaries. Plain JSON words must also occur in the serialized JSON.
+          // Quotes, backslashes and controls can be JSON-escaped: skip the
+          // prefilter for those, and ALWAYS retain the exact field whitelist.
+          ...(fields.includes("identification") ? [and(
+            jsonPrefilter ? sql`${mediaItems.identification}::text ilike ${term}` : undefined,
+            sql`exists(select 1 from jsonb_array_elements(${mediaItems.identification}) ident
             where concat_ws(' ',ident->>'number',ident->>'team',ident->>'drivers',ident->>'vehicle',
-              ident->>'manufacturer',ident->>'racingClass',ident->>'discipline') ilike ${term})`] : []),
+              ident->>'manufacturer',ident->>'racingClass',ident->>'discipline') ilike ${term})`)] : []),
         )),
       ));
   }
@@ -394,9 +403,7 @@ class DatabaseStorage implements IStorage {
         or(...(!event.creatorId ? [eq(mediaItems.safetyStatus, "legacy")] : []),
           and(eq(mediaItems.safetyStatus, "approved"), eq(mediaItems.safetyPolicy, SAFETY_POLICY),
             sql`${mediaItems.contentVersion} = ${mediaItems.safetyVersion}`)),
-        or(sql`${mediaItems.thumbnail} ~ '^/api/media/files/thumb-[0-9a-f-]{36}\\.webp$'`,
-          and(sql`${mediaItems.thumbnail} ~ '^data:image/(jpeg|png|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$'`,
-            sql`length(${mediaItems.thumbnail}) <= ${Math.ceil(eventImagePolicy.bytes * 4 / 3) + 100}`))));
+        boundedGalleryThumbnailSql(mediaItems.thumbnail)));
   }
 
   async getPublicEventMediaItems(eventId: number, page = 1, limit = 48): Promise<MediaItem[]> {
