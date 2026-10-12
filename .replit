@@ -78,6 +78,7 @@ timeoutMs = 180000
 
 [userenv.production]
 MEDIA_ANALYSIS_CONCURRENCY = "1"
+PUBLIC_SITE_URL = "https://vco-content-studio.replit.app"
 
 [userenv.development]
 MEDIA_ANALYSIS_CONCURRENCY = "1"
