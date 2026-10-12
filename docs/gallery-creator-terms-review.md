@@ -1,6 +1,6 @@
 # Gallery & Creator Terms — REVIEW DRAFT, NOT IN FORCE
 
-Version: 10 October 2026. English working text for operator and legal review.
+Version: 12 October 2026. English working text for operator and legal review.
 **Not published as contractual terms, not attached to registration, not accepted
 by existing users and not a grant of rights.** Bracketed items require decisions.
 This draft is not legal advice or a compliance approval.
@@ -37,9 +37,21 @@ Avoid unnecessary personal or sensitive information and do not upload passwords
 or confidential material. If people are identifiable, establish the appropriate
 legal basis for publication and information obligations.
 
+Media created in simulations and games may include publisher, developer and other
+third-party rights in addition to the photographer’s rights. For creation, upload,
+publication and reuse, check and comply with the applicable provider terms, end
+user licence agreements (EULAs) and any applicable media or content policies.
+Non-exhaustive examples are iRacing, Le Mans Ultimate, RaceRoom, Gran Turismo 7 and
+Assetto Corsa Competizione. The informational official-source links in the
+Imprint's “Simulation & game content” section distinguish simulation-service,
+broadcast, PC/Steam, PlayStation software, online-service and regional scopes;
+check the documents for the actual game version, platform, region and use.
+
 [APPROVAL: workable proof-of-rights process, treatment of event/accreditation
 restrictions, trademarks and disputed rights; whether VCO may publish material
-provided by another uploader under that person’s authorisation.]
+provided by another uploader under that person’s authorisation. Assess applicable
+game-provider terms and any additional permissions for the intended operation;
+the informational links are not legal clearance.]
 
 ## 4. Proposed limited operating permission — NOT GRANTED
 
@@ -64,6 +76,15 @@ Current confirmed public notice: copyright and third-party rights remain reserve
 Free download availability does not grant a licence to publish, redistribute or
 commercially use material. Uses beyond statutory permissions require the
 respective rights holder’s permission. Contact VCO for VCO material.
+
+Availability on this platform and permission from VCO do not replace any required
+third-party rights or permissions, including rights in simulation/game content.
+Statutorily permitted uses and mandatory rights remain unaffected. The game
+examples and official links are information only: they do not incorporate
+third-party terms into a contract with VCO, confirm that a particular use is
+permitted, or imply a partnership with or endorsement by the named providers.
+No general private, editorial or commercial reuse licence or visitor acceptance
+requirement is introduced. This remains a REVIEW DRAFT, NOT IN FORCE.
 
 [DECISION: whether private, editorial and/or commercial reuse will be offered;
 per-file permissions, attribution, modifications, prohibited uses and permission

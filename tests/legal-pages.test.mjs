@@ -5,6 +5,52 @@ import { uiBrowser } from "./helpers/ui-browser.mjs";
 
 const base = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
 const source = path => readFile(path, "utf8");
+const gameSources = [
+  ["iRacing", "https://www.iracing.com/terms-use-eula/", "Terms of Use and EULA"],
+  ["iRacing", "https://www.iracing.com/eu-terms-use-eula/", "Supplemental EU Terms"],
+  ["iRacing", "https://www.iracing.com/broadcast-policy/", "Broadcast Policy"],
+  ["Le Mans Ultimate", "https://store.steampowered.com/eula/2399420_eula_1", "End User Access and License Agreement"],
+  ["RaceRoom", "https://game.raceroom.com/en/about/eula/", "End-User Licence Agreement"],
+  ["Gran Turismo 7", "https://www.playstation.com/en-gb/legal/software-eula/", "PlayStation Software Application End User Licence Agreement"],
+  ["Gran Turismo 7", "https://www.playstation.com/en-gb/legal/psn-terms-of-service/", "PlayStation Terms of Service"],
+  ["Assetto Corsa Competizione", "https://store.steampowered.com/eula/805550_eula_0", "End-User License Agreement"],
+];
+
+test("game-provider notice uses reviewed official sources without granting rights or binding visitors", async () => {
+  const [imprint, draft, report] = await Promise.all([
+    "client/src/pages/imprint.tsx", "docs/gallery-creator-terms-review.md",
+    "docs/legal-change-and-gap-report.md",
+  ].map(source));
+  for (const [game, url, label] of gameSources) {
+    assert.ok(imprint.includes(`<strong>${game}:</strong>`), game);
+    assert.ok(imprint.includes(`<a href="${url}">${label}</a>`), url);
+    assert.ok(report.includes(url), `source report: ${url}`);
+    assert.ok(draft.includes(game), `review draft: ${game}`);
+  }
+  for (const document of [imprint, draft]) {
+    const text = document.replace(/\s+/g, " ");
+    assert.match(text, /in addition to the photographer’s rights/);
+    assert.match(text, /[Cc]reation, upload, publication and reuse/);
+    assert.match(text, /applicable media or content policies/);
+    assert.match(text, /do not replace any required\s+third-party rights or permissions/);
+    assert.match(text, /Statutorily permitted uses and mandatory rights remain unaffected/);
+    assert.match(text, /[Nn]on-exhaustive/);
+    assert.match(text, /do not incorporate\s+third-party terms into a contract with VCO/);
+    assert.match(text, /partnership with or endorsement by the named providers/);
+    assert.doesNotMatch(text, /you (?:must|shall) accept|indemnify|hold harmless|private use (?:is )?permitted/i);
+  }
+  assert.match(imprint, /does not require visitors to accept third-party terms merely to browse/);
+  assert.match(imprint, /not a general photo-reuse licence/);
+  assert.match(imprint, /UK pages with regional provisions/);
+  assert.match(imprint, /console\/platform terms may differ/);
+  for (const section of [3, 5]) {
+    const part = draft.split(`## ${section}.`)[1].split("## ")[0];
+    assert.match(part, /third-party rights/);
+  }
+  assert.match(draft, /^# Gallery & Creator Terms — REVIEW DRAFT, NOT IN FORCE/);
+  assert.match(report, /geprüft am 12\. Oktober 2026/);
+  assert.match(report, /Offene juristische Prüfung/);
+});
 
 test("legal integration reserves rights and leaves unapproved terms out of the app", async () => {
   const [app, imprint, privacy, footer, auth, apply, dashboard, upload, reference, detail, grid, notice, draft, report] = await Promise.all([
@@ -60,7 +106,25 @@ test("legal pages load without login with mobile-readable text, working navigati
       assert.equal(state.lang, "en");
       for (const link of ["/imprint", "/privacy-policy", "mailto:info@vco-esports.com"]) assert.ok(state.links.includes(link));
       assert.doesNotMatch(state.cookies, /sidebar:state/);
-      if (path === "/imprint") assert.match(state.text, /DE331164657/);
+       if (path === "/imprint") {
+         assert.match(state.text, /DE331164657/);
+         const games = await browser.evaluate(`(() => {
+           const section = document.querySelector('section[aria-labelledby="game-content-conditions"]');
+           return { text:section.innerText, links:[...section.querySelectorAll('a')].map(a=>({
+             href:a.getAttribute('href'), label:a.textContent, game:a.closest('li').querySelector('strong').textContent
+           })), overflow:[...section.querySelectorAll('a,li,p,h2')].some(el=>el.getBoundingClientRect().right>innerWidth+1),
+           checkboxes:document.querySelectorAll('input[type=checkbox]').length };
+         })()`);
+         assert.equal(games.links.length, gameSources.length);
+         for (const [game, href, label] of gameSources) {
+           assert.ok(games.links.some(link => link.game === `${game}:` && link.href === href && link.label === label), href);
+         }
+         assert.equal(games.overflow, false);
+         assert.equal(games.checkboxes, 0);
+         assert.match(games.text, /do not replace any required third-party rights or permissions/);
+         assert.match(games.text, /Statutorily permitted uses and mandatory rights remain unaffected/);
+         assert.match(games.text, /do not incorporate third-party terms into a contract with VCO/);
+       }
       else {
         assert.match(state.text, /no automatic account-expiry/i);
         assert.match(state.text, /does not constitute blanket consent/);

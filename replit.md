@@ -170,6 +170,12 @@ Preferred communication style: Simple, everyday language.
 - Historical public images remain unreviewed legacy content. New public image/profile/cover/text versions require the applicable gate. Changing safety prompts/categories requires a safety policy version bump.
 - Tests must mock mail and AI, use synthetic images, isolate queue consumers and clean only their own storage objects. Do not send real verification mail during routine tests.
 
+## Legal information
+
+- The public English Imprint includes informational simulation/game-provider sources with platform and regional scope, not a reuse licence or acceptance requirement. Source checks and unresolved legal review are documented in `docs/legal-change-and-gap-report.md`.
+- `docs/gallery-creator-terms-review.md` remains a repository-only REVIEW DRAFT, NOT IN FORCE. Do not publish it or introduce acceptance steps without separate approval.
+- Focused legal text/navigation/mobile checks: `node --test --test-concurrency=1 tests/legal-pages.test.mjs`, plus `npm run check` and `npm run build`. Technical checks are not legal clearance.
+
 ## Pagination
 - Visible page counters use the literal `PAGE X OF Y`; totals must describe the same accessible, filtered rows as the list. Do not infer the last page from a full page of results.
 - Search and event-media APIs retain array responses by default; `pagination=true` opts into `{ items, page, pageSize, total, totalPages, hasMore }`. Existing account and thumbnail envelopes include the same metadata.

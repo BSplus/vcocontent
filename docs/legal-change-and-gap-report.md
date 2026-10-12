@@ -1,6 +1,6 @@
 # VCO Rechtstexte – Änderungen, Lücken und Freigabepunkte
 
-Stand: 10. Oktober 2026. **Textanpassung, keine Rechtsberatung oder abschließende
+Stand: 12. Oktober 2026. **Textanpassung, keine Rechtsberatung oder abschließende
 Rechtskonformitätsgarantie. Keine Veröffentlichung, Hostingänderung oder AVV
 durchgeführt.** Die bereits integrierte Beta wurde erneut geprüft.
 
@@ -24,6 +24,47 @@ durchgeführt.** Die bereits integrierte Beta wurde erneut geprüft.
 - Reviewentwurf `docs/gallery-creator-terms-review.md` liegt **nur im Repository**;
   er ist keine öffentlich geltende AGB oder Rechteübertragung.
 - Belege/Verarbeitung: `docs/legal-processing-register.md`.
+
+## Ergänzung zu Simulationen und Games
+
+Das englische Impressum ergänzt nach dem unveränderten Rechte-/Downloadabschnitt
+einen Hinweis auf zusätzliche Anbieter-/Drittrechte. Erstellung, Upload,
+Veröffentlichung und Weiterverwendung müssen die jeweils anwendbaren Bedingungen,
+EULAs und etwaigen Medien-/Contentrichtlinien beachten. Verfügbarkeit und
+VCO-Erlaubnis ersetzen keine erforderlichen Drittrechte/Genehmigungen.
+Gesetzliche Erlaubnisse und zwingende Rechte bleiben unberührt. Beispiele/Links
+sind ausdrücklich nicht abschließend, keine pauschale Einbeziehung fremder
+Verträge, keine Freigabe konkreter Nutzungen und keine Partnerschaftszusage.
+Keine Besucherzustimmung, neue Lizenz oder allgemeine Haftungsfreistellung.
+Der Creator-Entwurf berücksichtigt dieselbe Abgrenzung in Abschnitten 3 und 5
+und bleibt ausschließlich im Repository, **REVIEW DRAFT, NOT IN FORCE**.
+Datenschutztexte, gemeinsamer Rechtevorbehalt und Berechtigungen bleiben unverändert.
+
+### Offizielle Quellen — geprüft am 12. Oktober 2026
+
+Die folgenden Seiten und die angegebenen Dokumentinhalte wurden abgerufen, nicht
+nur anhand von Suchtreffern übernommen. Steam hostet die vom jeweiligen Anbieter
+bereitgestellten spielbezogenen EULAs; sie sind nicht die allgemeine Steam-AGB.
+
+| Beispiel | Offizielle Quelle / Dokumenttyp | Erkannter Geltungsbereich / Prüfbeleg |
+|---|---|---|
+| iRacing | [Terms of Use and EULA](https://www.iracing.com/terms-use-eula/) | Simulation-Service, nicht pauschal die gesonderten Konsolenspiele. Seite: 5. August 2026; [PDF](https://ir-core-sites.iracing.com/members/pdfs/20260805-iRacing_Terms_of_Use_and_EULA_dated_Aug_05_2026.pdf) ebenfalls gelesen: zusätzliche Lizenzgeberrechte, § 6.4 Verweis auf Broadcast Policy. |
+| iRacing | [Supplemental EU Terms](https://www.iracing.com/eu-terms-use-eula/) | Seite: 5. August 2026, ausdrücklich Ergänzung für EU-Nutzer; keine weltweit einheitliche Regel. Über [Legal-Verzeichnis](https://www.iracing.com/legal/) bestätigt. |
+| iRacing | [Broadcast Policy](https://www.iracing.com/broadcast-policy/) | Aktuell von der offiziellen Legal-Seite verlinkt; Seite/PDF-Fassung 15. Dezember 2021, PDF nennt Effective Date 1. Februar 2021. [PDF](https://ir-core-sites.iracing.com/members/pdfs/20211215-iRacing_Broadcast_Policy_dated_Dec_15_2021.pdf) unterscheidet TV-artige Broadcasts und POV-Streams; keine allgemeine Fotolizenz daraus abgeleitet. |
+| Le Mans Ultimate | [End User Access and License Agreement](https://store.steampowered.com/eula/2399420_eula_1) | Von der [Steam-Produktseite](https://store.steampowered.com/app/2399420/Le_Mans_Ultimate/) als Drittanbieter-EULA verlinkt; Dokumenttitel „June_2025“, Text nennt Studio 397 BV und das PC-Spiel; Rechte an Software und Custom Liveries getrennt. Keine Übertragung einer Software-Nutzungslizenz auf externe Mediennutzung. |
+| RaceRoom | [End-User Licence Agreement](https://game.raceroom.com/en/about/eula/) | RaceRoom Entertainment AG, RaceRoom Racing Experience mit Steam-Voraussetzung; § 1 nennt u. a. 3D-Modelle, Artwork und Lizenzgeberrechte. Kein erkennbares Versionsdatum. **Abschließender Slash erforderlich:** die URL ohne Slash lieferte eine 404-Seite; nur der geprüfte funktionierende Link wird verwendet. |
+| Gran Turismo 7 | [PlayStation Software Application End User Licence Agreement](https://www.playstation.com/en-gb/legal/software-eula/) | Englische UK-Seite, Ver. 1.0, regionale Regelungen (u. a. EMEA/APAC/Americas); § 1.4 Softwarelizenz und § 3.4 Sharing/UGC, keine pauschale externe Verwertungslizenz. Alter Pfad „software-usage-terms“ führt zum Software-EULA. Die [offizielle UK-Spielseite](https://www.playstation.com/en-gb/games/gran-turismo-7/) verweist auf Software- und Dienstbedingungen. |
+| Gran Turismo 7 | [PlayStation Terms of Service](https://www.playstation.com/en-gb/legal/psn-terms-of-service/) | Englische UK-Seite, Version 12, aktualisiert April 2026; Onlinedienste/Konten, § 19 UGC. Gesondert von der Software-EULA; Region und konkrete Nutzung prüfen, nicht als weltweit geltende GT7-Spezialmedienrichtlinie dargestellt. |
+| Assetto Corsa Competizione | [End-User License Agreement](https://store.steampowered.com/eula/805550_eula_0) | Text nennt ausdrücklich ACC und KUNOS Simulazioni, nicht die EULA des ursprünglichen Assetto Corsa. PC/Steam-Kontext, §§ 5 (Artwork/Rechte), 7 (UGC), 10 (Steam-Service); kein erkennbares Versionsdatum. Konsolen-/Plattformverträge können abweichen. |
+
+**Offene juristische Prüfung:** Die geprüften Quellen liefern keine Freigabe
+konkreter Foto-/Videoverwendungen. Zusätzliche Vereinbarungen, Plattformregeln,
+Eventrechte, Marken/Liveries und jeweils aktuelle Fassungen sind nutzungsbezogen
+zu prüfen. Keine weitere eigenständige, allgemeine Medienrichtlinie für LMU,
+RaceRoom, GT7 oder ACC wurde in dieser Recherche verifiziert; deren Nichtexistenz
+wird nicht behauptet. Für jedes Beispiel liegt eine überprüfte offizielle
+Bedingungs-/EULA-Quelle vor. Juristische Bewertung und Betreiberfreigabe bleiben
+erforderlich; keine verbindlichen eigenen Terms wurden eingeführt oder deployed.
 
 ## Priorisierte Betriebs- und Produktlücken
 
@@ -66,7 +107,17 @@ Die Tests prüfen Texte/Navigation, **nicht** Verträge, echte Providerfristen o
 Rechtskonformität. Livezustellung und angemeldete Produktions-UI werden dadurch
 nicht bestätigt.
 
-Prüfergebnis: Typprüfung und Produktionsbuild bestanden. Öffentliches
+Prüfergebnis 12. Oktober 2026 für die Game-Ergänzung:
+`node --test --test-concurrency=1 tests/legal-pages.test.mjs` bestanden (vier
+Tests), ebenso `npm run check` und `npm run build`. Unangemeldete Direktaufrufe,
+Rechtsnavigation, alle acht Linkziele mit Dokumentlabels und Rechteabgrenzung
+geprüft. Impressum einschließlich des neuen Abschnitts bei 390 × 844 px visuell
+geprüft; keine horizontale Überbreite. Vorschau auf Port 5000 gestartet.
+Die vorhandenen Build-Hinweise zu Browserslist-Datenstand und Bundlegröße bleiben.
+Keine echten Konten/Medien angelegt, keine Datenschutz-/Berechtigungsänderung,
+kein Deployment und keine juristische Freigabe.
+
+Früheres Prüfergebnis vom 10. Oktober 2026: Typprüfung und Produktionsbuild bestanden. Öffentliches
 Privacy-Layout zusätzlich bei 390 × 844 px visuell geprüft; keine horizontale
 Überbreite in den Browserchecks. Der Build meldet vorhandene Hinweise zu altem
 Browserslist-Datenstand und großer Bundlegröße. Die Vorschau startet auf Port
