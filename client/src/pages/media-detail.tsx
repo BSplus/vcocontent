@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import type { MediaItem } from "@shared/schema";
@@ -23,9 +22,6 @@ export default function MediaDetail() {
     enabled: Number.isSafeInteger(id) && id > 0,
     retry: false,
   });
-  useEffect(() => {
-    document.title = item ? `${item.caption || "Esports media"} | VCO Media Database` : "VCO Media Database";
-  }, [item]);
 
   async function download(quality: "high" | "low") {
     if (!item) return;

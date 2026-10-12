@@ -29,9 +29,6 @@ export default function EventGallery() {
     queryKey: [`/api/events/${eventId}`],
     enabled: Boolean(eventId && eventId > 0),
   });
-  useEffect(() => {
-    document.title = event ? `${event.title} | VCO Media Database` : "VCO Media Database";
-  }, [event]);
   
   // Fetch creator data if this is a creator event
   const { data: creator } = useQuery<PublicCreator>({

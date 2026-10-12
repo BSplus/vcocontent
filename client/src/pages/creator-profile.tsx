@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { ArrowLeft, ArrowUpRight, CalendarDays, Globe2, Instagram, Mail, Star, Users, UserRound } from "lucide-react";
@@ -47,9 +47,6 @@ export default function CreatorProfile() {
   const displayName = creator?.displayName?.trim() || creator?.username || "";
   const websiteHref = creator?.websiteUrl && /^https:\/\/[^\s]+$/i.test(creator.websiteUrl) ? creator.websiteUrl : null;
   const instagramHref = creator?.instagramUrl && /^https:\/\/[^\s]+$/i.test(creator.instagramUrl) ? creator.instagramUrl : null;
-  useEffect(() => {
-    document.title = creator ? `${displayName} · VCO Creator` : "Creator · VCO";
-  }, [creator, displayName]);
   const isLoading = creatorLoading || eventsLoading || mediaLoading;
 
   if (isLoading) return <ProfileSkeleton />;

@@ -1,11 +1,10 @@
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Link } from "wouter";
 import MainNavigation from "@/components/main-navigation";
 import Footer from "@/components/footer";
 import LegalLinks from "@/components/legal-links";
 
 export default function LegalPage({ title, children }: { title: string; children: ReactNode }) {
-  useEffect(() => { document.title = `${title} | VCO Media Database`; }, [title]);
   return <div className="min-h-screen bg-background">
     <MainNavigation />
     <main className="mx-auto max-w-4xl px-5 py-10 sm:px-8">
