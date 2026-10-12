@@ -81,4 +81,4 @@ MEDIA_ANALYSIS_CONCURRENCY = "1"
 
 [userenv.development]
 MEDIA_ANALYSIS_CONCURRENCY = "1"
-PUBLIC_SITE_URL = "https://55205bd8-4957-43fc-9866-b9ea92e97716-00-2cdqp48ub6mwg-egrd38jb.kirk.replit.dev"
+PUBLIC_SITE_URL = "https://vco-content-studio.replit.app"
