@@ -44,6 +44,7 @@ import { EventImageError, validateOfficialEventImages, validateEventImages, publ
 import { registerPhotoMatchingRoutes } from "./photo-matching-routes";
 import { effectiveEventChanges } from "@shared/event-changes";
 import {supportedPhotoObservations} from "./utils/photo-number-evidence";
+import { registerManualNumberRoutes } from "./manual-number-routes";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -83,6 +84,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   registerCreatorEventAssociationRoutes(app);
   registerReferenceRoutes(app, requireCreator);
   registerPhotoMatchingRoutes(app, requireCreator);
+  registerManualNumberRoutes(app);
   const openAITestCooldowns = new Map<number, number>();
   const captionDetections = new Map<number, { thumbnail: string; expires: number; result: Promise<Awaited<ReturnType<typeof detectRaceNumbers>>> }>();
   // Auth already set up in index.ts

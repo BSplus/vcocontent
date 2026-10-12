@@ -35,6 +35,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { ShieldCheck, ShieldAlert, EyeOff } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import AssignNumberAction from "@/components/assign-number-dialog";
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -417,6 +418,9 @@ export default function AdminDashboard() {
                                >
                                  <PenLine className="h-4 w-4 mr-1" /> Edit Media
                                </Button>
+                              <div className="mt-2">
+                                <AssignNumberAction mediaItem={item} />
+                              </div>
                               <div className="flex justify-between items-center mt-2">
                                 <p className="text-xs text-muted-foreground">
                                   {item.type.charAt(0).toUpperCase() + item.type.slice(1)}

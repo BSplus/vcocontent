@@ -15,6 +15,13 @@ export function applicableDocuments(event: Event) {
       event.creatorId ? eq(referenceDocuments.ownerId, event.creatorId) : isNull(referenceDocuments.ownerId)));
 }
 export type MatchDocument = { scope: string; kind: string; session: string | null; rows: EntryRow[]; updatedAt: Date };
+export const referencePriority = (d: MatchDocument) =>
+  (d.scope === "event" ? 10 : 0) + (d.session ? 4 : 0) + (d.kind === "result" ? 2 : 0);
+export const referenceRowPriority = (d: MatchDocument, row: EntryRow) =>
+  referencePriority(d) + (d.scope === "season" && row.eventName ? 10 : 0) + (!d.session && row.session ? 4 : 0);
+export const referenceRowApplies = (d: MatchDocument, row: EntryRow, session: string | null, eventTitle: string) =>
+  (!d.session || d.session === session) && (!row.session || row.session === session) &&
+  (d.scope === "event" || !row.eventName || row.eventName.toLowerCase().trim() === eventTitle.toLowerCase().trim());
 // Broad descriptors do not contradict a model. Specific names must agree after
 // punctuation/case normalization or be a less-specific subset of the other name.
 // Do not infer model aliases: uncertain differences must not produce identity.
@@ -34,21 +41,19 @@ function vehicleConflict(visible: string, registered: string) {
 /** Result/event/session overrides merge available fields, not guesses. */
 export function matchReferences(visible: Identification[], documents: MatchDocument[], session: string | null, eventTitle = "", strictPhoto = false, requirePhotoEvidence = false): Identification[] {
   const applicable = documents.filter(d => !d.session || d.session === session);
-  const priority = (d: MatchDocument) => (d.scope === "event" ? 10 : 0) + (d.session ? 4 : 0) + (d.kind === "result" ? 2 : 0);
+  const priority = referencePriority;
   applicable.sort((a, b) => priority(a) - priority(b) || +new Date(a.updatedAt) - +new Date(b.updatedAt));
   return visible.map((input): Identification => {
     if (requirePhotoEvidence && input.source === "manual") return input;
     const observed = requirePhotoEvidence ? supportedPhotoObservations([input])[0] : input;
     let entry: EntryRow | undefined, ambiguous = false;
     if (observed.number) {
-      const rowPriority = (document:MatchDocument,row:EntryRow) => priority(document)+
-        (document.scope==="season" && row.eventName ? 10 : 0)+(!document.session && row.session ? 4 : 0);
+      const rowPriority = referenceRowPriority;
       const levels = Array.from(new Set(applicable.flatMap(d=>d.rows.map(row=>rowPriority(d,row))))).sort((a,b)=>a-b);
       for (const level of levels) {
         const rows = applicable.flatMap(document => document.rows.filter(r =>
           rowPriority(document,r)===level && r.number && normalizedNumber(r.number) === normalizedNumber(observed.number)
-          && (!r.session || r.session === session) && (document.scope === "event" || !r.eventName ||
-            r.eventName.toLowerCase().trim() === eventTitle.toLowerCase().trim())));
+          && referenceRowApplies(document,r,session,eventTitle)));
         if (!rows.length) continue;
         const consensus = (key: keyof EntryRow) => Array.from(new Map(rows.map(row=>String(row[key] || "").trim()).filter(Boolean)
           .map(value=>[value.toLowerCase().replace(/\s+/g," "),value])).values());

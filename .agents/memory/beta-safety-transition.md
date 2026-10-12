@@ -20,3 +20,13 @@ Bei strengeren Kriterien darf ein früherer Zweifelsfall nicht automatisch als v
 **Why:** Ein zusammengefasster alter Zweifelsfallstatus kann sowohl inhaltliche Unsicherheit als auch eine damals unvollständige technische Prüfung bedeuten.
 
 **How to apply:** Frühere Freigaben an den tatsächlichen Prüfstandard binden und bei fehlendem Nachweis gezielte erneute Prüfung ermöglichen, statt alte Entscheidungen ungeprüft zu übernehmen oder den gesamten historischen Bestand automatisch zu analysieren.
+
+Explizite manuelle Nummernzuweisungen dürfen unabhängig von der KI-Verfügbarkeit
+gespeichert werden; eine dadurch nötige Publikationsprüfung ist ein separater
+Schritt und keine Voraussetzung für das private Speichern.
+
+**Why:** Der manuelle Fallback soll auch bei nicht verfügbarer KI funktionieren,
+ohne den unabhängigen Creator-Publikationsschutz zu umgehen.
+
+**How to apply:** Zuordnung und Caption deterministisch speichern, geänderte
+Creator-Inhalte bis zur Prüfung privat halten und keine Eventautomatik aktivieren.

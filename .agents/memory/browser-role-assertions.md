@@ -14,3 +14,13 @@ Browser polling expressions should return booleans, not DOM elements; serialize 
 **Why:** Serializing React-connected DOM nodes through the browser protocol can fail with a deep object-reference error. Closing dialogs can still intercept the next pointer action, and unrelated editor warnings can be the first alert in the page.
 
 **How to apply:** Use explicit boolean conditions, wait for the previous dialog and its pointer lock to disappear, and query the relevant section rather than the first global alert.
+
+Mock all background endpoints with their real response shapes, including
+features not directly under test. A valid element can disappear between a wait
+and an interaction if an unrelated query subsequently crashes its parent.
+
+**Why:** Returning a generic object for an array endpoint caused a rendered
+dashboard to unmount during a tab test, resembling a timing or navigation bug.
+
+**How to apply:** Use explicit response contracts for background list requests,
+and inspect runtime exceptions before adding waits or retries.

@@ -45,15 +45,21 @@ export function matchedPhotoCaption(
   event: Pick<Event,"title"|"date"|"round"|"track"|"platform">,
   seriesName: string | null,
   identification: Identification[],
+  manuallyConfirmed = false,
 ) {
   const date = new Date(event.date);
   const context = [event.platform, seriesName, event.title,
     event.round ? (/^round\b/i.test(event.round) ? event.round : `Round ${event.round}`) : null,
     event.track, Number.isFinite(+date) ? date.toLocaleDateString("en-GB",
       {timeZone:"UTC",day:"numeric",month:"long",year:"numeric"}) : null].filter(Boolean).join(" · ");
-  const matched = identification.length > 0 && identification.every(row =>
-    row.source === "reference" && /^\d{1,4}$/.test(row.number) && !!row.team);
-  const vehicles = matched ? identification.map(row =>
+  // An explicit assignment can coexist with other visual-only vehicles. Include
+  // only confirmed entries, without asserting identities for those other rows.
+  const captionEntries = manuallyConfirmed ? identification.filter(row =>
+    ["manual","reference"].includes(row.source) && /^\d{1,4}$/.test(row.number)) : identification;
+  const matched = captionEntries.length > 0 && captionEntries.every(row =>
+    (row.source === "reference" || (manuallyConfirmed && row.source === "manual")) && /^\d{1,4}$/.test(row.number) &&
+    (manuallyConfirmed || !!row.team));
+  const vehicles = matched ? captionEntries.map(row =>
     [`#${row.number} ${row.team}`, row.vehicle,
       row.drivers ? `Registered lineup: ${row.drivers}` : null].filter(Boolean).join(" — ")) : [];
   // Do not partially truncate a lineup into a misleading fragment.

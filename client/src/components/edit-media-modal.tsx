@@ -23,6 +23,7 @@ import type { MediaIdentification } from "@/hooks/use-media-analysis";
 import { parseEditableTags, reconcileAnalysisTags } from "@/lib/reconcile-analysis-tags";
 import VideoPreview from "@/components/video-preview";
 import { useAuth } from "@/hooks/use-auth";
+import AssignNumberAction from "@/components/assign-number-dialog";
 
 interface EditMediaModalProps {
   open: boolean;
@@ -76,8 +77,13 @@ export default function EditMediaModal({
   const captionEdited = useRef(false);
   const [recognitionSession, setRecognitionSession] = useState("");
   const savedTagSnapshot = useRef<string[]>([]);
+  const assignedCaptionProtection = useRef<string | null>(null);
+  const assignedIdentificationProtection = useRef<MediaIdentification[] | null>(null);
   const [captionPreview, setCaptionPreview] = useState<CaptionPreview | null>(null);
   const [selectedScene, setSelectedScene] = useState<CaptionScene | null>(null);
+  const editorBaseline = useRef<{ caption: string; photographer: string; tags: string; identification: MediaIdentification[]; session: string }>({
+    caption: "", photographer: "", tags: "", identification: [], session: "",
+  });
 
   const form = useForm<FormData>({
     resolver: zodResolver(editFormSchema),
@@ -87,9 +93,12 @@ export default function EditMediaModal({
       tags: mediaItem.tags?.join(", ") || "",
     },
   });
+  const watchedValues = form.watch();
 
   useEffect(() => {
     if (!open) return;
+    assignedCaptionProtection.current = null;
+    assignedIdentificationProtection.current = null;
     form.reset({ caption: mediaItem.caption || "", photographer: mediaItem.photographer || "", tags: mediaItem.tags?.join(", ") || "" });
     setIdentification(Array.isArray((mediaItem as any).identification) ? (mediaItem as any).identification : []);
     identificationEdited.current = false;
@@ -97,6 +106,13 @@ export default function EditMediaModal({
     sessionEdited.current = false;
     captionEdited.current = false;
     setRecognitionSession(mediaItem.recognitionSession || "");
+    editorBaseline.current = {
+      caption: mediaItem.caption || "",
+      photographer: mediaItem.photographer || "",
+      tags: (mediaItem.tags || []).join(", "),
+      identification: Array.isArray((mediaItem as any).identification) ? (mediaItem as any).identification : [],
+      session: mediaItem.recognitionSession || "",
+    };
     observedPending.current = false;
     savedTagSnapshot.current = (mediaItem.tags || []).map(tag => tag.trim()).filter(Boolean);
     setCaptionPreview(null);
@@ -104,8 +120,10 @@ export default function EditMediaModal({
   }, [open, mediaItem.id]);
 
   useEffect(() => {
-    if (!open || captionEdited.current) return;
+    if (!open || captionEdited.current || (assignedCaptionProtection.current !== null &&
+      (mediaItem.caption || "") !== assignedCaptionProtection.current)) return;
     form.resetField("caption", {defaultValue:mediaItem.caption || ""});
+    editorBaseline.current.caption = mediaItem.caption || "";
   }, [open, mediaItem.caption, form]);
 
   const captionPreviewMutation = useMutation({
@@ -171,17 +189,26 @@ export default function EditMediaModal({
         savedTagSnapshot.current = result.data.tags.map(tag => tag.trim()).filter(Boolean);
         if (!tagsEdited.current) form.setValue("tags", savedTagSnapshot.current.join(", "), { shouldDirty: false });
       }
-      if (!identificationEdited.current && Array.isArray(result.data.identification)) {
+      const matchesAssignedIdentification = assignedIdentificationProtection.current === null ||
+        JSON.stringify(result.data.identification) === JSON.stringify(assignedIdentificationProtection.current);
+      if (!identificationEdited.current && Array.isArray(result.data.identification) && matchesAssignedIdentification) {
         setIdentification(result.data.identification);
+        editorBaseline.current.identification = result.data.identification;
         syncedIdentificationGeneration.current = `${mediaItem.id}:${result.data.generation ?? "legacy"}:${result.data.status}`;
       }
+      if (!sessionEdited.current) editorBaseline.current.session = result.data.recognitionSession || "";
+      if (!tagsEdited.current && Array.isArray(result.data.tags)) editorBaseline.current.tags = result.data.tags.join(", ");
     });
     return () => { current = false; };
   }, [open, mediaItem.id, mediaItem.type]);
   useEffect(() => {
     if (!open) return;
-    if (!captionEdited.current && analysis.data?.caption !== undefined) {
+    const matchesAssignedIdentification = assignedIdentificationProtection.current === null ||
+      JSON.stringify(analysis.data?.identification) === JSON.stringify(assignedIdentificationProtection.current);
+    if (!captionEdited.current && analysis.data?.caption !== undefined &&
+      (assignedCaptionProtection.current === null || analysis.data.caption === assignedCaptionProtection.current)) {
       form.resetField("caption", {defaultValue:analysis.data.caption || ""});
+      editorBaseline.current.caption = analysis.data.caption || "";
     }
     setIsAnalyzing(analysisPending(analysis.data?.status));
     if (analysisPending(analysis.data?.status) && !observedPending.current) {
@@ -189,9 +216,10 @@ export default function EditMediaModal({
       observedPending.current = true;
     }
     const identificationGeneration = `${mediaItem.id}:${analysis.data?.generation ?? "legacy"}:${analysis.data?.status}`;
-    if (!identificationEdited.current && analysis.data?.identification &&
+    if (!identificationEdited.current && analysis.data?.identification && matchesAssignedIdentification &&
       syncedIdentificationGeneration.current !== identificationGeneration) {
       setIdentification(analysis.data.identification);
+      editorBaseline.current.identification = analysis.data.identification;
       syncedIdentificationGeneration.current = identificationGeneration;
     }
     if (analysis.data?.status !== "completed") return;
@@ -203,11 +231,22 @@ export default function EditMediaModal({
     const latestSavedTags = (analysis.data.tags || []).map(tag => tag.trim()).filter(Boolean);
     form.setValue("tags", reconcileAnalysisTags(parseEditableTags(form.getValues("tags")),
       tagsAtAnalysisStart.current, latestSavedTags).join(", "), { shouldDirty: true });
+    if (!tagsEdited.current) editorBaseline.current.tags = reconcileAnalysisTags(
+      parseEditableTags(editorBaseline.current.tags), tagsAtAnalysisStart.current, latestSavedTags,
+    ).join(", ");
     savedTagSnapshot.current = latestSavedTags;
     queryClient.invalidateQueries({ predicate: query =>
       String(query.queryKey[0]).startsWith(`/api/events/${mediaItem.eventId}/media`) ||
       (String(query.queryKey[0]).startsWith("/api/media") && !String(query.queryKey[0]).endsWith("/analysis")) });
   }, [open, analysis.data?.status, analysis.data?.generation, analysis.data?.tags, analysis.data?.identification, analysis.data?.identificationManual, analysis.data?.caption, mediaItem.id]);
+
+  const currentTags = parseEditableTags(watchedValues.tags || "").join(", ");
+  const baselineTags = parseEditableTags(editorBaseline.current.tags).join(", ");
+  const hasUnsavedEditorChanges = (watchedValues.caption || "") !== editorBaseline.current.caption ||
+    (watchedValues.photographer || "") !== editorBaseline.current.photographer ||
+    currentTags !== baselineTags ||
+    JSON.stringify(identification) !== JSON.stringify(editorBaseline.current.identification) ||
+    recognitionSession !== editorBaseline.current.session;
   const analysisMutation = useMutation({
     mutationFn: (mode: "start" | "retry" | "reanalyse") => requestAnalysis(
       mediaItem.id,
@@ -494,6 +533,47 @@ export default function EditMediaModal({
               ...current, { number: "", team: "", drivers: "", vehicle: "", manufacturer: "", racingClass: "", discipline: "", source: "manual" },
             ]); }} disabled={identification.length >= 12}>Add vehicle</Button>
           </section>
+
+          <div className="border-t border-border pt-4">
+            <AssignNumberAction
+              mediaItem={mediaItem}
+              disabled={hasUnsavedEditorChanges || updateMutation.isPending}
+              disabledReason={hasUnsavedEditorChanges ? "Save changes first before assigning a number. Your current editor changes will be preserved." : undefined}
+              onSaved={saved => {
+                const savedIdentification = Array.isArray((saved as any).identification) ? (saved as any).identification : [];
+                assignedCaptionProtection.current = saved.caption || "";
+                assignedIdentificationProtection.current = savedIdentification;
+                form.reset({
+                  caption: saved.caption || "",
+                  photographer: saved.photographer || "",
+                  tags: saved.tags?.join(", ") || "",
+                });
+                setIdentification(savedIdentification);
+                setRecognitionSession(saved.recognitionSession || "");
+                identificationEdited.current = true;
+                tagsEdited.current = false;
+                sessionEdited.current = false;
+                captionEdited.current = false;
+                editorBaseline.current = {
+                  caption: saved.caption || "",
+                  photographer: saved.photographer || "",
+                  tags: saved.tags?.join(", ") || "",
+                  identification: savedIdentification,
+                  session: saved.recognitionSession || "",
+                };
+                queryClient.setQueryData([`/api/media/${mediaItem.id}/analysis`], (old: any) =>
+                  old ? { ...old, caption: saved.caption, captionSource: "manual",
+                    identification: savedIdentification, identificationManual: true } : old);
+                void queryClient.invalidateQueries({ queryKey: ["/api/creator/media"] });
+                void queryClient.invalidateQueries({ queryKey: ["/api/media"] });
+                void queryClient.invalidateQueries({ predicate: query => {
+                  const key = String(query.queryKey[0]);
+                  return key.startsWith(`/api/events/${mediaItem.eventId}/media`) ||
+                    key.startsWith("/api/admin/media") || key.includes("/search") || key.startsWith("/api/search");
+                } });
+              }}
+            />
+          </div>
 
            <div className="flex flex-wrap justify-end gap-2">
             <Button

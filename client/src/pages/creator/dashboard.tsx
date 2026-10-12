@@ -27,6 +27,7 @@ import CreatorGalleryAssociation, {
 } from "@/components/creator-gallery-association";
 import { Badge } from "@/components/ui/badge";
 import ProfileSettings from "@/components/profile-settings";
+import AssignNumberAction from "@/components/assign-number-dialog";
 
 export default function CreatorDashboard() {
   const queryClient = useQueryClient();
@@ -394,6 +395,9 @@ export default function CreatorDashboard() {
                                 >
                                   <PenLine className="mr-2 h-4 w-4" />Edit media
                                 </Button>
+                                <div className="mt-2">
+                                  <AssignNumberAction mediaItem={item} />
+                                </div>
                               </div>
                             </CardContent>
                           </Card>
