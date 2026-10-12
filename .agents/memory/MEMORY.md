@@ -27,6 +27,7 @@
 - [Video sampling bounds](video-sampling-bounds.md) — constrain FFmpeg input windows; requested seeks and actual frame presentation times can differ.
 - [VCO evaluation permission](vco-media-authorization.md) — user authorized all photos on the VCO photo site for this project's recognition evaluation.
 - [Media worker hosting](media-worker-hosting.md) — prefer one combined VM; cost and compatibility confirmation must precede explicit hosting-change approval.
+- [Storage cost boundaries](storage-cost-boundaries.md) — keep Replit, PostgreSQL and Nextcloud; external-provider advice is not migration approval, and direct downloads must preserve rights/statistics.
 - [Creator launch preference](creator-launch-intent.md) — prefer open, free self-service photo galleries with limits; paid expansion later, not yet implemented.
 - [Public creator profiles](public-creator-profiles.md) — preserve profile links and login identity; optional contact is explicit, and each new image needs independent approval.
 - [Database publishing](database-publishing.md) — verify the publishing diff; the Neon driver or a Neon secret alone does not imply an unmanaged production database.

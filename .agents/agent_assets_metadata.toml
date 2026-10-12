@@ -112,3 +112,17 @@ mtime_ms = 1791817448018
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/e926f53e-4df3-40c1-8ed3-1e36aaa64614/d9ce5315-2a75-4c55-8fff-efb3f06abe7b"
 storage_version_token = "1791817671176288"
 content_type = "image/png"
+
+[[outputs]]
+id = "AuHbRjTo8M3Dmph1lDBwU"
+uri = "file://generated-artifacts/storage-audit/vco-storage-audit.html"
+type = "html"
+title = "VCO – Speicher- und Kostenaudit"
+description = "Gemessener Bestand, Replit/R2/B2-Kostenmodelle, sichere Zielarchitektur und Migrationsplan. Stand: 13 October 2026. Keine Migration durchgeführt."
+logical_id = "893c19d5-d0e8-4e70-aee5-6c06e490ecb1"
+content_hash = "sha256:8c8c3d88810bd7ba5e05f9557e28083f5768318d7d82d6de0b4219f3ef0a093c"
+size = 20717
+mtime_ms = 1791843858884
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/893c19d5-d0e8-4e70-aee5-6c06e490ecb1/552d9f8c-2842-418b-8d92-beac102b96a1"
+storage_version_token = "1791843879725475"
+content_type = "text/html"
