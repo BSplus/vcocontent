@@ -14,3 +14,9 @@ Review each changed profile image independently and preserve the previous public
 **Why:** An approved avatar says nothing about a new cover's content. The existing beta safety boundary also applies to portfolio presentation.
 
 **How to apply:** Do not use a single image's approval to publish a multi-image profile update; apply the whole approved edit atomically and include retained covers in the existing storage allowance.
+
+Own profile edits must not require manual administrator approval; keep the automatic safety check.
+
+**Why:** The operator explicitly wants users and creators to publish their own profile changes without manual approval, not to remove or loosen safety checks.
+
+**How to apply:** Keep profile edits separate from gallery/media moderation. An uncertain profile check should invite adjustment and another save, not promise an administrator approval queue. Creator activation and real storage/access issues remain separate.

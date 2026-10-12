@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mapProfileError, isUsernameConflict } from "../server/profile-errors.ts";
 import { MediaLimitError } from "../server/media-policy.ts";
 import { readProfileFailure } from "../client/src/lib/profile-errors.ts";
+import { profileFailure } from "../shared/profile-errors.ts";
 test("only proven username constraints, including wrapped causes, are conflicts", () => {
   const cause = {code:"23505",constraint:"users_username_unique",table:"users",detail:"secret"};
   assert.equal(isUsernameConflict({cause:{cause}}),true);
@@ -18,4 +19,19 @@ test("the editor ignores untrusted raw errors and unknown field messages", () =>
   assert.equal(readProfileFailure(500,{error:"SQL secret"}).message.includes("secret"),false);
   assert.deepEqual(readProfileFailure(400,{code:"validation",fieldErrors:{bio:"provider secret"}}).fields,{});
   for (const [status,expected] of [[401,/Sign in/],[403,/access/],[429,/Wait/],[413,/3 MB/],[502,/server/]]) assert.match(readProfileFailure(status,"<html>private</html>").message,expected);
+});
+test("profile safety messages explain unchanged saves and retry without a manual approval process", () => {
+  for (const [code, status] of [["safety_blocked",400],["safety_uncertain",400],["safety_unavailable",503]]) {
+    const failure = profileFailure(code);
+    assert.match(failure.error, /automatic safety check/i);
+    assert.match(failure.error, /saved profile is unchanged/);
+    assert.match(failure.error, /try saving again/i);
+    assert.doesNotMatch(failure.error, /contact an administrator|pending|moderation review/i);
+    assert.equal(readProfileFailure(status, failure).message, failure.error);
+  }
+  assert.match(profileFailure("safety_uncertain").error, /No policy violation has been confirmed/);
+  assert.match(profileFailure("safety_uncertain").error, /Adjust your text or choose different images/);
+  // Actual technical/access causes still offer administrator help.
+  for (const code of ["storage_unknown","storage_cleanup","permission"])
+    assert.match(profileFailure(code).error, /administrator/);
 });

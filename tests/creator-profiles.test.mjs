@@ -11,7 +11,7 @@ process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = "https://profile-test.invalid";
 process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "synthetic";
 const originalFetch = globalThis.fetch;
 let safetyImages = 0, rejectNext = false, rejectAtImage = Infinity;
-let safetyMode = "approved", beforeSafety;
+let safetyMode = "approved", beforeSafety, secondImageMode;
 const fingerprints = [];
 globalThis.fetch = async (input, init) => {
   if (!String(input).startsWith("https://profile-test.invalid")) return originalFetch(input, init);
@@ -24,10 +24,12 @@ globalThis.fetch = async (input, init) => {
   fingerprints.push(createHash("sha256").update(SAFETY_POLICY).update(TAG_MODEL).update(text)
     .update(encoded?Buffer.from(encoded,"base64"):"").digest("hex"));
   safetyImages += body.messages[1].content.filter(part => part.type === "image_url").length;
+  const mode = secondImageMode?.at === safetyImages ? secondImageMode.mode : safetyMode;
+  if (mode === "error") return new Response("private provider failure", {status:503});
   const prohibited = rejectNext || safetyImages === rejectAtImage; rejectNext = false;
   return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({
     sexualized: prohibited ? "prohibited" : "clear", pornography: "clear", racistOrDehumanizing: "clear",
-    hateSymbolsOrGlorification: safetyMode === "review" ? "uncertain" : "clear", visibleTextAndSymbolsReviewed: true,
+    hateSymbolsOrGlorification: mode === "review" ? "uncertain" : "clear", visibleTextAndSymbolsReviewed: mode !== "incomplete",
   }) } }] }), { headers: { "Content-Type": "application/json" } });
 };
 const { db, pool } = await import("../server/db.ts");
@@ -96,7 +98,59 @@ test.after(async () => {
 });
 test.beforeEach(async () => {
   safetyMode = "approved";
+  secondImageMode = undefined;
   await db.execute(sql`delete from beta_rate_limits where key = any(${`{${fixtureIds.map(id => `profile:${id}`).join(",")}}`}::text[])`);
+});
+test("ordinary users save immediately without becoming creators or changing private account details", async () => {
+  const before = await storage.getUser(viewer.id);
+  const avatar = await sharp({create:{width:32,height:32,channels:3,background:"#347890"}}).png().toBuffer();
+  const result = await request("/api/account/profile", viewer, "PATCH", {
+    username: `edited-viewer-${id}`, bio: `Approved user biography ${id}`,
+    profileImage: `data:image/png;base64,${avatar.toString("base64")}`,
+  });
+  assert.equal(result.status, 200);
+  const saved = await storage.getUser(viewer.id);
+  assert.equal(saved.username, result.data.username);
+  assert.equal(saved.bio, result.data.bio);
+  assert.equal(saved.profileImage, result.data.profileImage);
+  assert.equal(saved.profileImagePublic, true);
+  for (const key of ["id","email","password","isAdmin","isCreator","creatorStatus","suspended","emailVerifiedAt"])
+    assert.deepEqual(saved[key], before[key]);
+  assert.equal("password" in result.data, false);
+  assert.equal(await publicCreatorById(viewer.id), null);
+  // Rejected edits never replace the approved user profile.
+  for (const mode of ["blocked","review","incomplete","error"]) {
+    safetyMode = mode === "blocked" ? "approved" : mode;
+    rejectNext = mode === "blocked";
+    const denied = await request("/api/account/profile", viewer, "PATCH", {
+      username: saved.username, bio: `User failure ${mode} ${id}`, profileImage: null,
+    });
+    assert.equal(denied.status, ["incomplete","error"].includes(mode) ? 503 : 400);
+    assert.deepEqual(await storage.getUser(viewer.id), saved);
+  }
+});
+test("approved creators save directly with stable public URLs, roles and private email", async () => {
+  for (const isCreator of [true, false]) {
+    await db.update(users).set({isCreator,creatorStatus:"approved"}).where(eq(users.id, stranger.id));
+    const before = await storage.getUser(stranger.id);
+    const result = await request("/api/account/profile", stranger, "PATCH", {
+      username: `edited-creator-${isCreator}-${id}`, bio: `Immediate creator ${isCreator} ${id}`,
+      displayName: "Immediately visible", publicContactEmail: "explicit@example.invalid",
+    });
+    assert.equal(result.status, 200);
+    const saved = await storage.getUser(stranger.id);
+    const publicProfile = await publicCreatorById(stranger.id);
+    assert.equal(publicProfile.username, result.data.username);
+    assert.equal(publicProfile.bio, result.data.bio);
+    assert.equal(publicProfile.displayName, "Immediately visible");
+    assert.equal(publicProfile.publicContactEmail, "explicit@example.invalid");
+    assert.equal(publicProfile.profileUrl, `/creator/${before.id}`);
+    for (const key of ["id","email","password","isAdmin","isCreator","creatorStatus","suspended","emailVerifiedAt"])
+      assert.deepEqual(saved[key], before[key]);
+    assert.equal("email" in publicProfile, false);
+    assert.equal("password" in publicProfile, false);
+  }
+  await db.update(users).set({isCreator:true}).where(eq(users.id,stranger.id));
 });
 
 test("public profiles whitelist fields, preserve unique URLs, and never default contact email", async () => {
@@ -366,14 +420,38 @@ test("each image target reports corrupt, animated, oversized and excessive pixel
 
 test("uncertain inspection and service outage are not claimed as proven policy violations", async () => {
   const before = await storage.getUser(stranger.id);
-  for (const mode of ["review","error"]) {
+  for (const mode of ["review","incomplete","error"]) {
     safetyMode = mode;
     const result = await request("/api/account/profile",stranger,"PATCH",{username:stranger.username,bio:`${mode} ${id}`});
     assert.equal(result.status,mode === "review" ? 400 : 503);
     assert.equal(result.data.code,mode === "review" ? "safety_uncertain" : "safety_unavailable");
     assert.deepEqual(result.data.fieldErrors,{});
     assert.equal(result.data.error.includes("private provider"),false);
+    assert.match(result.data.error, /saved profile is unchanged/);
+    assert.match(result.data.error, /try saving again/i);
+    assert.doesNotMatch(result.data.error, /contact an administrator|until an administrator|pending/i);
     assert.deepEqual(await storage.getUser(stranger.id), before);
+  }
+});
+test("an uncertain, incomplete or unavailable second image leaves the entire published profile unchanged", async () => {
+  const before = await storage.getUser(creator.id);
+  const published = await publicCreatorById(creator.id);
+  const avatar = await sharp({create:{width:32,height:32,channels:3,background:"#317953"}}).png().toBuffer();
+  const cover = await sharp({create:{width:96,height:32,channels:3,background:"#593713"}}).png().toBuffer();
+  for (const mode of ["review","incomplete","error"]) {
+    const previous = safetyImages;
+    secondImageMode = {at: previous + 2, mode};
+    const result = await request("/api/account/profile", creator, "PATCH", {
+      username: creator.username, bio: `Second image ${mode} ${id}`, displayName: "Not published",
+      publicContactEmail:"not-saved@example.invalid",
+      profileImage: `data:image/png;base64,${avatar.toString("base64")}`,
+      coverImage: `data:image/png;base64,${cover.toString("base64")}`,
+    });
+    assert.equal(result.status, mode === "review" ? 400 : 503);
+    assert.equal(result.data.code, mode === "review" ? "safety_uncertain" : "safety_unavailable");
+    assert.equal(safetyImages - previous, 2);
+    assert.deepEqual(await storage.getUser(creator.id), before);
+    assert.deepEqual(await publicCreatorById(creator.id), published);
   }
 });
 

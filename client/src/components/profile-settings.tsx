@@ -201,7 +201,7 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
       setFieldErrors({});
       if (fileRef.current) fileRef.current.value = "";
       if (coverFileRef.current) coverFileRef.current.value = "";
-      setNotice("Your profile was updated. Public changes follow the moderation review.");
+      setNotice("Your profile was updated. The automatic safety check passed and public changes are visible now. No administrator approval is required.");
     } catch {
       showFailure(profileMessages.connection);
     } finally {
@@ -253,7 +253,7 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold">{profileImage ? "Photo selected" : "No profile photo"}</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">JPEG, PNG, or WebP · source up to 3 MB per image. The server resizes and reviews the image.</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">JPEG, PNG, or WebP · source up to 3 MB per image. The server resizes the image and checks it automatically before saving.</p>
             </div>
           </div>
           <input ref={fileRef} id="profile-image" type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={isSaving} onChange={event => chooseImage(event.currentTarget.files?.[0], "profile")} />
@@ -267,7 +267,7 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
             <div className="relative aspect-[2.7/1] overflow-hidden border border-border bg-secondary">
               {coverImage ? <img src={coverImage} alt="Creator cover preview" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center gap-2 text-muted-foreground"><ImageIcon className="h-5 w-5" />No cover image</div>}
             </div>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">JPEG, PNG, or WebP · source up to 3 MB per image. Profile photo and cover can be saved together.</p>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">JPEG, PNG, or WebP · source up to 3 MB per image. Profile photo and cover are checked independently and can be saved together.</p>
             <input ref={coverFileRef} id="profile-cover" type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={isSaving} onChange={event => chooseImage(event.currentTarget.files?.[0], "cover")} />
             <div className="mt-3 flex flex-wrap gap-2">
               <Button {...fieldProps("coverImage")} id="profile-cover-action" type="button" variant="outline" className="min-h-11" disabled={isSaving} onClick={() => coverFileRef.current?.click()}><ImagePlus className="mr-2 h-4 w-4" />Choose cover</Button>

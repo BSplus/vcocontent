@@ -114,7 +114,7 @@ export default function AccountPage() {
         </div>
         <aside className="border border-primary/25 bg-primary/[0.04] p-5 sm:p-7">
           <p className="vco-kicker">Preferences & help</p><h2 className="mt-3 text-2xl">Keep your account in good standing.</h2>
-          <p className="mt-4 leading-relaxed text-foreground/75">Your username, biography, and profile photo are reviewed before public display. Creator accounts can also add an optional display name, cover and explicitly public contact details. Private account email remains private.</p>
+          <p className="mt-4 leading-relaxed text-foreground/75">Profile changes are checked automatically before saving. Once the check passes, changes are saved immediately and public details are visible without administrator approval. If the check cannot approve your changes, your saved profile stays unchanged; adjust your entries and try saving again. Creator accounts can also add an optional display name, cover and explicitly public contact details. Profile photo and cover are checked independently. Private account email remains private.</p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Button asChild variant="outline" className="min-h-11"><Link href="/privacy-policy">Privacy policy</Link></Button>
             <Button asChild variant="outline" className="min-h-11"><Link href="/credits">Credits & beta information</Link></Button>

@@ -16,8 +16,8 @@ test("creator profile, follow, name previews, following list and visual profile 
   const creator={id:64200,username:"FixtureCreator",displayName:"Fixture Photographer",isCreator:true,
     creatorStatus:"approved",bio:"Fixture motorsport photographer",profileImage:poster,coverImage:poster,
     publicContactEmail:null,websiteUrl:"https://example.invalid/",instagramUrl:null};
-  const user=()=>owner?{...creator,email:"private-owner@example.invalid",profileCoverImage:creator.coverImage,emailVerifiedAt:new Date().toISOString()}:
-    {id:64201,username:"FixtureViewer",email:"private-viewer@example.invalid",isCreator:false,creatorStatus:"none"};
+  const viewer={id:64201,username:"FixtureViewer",email:"private-viewer@example.invalid",isCreator:false,creatorStatus:"none",bio:""};
+  const user=()=>owner?{...creator,email:"private-owner@example.invalid",profileCoverImage:creator.coverImage,emailVerifiedAt:new Date().toISOString()}:viewer;
   const profile=()=>({...creator,following,followerCount:following?1:0});
   browser.listeners.add(event=>{
     if(event.method!=="Fetch.requestPaused")return;
@@ -33,7 +33,7 @@ test("creator profile, follow, name previews, following list and visual profile 
     else if(path==="/api/account/profile"){
       const data=JSON.parse(request.postData);writes.push(data);
       if(profileFailure) { status=profileFailure.status;body=profileFailure.body;raw=!!profileFailure.raw;profileFailure=undefined; }
-      else { Object.assign(creator,data);body=user(); }
+      else { Object.assign(owner?creator:viewer,data);body=user(); }
     }
     else if(path==="/api/account/downloads" || path==="/api/account/favorites")body={items:[],hasMore:false};
     else if(path==="/api/media/policy")body={community:true,imageBytes:5000000,videoBytes:0,maxPixels:40000000};
@@ -90,6 +90,16 @@ test("creator profile, follow, name previews, following list and visual profile 
       await click("Save profile");await browser.wait(`document.body.innerText.includes('Your profile was updated') && ${readyButton("Save profile")}`);
       assert.equal(writes.at(-1).publicContactEmail,"public@example.invalid");
       assert.equal(writes.at(-1).displayName,"Edited Photographer");
+      const success = await browser.evaluate(`document.querySelector('[role="status"]').textContent`);
+      assert.match(success, /automatic safety check passed/);
+      assert.match(success, /public changes are visible now/);
+      assert.match(success, /No administrator approval is required/);
+      assert.doesNotMatch(success, /moderation review|pending/i);
+      assert.ok(await browser.evaluate(`document.body.innerText.includes('changes are saved immediately')`));
+      await visit(`/creator/${creator.id}`,`document.querySelector('h1')?.textContent.includes('Edited Photographer')`);
+      assert.ok(await browser.evaluate(`document.body.innerText.includes('public@example.invalid')`));
+      assert.equal(await browser.evaluate(`document.body.innerText.includes('private-owner@example.invalid')`),false);
+      await visit("/account?tab=settings",`document.querySelector('#profile-display-name')?.value==='Edited Photographer'`);
       assert.equal("coverImage" in writes.at(-1),false);
       assert.ok(await browser.evaluate(`!!document.querySelector('img[alt="Creator cover preview"]')`));
       const hints=await browser.evaluate(`document.querySelector('[aria-labelledby="profile-settings-heading"]').innerText`);
@@ -169,6 +179,19 @@ test("creator profile, follow, name previews, following list and visual profile 
         assert.equal(await browser.evaluate(`document.querySelector('#profile-bio').value`),`Retained ${code}`);
         assert.equal(await browser.evaluate(`document.querySelectorAll('[aria-invalid="true"]').length`),0);
         assert.equal(await browser.evaluate(`document.body.innerText.includes('private provider payload')`),false);
+        if (code.startsWith("safety_")) {
+          const message = await browser.evaluate(`document.querySelector('[role="alert"]').textContent`);
+          assert.match(message, /saved profile is unchanged/);
+          assert.doesNotMatch(message, /contact an administrator|pending|moderation review/i);
+          assert.deepEqual(await browser.evaluate(`[...document.querySelectorAll('img[alt$="preview"]')].map(e=>e.getAttribute('src'))`),beforeImages);
+          if (code === "safety_uncertain") {
+            assert.match(message, /Adjust your text or choose different images/);
+            await setField("profile-bio","Adjusted biography after uncertain check");
+            await click("Save profile");
+            await browser.wait(`document.querySelector('[role="status"]')?.textContent.includes('public changes are visible now') && ${readyButton("Save profile")}`);
+            assert.equal(creator.bio,"Adjusted biography after uncertain check");
+          }
+        }
       }
       // An unsupported server response is a technical failure, never raw text.
       profileFailure={status:502,body:"<html>private upstream failure</html>",raw:true};
@@ -198,6 +221,19 @@ test("creator profile, follow, name previews, following list and visual profile 
       assert.ok(await browser.evaluate(`document.documentElement.scrollWidth<=innerWidth+1`));
       creator.username="FixtureCreator";
       creator.displayName="Fixture Photographer";creator.publicContactEmail=null;
+      owner=false;
+      await visit("/account?tab=settings",`!!document.querySelector('#profile-bio')`);
+      assert.equal(await browser.evaluate(`!!document.querySelector('#profile-display-name')`),false);
+      await setField("profile-bio",`Immediate user edit ${width}`);
+      await click("Save profile");
+      await browser.wait(`document.querySelector('[role="status"]')?.textContent.includes('public changes are visible now') && ${readyButton("Save profile")}`);
+      assert.equal(viewer.bio,`Immediate user edit ${width}`);
+      for (const field of ["displayName","coverImage","publicContactEmail","websiteUrl","instagramUrl"])
+        assert.equal(field in writes.at(-1),false);
+      assert.equal(viewer.isCreator,false);
+      assert.equal(viewer.creatorStatus,"none");
+      assert.equal(viewer.email,"private-viewer@example.invalid");
+      await visit("/account?tab=settings",`document.querySelector('#profile-bio')?.value===${JSON.stringify(`Immediate user edit ${width}`)}`);
     }
     assert.deepEqual(mockErrors,[]);assert.deepEqual(browser.errors,[]);
   }finally{await browser.close();}
