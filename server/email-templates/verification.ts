@@ -102,8 +102,7 @@ export function verificationEmail(
     "If the button does not work, copy and paste this verification link into your browser:",
     href,
     "",
-    "Virtual Competition Organisation (VCO) GmbH",
-    "© VCO",
+    "© Virtual Competition Organisation (VC) GmbH",
   ].join("\n");
 
   return { subject: SUBJECT, html, text };

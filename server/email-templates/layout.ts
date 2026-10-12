@@ -66,15 +66,10 @@ export function renderEmailLayout({ preheader, content }: EmailLayoutOptions): s
             </td>
           </tr>
           ${content}
-          <tr>
-            <td class="email-gutter" style="padding:25px 44px 30px; border-top:1px solid #34414e;">
-              <p style="margin:0 0 8px; color:#d0d7dd; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:13px; font-weight:600; line-height:19px;">Virtual Competition Organisation (VCO) GmbH</p>
-            </td>
-          </tr>
         </table>
         <table role="presentation" width="600" border="0" cellspacing="0" cellpadding="0" style="width:100%; max-width:600px; border-collapse:collapse;">
           <tr>
-            <td align="center" style="padding:17px 18px 0; color:#6f7b87; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:11px; line-height:17px;">© VCO</td>
+            <td align="center" style="padding:17px 18px 0; color:#6f7b87; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:11px; line-height:17px;">© Virtual Competition Organisation (VC) GmbH</td>
           </tr>
         </table>
       </td>

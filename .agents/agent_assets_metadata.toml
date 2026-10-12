@@ -61,14 +61,14 @@ content_type = "text/html"
 id = "6VloHebQBxJIExKR-_MAd"
 uri = "file://generated-artifacts/email-refinement/mobile.png"
 type = "image"
-title = "VCO headline — compact spacing"
-description = "Two headline lines with tight spacing and no blank line. Mobile browser preview; synthetic verification URL."
+title = "Email preview — simplified footer"
+description = "Company name appears only once, in the copyright line: © Virtual Competition Organisation (VC) GmbH. Mobile browser preview with a synthetic verification URL."
 logical_id = "5be9e36a-dcd0-437b-bdad-284005e4894c"
-content_hash = "sha256:1f8b8b326966e5b0721d52c3eefa0596ea7afa3c6e8758f765a0960108444d37"
-size = 50801
-mtime_ms = 1791815186110
-storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/5be9e36a-dcd0-437b-bdad-284005e4894c/f45838b7-a036-4d7c-a3f3-a9c329144789"
-storage_version_token = "1791815247593450"
+content_hash = "sha256:f8379344b25e0034507949e96c171284f632066afe3d79a3fde2cef3ef3d9a2e"
+size = 48948
+mtime_ms = 1791816253248
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/5be9e36a-dcd0-437b-bdad-284005e4894c/53e921cc-c3bc-4c02-82dd-e307b9a8a50e"
+storage_version_token = "1791816274505445"
 content_type = "image/png"
 
 [[outputs]]

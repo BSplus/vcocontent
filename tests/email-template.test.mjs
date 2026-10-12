@@ -17,7 +17,11 @@ test("verification template preserves copy, direct links and a useful text alter
   assert.doesNotMatch(email.html, /VCO&nbsp; \/ &nbsp;ACCOUNT|VERIFY EMAIL ADDRESS/);
   assert.match(email.html, /Verify your email address to activate your account and get started\./);
   assert.match(email.text, /Verify your email address to activate your account and get started\./);
-  assert.equal((email.html.match(/Virtual Competition Organisation \(VCO\) GmbH/g) || []).length, 1);
+  for (const content of [email.html, email.text]) {
+    assert.equal((content.match(/Virtual Competition Organisation/g) || []).length, 1);
+    assert.match(content, /© Virtual Competition Organisation \(VC\) GmbH/);
+    assert.doesNotMatch(content, /© VCO/);
+  }
   assert.match(email.html, /cid:vco-logo/);
   assert.ok(email.html.includes(url));
   assert.ok(email.text.includes(url));
