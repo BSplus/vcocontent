@@ -1,11 +1,11 @@
 import { escapeHtml, renderEmailLayout } from "./layout";
 
 const SUBJECT = "Verify your email | VCO Content Database";
-const HEADLINE = "One click. You’re in.";
+const HEADLINE = "ONE CLICK. YOU’RE IN.";
 const INTRO = "Welcome to the VCO Content Database.";
 const BODY =
-  "Confirm your email address to activate your account and explore motorsport photography, racing moments and creator galleries.";
-const CTA = "VERIFY EMAIL ADDRESS";
+  "Verify your email address to activate your account and get started.";
+const CTA = "VERIFY EMAIL";
 
 function validatedVerificationHref(siteUrl: string, verificationUrl: string): string {
   let trustedOrigin: string;
@@ -49,22 +49,21 @@ export function verificationEmail(
   const href = validatedVerificationHref(siteUrl, verificationUrl);
   const escapedHref = escapeHtml(href);
   const content = `<tr>
-  <td class="email-gutter" style="padding:43px 44px 39px;">
-    <p style="margin:0 0 16px; color:#0099ed; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:2.4px; line-height:16px; text-transform:uppercase;">ACCOUNT VERIFICATION&nbsp; / &nbsp;VCO</p>
-    <h1 class="email-headline" style="margin:0 0 25px; color:#e6e9eb; font-family:'Big Shoulders Display','Arial Narrow',Arial,sans-serif; font-size:48px; font-weight:800; letter-spacing:-0.5px; line-height:50px; text-transform:uppercase;">${escapeHtml(HEADLINE)}</h1>
-    <p class="email-mobile-copy" style="margin:0 0 12px; color:#dbe1e6; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:18px; font-weight:600; line-height:27px;">${escapeHtml(INTRO)}</p>
-    <p class="email-mobile-copy" style="margin:0 0 29px; color:#aeb9c3; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:16px; line-height:25px;">${escapeHtml(BODY)}</p>
-    <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 0 27px;">
+  <td class="email-gutter" style="padding:31px 44px 29px;">
+    <h1 class="email-headline" style="margin:0 0 17px; color:#e6e9eb; font-family:'Big Shoulders Display','Arial Narrow',Arial,sans-serif; font-size:48px; font-weight:800; letter-spacing:-0.5px; line-height:50px; text-transform:uppercase;">${escapeHtml(HEADLINE)}</h1>
+    <p class="email-mobile-copy" style="margin:0 0 8px; color:#dbe1e6; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:18px; font-weight:600; line-height:27px;">${escapeHtml(INTRO)}</p>
+    <p class="email-mobile-copy" style="margin:0 0 19px; color:#aeb9c3; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:16px; line-height:25px;">${escapeHtml(BODY)}</p>
+    <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 0 19px;">
       <tr>
         <td align="center" bgcolor="#0099ed" style="background-color:#0099ed;">
           <!--[if mso]>
-          <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${escapedHref}" style="height:50px;v-text-anchor:middle;width:248px;" arcsize="0%" strokecolor="#0099ed" fillcolor="#0099ed">
+          <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${escapedHref}" style="height:45px;v-text-anchor:middle;width:208px;" arcsize="0%" strokecolor="#0099ed" fillcolor="#0099ed">
             <w:anchorlock/>
-            <center style="color:#111820;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;letter-spacing:1px;">${CTA}</center>
+          <center style="color:#111820;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;letter-spacing:1px;">${CTA}</center>
           </v:roundrect>
           <![endif]-->
           <!--[if !mso]><!-->
-          <a href="${escapedHref}" target="_blank" style="display:inline-block; min-width:208px; padding:16px 20px; border:1px solid #0099ed; background-color:#0099ed; color:#101820; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:13px; font-weight:700; letter-spacing:1.4px; line-height:16px; text-align:center; text-decoration:none;">${CTA}</a>
+          <a href="${escapedHref}" target="_blank" style="display:inline-block; min-width:206px; padding:13px 20px; border:1px solid #0099ed; background-color:#0099ed; color:#101820; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:13px; font-weight:700; letter-spacing:1.4px; line-height:17px; text-align:center; text-decoration:none;">${CTA}</a>
           <!--<![endif]-->
         </td>
       </tr>
@@ -77,7 +76,7 @@ export function verificationEmail(
         </td>
       </tr>
     </table>
-    <p style="margin:27px 0 8px; color:#aeb9c3; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:13px; font-weight:600; line-height:19px;">Button not working?</p>
+    <p style="margin:19px 0 6px; color:#aeb9c3; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:13px; font-weight:600; line-height:19px;">Button not working?</p>
     <p style="margin:0 0 6px; color:#7d8995; font-family:'IBM Plex Sans Condensed','Arial Narrow',Arial,sans-serif; font-size:12px; line-height:18px;">Copy and paste this verification link into your browser:</p>
     <p style="margin:0; overflow-wrap:anywhere; word-break:break-all; color:#48b7f4; font-family:Arial,sans-serif; font-size:12px; line-height:19px;"><a href="${escapedHref}" target="_blank" style="color:#48b7f4; text-decoration:underline; overflow-wrap:anywhere; word-break:break-all;">${escapedHref}</a></p>
   </td>
@@ -104,7 +103,7 @@ export function verificationEmail(
     href,
     "",
     "Virtual Competition Organisation (VCO) GmbH",
-    "VCO Content Database",
+    "© VCO",
   ].join("\n");
 
   return { subject: SUBJECT, html, text };

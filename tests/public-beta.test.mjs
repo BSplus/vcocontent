@@ -292,7 +292,7 @@ test("register → single-use email verification → self activation, including 
   const email = mail.at(-1);
   assert.equal(email.from, process.env.RESEND_FROM);
   assert.equal(email.subject, "Verify your email | VCO Content Database");
-  assert.match(email.html, /VERIFY EMAIL ADDRESS/);
+  assert.match(email.html, />VERIFY EMAIL</);
   assert.match(email.html, /cid:vco-logo/);
   assert.equal(email.attachments[0].content_id, "vco-logo");
   assert.equal(email.attachments[0].content_type, "image/png");

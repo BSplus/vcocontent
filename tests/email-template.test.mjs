@@ -10,8 +10,13 @@ const url = `${origin}/auth#verify=${"a".repeat(64)}`;
 test("verification template preserves copy, direct links and a useful text alternative", () => {
   const email = verificationEmail(origin, url);
   assert.equal(email.subject, "Verify your email | VCO Content Database");
-  assert.match(email.html, /One click/);
-  assert.match(email.html, /VERIFY EMAIL ADDRESS/);
+  assert.match(email.html, /ONE CLICK\. YOU/);
+  assert.match(email.html, />VERIFY EMAIL</);
+  assert.doesNotMatch(email.subject, /\[TEST\]/);
+  assert.doesNotMatch(email.html, /VCO&nbsp; \/ &nbsp;ACCOUNT|VERIFY EMAIL ADDRESS/);
+  assert.match(email.html, /Verify your email address to activate your account and get started\./);
+  assert.match(email.text, /Verify your email address to activate your account and get started\./);
+  assert.equal((email.html.match(/Virtual Competition Organisation \(VCO\) GmbH/g) || []).length, 1);
   assert.match(email.html, /cid:vco-logo/);
   assert.ok(email.html.includes(url));
   assert.ok(email.text.includes(url));
@@ -32,7 +37,7 @@ test("verification URL validation rejects foreign, malformed and unsafe links", 
   assert.throws(() => verificationEmail("http://email-preview.example.test", url));
 });
 
-for (const width of [1280, 390]) {
+for (const width of [1280, 390, 320]) {
   for (const scheme of ["light", "dark"]) {
     test(`email browser rendering ${width}px / ${scheme}`, async () => {
       const browser = await uiBrowser();
@@ -51,16 +56,23 @@ for (const width of [1280, 390]) {
         await browser.command("Page.setDocumentContent", { frameId: frameTree.frame.id, html });
         await browser.wait("document.images.length > 0 && [...document.images].every(i => i.complete && i.naturalWidth > 0)");
         const state = await browser.evaluate(`(() => {
-          const a = [...document.querySelectorAll('a')].find(a => a.textContent.includes('VERIFY EMAIL ADDRESS'));
+          const a = [...document.querySelectorAll('a')].find(a => a.textContent.trim()==='VERIFY EMAIL');
           const r = a?.getBoundingClientRect();
           return {width:innerWidth, fits:document.documentElement.scrollWidth<=innerWidth,
             ctaVisible:!!r && r.width>0 && r.height>=40 && r.left>=0 && r.right<=innerWidth,
+            ctaHeight:r?.height,ctaTop:r?.top,
+            headlineSize:parseFloat(getComputedStyle(document.querySelector('h1')).fontSize),
             target:a?.getAttribute('href'), background:getComputedStyle(document.body).backgroundColor};
         })()`);
         assert.equal(state.width, width);
         assert.equal(state.fits, true);
         assert.equal(state.ctaVisible, true);
         assert.equal(state.target, url);
+        assert.ok(state.ctaHeight >= 44 && state.ctaHeight <= 48);
+        if (width < 500) {
+          assert.equal(state.headlineSize, 29);
+          assert.ok(state.ctaTop < 500);
+        }
         assert.notEqual(state.background, "rgba(0, 0, 0, 0)");
         const image = await browser.command("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
         await writeFile(`/tmp/vco-email-${width}-${scheme}.png`, Buffer.from(image.data, "base64"));
