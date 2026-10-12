@@ -14,3 +14,9 @@ Die Mailbereitschaft immer am laufenden veröffentlichten Prozess prüfen, nicht
 **Why:** Vorhandene Resend-Secrets und eine gültige Versandkonfiguration im Workspace gingen bei einem Live-Test mit einer abgelehnten Konfigurationsprüfung im veröffentlichten Prozess einher. Workspace-Verfügbarkeit beweist keine Übernahme in den aktiven Deploy.
 
 **How to apply:** Die aktive Live-Registrierung beziehungsweise den authentifizierten Versandstatus prüfen. Bei fehlender Live-Konfiguration die Publishing-Einstellungen und eine erforderliche erneute Veröffentlichung benennen, ohne eigenständig Produktionswerte zu ändern oder zu veröffentlichen. Provider-Annahme und bestätigte Inbox-Zustellung getrennt ausweisen.
+
+Transaktionale Mailgrafiken dürfen nicht vom privaten App-Ursprung als externe Bilder abhängen.
+
+**Why:** Der veröffentlichte App-Ursprung ist zugangsgeschützt; Mailclients können dessen Logo nicht verlässlich anonym laden. Eingebettete CID-Grafiken vermeiden diese Abhängigkeit ohne Tracking oder öffentliche Freigabe zusätzlicher App-Inhalte.
+
+**How to apply:** Für künftige Mailvorlagen kleine eingebettete Markenassets verwenden und lesbares Textbranding für Clients erhalten, die Bilder blockieren. Browser-Vorschauen sind kein Nachweis für Gmail-, Outlook- oder Apple-Mail-spezifische Darstellung.

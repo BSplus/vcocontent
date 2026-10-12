@@ -1,5 +1,7 @@
 import type { Express } from "express";
 import { createHash, randomBytes } from "crypto";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { users, emailVerifications } from "@shared/schema";
@@ -7,9 +9,19 @@ import { requireAuth } from "./middleware/auth";
 import { publicSiteUrl } from "./seo";
 import { takeBetaRate } from "./beta-policy";
 import { verificationConfigured } from "./beta-config";
+import { verificationEmail } from "./email-templates/verification";
 export { verificationConfigured } from "./beta-config";
 
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
+let logoContent: Promise<string> | undefined;
+function emailLogo() {
+  return logoContent ||= readFile(resolve(process.cwd(), "attached_assets/VCO_2021_reg_White_Trans.png"))
+    .then(bytes => bytes.toString("base64"))
+    .catch(() => {
+      logoContent = undefined;
+      throw new Error("Verification email brand asset is unavailable.");
+    });
+}
 export async function sendVerification(user: {id:number;email:string;emailVerifiedAt:Date|null}) {
   if (user.emailVerifiedAt) return {status:200,error:undefined,sent:false};
   if (!verificationConfigured()) return {status:503,error:"Email verification is not configured. Please try again later."};
@@ -20,12 +32,15 @@ export async function sendVerification(user: {id:number;email:string;emailVerifi
   await db.insert(emailVerifications).values({userId:user.id,tokenHash:hash,expiresAt:new Date(Date.now()+3600000)})
     .onConflictDoUpdate({target:emailVerifications.userId,set:{tokenHash:hash,expiresAt:new Date(Date.now()+3600000),sentAt:new Date(),usedAt:null}});
   try {
-    const url = `${publicSiteUrl()}/auth#verify=${token}`;
+    const siteUrl = publicSiteUrl();
+    if (!siteUrl) throw new Error("Verification email origin is unavailable.");
+    const url = `${siteUrl}/auth#verify=${token}`;
+    const template = verificationEmail(siteUrl, url);
     const response = await fetch("https://api.resend.com/emails", {
       method:"POST",headers:{"Authorization":`Bearer ${process.env.RESEND_API_KEY}`,"Content-Type":"application/json",
         "Idempotency-Key":`verification-${hash}`},
-      body:JSON.stringify({from:process.env.RESEND_FROM,to:[user.email],subject:"Verify your VCO email",
-        text:`Verify your VCO email address: ${url}\nThis link expires in one hour and can be used once. If you did not request this, ignore this email.`}),
+      body:JSON.stringify({from:process.env.RESEND_FROM,to:[user.email],...template,
+        attachments:[{filename:"vco-logo.png",content:await emailLogo(),content_type:"image/png",content_id:"vco-logo"}]}),
       signal:AbortSignal.timeout(10000),
     });
     if (!response.ok) throw new Error("Delivery rejected");

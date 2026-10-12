@@ -1,0 +1,93 @@
+VCO Content Database – Branded Email Templates
+
+Please replace the current plain-text account verification email with a premium, branded HTML email that matches the existing VCO Content Database website.
+
+1. Inspect First
+
+Review the current Resend integration, email verification flow, existing branding and any reusable email templates.
+
+Reuse the existing email infrastructure. Do not introduce another email provider or authentication system.
+
+2. Visual Design
+
+Create a modern, motorsport-inspired email design consistent with the actual website:
+
+* Dark, premium visual appearance
+* Existing VCO logo, brand colours and typography where email-compatible
+* Strong headline and clear hierarchy
+* Prominent primary CTA button
+* Subtle motorsport-inspired styling
+* Clean spacing and mobile-friendly layout
+* Professional footer
+
+Avoid generic corporate email templates and excessive decorative elements.
+
+Use email-compatible HTML with inline styles and a readable plain-text alternative.
+
+3. Verification Email
+
+Subject: Verify your email | VCO Content Database
+
+Headline: One click. You’re in.
+
+Body:
+Welcome to the VCO Content Database.
+
+Confirm your email address to activate your account and explore motorsport photography, racing moments and creator galleries.
+
+Primary CTA:
+VERIFY EMAIL ADDRESS
+
+Additional information:
+
+* Verification link expires after 60 minutes.
+* Link can only be used once.
+* If the recipient did not request registration, they can ignore the email.
+
+4. Security and Functionality
+
+Preserve the existing verification token, expiry and single-use behaviour.
+
+* Do not change the authentication logic.
+* Do not expose verification tokens in logs.
+* Use the existing trusted PUBLIC_SITE_URL.
+* Keep verification URLs out of unnecessary tracking or redirect systems.
+* Do not add marketing tracking pixels.
+* Ensure the CTA works across common email clients.
+* Include a fallback verification link in case the button fails.
+* Never include a user’s password or other credentials.
+
+5. Reusable Template
+
+Create one lightweight reusable email layout for future transactional emails, such as:
+
+* Email verification
+* Password reset
+* Welcome email
+* Account notifications
+
+Only implement the verification email now.
+
+Do not create a complex email template management system.
+
+6. Validation
+
+Test rendering on desktop and mobile, including dark and light email clients.
+
+Confirm that:
+
+* Resend accepts the email.
+* The sender uses RESEND_FROM.
+* The button points to the correct environment.
+* The verification process still works.
+* The plain-text alternative remains usable.
+
+Use an authorized test recipient and avoid unnecessary production emails.
+
+Do not deploy without approval.
+
+Final Report
+
+Briefly summarize the template changes, branding decisions, test results and any remaining limitations.
+
+Priority: A beautiful, reliable VCO-branded email with minimal implementation complexity.

@@ -289,6 +289,18 @@ test("incomplete visual inspection cannot be approved, including review results 
 });
 test("register → single-use email verification → self activation, including failure and cooldown",async()=>{
   const user = await account({verified:false});
+  const email = mail.at(-1);
+  assert.equal(email.from, process.env.RESEND_FROM);
+  assert.equal(email.subject, "Verify your email | VCO Content Database");
+  assert.match(email.html, /VERIFY EMAIL ADDRESS/);
+  assert.match(email.html, /cid:vco-logo/);
+  assert.equal(email.attachments[0].content_id, "vco-logo");
+  assert.equal(email.attachments[0].content_type, "image/png");
+  assert.ok(Buffer.from(email.attachments[0].content, "base64").subarray(0, 8)
+    .equals(Buffer.from([137,80,78,71,13,10,26,10])));
+  const textLink = email.text.match(/https:\/\/example\.test\/auth#verify=[a-f0-9]{64}/)?.[0];
+  assert.ok(textLink);
+  assert.ok(email.html.includes(textLink));
   assert.equal((await request("/api/creator/request",{cookie:user.cookie,method:"POST"})).status,403);
   assert.equal((await request("/api/email-verification/send",{cookie:user.cookie,method:"POST"})).status,429);
   const token = mail.at(-1).text.match(/#verify=([a-f0-9]{64})/)[1];
