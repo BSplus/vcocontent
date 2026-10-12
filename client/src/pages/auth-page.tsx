@@ -16,8 +16,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect, useRef, useState } from "react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useEffect, useState } from "react";
+import { apiRequest } from "@/lib/queryClient";
+import { useEmailConfirmation } from "@/hooks/use-email-confirmation";
+import EmailVerificationStatus from "@/components/email-verification-status";
 import LegalLinks from "@/components/legal-links";
 
 // Create schemas for login/register
@@ -41,7 +43,7 @@ export default function AuthPage() {
   const [verificationMessage, setVerificationMessage] = useState("");
   const [verificationBusy, setVerificationBusy] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState("");
-  const verificationInProgress = useRef(false);
+  const confirmation = useEmailConfirmation();
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -52,31 +54,6 @@ export default function AuthPage() {
     resolver: zodResolver(registerSchema),
     defaultValues: { username: "", email: "", password: "" }
   });
-
-  // Verification tokens are intentionally POSTed, never consumed through a GET link.
-  useEffect(() => {
-    const match = window.location.hash.match(/(?:^#|&)verify=([^&]+)/);
-    if (!match) return;
-    verificationInProgress.current = true;
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    setVerificationBusy(true);
-    let token: string;
-    try {
-      token = decodeURIComponent(match[1]);
-    } catch {
-      setVerificationMessage("The verification link is invalid. Request a new email confirmation link.");
-      setVerificationBusy(false);
-      return;
-    }
-    apiRequest("POST", "/api/email-verification/confirm", { token })
-      .then(async response => {
-        const result = await response.json().catch(() => ({}));
-        setVerificationMessage(result.message || "Email verified. You can now request creator access.");
-        void queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      })
-      .catch(error => setVerificationMessage(error instanceof Error ? error.message : "Email verification failed."))
-      .finally(() => setVerificationBusy(false));
-  }, []);
 
   const sendVerification = async () => {
     setVerificationBusy(true);
@@ -95,7 +72,7 @@ export default function AuthPage() {
   useEffect(() => {
     let redirectTimeout: NodeJS.Timeout;
     
-    if (user && !verificationInProgress.current) {
+    if (user && confirmation.status === "none" && !/(?:^#|&)verify=/.test(window.location.hash)) {
       const destination = returnAfterAuth(new URLSearchParams(window.location.search).get("next"), user);
       redirectTimeout = setTimeout(() => {
         window.location.replace(destination);
@@ -107,13 +84,19 @@ export default function AuthPage() {
         clearTimeout(redirectTimeout);
       }
     };
-  }, [user]);
+  }, [user, confirmation.status]);
+
+  const continueSession = () => {
+    if (!user || confirmation.sessionStatus !== "ready") return;
+    window.location.replace(returnAfterAuth(new URLSearchParams(window.location.search).get("next"), user));
+  };
 
   const onLoginSubmit = async (formData: LoginFormData) => {
     console.log('Login form submitted:', { username: formData.username });
     try {
       console.log('Starting login mutation...');
       await loginMutation.mutateAsync(formData);
+      confirmation.finishLogin();
     } catch (error) {
       console.error('Login error:', error);
       toast({
@@ -141,8 +124,8 @@ export default function AuthPage() {
 
   return (
     <div className="grid min-h-[100dvh] bg-background lg:grid-cols-[0.88fr_1.12fr]">
-      <div className="flex items-center justify-center p-5 sm:p-8">
-        <Card className="w-full max-w-md">
+      <div className="flex min-w-0 items-center justify-center p-5 sm:p-8">
+        <Card className="w-full min-w-0 max-w-md">
           <CardHeader>
             <CardTitle>VCO Media Platform</CardTitle>
             <CardDescription>
@@ -150,6 +133,19 @@ export default function AuthPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {confirmation.status !== "none" && (
+              <EmailVerificationStatus
+                status={confirmation.status}
+                sessionStatus={confirmation.sessionStatus}
+                username={user?.username}
+                currentEmailVerified={!!user?.emailVerifiedAt}
+                showLogin={confirmation.showLogin}
+                onSignIn={confirmation.openLogin}
+                onContinue={continueSession}
+                onRefreshSession={confirmation.refreshSession}
+              />
+            )}
+            {(confirmation.status === "none" || confirmation.showLogin) && (
             <Tabs defaultValue="login">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="login">Login</TabsTrigger>
@@ -270,7 +266,8 @@ export default function AuthPage() {
                 </form>
               </TabsContent>
             </Tabs>
-            {(verificationBusy || verificationMessage || (user && !user.emailVerifiedAt)) && (
+            )}
+            {confirmation.status === "none" && (verificationBusy || verificationMessage || (user && !user.emailVerifiedAt)) && (
               <div className="mt-5 space-y-3 rounded-md border border-primary/30 bg-primary/5 p-4" role="status">
                 <p className="text-sm">{verificationMessage || (verificationBusy ? "Confirming your email…" : "Verify your email to continue to creator access.")}</p>
                 {user && !user.emailVerifiedAt && (

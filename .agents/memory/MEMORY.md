@@ -52,3 +52,4 @@
 - [Inactive tab fixtures](inactive-tab-fixtures.md) — malformed object mocks can crash JSX in inactive tabs before unrelated browser controls appear.
 - [Polling cancellation](polling-cancellation.md) — skip periodic refresh while a request is running, or latency above the interval can prevent any page from loading.
 - [Performance measurement boundary](performance-measurement-boundary.md) — local plan improvements are comparative evidence, not VM latency promises; isolate timed phases.
+- [Single-use action responses](single-use-action-responses.md) — automatic retries can hide committed success; lost responses need an uncertain outcome, not a success claim.

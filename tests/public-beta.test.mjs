@@ -405,8 +405,15 @@ test("register → single-use email verification → self activation, including 
   const token = mail.at(-1).text.match(/#verify=([a-f0-9]{64})/)[1];
   const stored = await db.select().from(emailVerifications).where(eq(emailVerifications.userId,user.id));
   assert.notEqual(stored[0].tokenHash,token);
-  const redeemed = await Promise.all([1,2].map(()=>request("/api/email-verification/confirm",{method:"POST",body:{token}})));
+   const otherSession = await account({verified:false});
+   const redeemed = await Promise.all([user.cookie,undefined].map(cookie=>request("/api/email-verification/confirm",{cookie,method:"POST",body:{token}})));
   assert.deepEqual(redeemed.map(r=>r.status).sort(),[200,400]);
+   assert.ok(redeemed.every(r=>!r.cookie),"Confirmation does not create or replace a session");
+   assert.ok((await request("/api/user",{cookie:user.cookie})).data.emailVerifiedAt);
+   const otherToken = mail.at(-1).text.match(/#verify=([a-f0-9]{64})/)[1];
+   assert.equal((await request("/api/email-verification/confirm",{cookie:user.cookie,method:"POST",body:{token:otherToken}})).status,200);
+   assert.equal((await request("/api/user",{cookie:user.cookie})).data.id,user.id,"Confirming another account never switches the existing session");
+   assert.equal((await request("/api/user",{cookie:otherSession.cookie})).data.id,otherSession.id);
   assert.equal((await request("/api/creator/request",{cookie:user.cookie,method:"POST"})).status,200);
   await db.update(users).set({creatorStatus:"rejected",isCreator:true}).where(eq(users.id,user.id));
   assert.equal((await request("/api/creator/request",{cookie:user.cookie,method:"POST"})).status,403);
