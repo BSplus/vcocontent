@@ -2,6 +2,7 @@ import { and, eq, or, isNull } from "drizzle-orm";
 import { db } from "./db";
 import { referenceDocuments, eventEntries, type Event, type EntryRow, type Identification } from "@shared/schema";
 import { supportedPhotoObservations } from "./utils/photo-number-evidence";
+import { photoTeamHintConflict, photoManufacturerHintConflict } from "./photo-team-hints";
 // Only photo callers require pixel provenance. Video reference matching keeps
 // its existing aggregation policy; explicitly manual assignments are protected.
 
@@ -41,6 +42,8 @@ function vehicleConflict(visible: string, registered: string) {
 /** Result/event/session overrides merge available fields, not guesses. */
 export function matchReferences(visible: Identification[], documents: MatchDocument[], session: string | null, eventTitle = "", strictPhoto = false, requirePhotoEvidence = false): Identification[] {
   const applicable = documents.filter(d => !d.session || d.session === session);
+  const applicableTeams = strictPhoto ? applicable.flatMap(d => d.rows
+    .filter(row => referenceRowApplies(d, row, session, eventTitle)).map(row => row.team)) : [];
   const priority = referencePriority;
   applicable.sort((a, b) => priority(a) - priority(b) || +new Date(a.updatedAt) - +new Date(b.updatedAt));
   return visible.map((input): Identification => {
@@ -71,9 +74,9 @@ export function matchReferences(visible: Identification[], documents: MatchDocum
       }
     }
     if (strictPhoto && entry && [{vehicle:observed.vehicle,team:observed.team,manufacturer:observed.manufacturer},
-      ...(observed.referenceConstraints || [])].some(hint=>vehicleConflict(hint.vehicle,entry!.car) || [
-      [hint.team,entry!.team],[hint.manufacturer,entry!.manufacturer],
-    ].some(([a,b])=>a && b && a.trim().toLowerCase()!==b.trim().toLowerCase()))) {
+      ...(observed.referenceConstraints || [])].some(hint=>vehicleConflict(hint.vehicle,entry!.car) ||
+      photoTeamHintConflict(hint.team,entry!,applicableTeams) ||
+      photoManufacturerHintConflict(hint.manufacturer,entry!))) {
       entry=undefined;
     }
     if (entry && (!strictPhoto || !ambiguous) && (!strictPhoto || !!entry.team)) return { ...observed, team: entry.team || observed.team, drivers: entry.drivers,

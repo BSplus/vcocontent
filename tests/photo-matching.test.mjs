@@ -288,8 +288,36 @@ test("conservative multi-car captions and conflicts, season/session/owner bounda
   assert.equal(matchedPhotoCaption(e,null,matched).matchStatus,"no_unique_match");
   const identified={...visible,team:"Apex",drivers:"Registered One",source:"reference"};
   assert.match(matchedPhotoCaption(e,null,[identified,{...identified,number:"008",team:"Second Team"}]).caption,/#008 Second Team/);
-  assert.equal(matchedPhotoCaption(e,null,[identified,visible]).matchStatus,"no_unique_match");
+  assert.equal(matchedPhotoCaption(e,null,[identified,visible]).matchStatus,"matched");
   assert.equal(matchedPhotoCaption({...e,platform:null},null,[]).caption.includes("undefined"),false);
+});
+
+test("worker saves safe reference information beside unknown cars without new provider calls",async()=>{
+  const e=await album();
+  await storage.replaceEventEntries(e.id,[{...entry,team:"Bleu Mercure Esport",car:"Porsche 911 GT3 R (992)"}]);
+  const p=await photo(e,{tags:["Helmet"],manualTags:["Helmet"]});scope([p]);
+  const recognition=[
+    {...visible,numberEvidence:"vehicle-crop-v2",vehicleRegion:[0,0,450,1000],
+      referenceConstraints:[{team:"bleu mercure",vehicle:"Porsche",manufacturer:"Porsche"}]},
+    {...visible,number:"",vehicleRegion:[550,0,450,1000],team:"Unknown branding"},
+  ];
+  await db.insert(mediaAnalysisJobs).values({mediaId:p.id,fingerprint:itemAnalysisFingerprint(p,true),
+    status:"queued",referenceOnly:true,recognition,generatedTags:[],
+    photoWorkflow:true,photoMatchingRevision:e.photoMatchingRevision});
+  const before=calls,audits=auditCalls;
+  const saved=await settled(p.id);
+  assert.equal(saved.photoMatchStatus,"matched");
+  assert.equal(saved.captionSource,"photo_automatic");
+  assert.match(saved.caption,/#007 Bleu Mercure Esport — Porsche 911 GT3 R \(992\) — Registered One; Registered Two/);
+  assert.doesNotMatch(saved.caption,/Unknown branding/);
+  assert.equal(saved.identification[0].source,"reference");
+  assert.equal(saved.identification[0].numberEvidence,"vehicle-crop-v2");
+  assert.equal(saved.identification[1].number,"");
+  assert.equal(saved.identification[1].source,"visual");
+  assert.ok(saved.tags.includes("Helmet"));
+  const publicPhoto=await (await api(`/api/media/${p.id}`,undefined,"anonymous")).json();
+  assert.equal(publicPhoto.caption,saved.caption);
+  assert.equal(calls,before);assert.equal(auditCalls,audits);
 });
 
 test("bounded requests and provider errors stay visible without revealing provider payloads",async()=>{

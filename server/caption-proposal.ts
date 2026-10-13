@@ -64,13 +64,13 @@ export function matchedPhotoCaption(
   manuallyConfirmed = false,
 ) {
   const context = captionContext(event, seriesName);
-  // An explicit assignment can coexist with other visual-only vehicles. Include
-  // only confirmed entries, without asserting identities for those other rows.
-  const captionEntries = manuallyConfirmed ? identification.filter(row =>
-    ["manual","reference"].includes(row.source) && /^\d{1,4}$/.test(row.number)) : identification;
-  const matched = captionEntries.length > 0 && captionEntries.every(row =>
-    (row.source === "reference" || (manuallyConfirmed && row.source === "manual")) && /^\d{1,4}$/.test(row.number) &&
-    (manuallyConfirmed || !!row.team));
+  // Each number-backed reference concerns only its own vehicle. Unknown cars
+  // neither inherit its identity nor suppress a safely matched neighbour.
+  // Photo evidence is enforced by the upstream matcher, not inferred here.
+  const captionEntries = identification.filter(row =>
+    (row.source === "reference" || (manuallyConfirmed && row.source === "manual")) &&
+    /^\d{1,4}$/.test(row.number) && (manuallyConfirmed || !!row.team));
+  const matched = captionEntries.length > 0;
   const vehicles = matched ? captionEntries.map(row =>
     [`#${row.number} ${row.team}`.trim(), row.vehicle,
       row.drivers].filter(Boolean).join(" — ")) : [];

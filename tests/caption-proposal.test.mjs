@@ -77,13 +77,24 @@ test("absent drivers and optional car/team fields leave no empty separators or i
     `${context} | #007`);
 });
 
-test("unmatched, mixed visual and unconfirmed manual rows still produce context-only captions", () => {
+test("unmatched and unconfirmed manual rows still produce context-only captions", () => {
   for (const rows of [[], [{ ...identities[0], source: "visual" }],
-    [identities[0], { ...identities[1], source: "visual" }], [{ ...identities[0], source: "manual" }]]) {
+    [{ ...identities[0], source: "manual" }]]) {
     assert.deepEqual(matchedPhotoCaption(photoEvent, "Series", rows),
       { caption: context, matchStatus: "no_unique_match" });
   }
   assert.equal(proposeCaption(event, [], [], null).suggestion, communityCaption(event));
+});
+
+test("mixed photos name only number-backed reference vehicles, never unknown or unconfirmed rows", () => {
+  const result = matchedPhotoCaption(photoEvent, "Series", [
+    identities[0], { ...identities[1], source: "visual" },
+    { ...identities[1], source: "manual" },
+    { ...identities[1], number: "" }, { ...identities[1], team: "" },
+  ]);
+  assert.equal(result.matchStatus, "matched");
+  assert.equal(result.caption, `${context} | #007 North Racing — Porsche 911 — A. One / B. Two`);
+  assert.doesNotMatch(result.caption, /South Racing|C\. Three|#12/);
 });
 
 test("1000-character boundary retains whole lineups, overflow omits all vehicles rather than cutting names", () => {

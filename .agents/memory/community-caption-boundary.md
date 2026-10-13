@@ -18,3 +18,15 @@ bewusste Nutzerentscheidung.
 Keine globale Bestandsanalyse oder Aktivierung durch Referenzimport ableiten.
 Historische preserved Texte dürfen nur nach ausdrücklich ausgewählter Ersetzung
 verändert werden, niemals anhand ihrer Dateiendung als Platzhalter eingestuft werden.
+
+Der Betreiber konkretisiert: „Nummern mit matching entry list sollen die sicheren
+infos aus entry list erhalten.“ Sicher belegte Einzelzuordnungen sollen auch
+neben unbekannten Fahrzeugen nutzbar sein; die Entry List liefert Informationen
+nur für das jeweils geprüfte Fahrzeug.
+
+**Why:** Der Nutzer hat dies nach der Diagnose ausgelassener Nummern ausdrücklich verlangt.
+
+**How to apply:** Unbekannte Begleitfahrzeuge nicht mitidentifizieren und nicht
+als Grund verwenden, sichere Einzelinformationen wegzulassen. Vollständige
+fahrzeuggebundene Nummernevidenz und echte Referenz-/Fahrzeugkonflikte erhalten.
+Diese Regel beauftragt keine Veröffentlichung oder nachträgliche Live-Korrektur.
