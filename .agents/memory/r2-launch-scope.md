@@ -16,26 +16,25 @@ integrations. The operator explicitly accepts the empty Production library as
 the clean starting point. The previous Nextcloud connection and reference
 document 48 are not required for launch and **must not be restored**; they may
 be recreated later. All old cleanup SQL is obsolete and **must not be executed**.
-Do not introduce cleanup or migration work. Keep ordinary uploads closed until
-a controlled Production smoke passes. Storage selection is not approval to
-deploy schema, activate Production R2 or open normal uploads; obtain explicit
-approval. Use docs/r2-production-launch-checklist.md, not historical cleanup or
-recovery prerequisites.
+Do not introduce cleanup or migration work. Storage selection is not approval
+to deploy schema, activate Production R2 or change normal upload availability.
+Use docs/r2-production-launch-checklist.md, not historical cleanup or recovery
+prerequisites.
 
-For the Production smoke, the operator now chooses existing application upload
-functionality, not a new authorization system or migration. A temporary global
-upload window is the selected plan, pending explicit execution approval.
+For Production verification, use existing application functionality, not a new
+authorization system or migration. The operator now reports successful live
+photo/video uploads and explicitly requires normal uploads to remain enabled,
+the deployment to remain public, and the uploaded test media/galleries preserved.
 
-**Why:** The operator explicitly simplified the launch and rejected implementing
-the previously proposed smoke-only authorization system.
+**Why:** The operator rejected the smoke-only authorization proposal and then
+requested final go-live verification without disabling uploads or deleting tests.
 
-**How to apply:** Follow docs/r2-direct-production-smoke-plan.md. Do not implement
-the superseded smoke features. Explain that all eligible users can upload while
-the live global flag is true; private platform access restricted to test operators
-minimizes exposure. The operator must immediately restore false and republish
-after the upload phase or any error; saving false alone is not runtime closure.
-Only new test media/galleries may be deleted after successful verification.
-Existing delete handlers can sweep queued cleanup, so prove that queue is
-exclusively test-owned first. No schema, existing-data cleanup, credential
-exposure or public bucket. Preparation is not approval to change settings,
-publish, upload or delete.
+**How to apply:** Do not follow the earlier smoke plan's closure/deletion steps
+during final verification. Prefer read-only checks; no secrets, schema, existing
+record changes or automatic publishing. Completing counted downloads changes
+records, so distinguish protected original-file retrieval from testing the
+counted endpoint and obtain authorization for the latter. Private-gallery tests
+need suitable authorized fixtures; public official galleries do not prove those
+permissions. Confirm bucket privacy/token scope separately rather than inferring
+them from successful R2 reads. Any later cleanup must account for existing delete
+handlers sweeping the queued cleanup, not just the selected gallery's keys.

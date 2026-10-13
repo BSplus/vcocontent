@@ -1,0 +1,63 @@
+We have successfully uploaded one photo and one video through the live VCO Content Database.
+
+We now want to officially launch the application.
+
+Please perform a final Production Go-Live verification.
+
+**Current configuration**
+- Production PostgreSQL database remains unchanged.
+- Cloudflare R2 bucket: vco-content-media
+- MEDIA_STORAGE_NEW_UPLOADS_ENABLED=true
+- Production deployment remains public.
+- Normal uploads should remain enabled.
+
+**Verify the following:**
+
+1. **Production health**
+   - Homepage and essential APIs return HTTP 200.
+   - Database connection and fingerprint validation pass.
+   - Existing users, roles, series and settings remain intact.
+
+2. **Cloudflare R2 storage**
+   - Confirm both uploaded test files are actually stored in Cloudflare R2.
+   - Verify provider=r2 and correct bucket/object routing.
+   - Verify file sizes, MIME types and SHA-256 integrity where available.
+   - Confirm there is no unintended Replit Object Storage fallback.
+
+3. **Media delivery**
+   - Photo originals and previews load correctly.
+   - Video playback works.
+   - HTTP Range requests return correct HTTP 206 responses.
+   - Download endpoints work for authorized users.
+
+4. **Security**
+   - Private originals cannot be accessed anonymously.
+   - Unauthorized users cannot access private media.
+   - No direct public bucket access is possible.
+   - Production uses only Production R2 credentials.
+   - Existing authentication, permissions and upload limits remain enforced.
+
+5. **Operational readiness**
+   - Check for failed uploads, pending cleanup jobs, orphaned objects or storage errors.
+   - Verify that new uploads remain enabled.
+   - Check that media records are correctly associated with their galleries.
+   - Identify any issues that would prevent regular Production use.
+
+**Important instructions**
+- Perform read-only checks wherever possible.
+- Do not delete the test files or galleries.
+- Do not disable uploads.
+- Do not change secrets, database schema or existing records.
+- Do not republish automatically.
+- Do not expose credentials or sensitive data.
+- Clearly distinguish verified results from checks that cannot be completed without additional authorization.
+
+**Final report**
+
+Provide a concise GO / NO-GO recommendation with:
+- Passed checks
+- Failed checks
+- Remaining risks
+- Any mandatory fixes before launch
+
+If all critical checks pass, explicitly confirm that VCO Content Database is ready for regular Production use with Cloudflare R2.

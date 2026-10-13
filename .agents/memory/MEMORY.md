@@ -59,3 +59,4 @@
 - [Live smoke object scope](live-smoke-object-scope.md) — automatic video AI can create a replacement poster beyond the initial upload-pair allowlist; stop rather than broaden cleanup.
 - [Secret runtime scope](secret-runtime-scope.md) — environment-labelled secret existence is inventory, not proof of credential injection in the running deployment.
 - [Production recovery](production-recovery-boundary.md) — operator confirmed 7-day PITR; record offset timestamps, not snapshot IDs, and never test restore on live data.
+- [Live browser runtime](live-browser-runtime.md) — a testing skill can outlive runtime support; use bounded Chromium CDP checks without auth bypass or counted downloads.
