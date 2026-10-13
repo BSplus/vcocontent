@@ -6,7 +6,8 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle,
+   DialogTitle,
+   DialogDescription,
 } from "@/components/ui/dialog";
 import { 
   HoverCard, 
@@ -43,7 +44,7 @@ interface FileUpload {
   file: File;
   preview: string;
   progress: number;
-  status: 'pending' | 'uploading' | 'success' | 'error';
+  status: 'pending' | 'uploading' | 'success' | 'error' | 'unknown';
   error?: string;
   aiWarning?: string;
   aiTags?: string[];
@@ -52,6 +53,8 @@ interface FileUpload {
 }
 
 const IMAGE_LIMIT = 5_000_000;
+class UploadRejected extends Error {}
+const backgroundNotice = "AI analysis and safety checks are separate and may still be running or need attention. Saving does not confirm publication; unchecked media stays private. Check status or retry analysis in Edit Media.";
 export default function MediaUploadModal({
   open,
   onOpenChange,
@@ -70,6 +73,11 @@ export default function MediaUploadModal({
   const previewUrls = useRef(new Set<string>());
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const uploadLock = useRef(false);
+  const selectionLock = useRef(false);
+  const [selecting, setSelecting] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const busy = uploading || selecting;
   const [autoTagEnabled, setAutoTagEnabled] = useState(true);
   const [tagsInput, setTagsInput] = useState("");
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
@@ -205,6 +213,10 @@ export default function MediaUploadModal({
   };
 
   const handleFilesChange = async (event: {target:{files:FileList|null}}) => {
+    if (uploadLock.current || selectionLock.current) return;
+    selectionLock.current = true;
+    setSelecting(true);
+    try {
     const files = Array.from(event.target.files || []);
       const maxSize = form.getValues("type") === "video" ? videoLimit : imageLimit;
     const newUploads: FileUpload[] = [];
@@ -255,9 +267,16 @@ export default function MediaUploadModal({
     }
 
     setUploads(prev => [...prev, ...newUploads]);
+    } finally {
+      if (mediaInputRef.current) mediaInputRef.current.value = "";
+      selectionLock.current = false;
+      setSelecting(false);
+    }
   };
 
   const uploadMutation = useMutation({
+    // Uploads are not idempotent: a lost response may follow a committed save.
+    retry: false,
     mutationFn: async ({ upload, tags, caption, photographer }: {
       upload: FileUpload;
       tags: string[];
@@ -286,9 +305,13 @@ export default function MediaUploadModal({
         } catch {
           // Preserve the server's plain-text error message.
         }
-        throw new Error(message);
+        if (res.status >= 400 && res.status < 500) throw new UploadRejected(message);
+        throw new Error("Save not confirmed");
       }
-      return res.json();
+      const media = await res.json();
+      if (!Number.isSafeInteger(media?.id) || media.id <= 0 || media.eventId !== eventId)
+        throw new Error("Save not confirmed");
+      return media;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/creator/usage"] });
@@ -297,22 +320,31 @@ export default function MediaUploadModal({
       queryClient.invalidateQueries({ predicate: query =>
         String(query.queryKey[0]).startsWith(`/api/events/${eventId}/media`) });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/media-usage"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
     },
   });
 
   const handleBulkUpload = async () => {
+    if (uploadLock.current || selectionLock.current) return;
+    const batch = uploads.map(upload => ({ ...upload }));
+    const pendingUploads = batch.filter(u => u.status === 'pending');
+    if (!pendingUploads.length) return;
+    const updateUpload = (upload: FileUpload, changes: Partial<FileUpload>) => {
+      Object.assign(upload, changes);
+      setUploads(previous => previous.map(u => u.file === upload.file ? { ...u, ...changes } : u));
+    };
     try {
       if ((form.getValues("caption") || "").length > 1000) {
         toast({ title: "Caption too long", description: "Maximum 1000 characters.", variant: "destructive" });
         return;
       }
+      uploadLock.current = true;
       setUploading(true);
-      const pendingUploads = uploads.filter(u => u.status === 'pending');
+      setAttempted(true);
 
       for (const upload of pendingUploads) {
         try {
-          upload.status = 'uploading';
-          setUploads([...uploads]);
+          updateUpload(upload, { status: "uploading", error: undefined });
 
           // Process tags from tagsInput (comma-separated string)
           const tags: string[] = tagsInput
@@ -328,32 +360,29 @@ export default function MediaUploadModal({
           });
           
           // Analysis commits with the saved media; never await the model here.
-          upload.mediaId = mediaResponse.id;
-          if (upload.file.type.startsWith("video/") || autoTagEnabled) upload.aiStatus = "queued";
-
-          upload.status = 'success';
-          upload.progress = 100;
-          setUploads([...uploads]);
+          updateUpload(upload, { mediaId: mediaResponse.id, status: "success", progress: 100,
+            aiStatus: community || upload.file.type.startsWith("video/") || autoTagEnabled ? "queued" : "not_requested" });
 
         } catch (error) {
-          upload.status = 'error';
-          upload.error = error instanceof Error ? error.message : 'Upload failed';
-          setUploads([...uploads]);
-          console.error('Failed to upload file:', upload.file.name, error);
+          updateUpload(upload, { status: error instanceof UploadRejected ? "error" : "unknown",
+            error: error instanceof UploadRejected ? error.message :
+              "Save not confirmed. This file may already be stored. Check Manage Media before selecting it again; it will not be automatically retried." });
         }
       }
 
-      const successfulCount = pendingUploads.filter(upload => upload.status === "success").length;
-      const failedCount = pendingUploads.length - successfulCount;
-      const aiWarningCount = pendingUploads.filter(upload => upload.aiWarning).length;
-      const aiSuccessCount = pendingUploads.filter(upload => upload.aiTags?.length).length;
-      toast({
-        title: failedCount || aiWarningCount ? "Upload completed with notices" : "Success",
-        description: `${successfulCount} file${successfulCount === 1 ? "" : "s"} uploaded${failedCount ? `; ${failedCount} failed` : ""}${aiSuccessCount ? `; tags added to ${aiSuccessCount}` : ""}${aiWarningCount ? `; tagging unavailable for ${aiWarningCount} file${aiWarningCount === 1 ? "" : "s"}` : ""}.`,
-        variant: failedCount ? "destructive" : undefined,
-      });
-
-      // Keep successful files visible so creators can inspect the generated tags.
+      if (batch.every(upload => upload.status === "success")) {
+        toast({ title: `${batch.length} file${batch.length === 1 ? "" : "s"} saved`,
+          description: backgroundNotice, duration: 12000 });
+        onOpenChange(false);
+      }
+      // Refresh even uncertain outcomes, without repeating a non-idempotent POST.
+      queryClient.invalidateQueries({ queryKey: ["/api/creator/usage"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/creator/media"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/media-usage"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/media"] });
+      queryClient.invalidateQueries({ predicate: query =>
+        String(query.queryKey[0]).startsWith(`/api/events/${eventId}/media`) });
     } catch (error) {
       console.error('Bulk upload error:', error);
       toast({
@@ -362,11 +391,13 @@ export default function MediaUploadModal({
         variant: "destructive",
       });
     } finally {
+      uploadLock.current = false;
       setUploading(false);
     }
   };
 
   const removeUpload = (index: number) => {
+    if (uploadLock.current || selectionLock.current) return;
     URL.revokeObjectURL(uploads[index].preview);
     previewUrls.current.delete(uploads[index].preview);
     setUploads(uploads.filter((_, i) => i !== index));
@@ -379,6 +410,9 @@ export default function MediaUploadModal({
       form.reset();
       setUploads([]);
       setTagsInput("");
+      setMediaType("image");
+      setAutoTagEnabled(true);
+      setAttempted(false);
     }
   }, [open, form]);
   useEffect(() => () => {
@@ -387,12 +421,23 @@ export default function MediaUploadModal({
   }, []);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-       <DialogContent className="max-w-2xl">
+    <Dialog open={open} onOpenChange={next => {
+      if (!uploadLock.current && !selectionLock.current) onOpenChange(next);
+    }}>
+       <DialogContent className="max-w-2xl" closeDisabled={busy}
+         onEscapeKeyDown={event => { if (uploadLock.current || selectionLock.current) event.preventDefault(); }}
+         onInteractOutside={event => { if (uploadLock.current || selectionLock.current) event.preventDefault(); }}>
         <DialogHeader>
           <DialogTitle>Upload Media</DialogTitle>
+          <DialogDescription>Files are saved separately from background analysis and publication checks.</DialogDescription>
         </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); handleBulkUpload(); }} className="space-y-4">
+          {attempted && <div role={uploading ? "status" : "alert"} className="rounded border border-border p-3 text-sm space-y-2">
+            <p className="font-semibold">{uploads.filter(u => u.status === "success").length} saved · {uploads.filter(u => u.status === "error").length} rejected · {uploads.filter(u => u.status === "unknown").length} unconfirmed · {uploads.filter(u => u.status === "pending" || u.status === "uploading").length} remaining</p>
+            <p>{uploading ? "Uploading — please keep this dialog open." : "Rejected files can be retried below. Unconfirmed files may already be saved; check Manage Media before uploading them again."}</p>
+            <p>{backgroundNotice}</p>
+          </div>}
+          <fieldset disabled={busy} className="min-w-0 space-y-4">
           <div className="space-y-2">
              <div className="flex flex-wrap items-center justify-between gap-1">
               <Label htmlFor="type">Media type</Label>
@@ -402,10 +447,14 @@ export default function MediaUploadModal({
             </div>
             {!community && <Select
               onValueChange={(value) => {
+                 if (uploadLock.current || selectionLock.current) return;
                  const type = value as "image" | "video";
                  setMediaType(type);
                  form.setValue("type", type);
-                setUploads([]); // Clear uploads when changing type
+                 previewUrls.current.forEach(url => URL.revokeObjectURL(url));
+                 previewUrls.current.clear();
+                 setUploads([]);
+                 setAttempted(false);
               }}
                value={mediaType}
             >
@@ -461,7 +510,8 @@ export default function MediaUploadModal({
                           </div>
                         )}
                       </div>
-                      {upload.status === 'error' && (
+                      <p className="mt-1 break-all text-xs font-medium">{upload.file.name}</p>
+                      {(upload.status === 'error' || upload.status === "unknown") && (
                         <p className="text-sm text-destructive mt-1">{upload.error}</p>
                       )}
                       {upload.status === "error" && <Button type="button" size="sm" variant="outline" disabled={uploading}
@@ -474,7 +524,7 @@ export default function MediaUploadModal({
                           <p role="status" className="text-muted-foreground text-xs mt-1">Saved · Adding tags in the background…</p>
                       )}
                       {upload.aiStatus === "failed" && (
-                        <Button type="button" size="sm" variant="outline" onClick={() => retryTags(upload)}>Retry analysis</Button>
+                        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => retryTags(upload)}>Retry analysis</Button>
                       )}
                       {upload.aiTags && (
                         <p className="text-sm text-green-700 mt-1" role="status">
@@ -577,19 +627,20 @@ export default function MediaUploadModal({
           <p className="text-xs text-muted-foreground">
             {community ? "Photo tagging runs automatically in the background. New files stay private until their safety check passes." : "Videos are analyzed automatically after upload. The AI tagging switch applies to images only. An analysis issue will not prevent your files from being saved."}
           </p>
+          </fieldset>
 
            <div className="flex flex-wrap justify-end gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={uploading}
+              disabled={busy}
             >
-              Cancel
+              {attempted ? "Close" : "Cancel"}
             </Button>
             <Button
               type={uploads.some(upload => upload.status === "pending") ? "submit" : "button"}
-              disabled={uploading || (!uploads.some(upload => upload.status === "pending") && !uploads.some(upload => upload.status === "error"))}
+              disabled={busy || !uploads.length}
               onClick={() => {
                 if (!uploads.some(upload => upload.status === "pending")) onOpenChange(false);
               }}
@@ -603,7 +654,7 @@ export default function MediaUploadModal({
               ) : (
                 uploads.some(upload => upload.status === "pending")
                   ? `Upload ${uploads.filter(upload => upload.status === "pending").length} ${uploads.filter(upload => upload.status === "pending").length === 1 ? "file" : "files"}`
-                  : uploads.some(upload => upload.status === "error") ? "Close" : uploads.length ? "Done — all files saved" : "Select files above"
+                  : uploads.some(upload => upload.status !== "success") ? "Close" : uploads.length ? "Done — all files saved" : "Select files above"
               )}
             </Button>
           </div>
