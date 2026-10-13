@@ -18,7 +18,7 @@ export function entryConflicts(rows: EntryRow[]): string[] {
 }
 
 export function proposeCaption(
-  event: Pick<Event, "title" | "date" | "round" | "track">,
+  event: Pick<Event, "title" | "date" | "round" | "track" | "platform">,
   entries: EntryRow[],
   observedNumbers: string[],
   scene: Scene | null,
@@ -27,7 +27,7 @@ export function proposeCaption(
   const matches = entries.filter(entry => numbers.some(number => normalizeNumber(number) === normalizeNumber(entry.number)));
   const safeMatch = numbers.length === 1 && matches.length === 1 ? matches[0] : null;
   const date = new Date(event.date).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
-  const context = [event.title, event.round, event.track, date].filter(Boolean).join(" · ");
+  const context = [event.platform, event.title, event.round, event.track, date].filter(Boolean).join(" · ");
   const suggestion = safeMatch
     ? `${context} — ${[`#${safeMatch.number} ${safeMatch.team}`.trim(), safeMatch.car, safeMatch.drivers].filter(Boolean).join(" — ")}`
     : `${context}${scene ? ` — ${scene}` : ""}`;
@@ -38,7 +38,7 @@ export function proposeCaption(
 
 /** Conservative automatic captions never turn tags or registered lineups into
  * evidence of who appears in a photograph. Event context is sufficient. */
-export function communityCaption(event: Pick<Event,"title"|"date"|"round"|"track">) {
+export function communityCaption(event: Pick<Event,"title"|"date"|"round"|"track"|"platform">) {
   return proposeCaption(event,[],[],null).suggestion;
 }
 

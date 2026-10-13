@@ -58,7 +58,7 @@ test.before(async()=>{
   album=await storage.createEvent({title:"Official fixture",description:"Synthetic",date:new Date("2026-10-10")});
   albums.push(album.id);
   photo=await storage.createMediaItem({eventId:album.id,type:"image",url:image,thumbnail:image,tags:[],caption:"Fixture photo"});
-  community=await storage.createEvent({title:"Community fixture",description:"Synthetic",date:new Date("2026-10-10"),track:"Fixture circuit",creatorId:a.id});
+  community=await storage.createEvent({title:"Community fixture",description:"Synthetic",date:new Date("2026-10-10"),track:"Fixture circuit",platform:"iRacing",creatorId:a.id});
   albums.push(community.id);
   await db.update(events).set({visibility:"published",safetyStatus:"legacy"}).where(eq(events.id,community.id));
   const app=express();app.use(express.json());
@@ -148,7 +148,7 @@ test("failed and aborted streams never enter history",async()=>{
   } finally {Client.prototype.downloadAsStream=original;}
 });
 test("caption dates are English and tags/lineups never become depicted identities",()=>{
-  assert.equal(communityCaption(community),"Community fixture · Fixture circuit · 10 October 2026");
+  assert.equal(communityCaption(community),"iRacing · Community fixture · Fixture circuit · 10 October 2026");
 });
 test("profile editing is moderated and cannot change roles, credits, other accounts or external pictures",async()=>{
   const name=`profile-${token}`;
@@ -196,6 +196,7 @@ test("new community captions are automatic, safety-versioned; history/import and
   const automatic=await queued("auto_pending");await drainAnalysisQueue();
   const result=await storage.getMediaItem(automatic.id);
   assert.equal(result.caption,communityCaption(community));assert.equal(result.captionSource,"automatic");
+  assert.ok(result.caption.startsWith("iRacing · Community fixture · "));
   assert.equal(result.safetyStatus,"approved");assert.equal(result.contentVersion,result.safetyVersion);
   assert.doesNotMatch(result.caption,/Porsche|Fictional Driver/);
   // Without verification configuration, even checked metadata cannot publish.
@@ -210,6 +211,34 @@ test("new community captions are automatic, safety-versioned; history/import and
   release();await work;holdAnalysis=undefined;
   assert.equal((await storage.getMediaItem(raced.id)).caption,"");
   assert.equal((await storage.getMediaItem(raced.id)).captionSource,"manual");
+});
+test("preview and background context captions carry only the saved platform, including overflow fallbacks",async()=>{
+  for (const [platform,title] of [["iRacing","Platform fixture"],[null,"No platform fixture"],["","Empty platform fixture"],
+    ["iRacing","x".repeat(1100)]]) {
+    const event=await storage.createEvent({title,description:"Synthetic",date:new Date("2026-10-10"),creatorId:a.id,platform});
+    albums.push(event.id);
+    const item=await storage.createMediaItem({eventId:event.id,type:"image",url:image,thumbnail:image,tags:[],caption:""});
+    await db.update(mediaItems).set({captionSource:"auto_pending"}).where(eq(mediaItems.id,item.id));
+    await db.insert(mediaAnalysisJobs).values({mediaId:item.id,fingerprint:"tags:"+analysisFingerprint(item.thumbnail)});
+    assert.equal(await drainAnalysisQueue(),true);
+    const saved=await storage.getMediaItem(item.id);
+    const expected=`${platform ? platform+" · " : ""}${title} · 10 October 2026`.slice(0,1000);
+    assert.equal(saved.caption,expected);
+    assert.equal(saved.captionSource,"automatic");
+    assert.equal(saved.safetyStatus,"approved");
+    assert.equal(saved.contentVersion,saved.safetyVersion);
+    assert.ok(saved.caption.length<=1000);
+    // A completed empty observation avoids a provider call and cannot imply a vehicle match.
+    await db.update(mediaAnalysisJobs).set({fingerprint:"recognition:"+analysisFingerprint(item.thumbnail),recognition:[]})
+      .where(eq(mediaAnalysisJobs.mediaId,item.id));
+    const response=await request(`/api/media/${item.id}/caption-preview`,"POST",a,{});
+    assert.equal(response.status,200);
+    const preview=await response.json();
+    assert.equal(preview.suggestion,expected);
+    assert.equal(preview.ambiguous,true);
+    assert.deepEqual(preview.matches,[]);
+    assert.deepEqual(await storage.getMediaItem(item.id),saved);
+  }
 });
 test("deletion cascades references and histories without media copies",async()=>{
   const disposable=await storage.createMediaItem({eventId:album.id,type:"image",url:image,thumbnail:image,tags:[]});

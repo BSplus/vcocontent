@@ -2,11 +2,34 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { proposeCaption, entryConflicts, matchedPhotoCaption, communityCaption } from "../server/caption-proposal.ts";
 
-const event = { title: "GT Masters", round: "Round 4", track: "Nürburgring", date: new Date("2026-09-28T12:00:00Z") };
+const event = { title: "GT Masters", round: "Round 4", track: "Nürburgring", date: new Date("2026-09-28T12:00:00Z"), platform: "iRacing" };
 const entries = [
   { number: "007", team: "North Racing", car: "Porsche 911", drivers: "A. One / B. Two" },
   { number: "12", team: "South Racing", car: "Ferrari 296", drivers: "C. Three" },
 ];
+
+test("all caption paths start with the saved platform and preserve their existing context formatting", () => {
+  const context = "iRacing · GT Masters · Round 4 · Nürburgring · 28 September 2026";
+  assert.equal(communityCaption(event), context);
+  assert.equal(proposeCaption(event, entries, ["7"], null).suggestion,
+    `${context} — #007 North Racing — Porsche 911 — A. One / B. Two`);
+  for (const numbers of [[], ["55"], ["7", "12"]]) {
+    assert.equal(proposeCaption(event, entries, numbers, "Finish").suggestion, `${context} — Finish`);
+  }
+  assert.equal(matchedPhotoCaption(event, null, []).caption, context);
+});
+
+test("missing platforms are neither inferred nor represented by empty separators", () => {
+  const context = "GT Masters · Round 4 · Nürburgring · 28 September 2026";
+  for (const platform of [null, undefined, ""]) {
+    const withoutPlatform = { ...event, platform };
+    assert.equal(communityCaption(withoutPlatform), context);
+    assert.equal(proposeCaption(withoutPlatform, entries, ["55"], null).suggestion, context);
+    assert.equal(proposeCaption(withoutPlatform, entries, ["7"], null).suggestion,
+      `${context} — #007 North Racing — Porsche 911 — A. One / B. Two`);
+    assert.equal(matchedPhotoCaption(withoutPlatform, null, []).caption, context);
+  }
+});
 
 test("one confirmed entry is named, leading zeros match without losing the original entry number", () => {
   const result = proposeCaption(event, entries, ["7"], null);
@@ -79,10 +102,25 @@ test("1000-character boundary retains whole lineups, overflow omits all vehicles
   const row = { ...entries[0], drivers: "A".repeat(500) };
   const base = proposeCaption(event, [row], ["7"], null).suggestion;
   const exactEvent = { ...event, title: event.title + "x".repeat(1000 - base.length) };
-  assert.equal(proposeCaption(exactEvent, [row], ["7"], null).suggestion.length, 1000);
+  const exact = proposeCaption(exactEvent, [row], ["7"], null).suggestion;
+  assert.equal(exact.length, 1000);
+  assert.ok(exact.startsWith("iRacing · "));
+  assert.ok(exact.endsWith(row.drivers));
   const overflowEvent = { ...exactEvent, title: exactEvent.title + "x" };
   assert.equal(proposeCaption(overflowEvent, [row], ["7"], null).suggestion, communityCaption(overflowEvent));
   const hugeEvent = { ...photoEvent, title: "x".repeat(1100) };
   assert.equal(matchedPhotoCaption(hugeEvent, null, identities).caption,
     `${photoEvent.platform} · ${hugeEvent.title}`.slice(0, 1000));
+  assert.equal(proposeCaption(hugeEvent, [row], ["7"], null).suggestion,
+    `${photoEvent.platform} · ${hugeEvent.title}`.slice(0, 1000));
+  assert.equal(communityCaption(hugeEvent), `${photoEvent.platform} · ${hugeEvent.title}`.slice(0, 1000));
+});
+
+test("community context and scene-only proposals respect the exact text limit and keep the platform on fallback", () => {
+  const base = communityCaption(event);
+  const exactEvent = { ...event, title: event.title + "x".repeat(1000 - base.length) };
+  assert.equal(communityCaption(exactEvent).length, 1000);
+  assert.ok(communityCaption(exactEvent).startsWith("iRacing · "));
+  assert.equal(proposeCaption(exactEvent, [], [], "Start").suggestion, communityCaption(exactEvent));
+  assert.equal(communityCaption({ ...exactEvent, title: exactEvent.title + "x" }).length, 1000);
 });

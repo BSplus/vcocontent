@@ -182,7 +182,9 @@ test("reading stored captions never cleans up lineup labels; future caption prev
     assert.equal(detail.caption,caption);
     const preview=await api(`/api/media/${p.id}/caption-preview`,{});
     assert.equal(preview.status,200);
-    assert.match((await preview.json()).suggestion,/#007 Apex — Prototype — Registered One; Registered Two$/);
+    const suggestion=(await preview.json()).suggestion;
+    assert.ok(suggestion.startsWith("iRacing · "));
+    assert.match(suggestion,/#007 Apex — Prototype — Registered One; Registered Two$/);
     assert.equal((await storage.getMediaItem(p.id)).caption,caption,"suggestions do not save or clean up history");
   }
   assert.match(generated.caption,/#007 Apex — Prototype — Registered One; Registered Two$/);
