@@ -37,6 +37,8 @@ test.before(async () => {
   for (const [name, fn] of Object.entries({
     getEvent: async id => id === fixture.id ? event : undefined,
     getEvents: async () => [event],
+    getEventsWithCardFallbacks: async () => [event],
+    getEventCardFallbacks: async () => new Map(),
     getEventsByCreator: async () => [event],
     getUser: async () => ({ id: 8310, emailVerifiedAt: new Date(), creatorStatus: "approved", suspended: false }),
     getMediaItem: async id => photos.find(p => p.id === id),
@@ -91,7 +93,7 @@ test("owner and admin can select approved draft photos; selection persists witho
     event.visibility = "published";
     const [listed] = await (await call("/api/events", "anonymous")).json();
     assert.match(listed.customThumbnail, /\/api\/events\/95201\/thumbnail/);
-    assert.equal((await call(listed.customThumbnail, "anonymous")).status, 302);
+    assert.equal((await call(listed.customThumbnail, "anonymous")).status, 200);
     const [profileGallery] = await (await call(`/api/events/creator/${event.creatorId}`, "anonymous")).json();
     assert.match(profileGallery.customThumbnail, /\/api\/events\/95201\/thumbnail/);
     event.visibility = "draft";

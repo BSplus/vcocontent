@@ -23,7 +23,7 @@ export async function mediaPublic(item: MediaItem, event: Event | undefined) {
   const owner = await storage.getUser(event.creatorId);
   return !!owner?.emailVerifiedAt && verificationConfigured();
 }
-export async function visibleEvents(list: Event[]) {
+export async function visibleEvents<T extends Event>(list: T[]): Promise<T[]> {
   const permitted = await Promise.all(list.map(eventPublic));
   return list.filter((_,index)=>permitted[index]);
 }

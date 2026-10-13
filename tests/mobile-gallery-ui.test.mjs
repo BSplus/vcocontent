@@ -52,7 +52,14 @@ test("mobile dock, snap rows, photo gestures and unchanged wide grids", { timeou
     })().catch(error => { if (!/Invalid InterceptionId|closed|session/i.test(String(error))) mockErrors.push(String(error)); });
   });
   const visit = async (path, ready = "!!document.querySelector('h1')") => {
-    await browser.command("Page.navigate", { url: new URL(path, base).href }); await browser.wait(ready); await delay(150);
+    await browser.evaluate("window.__oldFixtureDocument = true");
+    await browser.command("Page.navigate", { url: new URL(path, base).href });
+    await browser.wait(`!window.__oldFixtureDocument && (()=>{try{return !!(${ready});}catch{return false;}})()`);
+    // Native double-tap zoom can survive synthetic visits/viewport changes and
+    // look like an open keyboard. Each fixture starts at the declared scale.
+    await browser.command("Emulation.setPageScaleFactor", { pageScaleFactor: 1 });
+    await browser.wait('!document.documentElement.hasAttribute("data-app-starting")');
+    await delay(150);
   };
   const key = async (key, code, number) => {
     await browser.command("Input.dispatchKeyEvent", { type: "keyDown", key, code, windowsVirtualKeyCode: number });
@@ -62,7 +69,10 @@ test("mobile dock, snap rows, photo gestures and unchanged wide grids", { timeou
   const touch = async (selector, dx = 0, dy = 0) => {
     const point = await browser.evaluate(`(() => {
       const e=document.querySelector(${JSON.stringify(selector)}); e.scrollIntoView({block:'center'});
-      const r=e.getBoundingClientRect(); return {x:Math.min(innerWidth-30,r.left+r.width*.7),y:r.top+r.height*.5};
+      const r=e.getBoundingClientRect();
+      const target=e.matches('.mobile-gallery-row') ? e.querySelector('img')?.getBoundingClientRect() : null;
+      const horizontal=!!e.closest('.mobile-gallery-row') && ${dx !== 0};
+      return {x:Math.min(innerWidth-30,r.left+r.width*(horizontal?.9:.7)),y:target ? target.top+target.height*.5 : r.top+r.height*.5};
     })()`);
     await browser.command("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
     for (let step = 1; step <= 8; step++) {
@@ -110,7 +120,7 @@ test("mobile dock, snap rows, photo gestures and unchanged wide grids", { timeou
       }
       assert.ok(layout.peek); assert.match(layout.snap, /mandatory/); assert.ok(layout.header < 64);
       assert.deepEqual(await browser.evaluate(`[...document.querySelector('.vco-mobile-bottom-nav').children].map(e=>e.innerText)`), ["HOME", "SEARCH", "EVENTS", "MORE"]);
-      await touch('section[aria-labelledby="recent-heading"] .mobile-gallery-row a', -170);
+      await touch('section[aria-labelledby="recent-heading"] .mobile-gallery-row a', -240);
       await browser.wait(`document.querySelector('.mobile-gallery-row').scrollLeft > 50`);
       assert.equal(await browser.evaluate("location.pathname"), "/");
       assert.equal(await browser.evaluate("!!document.querySelector('[role=dialog]')"), false);
@@ -163,7 +173,7 @@ test("mobile dock, snap rows, photo gestures and unchanged wide grids", { timeou
       await fit(); await capture(`detail-${width}`);
       await visit("/creator/98000", "!!document.querySelector('.mobile-gallery-row')");
       await fit(); await capture(`creator-${width}`);
-      await touch(".mobile-gallery-row a", -160);
+      await touch(".mobile-gallery-row a", -240);
       await browser.wait(`document.querySelector('.mobile-gallery-row').scrollLeft>50`);
       assert.equal(await browser.evaluate("location.pathname"), "/creator/98000");
       await visit("/", "!!document.querySelector('.vco-mobile-bottom-nav') && !!document.querySelector('.mobile-gallery-row')");

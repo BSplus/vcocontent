@@ -11,13 +11,16 @@ import { eventImagePolicy } from "@shared/event-image-policy";
 import { readMediaStream } from "./media-storage";
 import { EventImageError, galleryThumbnailReference } from "./gallery-thumbnail-policy";
 import { requireAuth } from "./middleware/auth";
+import { thumbnailCache, sendPrivateThumbnail } from "./thumbnail-cache";
+import { thumbnailDigest } from "./thumbnail-cache";
+import { legacyThumbnail } from "./legacy-thumbnail";
+import { sendPreparedThumbnail } from "./prepared-thumbnail";
 
 type Field = "customThumbnail" | "coverImage";
 export const DEFAULT_EVENT_IMAGE = "/attached_assets/%2389_3.png";
 const filePattern = /^\/api\/media\/files\/(thumb-[0-9a-f-]{36}\.webp)$/;
 const legacyPattern = /^\/api\/media\/legacy\/([1-9][0-9]*)\/thumbnail$/;
 const inlinePattern = /^data:image\/(jpeg|png|gif|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
-const previews = new Map<string, Promise<Buffer>>();
 
 export { EventImageError };
 
@@ -133,7 +136,7 @@ export function eventThumbnailReference(event: Event, field: Field): string | nu
     value.length <= Math.ceil(mediaPolicy.imageBytes * 4 / 3) + 100 && inlinePattern.test(value));
   if (!managed && !official) return null;
   if (value === DEFAULT_EVENT_IMAGE) return value;
-  return `/api/events/${event.id}/thumbnail?field=${field}&v=${signature(value)}`;
+  return `/api/events/${event.id}/thumbnail?field=${field}&v=${signature(value)}&direct=1`;
 }
 
 export function publicEventThumbnails(event: Event): Event {
@@ -148,9 +151,7 @@ export async function inlineEventThumbnail(value: string): Promise<Buffer> {
   const match = inlinePattern.exec(value);
   if (!match) throw new Error("Unsupported thumbnail");
   const key = signature(value);
-  const existing = previews.get(key);
-  if (existing) return existing;
-  const result = withMediaWorkBudget(async () => {
+  return thumbnailCache.get(`event-${mediaPolicy.thumbnailEdge}-${key}`, () => withMediaWorkBudget(async () => {
     const input = Buffer.from(match[2], "base64");
     if (!input.length || input.length > mediaPolicy.imageBytes) throw new Error("Invalid image size");
     const options = { limitInputPixels: mediaPolicy.maxPixels, failOn: "error" as const };
@@ -163,14 +164,21 @@ export async function inlineEventThumbnail(value: string): Promise<Buffer> {
       if (output.length < 100 * 1024) return output;
     }
     throw new Error("Thumbnail exceeds output budget");
-  });
-  if (previews.size >= 16) previews.delete(previews.keys().next().value!);
-  previews.set(key, result);
-  try { return await result; }
-  catch (error) { if (previews.get(key) === result) previews.delete(key); throw error; }
+  }));
 }
 
 export function registerEventThumbnailRoute(app: Express) {
+  app.get("/api/events/:id/card-preview", async (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(404).end();
+    try {
+      const event = await storage.getEvent(id, false);
+      if (!event || !await eventPublic(event)) return res.status(404).end();
+      const fallbacks = await storage.getEventCardFallbacks([id]);
+      return res.json({ galleryThumbnail: fallbacks.get(id) ?? null });
+    } catch { return res.status(503).end(); }
+  });
   app.get("/api/events/:id/thumbnail-options", requireAuth, async (req, res) => {
     const id = Number(req.params.id);
     const page = req.query.page === undefined ? 1 : Number(req.query.page);
@@ -206,17 +214,22 @@ export function registerEventThumbnailRoute(app: Express) {
       const file = filePattern.exec(value);
       const legacy = legacyPattern.exec(value);
       if (file || legacy) {
-        const media = file ? await storage.findMediaByKey(file[1]) : await storage.getMediaItem(Number(legacy![1]));
+        const media = file ? await storage.findMediaByKey(file[1], false) : await storage.getMediaItem(Number(legacy![1]), false);
         if (!media || galleryThumbnailReference(media, event, false) !== value ||
           (!canManage(req.user, event) && !await mediaPublic(media, event))) return res.status(404).end();
+        if (req.query.direct === "1") {
+          if (file) return await sendPreparedThumbnail(req, res, file[1]);
+          return sendPrivateThumbnail(req, res, await legacyThumbnail(media.thumbnail), thumbnailDigest(media.thumbnail));
+        }
         return res.redirect(302, value);
       }
       if (staticImage(value)) return res.redirect(302, value);
       const thumbnail = await inlineEventThumbnail(value);
-      res.type("image/webp").send(thumbnail);
+      sendPrivateThumbnail(req, res, thumbnail, signature(value));
     } catch (error) {
       if (error instanceof MediaBusyError) res.setHeader("Retry-After", "5");
-      res.status(error instanceof MediaBusyError ? 503 : 404).end();
+      if (!res.headersSent) res.status(error instanceof MediaBusyError ? 503 : 404).end();
+      else res.destroy();
     }
   });
 }

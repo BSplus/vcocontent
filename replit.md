@@ -63,6 +63,7 @@ Preferred communication style: Simple, everyday language.
 
 **Design Decisions:**
 - RESTful API design with clear resource-based routing
+- Home thumbnail delivery uses bounded, content-keyed small-output caching, fresh authorization before every response/304, and compact gallery fallbacks preserving the newest public 48-item page. Do not cache permissions or originals, change download rules, or enable Production edge delivery. Prepared previews remain byte-identical. See `docs/home-thumbnail-performance.md` for reproducible measurements and their limits.
 - Role-based access control (RBAC) with three user types: regular users, creators, and admins
 - Session-based authentication with secure cookie handling
 - Middleware-based authorization checks for route protection

@@ -68,8 +68,9 @@ async function checkTopShotsInBrowser(videoId, photoId, landscapeId, account, pa
     };
     for (const width of [390, 1280]) {
       await send("Emulation.setDeviceMetricsOverride", { width, height: 800, deviceScaleFactor: 1, mobile: width === 390 }, sessionId);
+      await evaluate("window.__oldFixtureDocument = true");
       await send("Page.navigate", { url: base }, sessionId);
-      await waitFor(`document.querySelector('button[aria-label^="Preview video:"][aria-label$="Media ${videoId}"]') !== null`);
+      await waitFor(`!window.__oldFixtureDocument && !document.documentElement.hasAttribute('data-app-starting') && document.querySelector('button[aria-label^="Preview video:"][aria-label$="Media ${videoId}"]') !== null`);
       const state = await evaluate(`(() => {
         const cards = [...document.querySelectorAll('section[aria-labelledby="top-shots-heading"] button[aria-label^="Preview"]')];
         return { cardCount: cards.length, video: cards[0]?.querySelector('img')?.style.objectFit || getComputedStyle(cards[0]?.querySelector('img')).objectFit,
@@ -198,9 +199,10 @@ test("top shots cards and preview keep portrait media contained and gate video p
   const source = await readFile(new URL("../client/src/pages/home-page.tsx", import.meta.url), "utf8");
   assert.match(source, /shot\.type === "video".*PlayCircle.*Video/);
   assert.match(source, /shot\.thumbnail.*object-contain/);
-  assert.match(source, /selectedMedia\.type === "video" && user && selectedMedia\.url/);
-  assert.match(source, /<video key=\{selectedMedia\.id\}.*controls.*max-h-\[65dvh\]/);
-  assert.match(source, /selectedMedia\.type === "video" && !user.*Sign in to play/);
+  assert.match(source, /selectedMedia\.type === "video"/);
+  assert.match(source, /<VideoPreview key=\{selectedMedia\.id\} src=\{selectedMedia\.url\}.*signedIn=\{!!user\}.*max-h-\[65dvh\]/);
+  const preview = await readFile(new URL("../client/src/components/video-preview.tsx", import.meta.url), "utf8");
+  assert.match(preview, /Sign in to play/);
   assert.match(source, /selectedMedia\.thumbnail \|\| selectedMedia\.url.*max-h-\[65dvh\].*object-contain/);
   assert.match(source, /selectedMedia\.type === "image" && <DropdownMenuItem.*downloadOptionLabel\(selectedMedia, "low"\)/);
   assert.match(source, /downloadOptionLabel\(selectedMedia, "high"\)/);

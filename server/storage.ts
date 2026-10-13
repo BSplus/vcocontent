@@ -56,7 +56,7 @@ interface IStorage {
 
   // Event management
   getEvents(): Promise<Event[]>;
-  getEvent(id: number): Promise<Event | undefined>;
+   getEvent(id: number, includeImages?: boolean): Promise<Event | undefined>;
   createEvent(event: InsertEvent, entries?: EntryRow[]): Promise<Event>;
   updateEvent(id: number, event: Partial<InsertEvent>): Promise<EventUpdateResult>;
   deleteEvent(id: number): Promise<{ success: boolean; message: string }>;
@@ -71,7 +71,7 @@ interface IStorage {
   getAllMediaItems(): Promise<MediaItem[]>;
   getMediaItems(eventId: number, page?: number, limit?: number): Promise<MediaItem[]>;
   getPublicEventMediaItems(eventId: number, page?: number, limit?: number): Promise<MediaItem[]>;
-  getMediaItem(id: number): Promise<MediaItem | undefined>;
+   getMediaItem(id: number, includeOriginal?: boolean): Promise<MediaItem | undefined>;
   createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem>;
   updateMediaItem(id: number, mediaItem: Partial<InsertMediaItem>): Promise<MediaItem>;
   deleteMediaItem(id: number): Promise<void>;
@@ -156,9 +156,11 @@ class DatabaseStorage implements IStorage {
     return await db.select().from(events);
   }
 
-  async getEvent(id: number): Promise<Event | undefined> {
+  async getEvent(id: number, includeImages = true): Promise<Event | undefined> {
     const result = await db
-      .select()
+      .select(includeImages ? getTableColumns(events) : {
+        ...getTableColumns(events), customThumbnail: sql<string | null>`null`, coverImage: sql<string | null>`null`,
+      })
       .from(events)
       .where(eq(events.id, id))
       .limit(1);
@@ -432,9 +434,9 @@ class DatabaseStorage implements IStorage {
         publicEventPredicate(),publicMediaPredicate()));
   }
 
-  async getMediaItem(id: number): Promise<MediaItem | undefined> {
+  async getMediaItem(id: number, includeOriginal = true): Promise<MediaItem | undefined> {
     const result = await db
-      .select()
+      .select(includeOriginal ? getTableColumns(mediaItems) : { ...getTableColumns(mediaItems), url: sql<string>`''` })
       .from(mediaItems)
       .where(and(activeMediaPredicate(),eq(mediaItems.id, id)))
       .limit(1);
@@ -485,12 +487,46 @@ class DatabaseStorage implements IStorage {
     void this.cleanupObjects().catch(error => console.error("Media cleanup failed:", error));
   }
 
-  async findMediaByKey(key: string): Promise<MediaItem | undefined> {
+  async findMediaByKey(key: string, includeOriginal = true): Promise<MediaItem | undefined> {
     const url = `/api/media/files/${key}`;
-    const [item] = await db.select().from(mediaItems)
+    const [item] = await db.select(includeOriginal ? getTableColumns(mediaItems) :
+      { ...getTableColumns(mediaItems), url: sql<string>`case when ${mediaItems.url} like 'data:%' then '' else ${mediaItems.url} end` }).from(mediaItems)
       .where(and(activeMediaPredicate(),or(and(eq(mediaItems.url, url), sql`${mediaItems.url} like '/api/media/files/%'`),
         and(eq(mediaItems.thumbnail, url), sql`${mediaItems.thumbnail} like '/api/media/files/%'`)))).limit(1);
     return item;
+  }
+
+  /** One compact query for cards, no originals/inline payloads leave PostgreSQL. */
+  async getEventCardFallbacks(ids: number[]): Promise<Map<number, string>> {
+    if (!ids.length) return new Map();
+    const rows = await db.select({ eventId: events.id, thumbnail: this.eventCardFallbackExpression() })
+      .from(events).where(sql`${events.id} = any(${`{${ids.join(",")}}`}::int[])`);
+    return new Map(rows.filter(row => row.thumbnail !== null).map(row => [row.eventId, row.thumbnail!]));
+  }
+
+  async getEventsWithCardFallbacks(): Promise<(Event & { galleryThumbnail: string | null })[]> {
+    return db.select({ ...getTableColumns(events), galleryThumbnail: this.eventCardFallbackExpression() }).from(events);
+  }
+
+  private eventCardFallbackExpression() {
+    // Match the card's former first public gallery page (newest 48), then
+    // choose its first eligible photo. Filtering before this window would
+    // unexpectedly reveal an older photo formerly outside the first page.
+    const eligible = sql<boolean>`(${mediaItems.type} = 'image' and not ${mediaItems.isPremium}
+        and (${mediaItems.safetyStatus} = 'legacy' or (${mediaItems.safetyStatus} = 'approved'
+          and ${mediaItems.safetyPolicy} = ${SAFETY_POLICY} and ${mediaItems.contentVersion} = ${mediaItems.safetyVersion}))
+        and (${mediaItems.thumbnail} ~ '^/api/media/files/thumb-[0-9a-f-]{36}\\.webp$' or
+          (${mediaItems.thumbnail} ~ '^data:image/(jpeg|png|gif|webp);base64,[A-Za-z0-9+/=\\r\\n]+$'
+            and length(${mediaItems.thumbnail}) <= ${Math.ceil(mediaPolicy.imageBytes * 4 / 3) + 100})))`;
+    // Correlated LIMIT uses the existing event-page index and never scans/ranks
+    // the whole archive to find one photo. Return only the transformed reference.
+    return sql<string | null>`case when ${publicEventPredicate()} and not ${events.isPremium} then
+      (select card.preview from (
+        select ${mediaItems.id} as id, ${mediaListColumns.thumbnail} as preview, ${eligible} as eligible
+        from ${mediaItems} where ${mediaItems.eventId} = ${sql.raw('"events"."id"')} and ${publicMediaPredicate()}
+        order by ${mediaItems.id} desc limit 48
+      ) card where card.eligible order by card.id desc limit 1)
+      else null end`;
   }
 
   async topMedia(limit: number, creator?: number | null): Promise<MediaItem[]> {

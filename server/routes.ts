@@ -21,7 +21,6 @@ import { analysisImageInput, recognitionImageInput } from "./image-analysis";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { randomUUID } from "crypto";
 import { InvalidPhotoError } from "./image-downloads";
-import sharp from "sharp";
 import { z } from "zod";
 import { discover, importStatus, startImport, startImportWorker, resumeImport, updateGallery, NextcloudError } from "./nextcloud";
 import { readSources, saveSources, savedSourceInputs, sourceEdits, mergeSourceEdits } from "./nextcloud-sources";
@@ -52,6 +51,9 @@ import { registerMediaEdge, edgeOrigin, publicPreviewVersion } from "./media-edg
 import { mediaCreditSchema } from "@shared/media-credit";
 import { mediaTagSchema, retiredTagMessage, RetiredMediaTagError } from "@shared/media-tag-policy";
 import { activeMediaTagsSql } from "./media-tag-sql";
+import { legacyThumbnail } from "./legacy-thumbnail";
+import { sendPrivateThumbnail, thumbnailDigest } from "./thumbnail-cache";
+import { sendPreparedThumbnail } from "./prepared-thumbnail";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -107,10 +109,12 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   // Events route - different behavior based on auth status
   app.get("/api/events", async (req, res) => {
     try {
-      const events = await visibleEvents(await storage.getEvents());
+      const events = await visibleEvents(await storage.getEventsWithCardFallbacks());
       
       // Lazy, bounded previews, including historical inline event images.
-      const eventsWithoutThumbnails = events.map(publicEventThumbnails);
+      const eventsWithoutThumbnails = events.map(event => ({
+        ...publicEventThumbnails(event), galleryThumbnail: event.galleryThumbnail ?? null,
+      }));
       
       // Return all events, regardless of auth status
       // This is needed for the public-facing event listing
@@ -656,15 +660,19 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
     if (!Number.isSafeInteger(id) || id < 1 || !["file", "thumbnail"].includes(variant))
       return res.status(404).end();
     try {
-      const record = await storage.getMediaItem(id);
+      const record = await storage.getMediaItem(id, variant === "file");
       if (!record) return res.status(404).end();
-      const owningEvent = record.eventId ? await storage.getEvent(record.eventId) : undefined;
+      const owningEvent = record.eventId ? await storage.getEvent(record.eventId, variant === "file") : undefined;
       if (!owningEvent || (!canManage(req.user,owningEvent) && !await mediaPublic(record,owningEvent))) return res.status(404).end();
       if (variant === "file") {
         if (req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
         const event = record.eventId ? await storage.getEvent(record.eventId) : undefined;
         if (!req.isAuthenticated() || record.isPremium || event?.isPremium)
           return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Download file not available" });
+      }
+      if (variant === "thumbnail") {
+        if (record.isPremium || owningEvent.isPremium) return res.status(404).end();
+        return sendPrivateThumbnail(req, res, await legacyThumbnail(record.thumbnail), thumbnailDigest(record.thumbnail));
       }
       const dataUrl = variant === "file" ? record.url : record.thumbnail;
       const match = /^data:(image\/(?:jpeg|png|gif|webp)|video\/(?:mp4|webm|quicktime));base64,([A-Za-z0-9+/=\r\n]+)$/.exec(dataUrl);
@@ -678,18 +686,12 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       }
       let body = Buffer.from(match[2], "base64");
       if (body.length > 100 * 1024 * 1024) return res.status(413).end();
-      if (variant === "thumbnail") {
-        if (!match[1].startsWith("image/")) return res.status(404).end();
-        body = await sharp(body, { limitInputPixels: mediaPolicy.maxPixels })
-          .rotate().resize({ width: mediaPolicy.thumbnailEdge, height: mediaPolicy.thumbnailEdge,
-            fit: "inside", withoutEnlargement: true })
-          .webp({ quality: 72 }).toBuffer();
-      }
-      res.setHeader("Content-Type", variant === "thumbnail" ? "image/webp" : match[1]);
+      res.setHeader("Content-Type", match[1]);
       res.setHeader("Cache-Control", "private, no-store");
       res.setHeader("X-Content-Type-Options", "nosniff");
       return res.send(body);
     } catch (error) {
+      if (error instanceof MediaBusyError) return res.status(503).set("Retry-After", "5").end();
       if (error instanceof MediaLimitError) return res.status(413).type("json").json({ error: error.message });
       console.error("Legacy media delivery failed:", error);
       return res.status(500).json({ error: "Media unavailable" });
@@ -703,11 +705,13 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       return res.status(404).end();
     }
     try {
-      const record = await storage.findMediaByKey(key);
+      const record = await storage.findMediaByKey(key, !key.startsWith("thumb-"));
       if (!record) return res.status(404).end();
-      const event = record.eventId ? await storage.getEvent(record.eventId) : undefined;
-      if (!event || (!canManage(req.user,event) && !await mediaPublic(record,event))) return res.status(404).end();
       const isOriginal = record.url === `/api/media/files/${key}`;
+      const event = record.eventId ? await storage.getEvent(record.eventId, isOriginal) : undefined;
+      if (!event || (!canManage(req.user,event) && !await mediaPublic(record,event))) return res.status(404).end();
+      const isThumbnail = !isOriginal && record.thumbnail === `/api/media/files/${key}` && /^thumb-.*\.webp$/.test(key);
+      if (isThumbnail && (record.isPremium || event.isPremium)) return res.status(404).end();
       if (isOriginal && req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
       if (isOriginal && (!req.isAuthenticated() || record.isPremium || event?.isPremium)) {
         return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Download file not available" });
@@ -716,6 +720,9 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (edge) {
         const version = await publicPreviewVersion(key);
         if (version) return res.redirect(307,`${edge}/preview/${key}/${version}`);
+      }
+      if (isThumbnail) {
+        return await sendPreparedThumbnail(req, res, key);
       }
       res.setHeader("Content-Type", getMediaContentType(key));
       res.setHeader("Cache-Control", "private, no-store");
@@ -733,6 +740,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
     } catch (error) {
       console.error("Media delivery failed:", error);
       if (!res.headersSent) res.status(502).json({ error: "Media is temporarily unavailable" });
+      else res.destroy();
     }
   });
 

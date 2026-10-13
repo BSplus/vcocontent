@@ -25,6 +25,7 @@ import { ShareMenu } from "@/components/share-menu";
 import MediaRightsNotice from "@/components/media-rights-notice";
 import "@/components/media-preview-mobile.css";
 import { creditText, creditByline } from "@shared/media-credit";
+import VisibleThumbnail from "@/components/visible-thumbnail";
 
 export default function HomePage() {
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
@@ -37,7 +38,6 @@ export default function HomePage() {
   const { data: topShots = [], isLoading: topShotsLoading, isError: topShotsError, refetch: retryTopShots } = useQuery<MediaItem[]>({ queryKey: ["/api/media/top-shots"] });
   const { data: creatorTopMedia = [], isLoading: creatorMediaLoading, isError: creatorMediaError, refetch: retryCreatorMedia } = useQuery<MediaItem[]>({
     queryKey: ["/api/media/creator-top"],
-    enabled: !topShotsLoading,
   });
 
   const today = new Date();
@@ -195,7 +195,7 @@ export default function HomePage() {
                 <MobileGalleryRow label="Top shots" className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   {topShots.slice(0, 3).map((shot) => <button key={shot.id} type="button" onClick={(event) => { previewOpener.current = event.currentTarget; setSelectedMedia(shot); }} aria-label={`Preview ${shot.type === "video" ? "video" : "photo"}: ${shot.caption || `Media ${shot.id}`}`} className="group flex min-w-0 flex-col overflow-hidden rounded-md border border-foreground/15 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                       <span className="relative flex h-60 w-full items-center justify-center bg-background sm:h-72 md:h-64 lg:h-72">
-                      <img src={shot.thumbnail} alt="" className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none" loading="lazy" />
+                      <VisibleThumbnail anticipate={shot.id === topShots[0]?.id} src={shot.thumbnail} alt="" className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none" />
                       {shot.type === "video" && <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded bg-black/85 px-2 py-1 text-xs font-semibold text-white"><PlayCircle className="h-4 w-4" /> Video</span>}
                     </span>
                       <span className="flex w-full items-center justify-between gap-3 p-4">
@@ -209,7 +209,7 @@ export default function HomePage() {
             </section>
           )}
 
-           {(creatorTopMedia.length > 0 || creatorMediaLoading || creatorMediaError) && !topShotsLoading && (
+           {(creatorTopMedia.length > 0 || creatorMediaLoading || creatorMediaError) && (
             <section aria-labelledby="creator-media-heading" className="border-t border-foreground/10 pt-9">
               <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
                 <div><p className="mb-1 text-xs font-bold uppercase tracking-[0.2em] text-accent">Creator spotlight</p><h2 id="creator-media-heading" className="text-2xl font-bold tracking-wide sm:text-3xl">Popular creator media</h2></div>
@@ -217,7 +217,7 @@ export default function HomePage() {
               </div>
               {creatorMediaLoading ? <div role="status" aria-label="Loading Popular creator media" className="mobile-gallery-row grid grid-cols-1 gap-4 md:grid-cols-3">{[0, 1, 2].map(i => <div key={i} className="mobile-gallery-card aspect-video animate-pulse bg-card/70" />)}</div> : creatorMediaError ? <div role="alert" className="border border-border bg-card p-5"><p>Popular creator media is temporarily unavailable.</p><Button variant="outline" className="mt-3" onClick={() => void retryCreatorMedia()}>Try again</Button></div> : <MobileGalleryRow label="Popular creator media" className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   {creatorTopMedia.slice(0, 3).map((item) => <button key={item.id} type="button" onClick={(event) => { previewOpener.current = event.currentTarget; setSelectedMedia(item); }} aria-label={`Preview ${item.type === "video" ? "video" : "photo"}: ${item.caption || `Media ${item.id}`}`} className="group relative aspect-video overflow-hidden border border-accent/25 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-                  <img src={item.thumbnail} alt={item.caption || "Creator racing media"} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none" loading="lazy" />
+                  <VisibleThumbnail anticipate={item.id === creatorTopMedia[0]?.id} src={item.thumbnail} alt={item.caption || "Creator racing media"} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none" />
                   <span className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
                   <span className="absolute bottom-0 left-0 right-0 p-4">
                     <span className="line-clamp-2 block text-sm font-semibold text-white">{item.caption || "Creator media"}</span>

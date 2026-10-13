@@ -20,3 +20,9 @@ Separate synthetic-fixture browser checks from server-rendered public metadata a
 **Why:** Repeated full navigations to synthetic event/media IDs intermittently stalled before the app loaded through the preview domain, while the same checks passed against the running server directly. Synthetic IDs also do not exist for the server's public-page lookup.
 
 **How to apply:** Enter through a real public route, then use client navigation and reset query state for synthetic fixtures. If proxy startup prevents testing, diagnose with a direct browser connection to the running server and retain a separate screenshot check of real public routes; do not bypass authentication.
+
+Full navigation, especially to the same URL, must be distinguished from the old document before testing readiness.
+
+**Why:** A navigation command can return while the previous DOM still satisfies a readiness selector. Later assertions then run in the replacement document before startup visibility is released, producing empty text or misleading image timings.
+
+**How to apply:** Mark the old window before navigation and wait for its replacement plus feature readiness. For visible-image timing, wait for startup release and actual viewport intersection, not merely image decoding. Use a fixed observation window for request/byte comparisons.

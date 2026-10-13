@@ -29,11 +29,13 @@ test.before(async () => {
     coverImage: "/attached_assets/%2389_3.png" };
   for (const [name, fn] of Object.entries({
     getEvents: async () => [event],
+    getEventsWithCardFallbacks: async () => [event],
     getEvent: async id => id === event.id ? event : undefined,
     getUser: async () => owner,
     findMediaByKey: async () => media,
     getMediaItem: async () => media,
     getPublicEventMediaItems: async () => [],
+    getEventCardFallbacks: async () => new Map(),
     createEvent: async data => { writes++; return { ...fixture, ...data }; },
     updateEvent: async (_id, data) => { writes++; event = { ...event, ...data }; return event; },
   })) { original[name] = storage[name]; storage[name] = fn; }
@@ -67,7 +69,7 @@ test("real event list keeps a small, lazy chosen-image reference for an empty ga
   assert.deepEqual(await (await call(`/api/events/${event.id}/media`)).json(), []);
   const preview = await call(listed.customThumbnail);
   assert.equal(preview.status, 200);
-  assert.equal(preview.headers.get("cache-control"), "private, no-store");
+  assert.equal(preview.headers.get("cache-control"), "private, no-cache, max-age=0, must-revalidate");
   assert.equal(preview.headers.get("x-content-type-options"), "nosniff");
   assert.match(preview.headers.get("content-type"), /^image\/webp/);
   const bytes = Buffer.from(await preview.arrayBuffer());
