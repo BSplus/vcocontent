@@ -131,20 +131,20 @@ A healthy startup/config check is not proof of real S3 connectivity.
 ### 3. You authorize; Agent runs one controlled Production smoke
 
 **Current controlling procedure:** see
-`docs/r2-production-smoke-procedure.md`. The operator requires normal uploads
-blocked BEFORE, DURING and AFTER the test, with exact-scope cleanup. The proposed
-smoke-only authorization is not implemented yet and needs separate approval and
-manual publishing. Do not flip the global flag to `true` for a smoke window.
-This supersedes the earlier temporary-global-gate/private-window approach.
+`docs/r2-direct-production-smoke-plan.md`. Use existing application functionality,
+not the superseded smoke-only authorization proposal. After explicit execution
+approval, the operator temporarily publishes the global flag as `true` for two
+uploads, then immediately publishes it back to `false`, including on failure.
+Restrict deployment access first; otherwise all eligible users can upload during
+the window, including the time needed for the closing publish to take effect.
 
 Use existing eligible Creator/admin accounts
 and an existing second non-admin account; do not change roles or create users
 to manufacture test permissions.
 
-Approve one bounded test run using only the scoped authorization in the
-controlling procedure. No other users or API clients receive upload permission.
-Deployment privacy is optional additional protection; ordinary uploads stay
-closed regardless of visibility.
+Approve one bounded test run under the controlling procedure. No new features,
+schema or application roles. Private platform access restricted to test operators
+is recommended; the global flag itself does not distinguish test uploads.
 
 Scope: one small Creator photo + preview and one short official video + poster,
 with at most one normal AI replacement poster: **five test-owned objects maximum**.
@@ -172,10 +172,12 @@ existing regression/configuration checks, not by filling a real Creator's quota.
 Anonymous application checks use no app session; the private platform access gate
 must not be mistaken for application permission denial.
 
-Keep the upload gate **`false` throughout**, including on failure. Revoke scoped
-permissions, drain only test-owned work, remove only exact manifest-owned rows
-and keys, and verify actual absence. Hidden galleries alone are no longer
-sufficient for this smoke: the operator explicitly requires cleanup.
+Restore the upload gate to **`false` immediately after uploads**, including on
+failure, and verify the closed runtime before delivery checks. Existing delete
+handlers trigger general queued cleanup; proceed only after proving the queue
+is exclusively test-owned. After successful verification, delete only the new
+media and galleries and verify object absence. On failure retain draft test data
+for review rather than broadening deletion or reopening uploads.
 
 ### 4. You approve normal uploads after the recorded smoke PASS
 

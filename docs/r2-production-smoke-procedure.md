@@ -1,5 +1,10 @@
 # Controlled Production R2 smoke — proposed, not executed
 
+**SUPERSEDED — DO NOT IMPLEMENT:** The operator now chooses the direct test
+using existing application uploads and a temporary global flag, with explicit
+exposure controls. Follow `docs/r2-direct-production-smoke-plan.md`. The
+authorization/cleanup features below are historical proposals, not current work.
+
 ## Status and approval boundaries
 
 This document prepares the procedure only. No Production upload, object read or

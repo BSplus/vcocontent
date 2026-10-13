@@ -22,16 +22,20 @@ deploy schema, activate Production R2 or open normal uploads; obtain explicit
 approval. Use docs/r2-production-launch-checklist.md, not historical cleanup or
 recovery prerequisites.
 
-For the Production smoke, the operator requires normal uploads blocked before,
-during and after testing; never briefly flip the global upload flag to allow the
-test. Use an explicitly approved, actor/event/key-bounded exception instead.
-The smoke must remove its own isolated test data, not merely hide it.
+For the Production smoke, the operator now chooses existing application upload
+functionality, not a new authorization system or migration. A temporary global
+upload window is the selected plan, pending explicit execution approval.
 
-**Why:** The operator explicitly required smoke uploads without opening normal
-user uploads, exact test cleanup, and preservation of all existing records.
+**Why:** The operator explicitly simplified the launch and rejected implementing
+the previously proposed smoke-only authorization system.
 
-**How to apply:** The narrow exception is preparation only until separately
-approved implementation, manual publication and execution. No schema changes,
-credential exposure, public bucket or existing-data cleanup. Follow
-docs/r2-production-smoke-procedure.md rather than the superseded global-window
-smoke procedure.
+**How to apply:** Follow docs/r2-direct-production-smoke-plan.md. Do not implement
+the superseded smoke features. Explain that all eligible users can upload while
+the live global flag is true; private platform access restricted to test operators
+minimizes exposure. The operator must immediately restore false and republish
+after the upload phase or any error; saving false alone is not runtime closure.
+Only new test media/galleries may be deleted after successful verification.
+Existing delete handlers can sweep queued cleanup, so prove that queue is
+exclusively test-owned first. No schema, existing-data cleanup, credential
+exposure or public bucket. Preparation is not approval to change settings,
+publish, upload or delete.
