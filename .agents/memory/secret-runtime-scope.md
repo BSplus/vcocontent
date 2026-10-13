@@ -26,5 +26,9 @@ credential-presence guard after passing the runtime database-target check.
 
 **How to apply:** Map a startup stack to the corresponding built guard. Its
 failure can establish unwanted variable presence without reading values.
-Correct deployment secret scope, not the fail-closed guard, and keep Development
-credentials available only to Development.
+The opposite-environment guard is symmetric: its stack alone does not establish
+which credential names triggered it without the resolved environment. A
+Publishing screenshot describes selected configuration, not necessarily the
+last deployed process. Verify the environment and publish timing before asking
+the operator to repeat a configuration change. Keep the fail-closed guard and
+keep Development credentials available only to Development.
