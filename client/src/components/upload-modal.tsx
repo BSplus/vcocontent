@@ -30,6 +30,7 @@ import { creatorAssociationsKey, invalidateCommunityGalleryQueries } from "@/com
 import GalleryThumbnailSelector from "@/components/gallery-thumbnail-selector";
 import { eventImagePolicy } from "@shared/event-image-policy";
 import { EventSaveError, saveEvent } from "@/lib/event-save";
+import { EventCreateError, createEventRequest } from "@/lib/event-create";
 
 interface UploadModalProps {
   open: boolean;
@@ -77,6 +78,9 @@ export default function UploadModal({
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const baseline = useRef<Event | null>(null);
   const [saveProblem, setSaveProblem] = useState<string | null>(null);
+  const [creationStage, setCreationStage] = useState<string | null>(null);
+  const [importStarted, setImportStarted] = useState(false);
+  const problemRef = useRef<HTMLDivElement>(null);
   const [unknownSave, setUnknownSave] = useState(false);
   const [checkingSave, setCheckingSave] = useState(false);
   const [saveCheck, setSaveCheck] = useState<string | null>(null);
@@ -111,8 +115,12 @@ export default function UploadModal({
   const nextcloudPost = async (url: string, body: unknown) => {
     const response = await fetch(url, { method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Nextcloud request failed.");
+     const result = await response.json().catch(() => null);
+     if (!response.ok) throw new Error(result?.error || (response.status === 401
+       ? "Your session has expired. Sign in again."
+       : "Nextcloud could not confirm this request. Check access and import progress before retrying."));
+     if (!result || typeof result !== "object")
+       throw new Error("Nextcloud returned an unexpected response. Check import progress before retrying.");
     return result;
   };
   const checkLinks = async () => {
@@ -287,13 +295,7 @@ export default function UploadModal({
     retry: false, // Validation failures are final; creation must not be replayed automatically.
     mutationFn: async (data: InsertEvent) => {
       const { endpoint, creatorId } = eventCreateRoute(user, imageSource);
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
+      return createEventRequest<Event>(endpoint, {
           ...data,
           ...(creatorId ? { coverImage: undefined, customThumbnail: undefined } : {}),
           date: new Date(data.date),
@@ -301,15 +303,7 @@ export default function UploadModal({
           visibility: "draft",
           creatorId,
           ...(entryDraft.rows ? { entryRows: entryDraft.rows } : {}),
-        }),
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || error.message || "Failed to create event");
-      }
-
-      return res.json();
+        });
     },
     onSuccess: async (event: Event) => {
       queryClient.invalidateQueries({ queryKey: ["/api/creator/usage"] });
@@ -320,17 +314,17 @@ export default function UploadModal({
       setCreatedEventId(event.id);
       const reference = pendingEventReferenceRef.current;
       if (reference) await importCreatedEventReference(event.id, reference);
-      toast({
-        title: "Success",
-        description: "Event created" + (entryDraft.rows ? " with its entry list." : ". You can add an entry list before closing."),
-      });
+      if (imageSource !== "nextcloud") {
+        setCreationStage("Event saved. Review its entry list if needed, then choose Done.");
+        toast({ title: "Event created", description: "The event is saved. You can manage it from your event list." });
+      }
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create event",
-        variant: "destructive",
-      });
+      const unknown = error instanceof EventCreateError && error.status === "unknown";
+      setUnknownSave(unknown);
+      setSaveProblem(unknown
+        ? `${error.message} Your inputs are preserved. Close this form and check your event list before creating again to avoid duplicates.`
+        : `Event not created. ${error.message} Your inputs are preserved.`);
     },
   });
 
@@ -407,8 +401,16 @@ export default function UploadModal({
   };
 
   const onSubmit = async (data: InsertEvent) => {
-    if (thumbnailBusy) return;
+    if (thumbnailBusy || unknownSave) return;
+    if (creationBlocked.length) {
+      setValidationSummary(creationBlocked);
+      return;
+    }
+    let savedId = importEventId || createdEventId;
     try {
+      setSaveProblem(null);
+      setCreationStage(null);
+      setImportStarted(false);
       setValidationSummary([]);
       if (!isEditing && !createdEventId && entryDraft.blocked) {
         setValidationSummary(["Review and confirm the entry list, or discard it before creating the event."]);
@@ -416,17 +418,27 @@ export default function UploadModal({
       }
        if (imageSource === "nextcloud" && !isEditing) {
         setImportBusy(true);
+        setCreationStage("Checking Nextcloud access…");
         // Recheck the current inputs before creating an album, even if the preview
         // was for an older link or the share has since become unavailable.
          await nextcloudPost(importEventId ? `/api/admin/events/${importEventId}/nextcloud/preview` : "/api/admin/nextcloud/preview", { sources: sources() });
+         setCreationStage(savedId ? "Preparing the saved event…" : "Creating event…");
         const id = importEventId || createdEventId || (isEditing ? eventId : null);
         const event = id ? null : await createMutation.mutateAsync(data);
         const targetId = id ?? event!.id;
+         savedId = targetId;
         setImportEventId(targetId);
+         setCreationStage("Saving Nextcloud sources…");
          applySavedSources(await nextcloudPost(`/api/admin/events/${targetId}/nextcloud/sources`, { sources: sources() }));
+         setCreationStage("Starting background import…");
          await nextcloudPost(`/api/admin/events/${targetId}/nextcloud/update`, {});
+         setImportStarted(true);
         queryClient.invalidateQueries({ queryKey: [`/api/admin/events/${targetId}/nextcloud`] });
-        toast({ title: "Nextcloud import started", description: "The event gallery is saved. Progress and errors are available here." });
+         setCreationStage("Event saved. Import is running in the background; you can safely close this window.");
+         toast({ title: "Event created — import started", duration: 10000,
+           description: "The import continues in the background. Reopen Edit Event from your event list to check progress or errors." });
+         // Preserve a failed reference import and its retry controls.
+         if (!pendingEventReferenceRef.current) onOpenChange(false);
         return;
       }
       if (isEditing && eventId) {
@@ -437,20 +449,32 @@ export default function UploadModal({
     } catch (error) {
       // Edit errors are displayed once, inline, by the mutation handler.
       if (isEditing) return;
-      console.error("Form submission error:", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save event",
-        variant: "destructive",
-      });
+      setCreationStage(null);
+      if (error instanceof EventCreateError) return; // Mutation handler displays one persistent error.
+      const message = error instanceof Error ? error.message : "Please try again later.";
+      setSaveProblem(savedId
+        ? `The event is saved, but Nextcloud setup or import start needs attention. ${message} Check import progress before retrying. This form will reuse the saved event, not create another one.`
+        : `Event not created. ${message} Your inputs are preserved.`);
     } finally {
       setImportBusy(false);
     }
   };
 
+  const creationBlocked = !isEditing && !createdEventId ? [
+    !user ? "Sign in before creating an event." : null,
+    user?.suspended ? "This account is suspended. Contact an administrator." : null,
+    user && !user.isAdmin && (user.creatorStatus === "rejected" || (!user.isCreator && user.creatorStatus !== "approved")) ? "Creator approval is required before you can create a gallery." : null,
+    entryDraft.blocked ? "Review and confirm the entry list, or discard it before creating the event." : null,
+    imageSource === "nextcloud" && !preview ? "Use Check access and media before creating the event. Recheck after changing a source." : null,
+  ].filter((reason): reason is string => !!reason) : [];
+
+  useEffect(() => {
+    if (saveProblem || validationSummary.length) problemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [saveProblem, validationSummary]);
+
   const onInvalid = (errors: typeof form.formState.errors) => {
-    const messages = Object.values(errors)
-      .map((error) => error?.message)
+    const messages = Object.entries(errors)
+      .map(([field, error]) => field === "date" ? "Choose a valid event date." : error?.message)
       .filter((message): message is string => typeof message === "string");
     setValidationSummary(messages.length ? messages : ["Please correct the highlighted fields."]);
   };
@@ -459,6 +483,8 @@ export default function UploadModal({
     if (!open) {
       baseline.current = null;
       setSaveProblem(null);
+      setCreationStage(null);
+      setImportStarted(false);
       setUnknownSave(false);
       setSaveCheck(null);
       form.reset();
@@ -483,25 +509,28 @@ export default function UploadModal({
 
   return (
     <Dialog open={open} onOpenChange={nextOpen=>{
-       if(!nextOpen && (thumbnailBusy || sourcesBusy || importBusy || updateMutation.isPending || checkingSave || referenceImportRecovery?.status==="uploading")) return;
+       if(!nextOpen && (thumbnailBusy || sourcesBusy || importBusy || createMutation.isPending || updateMutation.isPending || checkingSave || referenceImportRecovery?.status==="uploading")) return;
       onOpenChange(nextOpen);
     }}>
        <DialogContent className="block max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader className="mb-4">
           <DialogTitle>
-            {isEditing ? "Edit Event" : "Create New Event"}
+            {isEditing ? "Edit Event" : createdEventId ? "Event created" : "Create New Event"}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-4">
-          {saveProblem && <div role="alert" className="rounded-md border border-destructive/50 p-3 text-sm">
+        <form noValidate onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-4">
+          {creationStage && <div role="status" aria-live="polite" className="rounded-md border border-primary/50 bg-primary/10 p-3 text-sm">
+            {creationStage}
+          </div>}
+          {saveProblem && <div ref={problemRef} role="alert" className="rounded-md border border-destructive/50 p-3 text-sm">
             <p>{saveProblem}</p>
-            {unknownSave && <Button type="button" variant="outline" onClick={checkSavedEvent} disabled={checkingSave}>
+            {unknownSave && isEditing && <Button type="button" variant="outline" onClick={checkSavedEvent} disabled={checkingSave}>
               {checkingSave ? "Checking..." : "Check saved event"}
             </Button>}
           </div>}
           {saveCheck && <p role="status" className="text-sm">{saveCheck}</p>}
           {validationSummary.length > 0 && (
-            <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            <div ref={problemRef} role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
               <p className="font-medium">Please check the event details:</p>
               <ul className="mt-1 list-disc pl-5">
                 {validationSummary.map((message, index) => <li key={`${message}-${index}`}>{message}</li>)}
@@ -728,6 +757,10 @@ export default function UploadModal({
             </div>
           )}
 
+           {creationBlocked.length > 0 && <div role="status" className="rounded-md border p-3 text-sm">
+             <p className="font-medium">Before you can create this event:</p>
+             <ul className="list-disc pl-5">{creationBlocked.map(reason => <li key={reason}>{reason}</li>)}</ul>
+           </div>}
            <div className="flex flex-wrap justify-end gap-2">
             <Button
               type="button"
@@ -738,14 +771,14 @@ export default function UploadModal({
               Cancel
             </Button>
              <Button
-              type={createdEventId && !isEditing && imageSource !== "nextcloud" ? "button" : "submit"}
-              onClick={createdEventId && !isEditing && imageSource !== "nextcloud" ? () => onOpenChange(false) : undefined}
-               disabled={unknownSave || checkingSave || thumbnailBusy || sourcesBusy || createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (!isEditing && !createdEventId && entryDraft.blocked) || (!isEditing && imageSource === "nextcloud" && !preview && !createdEventId)}
+              type={createdEventId && !isEditing && (imageSource !== "nextcloud" || importStarted) ? "button" : "submit"}
+              onClick={createdEventId && !isEditing && (imageSource !== "nextcloud" || importStarted) ? () => onOpenChange(false) : undefined}
+               disabled={unknownSave || creationBlocked.length > 0 || checkingSave || thumbnailBusy || sourcesBusy || createMutation.isPending || updateMutation.isPending || importBusy || previewBusy || (!isEditing && imageSource === "nextcloud" && !preview && !createdEventId)}
               className="bg-primary text-black hover:bg-primary/90"
             >
                 {referenceImportRecovery?.status==="uploading" ? (
                   <><Loader2 className="h-4 w-4 animate-spin mr-2" />Saving reference...</>
-                ) : createdEventId && !isEditing && imageSource !== "nextcloud" && !importBusy ? "Done" : createMutation.isPending || updateMutation.isPending || importBusy ? (
+                ) : createdEventId && !isEditing && !importBusy && importStarted ? "Close — import continues" : createdEventId && !isEditing && imageSource !== "nextcloud" && !importBusy ? "Done" : createMutation.isPending || updateMutation.isPending || importBusy ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   {isEditing ? "Updating..." : "Creating..."}

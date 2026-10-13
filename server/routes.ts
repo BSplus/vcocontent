@@ -7,6 +7,7 @@ import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, updateSer
 import express from "express";
 import path from "path";
 import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
+import { eventCreationError } from "./event-creation-error";
 import { log } from "./vite";
 import { db } from "./db";
 import { eq, sql, and } from "drizzle-orm";
@@ -137,13 +138,17 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (!req.user.isAdmin && !await takeBetaRate(`gallery:${req.user.id}`,10,3600000))
         return res.status(429).json({error:"Too many gallery requests. Please try later."});
       const event = await storage.createEvent(eventData, creationEntries(req.body));
-      if (event.creatorId) await reviewEventSafety(event.id,event.creatorId);
-      res.status(201).json(await storage.getEvent(event.id));
+      try {
+        if (event.creatorId) await reviewEventSafety(event.id,event.creatorId);
+        res.status(201).json(await storage.getEvent(event.id) || event);
+      } catch {
+        // Creation already committed. A review/read outage must not invite a duplicate.
+        res.status(201).json({ ...event, safetyCheckStatus: "unavailable" });
+      }
     } catch (error) {
-      console.error('Error creating creator event:', error);
-      res.status(400).json({ 
-        error: error instanceof MediaLimitError || error instanceof Error && error.message.startsWith("Entry list:") ? error.message : "Failed to create event",
-      });
+      const failure = eventCreationError(error);
+      if (failure.status === 503) console.error("Creator event creation could not be confirmed");
+      res.status(failure.status).json({ error: failure.message });
     }
   });
 
@@ -1253,8 +1258,9 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const event = await storage.createEvent(eventData, creationEntries(req.body));
       res.status(201).json(event);
     } catch (error) {
-      if (!(error instanceof EventImageError)) console.error('Error creating event:', error);
-      res.status(400).json({ error: error instanceof EventImageError || error instanceof Error && error.message.startsWith("Entry list:") ? error.message : "Failed to create event" });
+      const failure = eventCreationError(error);
+      if (failure.status === 503) console.error("Official event creation could not be confirmed");
+      res.status(failure.status).json({ error: failure.message });
     }
   });
 
