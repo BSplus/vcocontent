@@ -43,5 +43,16 @@ This establishes presence, not non-empty values or the source of injection.
 mismatch and incorrectly implied an operator configuration mistake.
 
 **How to apply:** Do not claim UI exclusions guarantee runtime absence. Preserve
-the isolation checks; propose a separately approved Production launch isolation
-change if needed, without inspecting credentials or changing Development access.
+the isolation checks. The operator approved preparation of Production-only
+launch isolation: remove just the Development R2 variable names from the child
+application environment, not from the stored Development secrets.
+
+**Why:** This preserves Development access and the strict application guard
+without credential inspection, secret renaming or repeatedly ineffective UI
+exclusions. It is an explicit isolation workaround, not evidence that the
+original injection source was identified.
+
+**How to apply:** Retain Production/authentication/integration configuration and
+all target, bucket and upload safeguards. Applying the prepared command still
+requires the operator's publish; preparation does not authorize automatic
+publishing or ordinary uploads.

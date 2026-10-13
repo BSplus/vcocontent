@@ -28,9 +28,21 @@ old-media migration is part of this launch.
   blocks both providers when set to `false`; its regression, existing R2 routing
   tests, TypeScript and Production build passed.
 - Existing Publishing settings are sufficient: VM, build `npm run build`,
-  run `npm run start`. No startup DDL or additional deployment service needed.
+  run `env -u R2_DEV_ACCESS_KEY_ID -u R2_DEV_SECRET_ACCESS_KEY npm run start`.
+  This approved Production-only prefix excludes inherited Development credential
+  variables from the application process. Development startup and stored secrets
+  are unchanged. No startup DDL or additional deployment service needed.
 
 ## Production inventory — what must be configured manually
+
+**Current status:** The operator has configured the Production values below and
+the three approved schema additions are applied. The initial inventory below is
+historical, not evidence that the operator's Publishing configuration is missing.
+The remaining confirmed startup conflict is inherited Development variable
+presence. The prepared launch prefix addresses that conflict on the next
+operator-controlled publish; keep the database-copy checkbox unchecked and the
+normal upload gate closed. No new secret entry or schema work is required for
+this startup change.
 
 The inventory reports **no configured R2 non-secret Production values** and no
 `R2_PROD_ACCESS_KEY_ID` / `R2_PROD_SECRET_ACCESS_KEY`.
@@ -105,6 +117,12 @@ staging. No previous Nextcloud folder needs to be re-imported.
 activation explicitly. Then use the existing Publish workflow. Review its diff:
 only the three additions above; **never select Overwrite Production Data**.
 Stop on unexpected destructive changes. Agent will not publish automatically.
+
+The approved Production launch prefix explicitly excludes only
+`R2_DEV_ACCESS_KEY_ID` and `R2_DEV_SECRET_ACCESS_KEY` before starting the existing
+application. It does not remove Production/authentication/integration credentials,
+alter the expected database fingerprint, relax the isolation guard or open the
+upload gate. It takes effect only on the next operator-controlled publish.
 
 After deployment, Agent can check startup health, actual target/configuration
 validation, retained counts and denied ordinary uploads without a test upload.

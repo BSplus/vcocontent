@@ -7,7 +7,7 @@ channel = "stable-24_05"
 
 [deployment]
 deploymentTarget = "vm"
-run = ["npm", "run", "start"]
+run = ["env", "-u", "R2_DEV_ACCESS_KEY_ID", "-u", "R2_DEV_SECRET_ACCESS_KEY", "npm", "run", "start"]
 build = ["npm", "run", "build"]
 ignorePorts = false
 
