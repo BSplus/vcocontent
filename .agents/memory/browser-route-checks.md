@@ -14,3 +14,9 @@ Chromium can cancel an intercepted request during navigation before the mock ful
 **Why:** This occurred in multiple navigation-heavy browser checks even though their interaction assertions passed; an invalid interception ID describes a canceled browser request, not an application failure.
 
 **How to apply:** Ignore only this specific cancellation in interception handlers. Continue reporting all other mock errors and runtime exceptions; do not broadly suppress network failures.
+
+Separate synthetic-fixture browser checks from server-rendered public metadata and preview-proxy startup problems.
+
+**Why:** Repeated full navigations to synthetic event/media IDs intermittently stalled before the app loaded through the preview domain, while the same checks passed against the running server directly. Synthetic IDs also do not exist for the server's public-page lookup.
+
+**How to apply:** Enter through a real public route, then use client navigation and reset query state for synthetic fixtures. If proxy startup prevents testing, diagnose with a direct browser connection to the running server and retain a separate screenshot check of real public routes; do not bypass authentication.

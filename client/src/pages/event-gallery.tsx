@@ -106,8 +106,18 @@ export default function EventGallery() {
             {event.description && (
               <p className="max-w-2xl text-lg">{event.description}</p>
             )}
-            <CommunityActions kind="event" id={event.id} title={event.title} />
-            <ShareMenu url={`${window.location.origin}/events/${event.id}`} title={event.title} />
+            <CommunityActions
+              kind="event"
+              id={event.id}
+              title={event.title}
+              trailingAction={
+                <ShareMenu
+                  url={`${window.location.origin}/events/${event.id}`}
+                  title={event.title}
+                  className="h-11 w-11"
+                />
+              }
+            />
           </div>
         </div>
       </header>

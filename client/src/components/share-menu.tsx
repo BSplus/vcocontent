@@ -13,9 +13,10 @@ interface ShareMenuProps {
   url: string;
   title?: string;
   description?: string;
+  className?: string;
 }
 
-export function ShareMenu({ url, title, description }: ShareMenuProps) {
+export function ShareMenu({ url, title, description, className }: ShareMenuProps) {
   const { toast } = useToast();
 
   const shareUrls = {
@@ -52,7 +53,7 @@ export function ShareMenu({ url, title, description }: ShareMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" aria-label="Share">
+        <Button variant="outline" size="icon" aria-label="Share" className={className}>
           <Share2 className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>

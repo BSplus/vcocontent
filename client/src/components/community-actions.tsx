@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { Heart, Bookmark, LoaderCircle } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -21,6 +21,7 @@ interface CommunityActionsProps {
   id: number;
   title?: string;
   compact?: boolean;
+  trailingAction?: ReactNode;
   onFavoriteChange?: () => void;
 }
 
@@ -29,6 +30,7 @@ export default function CommunityActions({
   id,
   title,
   compact = false,
+  trailingAction,
   onFavoriteChange,
 }: CommunityActionsProps) {
   const { user } = useAuth();
@@ -91,7 +93,7 @@ export default function CommunityActions({
   const label = title ? ` ${title}` : "";
 
   return (
-    <div className={`flex items-center gap-2 ${compact ? "text-xs" : "text-sm"}`} role="group" aria-label="Community actions">
+    <div className={`flex items-center gap-2 ${trailingAction ? "min-w-0 flex-wrap [&>button]:shrink-0" : ""} ${compact ? "text-xs" : "text-sm"}`} role="group" aria-label="Community actions">
       <button
         type="button"
         disabled={blocked}
@@ -114,6 +116,7 @@ export default function CommunityActions({
         <Bookmark aria-hidden="true" className={`h-4 w-4 ${current.saved ? "fill-current" : ""}`} />
         {!compact && <span>{current.saved ? "Saved" : "Save"}</span>}
       </button>
+      {trailingAction}
       {isError && <button type="button" className="min-h-11 text-xs text-muted-foreground underline" onClick={() => void refetch()}>Retry</button>}
       {!user && <button type="button" onClick={visitSignIn} className="min-h-11 text-xs text-muted-foreground underline underline-offset-4">Sign in to join in</button>}
       {mutation.isError && <p role="alert" className="basis-full text-xs text-destructive">Could not save this change. Your previous state has been restored. Try again.</p>}
