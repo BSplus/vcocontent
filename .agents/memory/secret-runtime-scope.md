@@ -32,3 +32,16 @@ Publishing screenshot describes selected configuration, not necessarily the
 last deployed process. Verify the environment and publish timing before asking
 the operator to repeat a configuration change. Keep the fail-closed guard and
 keep Development credentials available only to Development.
+
+**Observed platform boundary:** The operator showed Development R2 secrets as
+missing from the Production Publishing environment and confirmed republishing
+after excluding them. Credential-safe startup diagnostics nevertheless reported
+both Development variable names present in a process resolved as Production.
+This establishes presence, not non-empty values or the source of injection.
+
+**Why:** Repeating the same UI exclusion instruction did not resolve the runtime
+mismatch and incorrectly implied an operator configuration mistake.
+
+**How to apply:** Do not claim UI exclusions guarantee runtime absence. Preserve
+the isolation checks; propose a separately approved Production launch isolation
+change if needed, without inspecting credentials or changing Development access.
