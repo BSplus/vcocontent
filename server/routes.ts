@@ -49,6 +49,8 @@ import {supportedPhotoObservations} from "./utils/photo-number-evidence";
 import { registerManualNumberRoutes } from "./manual-number-routes";
 import { registerMediaEdge, edgeOrigin, publicPreviewVersion } from "./media-edge";
 import { mediaCreditSchema } from "@shared/media-credit";
+import { mediaTagSchema, retiredTagMessage, RetiredMediaTagError } from "@shared/media-tag-policy";
+import { activeMediaTagsSql } from "./media-tag-sql";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -749,6 +751,10 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
             tags: z.string().max(1500).optional(),
             autoTag: z.enum(["true", "false"]).optional(),
           }).parse(req.body);
+          // Validate before reserving space or uploading any stored objects.
+          const uploadTags = metadata.tags
+            ? z.array(mediaTagSchema.pipe(z.string().max(100))).parse(JSON.parse(metadata.tags)).slice(0,30)
+            : [];
           const community = !!event.creatorId;
           if (community) {
             if (metadata.type!=="image" || !req.file.mimetype.startsWith("image/")) throw new MediaLimitError("Video uploads are not available for Community Creators.");
@@ -776,15 +782,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
             objectCount: saved.objectCount,
             caption: metadata.caption || "",
             photographer: metadata.photographer || "",
-            tags: metadata.tags
-              ? (() => {
-                  const parsed = JSON.parse(metadata.tags);
-                  if (!Array.isArray(parsed) || !parsed.every(tag => typeof tag === "string" && tag.length <= 100)) {
-                    throw new Error("Invalid tags");
-                  }
-                  return parsed.slice(0, 30);
-                })()
-              : [],
+            tags: uploadTags,
             isPremium: false,
           }), undefined, undefined, community || metadata.type === "video" || metadata.autoTag === "true",!!event.creatorId);
           if (event.creatorId) await reviewMediaSafety(item.id,event.creatorId);
@@ -793,8 +791,8 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
         } catch (error) {
           console.error("Media upload failed");
           if (reservationId) await storage.abandonMedia(reservationId).catch(cleanupError => console.error("Upload cleanup pending:", cleanupError));
-          res.status(error instanceof MediaBusyError ? 503 : error instanceof MediaLimitError ? 413 : error instanceof z.ZodError || error instanceof InvalidPhotoError ? 400 : 502).json({
-            error: error instanceof MediaBusyError || error instanceof MediaLimitError || error instanceof InvalidPhotoError ? error.message : error instanceof z.ZodError ? "Invalid upload details" : "Could not store media",
+          res.status(error instanceof MediaBusyError ? 503 : error instanceof MediaLimitError ? 413 : error instanceof z.ZodError || error instanceof SyntaxError || error instanceof RetiredMediaTagError || error instanceof InvalidPhotoError ? 400 : 502).json({
+            error: error instanceof RetiredMediaTagError || error instanceof MediaBusyError || error instanceof MediaLimitError || error instanceof InvalidPhotoError ? error.message : error instanceof z.ZodError && error.issues.some(issue => issue.message === retiredTagMessage) ? retiredTagMessage : error instanceof z.ZodError || error instanceof SyntaxError ? "Invalid upload details" : "Could not store media",
           });
         } finally {
           const { unlink } = await import("fs/promises");
@@ -858,7 +856,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (!event) return res.status(404).json({ error: "Event not found" });
       if (!canManageEvent(req.user, event.creatorId ?? null)) return res.status(403).json({ error: "Forbidden" });
       const jobs = await db.select({ mediaId: mediaAnalysisJobs.mediaId, status: mediaAnalysisJobs.status,
-        tags: mediaItems.tags, generatedTags: mediaAnalysisJobs.generatedTags, error: mediaAnalysisJobs.error })
+        tags: activeMediaTagsSql(mediaItems.tags), generatedTags: activeMediaTagsSql(mediaAnalysisJobs.generatedTags), error: mediaAnalysisJobs.error })
         .from(mediaAnalysisJobs).innerJoin(mediaItems, eq(mediaItems.id, mediaAnalysisJobs.mediaId))
         .where(and(sql`${mediaItems.archivedAt} is null`,eq(mediaItems.eventId, id))).limit(1000);
       res.setHeader("Cache-Control", "private, no-store");
@@ -922,7 +920,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const changes = z.object({
         caption: z.string().max(1000).optional(),
         photographer: mediaCreditSchema.optional(),
-        tags: z.array(z.string().max(100)).max(100).optional(),
+        tags: z.array(mediaTagSchema.pipe(z.string().max(100))).max(100).optional(),
         category: z.string().max(100).optional(),
         identification: z.array(identificationSchema).max(12).optional(),
         recognitionSession: z.string().trim().max(120).nullable().optional(),
@@ -953,7 +951,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       void kickAnalysisWorker();
       return res.json(await storage.getMediaItem(id));
     } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid media details (caption: maximum 1000 characters)." });
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.issues.some(issue => issue.message === retiredTagMessage) ? retiredTagMessage : "Invalid media details (caption: maximum 1000 characters)." });
       return res.status(500).json({ error: "The media item could not be updated." });
     }
   });

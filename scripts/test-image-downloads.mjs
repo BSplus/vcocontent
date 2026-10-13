@@ -9,6 +9,8 @@ import { createServer, connect } from "node:net";
 import { once } from "node:events";
 import { WebSocketServer } from "ws";
 const exec=promisify(execFile);
+// Opt in only for suites exercising actual uploads in this disposable store.
+const enableUploads=process.argv.includes("--enable-uploads");
 const directory=await mkdtemp(path.join(tmpdir(),"vco-photo-pg-"));
 const portServer=createServer();
 portServer.listen(0,"127.0.0.1");await once(portServer,"listening");
@@ -26,7 +28,7 @@ try {
   await exec("createdb",["-h","127.0.0.1","-p",String(pgPort),"-U","vco_test","photo_test"]);
   const env={...process.env,DATABASE_URL:`postgresql://vco_test@127.0.0.1:${pgPort}/photo_test?sslmode=disable`,
     NODE_ENV:"development",MEDIA_STORAGE_ENVIRONMENT:"development",
-    MEDIA_STORAGE_PROVIDER:"replit",MEDIA_STORAGE_ROUTING:"disabled",MEDIA_STORAGE_NEW_UPLOADS_ENABLED:"false"};
+    MEDIA_STORAGE_PROVIDER:"replit",MEDIA_STORAGE_ROUTING:"disabled",MEDIA_STORAGE_NEW_UPLOADS_ENABLED:enableUploads?"true":"false"};
   // Search indexes use a standard PostgreSQL extension, only in this disposable DB.
   await exec("psql",["-h","127.0.0.1","-p",String(pgPort),"-U","vco_test","-d","photo_test",
     "-v","ON_ERROR_STOP=1","-c","CREATE EXTENSION IF NOT EXISTS pg_trgm"]);
@@ -46,7 +48,7 @@ try {
   env.VCO_TEST_PG_PORT=String(pgPort);
   env.VCO_TEST_OBJECTS=path.join(directory,"fixture-objects");
   env.NODE_OPTIONS=`--import=${path.resolve("tests/helpers/local-postgres-transport.mjs")} --import=${path.resolve("tests/helpers/local-object-storage.mjs")}`;
-  const files=process.argv.slice(2);
+  const files=process.argv.slice(2).filter(arg=>arg!=="--enable-uploads");
   const child=spawn(process.execPath,["--import","tsx","--test","--test-concurrency=1",
     ...(files.length?files:["tests/media-objects.test.mjs","tests/low-resolution-download.test.mjs","tests/image-download-routes.test.mjs","tests/media-budget.test.mjs",
       // Photo import/offline downloads are exercised by image-download-routes.

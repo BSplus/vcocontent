@@ -13,7 +13,7 @@ export const controlledTags = [
   "Studio", "Esports Arena", "Race Car", "Driver", "Helmet", "Cockpit", "Steering Wheel",
   "Wheel", "Trophy", "Team Members", "Crowd", "Racing Simulator", "Race Action",
   "Battle", "Overtaking", "Pit Stop", "Celebration", "Podium Ceremony", "Portrait",
-  "Behind the Scenes", "Sunset", "Sim Racing", "Real Motorsport", "Esports",
+  "Behind the Scenes", "Sunset", "Sim Racing", "Esports",
   "GT3", "GT4", "Stock Car", "Touring Car", "Rally",
 ];
 const allowedTags = new Set(controlledTags);

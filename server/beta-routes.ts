@@ -1,3 +1,4 @@
+import { withoutRetiredMediaTags } from "@shared/media-tag-policy";
 import type { Express } from "express";
 import { and, eq, inArray, sql, desc } from "drizzle-orm";
 import { z } from "zod";
@@ -49,6 +50,9 @@ export function registerBetaRoutes(app: Express) {
       const items = await db.select({item:mediaItems}).from(mediaItems).innerJoin(events,eq(events.id,mediaItems.eventId))
         .where(and(sql`${mediaItems.archivedAt} is null`,eq(events.creatorId,req.user!.id))).orderBy(desc(mediaItems.id)).limit(48).offset((page-1)*48);
       res.json(items.map(r=>({...r.item,
+        tags:r.item.tags === null ? null : withoutRetiredMediaTags(r.item.tags),
+        manualTags:withoutRetiredMediaTags(r.item.manualTags),
+        suppressedAITags:withoutRetiredMediaTags(r.item.suppressedAITags),
         url:r.item.url.startsWith("data:")?`/api/media/legacy/${r.item.id}/file`:r.item.url,
         thumbnail:r.item.thumbnail.startsWith("data:")?`/api/media/legacy/${r.item.id}/thumbnail`:r.item.thumbnail,
         safetyRetryAllowed:safetyRetryAllowed(r.item)})));

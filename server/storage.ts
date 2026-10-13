@@ -16,6 +16,8 @@ import { planMediaSearchTerms } from "./media-search-plan";
 import { effectiveEventChanges } from "@shared/event-changes";
 import { enqueueTransactionalEmail } from "./transactional-emails";
 import { assertNewMediaUploadsEnabled } from "./media-object-routing";
+import { assertMediaTagsAllowed, withoutRetiredMediaTags } from "@shared/media-tag-policy";
+import { activeMediaTagsSql } from "./media-tag-sql";
 
 type SafeUser = Omit<User, "password">;
 type EventUpdateResult = Event & { saveStatus: "saved" | "unchanged" };
@@ -26,6 +28,9 @@ function objectKeys(item: { url: string; thumbnail: string }): string[] {
 }
 const mediaListColumns = {
   ...getTableColumns(mediaItems),
+  tags: activeMediaTagsSql(mediaItems.tags),
+  manualTags: activeMediaTagsSql(mediaItems.manualTags),
+  suppressedAITags: activeMediaTagsSql(mediaItems.suppressedAITags),
   url: sql<string>`case when ${mediaItems.url} like 'data:%'
     then '/api/media/legacy/' || ${mediaItems.id} || '/file' else ${mediaItems.url} end`,
   thumbnail: sql<string>`case when ${mediaItems.type} = 'video' and ${mediaItems.thumbnail} like 'data:%'
@@ -364,7 +369,7 @@ class DatabaseStorage implements IStorage {
         ...terms.map(({term,jsonPrefilter})=>or(
           ...(fields.includes("caption") ? [ilike(mediaItems.caption, term)] : []),
           ...(fields.includes("photographer") ? [ilike(mediaItems.photographer, term)] : []),
-          ...(fields.includes("tags") ? [sql`${mediaItems.tags}::text ilike ${term}`] : []),
+           ...(fields.includes("tags") ? [sql`(${activeMediaTagsSql(mediaItems.tags)})::text ilike ${term}`] : []),
           // A search term has no whitespace, so it cannot cross concat_ws field
           // boundaries. Plain JSON words must also occur in the serialized JSON.
           // Quotes, backslashes and controls can be JSON-escaped: skip the
@@ -433,10 +438,13 @@ class DatabaseStorage implements IStorage {
       .from(mediaItems)
       .where(and(activeMediaPredicate(),eq(mediaItems.id, id)))
       .limit(1);
-    return result[0];
+    const item = result[0];
+    return item ? { ...item, tags: item.tags === null ? null : withoutRetiredMediaTags(item.tags),
+      manualTags: withoutRetiredMediaTags(item.manualTags), suppressedAITags: withoutRetiredMediaTags(item.suppressedAITags) } : undefined;
   }
 
   async createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem> {
+    assertMediaTagsAllowed(mediaItem);
     const event = mediaItem.eventId ? await this.getEvent(mediaItem.eventId) : undefined;
     const result = await db.insert(mediaItems).values({...mediaItem,archivedAt:null,
       ...(event?.creatorId?{safetyStatus:"error",safetyReason:"Safety check pending."}:{})}).returning();
@@ -444,6 +452,7 @@ class DatabaseStorage implements IStorage {
   }
 
   async updateMediaItem(id: number, mediaItem: Partial<InsertMediaItem>): Promise<MediaItem> {
+    assertMediaTagsAllowed(mediaItem);
     const result = await db
       .update(mediaItems)
       .set({...mediaItem,
@@ -529,6 +538,7 @@ class DatabaseStorage implements IStorage {
   }
 
   async finishMedia(id: string, mediaItem: InsertMediaItem, nextcloudFileId?: number, workerToken?: string, requestAnalysis = false, _community = false): Promise<MediaItem> {
+    assertMediaTagsAllowed(mediaItem);
     return db.transaction(async tx => {
       if (workerToken) {
         const [owner] = await tx.select().from(nextcloudJobs)

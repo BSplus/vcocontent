@@ -5,7 +5,7 @@ const { parseTagResponse, generateTagsForImage, isAITaggingConfigured, detectRac
 
 test("accepts only allowed tags and removes duplicates", () => {
   assert.deepEqual(
-    parseTagResponse(" Day, GT Car, invented, Day, Night, <script>, Rear View "),
+    parseTagResponse(" Day, Real Motorsport, GT Car, invented, Day, Night, <script>, Rear View "),
     ["Day", "GT Car", "Night", "Rear View"],
   );
   assert.deepEqual(parseTagResponse("not a tag, unrecognized"), []);
@@ -54,12 +54,13 @@ test("managed image request uses its proxy and accepts only approved tags", asyn
     const body = JSON.parse(options.body);
     return new Response(JSON.stringify({
       id: "test", object: "chat.completion", created: 0, model: body.model,
-      choices: [{ index: 0, message: { role: "assistant", content: "Day, GT Car, invented, Day" }, finish_reason: "stop" }],
+      choices: [{ index: 0, message: { role: "assistant", content: "Real Motorsport, Day, GT Car, invented, Day, Sim Racing, Esports" }, finish_reason: "stop" }],
     }), { status: 200, headers: { "content-type": "application/json" } });
   };
   try {
     assert.equal(isAITaggingConfigured(), true);
-    assert.deepEqual(await generateTagsForImage("data:image/webp;base64,AAAA"), ["Day", "GT Car"]);
+    assert.deepEqual(await generateTagsForImage("data:image/webp;base64,AAAA"), ["Day", "GT Car", "Sim Racing", "Esports"]);
+    assert.doesNotMatch(request.body.messages[0].content, /Real Motorsport/);
     assert.equal(calls, 1);
     assert.equal(request.url, "https://managed.example.invalid/v1/chat/completions");
     assert.equal(request.headers.get("authorization"), "Bearer managed-test-key");

@@ -17,6 +17,11 @@ test("reconciliation preserves both draft removals and unsaved manual additions"
   assert.deepEqual(reconcileAnalysisTags(["manual", "new draft"], ["manual", "Day"],
     ["manual", "Day", "Race Car"]), ["manual", "new draft", "Race Car"]);
 });
+test("old generated tags cannot silently reappear in the editor; invalid manual drafts stay visible for correction", () => {
+  assert.deepEqual(reconcileAnalysisTags(["custom"], ["custom"],
+    ["Real Motorsport", "Sim Racing", "Esports"]), ["custom", "Sim Racing", "Esports"]);
+  assert.deepEqual(reconcileAnalysisTags(["Real Motorsport"], [], ["Day"]), ["Real Motorsport", "Day"]);
+});
 test("production rollout gate only reads schema and rejects an unready or unreachable database", async () => {
   const rows = recognitionSchemaRequirements.map(item => ({ table_name: item.table, column_name: item.column }));
   const query = async (sql, params) => {

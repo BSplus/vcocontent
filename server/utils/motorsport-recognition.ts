@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { identificationSchema,photoVehicleRegionSchema, type Identification } from "@shared/schema";
-import { getOpenAIClient, parseTagResponse, TAG_MODEL } from "./ai-tagger";
+import { getOpenAIClient, parseTagResponse, TAG_MODEL, controlledTags } from "./ai-tagger";
 import {verifyPhotoObservations} from "./photo-number-evidence";
 import {localizePhotoNumbers} from "./photo-number-localizer";
 
@@ -39,14 +39,7 @@ export async function extractMotorsportImage(image: string) {
   const client = getOpenAIClient();
   if (!client) throw new Error("AI recognition unavailable");
   // Reuse the exact controlled vocabulary rather than a parallel taxonomy.
-  const vocabulary = ["Front View", "Rear View", "Aerial View", "Side View", "Onboard View", "Front 3/4",
-    "Rear 3/4", "Top Down", "Close-up", "Wide Shot", "Cockpit View", "Group", "Crash", "Atmosphere",
-    "Day", "Night", "Rain", "Wet Track", "Dry Track", "GT Car", "Formula Car", "Prototype", "Vintage",
-    "Race Track", "Pit Lane", "Pit Box", "Garage", "Paddock", "Starting Grid", "Podium", "Studio",
-    "Esports Arena", "Race Car", "Driver", "Helmet", "Cockpit", "Steering Wheel", "Wheel", "Trophy",
-    "Team Members", "Crowd", "Racing Simulator", "Race Action", "Battle", "Overtaking", "Pit Stop",
-    "Celebration", "Podium Ceremony", "Portrait", "Behind the Scenes", "Sunset", "Sim Racing",
-    "Real Motorsport", "Esports", "GT3", "GT4", "Stock Car", "Touring Car", "Rally"];
+  const vocabulary = controlledTags;
   try {
     const result = await client.chat.completions.create({
       model: TAG_MODEL, response_format: { type: "json_object" }, max_tokens: 1000,

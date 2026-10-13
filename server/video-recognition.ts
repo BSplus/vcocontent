@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Identification } from "@shared/schema";
 import { parseRecognition } from "./utils/motorsport-recognition";
-import { getOpenAIClient, TAG_MODEL, controlledTags } from "./utils/ai-tagger";
+import { getOpenAIClient, TAG_MODEL, controlledTags, parseTagResponse } from "./utils/ai-tagger";
 import type { VideoFrame } from "./video-sampling";
 import { VideoAnalysisFailure, classifyVideoFailure } from "./video-failures";
 
@@ -57,15 +57,13 @@ Multiple vehicles may appear. Never apply one vehicle's identity to another or t
 /** Global conflicting labels require a clear majority. Vehicle fields require consensus. */
 export function aggregateVideo(frames: FrameEvidence[]) {
   const votes = new Map<string, number>();
-  for (const f of frames) for (const tag of Array.from(new Set(f.tags))) votes.set(tag, (votes.get(tag) || 0) + 1);
+  for (const f of frames) for (const tag of parseTagResponse(f.tags.join(","))) votes.set(tag, (votes.get(tag) || 0) + 1);
   const tags = new Set(votes.keys());
   for (const group of [["Day", "Night", "Sunset"], ["Dry Track", "Wet Track", "Rain"],
-    ["GT Car", "Formula Car", "Prototype", "Stock Car", "Touring Car", "Rally"],
-    ["Real Motorsport", "Sim Racing", "Esports"]]) {
+    ["GT Car", "Formula Car", "Prototype", "Stock Car", "Touring Car", "Rally"]]) {
     const present = group.filter(t => tags.has(t));
-    // Rain and wet track, sim racing and esports are compatible.
-    if (present.length < 2 || present.every(t => ["Wet Track", "Rain"].includes(t)) ||
-        present.every(t => ["Sim Racing", "Esports"].includes(t))) continue;
+    // Rain and wet track are compatible. Sim Racing and Esports never conflict.
+    if (present.length < 2 || present.every(t => ["Wet Track", "Rain"].includes(t))) continue;
     const winner = present.find(t => (votes.get(t) || 0) > frames.length / 2 &&
       present.every(other => other === t || (votes.get(other) || 0) < (votes.get(t) || 0)));
     for (const t of present) if (t !== winner) tags.delete(t);

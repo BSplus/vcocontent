@@ -59,9 +59,10 @@ function mockProvider(work = async () => {}) {
     assert.ok(frames.length >= 1 && frames.length <= 4);
     assert.ok(frames.every(f => f.image_url.url.startsWith("data:image/jpeg;base64,")));
     assert.ok(request.max_tokens <= 2400);
+    assert.doesNotMatch(request.messages[0].content, /Real Motorsport/);
     await work(request);
     return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({
-      frames: frames.map((_, index) => ({ index, tags: ["Day", "Race Car", "Front View"], vehicles: [
+      frames: frames.map((_, index) => ({ index, tags: ["Real Motorsport", "Day", "Race Car", "Front View", "Sim Racing", "Esports"], vehicles: [
         { number: index % 2 ? "90" : "089", numberReadable: true, classReadable: false, racingClass: "GT3" },
         { number: "8?", numberReadable: false },
       ] })),
@@ -187,6 +188,14 @@ test("aggregation retains multiple numbers, clears contradictory identities and 
   const agreed = aggregateVideo([frame(["Day"], [observation("089")]), frame(["Day"], [observation("89")])]);
   assert.equal(agreed.vehicles.length, 1); assert.equal(agreed.vehicles[0].drivers, "");
 });
+test("aggregation of historical frames drops retired tags without suppressing compatible virtual labels", () => {
+  const result = aggregateVideo([
+    { timestamp: 0, hash: "a", tags: ["Real Motorsport", "Sim Racing", "Esports"], vehicles: [] },
+    { timestamp: 1, hash: "b", tags: ["Real Motorsport"], vehicles: [] },
+    { timestamp: 2, hash: "c", tags: ["Real Motorsport"], vehicles: [] },
+  ]);
+  assert.deepEqual(result.tags, ["Sim Racing", "Esports"]);
+});
 test("a deterministic corrupt original fails once without AI calls or changing its original/manual metadata", async () => {
   videoBytes=Buffer.from("not a decodable container");
   const item=await media();
@@ -240,6 +249,7 @@ test("provider batches preserve timestamps, token usage and readability gates", 
     assert.deepEqual(result.usage, { prompt: 200, completion: 100 });
     assert.deepEqual(result.frames.map(f => f.timestamp), sample.frames.slice(0, 4).map(f => f.timestamp));
     assert.ok(result.frames.every(f => f.vehicles.every(v => v.number !== "8?" && v.racingClass === "" && v.drivers === "")));
+    assert.ok(result.frames.every(f => !f.tags.includes("Real Motorsport") && f.tags.includes("Sim Racing") && f.tags.includes("Esports")));
   });
 });
 test("durable batches survive retries, edits, reference revisions and failed new generations", { timeout: 90000 }, async () => {

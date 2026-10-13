@@ -25,6 +25,7 @@ import VideoPreview from "@/components/video-preview";
 import { useAuth } from "@/hooks/use-auth";
 import AssignNumberAction from "@/components/assign-number-dialog";
 import { creditLabel, mediaCreditSchema } from "@shared/media-credit";
+import { isRetiredMediaTag, retiredTagMessage } from "@shared/media-tag-policy";
 
 interface EditMediaModalProps {
   open: boolean;
@@ -53,7 +54,7 @@ type CaptionScene = "Race Action" | "Start" | "Finish";
 const editFormSchema = z.object({
   caption: z.string().max(1000, "Caption cannot exceed 1000 characters"),
   photographer: mediaCreditSchema,
-  tags: z.string(),
+  tags: z.string().refine(value => !parseEditableTags(value).some(isRetiredMediaTag), retiredTagMessage),
 });
 
 export default function EditMediaModal({
@@ -482,7 +483,9 @@ export default function EditMediaModal({
                 onChange: () => { tagsEdited.current = true; },
               })}
             />
-            
+            {form.formState.errors.tags && (
+              <p role="alert" className="text-sm text-destructive">{form.formState.errors.tags.message}</p>
+            )}
             {category && (
               <div className="mt-2">
                 <p className="text-xs text-muted-foreground">Category: 

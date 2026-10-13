@@ -16,6 +16,7 @@ import { classifyVideoFailure, videoFailureRecord, type VideoFailureStage } from
 import { communityCaption, matchedPhotoCaption } from "./caption-proposal";
 import { storage } from "./storage";
 import { videoFrameThumbnail } from "./video-preview";
+import { withoutRetiredMediaTags } from "@shared/media-tag-policy";
 
 // Database-wide budget, including multiple server processes. SDK retries are
 // disabled: only this queue owns retry/backoff and the persisted attempt count.
@@ -47,7 +48,8 @@ export async function analysisStatus(mediaId: number) {
     generation: mediaAnalysisJobs.generation,
   }).from(mediaAnalysisJobs).leftJoin(mediaItems,eq(mediaItems.id,mediaAnalysisJobs.mediaId))
     .leftJoin(events,eq(events.id,mediaItems.eventId)).where(eq(mediaAnalysisJobs.mediaId, mediaId));
-  return job || { status: "not_requested", attempts: 0, error: null, generatedTags: null };
+   return job ? { ...job, generatedTags: job.generatedTags === null ? null : withoutRetiredMediaTags(job.generatedTags) }
+     : { status: "not_requested", attempts: 0, error: null, generatedTags: null };
 }
 
 export async function enqueueAnalysis(item: Item, options: boolean | { retry?: boolean; reanalyse?: boolean; recognition?: boolean; photoWorkflow?: boolean; replacePreserved?: boolean } = false, legacyReanalyse = false) {
@@ -278,7 +280,7 @@ export async function drainAnalysisQueue() {
       : tagOnly
         ? { tags: await withVisionBudget(async () => generateTagsForImage(await analysisImageInput(item.thumbnail))), vehicles: null }
         : await withVisionBudget(async () => recognizeMotorsportImage(await recognitionImageInput(item)));
-    const tags = result.tags;
+     const tags = withoutRetiredMediaTags(result.tags);
     videoStage="database_persistence";
     await db.transaction(async tx => {
       // Event lock fences opt-out and context/reference corrections against late writes.
@@ -298,15 +300,15 @@ export async function drainAnalysisQueue() {
       }
       // Track future tag provenance. Legacy curation cannot be reconstructed:
       // conservatively preserve it rather than deleting possibly manual tags.
-      const manualTags = Array.from(new Set([...current.manualTags,...(current.tags || []).filter(t=>
-         !(owned.generatedTags || []).includes(t))]));
+       const manualTags = withoutRetiredMediaTags(Array.from(new Set([...current.manualTags,...(current.tags || []).filter(t=>
+          !(owned.generatedTags || []).includes(t))])));
       let freshTags=tags.filter(t=>!current.suppressedAITags.includes(t));
       const opposites=[["Day","Night"],["Dry Track","Wet Track"],["Dry Track","Rain"]] as const;
       for (const [a,b] of opposites) {
         if (manualTags.includes(a)) freshTags=freshTags.filter(t=>t!==b);
         if (manualTags.includes(b)) freshTags=freshTags.filter(t=>t!==a);
       }
-      const merged = claimed.referenceOnly ? current.tags || [] : Array.from(new Set([...manualTags,...freshTags])).slice(0,100);
+       const merged = claimed.referenceOnly ? withoutRetiredMediaTags(current.tags || []) : Array.from(new Set([...manualTags,...freshTags])).slice(0,100);
       const identification = current.identificationManual || !result.vehicles ? current.identification : event
         ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx,owned.photoWorkflow,item.type==="image") : result.vehicles;
       const category = claimed.referenceOnly ? current.category : await categorizeContent(merged);
@@ -327,7 +329,7 @@ export async function drainAnalysisQueue() {
         ...(event?.creatorId && publicChanged ? {
           contentVersion:sql`${mediaItems.contentVersion}+1`,safetyStatus:"error",safetyReason:"Safety check pending.",
         }:{}),
-        ...(claimed.referenceOnly ? {} : {manualTags}),
+         manualTags,
         ...(claimed.referenceOnly ? {} : {category}) }).where(eq(mediaItems.id,item.id));
       await tx.update(mediaAnalysisJobs).set({ status: "completed", generatedTags: tags,
         recognition: result.vehicles, referenceRevision: event?.referenceRevision || 0, referenceOnly: false,

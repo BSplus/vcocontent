@@ -85,6 +85,16 @@ test("image/video editors preserve removed tags and refresh completed identifica
       await browser.wait(`!!document.querySelector(${JSON.stringify(edit)})`);
       await click(edit, touch);
       await browser.wait(`document.querySelector('#tags')?.value.includes('Day')`);
+      await browser.evaluate(`(()=>{const el=document.querySelector('#tags');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'manual, Real Motorsport');
+        el.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+      await browser.wait(`document.querySelector('#tags')?.value === 'manual, Real Motorsport'`);
+      // Native submit avoids a synthetic video error shifting the click target.
+      await browser.evaluate(`document.querySelector('[role="dialog"] form').requestSubmit()`);
+      await browser.wait(`[...document.querySelectorAll('[role="dialog"] [role="alert"]')].some(el=>el.textContent.includes('no longer supported'))`);
+      assert.equal(writes.length,0,"invalid tag is blocked before a save request");
+      assert.equal(await browser.evaluate(`document.querySelector('#tags').value`),"manual, Real Motorsport",
+        "keep the invalid draft visible so the creator can correct it");
       await click("#tags", touch);
       // Touch emulation does not reliably apply desktop Ctrl+A to an input.
       await browser.evaluate(`(()=>{const el=document.querySelector('#tags');

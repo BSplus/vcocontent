@@ -15,6 +15,16 @@ Browser polling expressions should return booleans, not DOM elements; serialize 
 
 **How to apply:** Use explicit boolean conditions, wait for the previous dialog and its pointer lock to disappear, and query the relevant section rather than the first global alert.
 
+Media previews can change dialog layout while a coordinate-based browser action
+is in flight, especially when synthetic videos fail to decode.
+
+**Why:** A late codec warning can move the submit button after its coordinates
+were measured, making a validation test appear to fail without submitting.
+
+**How to apply:** For form-validation checks, use native form submission to
+isolate validation; test pointer/touch target behavior separately with stable
+preview fixtures. Keep unrelated preview errors separate from tag-field errors.
+
 Wait for destination-specific content after navigation, not just a shared header,
 and filter responsive controls by visibility before selecting the first match.
 
