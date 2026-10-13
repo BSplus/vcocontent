@@ -8,6 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { PageMetadata } from "@shared/pagination";
 import PageStatus from "@/components/page-status";
+import { photoMatchingSettingsSchema, settingsAtLeastAsNew, type PhotoMatchingSettings, type PhotoMatchingChanges } from "@shared/photo-matching-settings";
+import { savePhotoMatchingSettings } from "@/lib/photo-matching-save";
+import { EventSaveError } from "@/lib/event-save";
 
 interface MatchingPhoto {
   id: number;
@@ -19,7 +22,7 @@ interface MatchingPhoto {
   matchStatus: string | null;
 }
 
-interface MatchingResponse extends PageMetadata {
+interface MatchingResponse extends PageMetadata, PhotoMatchingSettings {
   enabled: boolean;
   platform: string | null;
   nextCursor?: number | null;
@@ -49,6 +52,10 @@ function isPreservedCaption(source: string | null | undefined) {
 }
 
 export default function PhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
+  return <EventPhotoMatchingControls key={eventId} eventId={eventId} />;
+}
+
+function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
   const queryClient = useQueryClient();
   const [data, setData] = useState<MatchingResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,21 +72,37 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
   const [previousPages, setPreviousPages] = useState<Array<number | undefined>>([]);
   const previousCaptions = useRef<string | null>(null);
   const platformInitialized = useRef(false);
+  const platformDirty = useRef(false);
+  const confirmedSettings = useRef<PhotoMatchingSettings | null>(null);
+  const alive = useRef(true);
+  const writeInFlight = useRef(false);
+  const writeGeneration = useRef(0);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [unknownSave, setUnknownSave] = useState(false);
   const request = useRef<AbortController | null>(null);
   const previousPhotoIds = useRef<string | null>(null);
   const [positionNotice, setPositionNotice] = useState<string | null>(null);
 
-  const refresh = useCallback(async (quiet = false) => {
+  const refresh = useCallback(async (quiet = false, checkingSave = false) => {
+    if (writeInFlight.current) return;
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
+    const generation = writeGeneration.current;
     if (!quiet) setLoading(true);
     try {
       const response = await fetch(`/api/events/${eventId}/photo-matching${before ? `?before=${before}&page=${previousPages.length + 1}` : ""}`, { credentials: "include", signal: controller.signal });
       if (!response.ok) throw new Error(await readError(response, "Could not load photo matching."));
       const result = await response.json() as MatchingResponse;
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !alive.current || generation !== writeGeneration.current) return;
       if (!Array.isArray(result.photos)) throw new Error("The server returned an invalid photo matching response.");
+      const parsed = photoMatchingSettingsSchema.safeParse(result);
+      if (!parsed.success) throw new Error("The server returned invalid photo matching settings.");
+      const settings = parsed.data;
+      if (settings.id !== eventId) throw new Error("The server returned settings for another event.");
+      const acceptsSettings = !confirmedSettings.current || settingsAtLeastAsNew(settings, confirmedSettings.current);
+      if (checkingSave && !acceptsSettings) throw new Error("The server returned outdated settings. Check again.");
       const photos = result.photos.slice(0, 500);
       const ids = JSON.stringify(photos.map(photo => [photo.id, photo.identificationManual]));
       if (result.positionReset || (previousPhotoIds.current !== null && previousPhotoIds.current !== ids)) {
@@ -94,10 +117,11 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
         setPreviousPages([]);
         setPositionNotice("The photo list changed. Returned to the first page and cleared the selection.");
       }
-      if (!platformInitialized.current) {
+      if (acceptsSettings && (!platformInitialized.current || !platformDirty.current)) {
         setPlatformDraft(result.platform || "");
         platformInitialized.current = true;
       }
+      if (acceptsSettings) confirmedSettings.current = settings;
       const activeNow = photos.some(photo => isActive(photo.status));
       const captionSnapshot=JSON.stringify(photos.map(photo=>[photo.id,photo.caption,photo.captionSource]));
       if ((wasActive.current && !activeNow) || (previousCaptions.current!==null && previousCaptions.current!==captionSnapshot)) {
@@ -110,10 +134,15 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
       }
       wasActive.current = activeNow;
       previousCaptions.current=captionSnapshot;
-      setData({ ...result, photos });
+      setData({ ...result, ...confirmedSettings.current!, photos });
       setError(null);
+      if (checkingSave) {
+        setUnknownSave(false);
+        setSaveError(null);
+        setSaveNotice("Current saved settings loaded. Your input has been kept; compare it before saving again.");
+      }
     } catch (reason) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !alive.current || generation !== writeGeneration.current) return;
       setError(reason instanceof Error ? reason.message : "Could not load photo matching.");
     } finally {
       if (request.current === controller) {
@@ -126,13 +155,16 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
   useEffect(()=>{setBefore(undefined);setPreviousPages([]);previousCaptions.current=null;previousPhotoIds.current=null;setPositionNotice(null);},[eventId]);
 
   useEffect(() => {
-    setData(null);
+    alive.current = true;
+    return () => { alive.current = false; request.current?.abort(); };
+  }, []);
+
+  useEffect(() => {
     setSelected(new Set());
     setReplacePreserved(new Set());
     setConfirmed(false);
     setLocalResults({});
     wasActive.current = false;
-    platformInitialized.current = false;
     void refresh();
     return () => request.current?.abort();
   }, [eventId, refresh]);
@@ -141,31 +173,44 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
     // Polling must not repeatedly abort slow initial/page requests. Explicit
     // refreshes and resource changes still cancel obsolete requests.
     const timer = window.setInterval(() => {
-      if (!request.current) void refresh(true);
+      if (!request.current && !writeInFlight.current) void refresh(true);
     }, 4000);
     return () => window.clearInterval(timer);
   }, [refresh]);
   const active=data?.photos.some(photo=>isActive(photo.status)) ?? false;
 
-  const saveSettings = async (enabled: boolean, platform: string | null) => {
-    if (!data) return;
+  const saveSettings = async (changes: PhotoMatchingChanges) => {
+    if (!data || writeInFlight.current || unknownSave) return;
+    writeInFlight.current = true;
+    writeGeneration.current++;
+    request.current?.abort();
+    request.current = null;
+    setLoading(false);
     setSaving(true);
-    setError(null);
+    setSaveError(null);
+    setSaveNotice(null);
     try {
-      const response = await fetch(`/api/events/${eventId}/photo-matching`, {
-        method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, platform }),
-      });
-      if (!response.ok) throw new Error(await readError(response, "Could not save photo matching settings."));
-      const result = await response.json().catch(() => null) as Partial<MatchingResponse> | null;
-      setData(current => current ? { ...current, enabled, platform, ...(result?.photos ? { photos: result.photos.slice(0, 500) } : {}) } : current);
-      setPlatformDraft(platform || "");
-      await refresh(true);
+      const result = await savePhotoMatchingSettings(eventId, changes);
+      if (!alive.current) return;
+      confirmedSettings.current = result;
+      setData(current => current ? { ...current, ...result } : current);
+      if (changes.platform !== undefined) {
+        setPlatformDraft(result.platform || "");
+        platformDirty.current = false;
+      }
+      setError(null);
+      setSaveNotice(`${changes.platform !== undefined ? "Platform saved" : "Matching settings saved"}.${
+        result.safetyCheckStatus === "unavailable" ? " Safety review is currently unavailable; this does not undo the save." : ""}`);
+      void queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}`] });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save photo matching settings.");
-      void refresh(true);
+      if (!alive.current) return;
+      const rejected = reason instanceof EventSaveError && reason.status === "rejected";
+      setUnknownSave(!rejected);
+      setSaveError(`${rejected ? "Changes rejected" : "Save status unknown"}: ${
+        reason instanceof Error ? reason.message : "Settings could not be confirmed."}`);
     } finally {
-      setSaving(false);
+      writeInFlight.current = false;
+      if (alive.current) setSaving(false);
     }
   };
 
@@ -253,9 +298,9 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
               <div className="flex max-w-lg flex-wrap gap-2">
                 <Input id={`photo-match-platform-${eventId}`} value={platformDraft} maxLength={120}
                   placeholder="e.g. iRacing" aria-label="Sim-racing platform (optional)"
-                  onChange={event => setPlatformDraft(event.target.value)} disabled={saving} />
-                <Button type="button" variant="outline" disabled={saving || platformDraft.trim() === (data.platform || "")}
-                  onClick={() => void saveSettings(data.enabled, platformDraft.trim() || null)}>
+                  onChange={event => { platformDirty.current = true; setPlatformDraft(event.target.value); }} disabled={saving} />
+                <Button type="button" variant="outline" disabled={saving || unknownSave || platformDraft.trim() === (data.platform || "")}
+                  onClick={() => void saveSettings({ platform: platformDraft.trim() || null })}>
                   Save platform
                 </Button>
               </div>
@@ -265,14 +310,18 @@ export default function PhotoMatchingControls({ eventId }: PhotoMatchingControls
                 <Label htmlFor={`photo-match-enabled-${eventId}`} className="block">Automatic matching</Label>
                 <p className="text-xs text-muted-foreground">{data.enabled ? "Enabled for new uploads" : "Off"}</p>
               </div>
-              <Switch id={`photo-match-enabled-${eventId}`} checked={data.enabled} disabled={saving}
+              <Switch id={`photo-match-enabled-${eventId}`} checked={data.enabled} disabled={saving || unknownSave}
                 onCheckedChange={enabled => {
                   if (!enabled && data.enabled && !window.confirm("Turning off photo matching stops in-progress automatic matching writes and prevents automatic matching for new uploads. Existing results will remain unchanged.")) return;
-                  void saveSettings(enabled, data.platform);
+                  void saveSettings({ enabled });
                 }} />
             </div>
           </div>
           {saving && <p className="text-xs text-muted-foreground" role="status">Saving settings…</p>}
+          {saveNotice && <p className="text-sm text-muted-foreground" role="status">{saveNotice}</p>}
+          {saveError && <p className="text-sm text-destructive" role="alert">{saveError}</p>}
+          {unknownSave && <Button type="button" variant="outline" disabled={loading || saving}
+            onClick={() => void refresh(false, true)}>Check saved settings</Button>}
 
           <div className="space-y-3">
             <div className="flex flex-wrap items-end justify-between gap-2">

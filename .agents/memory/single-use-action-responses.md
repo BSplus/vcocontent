@@ -17,6 +17,19 @@ later safety review or read failed. A confirmed event with unsuccessful source
 setup must reuse that event on retry; a lost creation acknowledgement must not
 automatically create another event.
 
+After an uncertain mutable-settings write, a read-back confirms only the
+current stored values, not which earlier request wrote them. Keep the input
+draft and let the user compare it before a new explicit save; do not turn an
+independent read into a retroactive “saved” acknowledgement.
+
+**Why:** Another editor may have committed different values while the original
+response was lost. Automatically replacing the draft or claiming that the
+original request succeeded would misrepresent that outcome.
+
+**How to apply:** Separate confirmed write acknowledgements from recovery reads,
+block blind retries until an explicit check, and keep recovery wording about
+current stored settings rather than the original commit.
+
 **Why:** Follow-up failures can otherwise invite duplicates despite a successful
 event transaction. Confirming creation is not confirmation of import start or
 safety approval.

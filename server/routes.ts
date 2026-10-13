@@ -90,7 +90,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   registerCommunityRoutes(app);
   registerCreatorEventAssociationRoutes(app);
   registerReferenceRoutes(app, requireCreator);
-  registerPhotoMatchingRoutes(app, requireCreator);
+  registerPhotoMatchingRoutes(app, requireCreator, kickAnalysisWorker);
   registerManualNumberRoutes(app);
   registerMediaEdge(app);
   const openAITestCooldowns = new Map<number, number>();

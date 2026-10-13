@@ -418,7 +418,7 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
         </p>
       </div>
 
-      {eventId !== null && <PhotoMatchingControls eventId={eventId} />}
+      {eventId !== null && <PhotoMatchingControls key={eventId} eventId={eventId} />}
 
       <div className="space-y-3 rounded-md bg-muted/30 p-3">
         <div>

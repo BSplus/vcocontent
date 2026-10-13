@@ -19,6 +19,7 @@ test("event photo matching settings, preserved replacement consent, protected it
   const browser = await uiBrowser();
   const patches = [], processRequests = [], apiReads = [];
   let pollCount = 0;
+  let settings = { id: eventId, enabled: false, platform: null, contentVersion: 0, referenceRevision: 0, photoMatchingRevision: 0 };
   const event = { id: eventId, title: "Photo matching fixture", description: "Fixture event",
     creatorId: null, date: "2026-10-10T12:00:00Z", visibility: "published", isPremium: false };
   const photoRows = () => [
@@ -42,9 +43,11 @@ test("event photo matching settings, preserved replacement consent, protected it
     else if (path === `/api/events/${eventId}/photo-matching` && request.method === "GET") {
       apiReads.push("GET");
       pollCount++;
-      body = { ...pageMetadata(3,1,500), enabled: patches.some(patch => patch.enabled), platform: patches.at(-1)?.platform ?? null, photos: photoRows() };
+      body = { ...pageMetadata(3,1,500), ...settings, photos: photoRows() };
     } else if (path === `/api/events/${eventId}/photo-matching` && request.method === "PATCH") {
-      const payload = JSON.parse(request.postData); patches.push(payload); body = { ...payload, photos: photoRows() };
+      const payload = JSON.parse(request.postData); patches.push(payload);
+      settings = { ...settings, ...payload, contentVersion: settings.contentVersion + 1 };
+      body = { ...settings, saveStatus: "saved" };
     } else if (path === `/api/events/${eventId}/photo-matching/process` && request.method === "POST") {
       pollCount=0;
       processRequests.push(JSON.parse(request.postData));
@@ -72,7 +75,7 @@ test("event photo matching settings, preserved replacement consent, protected it
     await click(browser, button("Save platform"));
     await delay(200);
     assert.equal(patches.at(-1).platform, "Assetto Corsa Competizione");
-    assert.equal(patches.at(-1).enabled, false);
+    assert.equal(patches.at(-1).enabled, undefined);
 
     await click(browser, `document.querySelector('#photo-match-enabled-${eventId}')`);
     await browser.wait(`document.querySelector('#photo-match-enabled-${eventId}')?.getAttribute('aria-checked')==='true'`);

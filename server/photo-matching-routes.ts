@@ -7,8 +7,18 @@ import { events, mediaItems, mediaAnalysisJobs } from "@shared/schema";
 import { analysisStatus, enqueueAnalysis, kickAnalysisWorker, AnalysisUnavailable } from "./analysis-jobs";
 import { reviewEventSafety } from "./content-safety";
 import { pageMetadata } from "@shared/pagination";
+import { photoMatchingChangesSchema } from "@shared/photo-matching-settings";
 
-export function registerPhotoMatchingRoutes(app: Express, requireCreator: RequestHandler) {
+const settings = (event: typeof events.$inferSelect) => ({
+  id: event.id, enabled: event.photoMatchingEnabled, platform: event.platform,
+  contentVersion: event.contentVersion, referenceRevision: event.referenceRevision,
+  photoMatchingRevision: event.photoMatchingRevision,
+});
+
+class SettingsAccessError extends Error {}
+
+export function registerPhotoMatchingRoutes(app: Express, requireCreator: RequestHandler,
+  wakeWorker: () => Promise<unknown> = kickAnalysisWorker) {
   const managed = async (req: any, res: any) => {
     const id = Number(req.params.id);
     if (!Number.isSafeInteger(id) || id < 1) {res.status(400).json({error:"Invalid event."}); return;}
@@ -48,30 +58,46 @@ export function registerPhotoMatchingRoutes(app: Express, requireCreator: Reques
         .where(and(predicate,
           before ? sql`${mediaItems.id}<${before}` : undefined)).orderBy(desc(mediaItems.id)).limit(501);
       const page=photos.slice(0,500);
-      res.json({...metadata,positionReset,enabled:event.photoMatchingEnabled,platform:event.platform,photos:page,
+      res.json({...metadata,positionReset,...settings(event),photos:page,
         nextCursor:photos.length>500 ? page[page.length-1].id : null});
     } catch {res.status(503).json({error:"Photo matching status could not be loaded."});}
   });
   app.patch("/api/events/:id/photo-matching", requireCreator, async (req,res) => {
     try {
       const event = await managed(req,res); if (!event) return;
-      const values = z.object({enabled:z.boolean(),platform:z.string().trim().max(120).nullable()}).strict().parse(req.body);
-      await db.transaction(async tx => {
+      const values = photoMatchingChangesSchema.parse(req.body);
+      const saved = await db.transaction(async tx => {
         const [current] = await tx.select().from(events).where(eq(events.id,event.id)).for("update");
-        if (!current || (!req.user!.isAdmin && current.creatorId!==req.user!.id)) throw new Error("Owner changed");
-        if (current.photoMatchingEnabled===values.enabled && current.platform===(values.platform || null)) return;
-        await tx.update(events).set({photoMatchingEnabled:values.enabled,platform:values.platform || null,
-          ...(current.photoMatchingEnabled!==values.enabled ? {photoMatchingRevision:sql`${events.photoMatchingRevision}+1`} : {}),
-          ...(current.platform!==(values.platform || null) ? {referenceRevision:sql`${events.referenceRevision}+1`} : {}),
+        if (!current || (!req.user!.isAdmin && current.creatorId!==req.user!.id)) throw new SettingsAccessError("Owner changed");
+        const enabled = values.enabled ?? current.photoMatchingEnabled;
+        const platform = values.platform === undefined ? current.platform : values.platform || null;
+        if (current.photoMatchingEnabled===enabled && current.platform===platform)
+          return { ...current, saveStatus: "unchanged" as const };
+        const [updated] = await tx.update(events).set({photoMatchingEnabled:enabled,platform,
+          ...(current.photoMatchingEnabled!==enabled ? {photoMatchingRevision:sql`${events.photoMatchingRevision}+1`} : {}),
+          ...(current.platform!==platform ? {referenceRevision:sql`${events.referenceRevision}+1`} : {}),
           contentVersion:sql`${events.contentVersion}+1`,
           ...(current.creatorId ? {safetyStatus:"error",safetyReason:"Safety check pending."} : {}),
-        }).where(eq(events.id,event.id));
+        }).where(eq(events.id,event.id)).returning();
+        return { ...updated, saveStatus: "saved" as const };
       });
-      if (event.creatorId) await reviewEventSafety(event.id,event.creatorId);
-      void kickAnalysisWorker();
-      const saved = await storage.getEvent(event.id);
-      res.json({enabled:saved!.photoMatchingEnabled,platform:saved!.platform});
-    } catch {res.status(400).json({error:"Photo matching settings could not be saved."});}
+      // The transaction result is the acknowledgement. Neither safety review
+      // nor a subsequent read may turn a committed write into a rejection.
+      let safetyCheckStatus: "unavailable" | undefined;
+      if (saved.creatorId && saved.saveStatus === "saved") {
+        try { await reviewEventSafety(saved.id,saved.creatorId); }
+        catch { safetyCheckStatus = "unavailable"; }
+      }
+      res.json({...settings(saved),saveStatus:saved.saveStatus,
+        ...(safetyCheckStatus ? {safetyCheckStatus} : {})});
+      void Promise.resolve().then(wakeWorker).catch(() => console.error("Post-settings analysis wake-up failed"));
+    } catch (reason) {
+      if (reason instanceof z.ZodError)
+        return res.status(400).json({error:"Photo matching settings are invalid.",saveStatus:"rejected"});
+      if (reason instanceof SettingsAccessError)
+        return res.status(403).json({error:"Event ownership changed.",saveStatus:"rejected"});
+      res.status(503).json({error:"Photo matching settings could not be confirmed.",saveStatus:"unknown"});
+    }
   });
   app.post("/api/events/:id/photo-matching/process", requireCreator, async (req,res) => {
     try {

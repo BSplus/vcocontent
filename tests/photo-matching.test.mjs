@@ -346,7 +346,7 @@ test("queued opt-out work does not call Vision, and older photos remain selectab
     .where(eq(mediaAnalysisJobs.mediaId,p.id));
   const before=calls;
   assert.equal((await api(`/api/events/${e.id}/photo-matching`,{enabled:false,platform:null},"admin","PATCH")).status,200);
-  await wait(async()=>(await analysisStatus(p.id)).status==="completed");
+  await wait(async()=>{await drainAnalysisQueue();return (await analysisStatus(p.id)).status==="completed";});
   assert.equal(calls,before);assert.equal((await storage.getMediaItem(p.id)).caption,"fixture.jpg");
   scope([]);
   await db.insert(mediaItems).values(Array.from({length:501},(_,i)=>({

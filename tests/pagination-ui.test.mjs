@@ -147,10 +147,10 @@ test("search, event, managed media and account page boundaries, scopes, history,
     await browser.evaluate("history.pushState(null,'','/events/97502')");
     await browser.wait("document.body.innerText.includes('PAGE 1 OF 2')");
     pause=900;await visit("/search");
-    await browser.wait("document.body.innerText.includes('Searching media')");
+    await browser.wait("!!document.body?.innerText.includes('Searching media')");
     assert.equal(await browser.evaluate("document.body.innerText.includes('PAGE ')"),false);
     pause=0;fail=true;await visit("/search");
-    await browser.wait("document.body.innerText.includes('Could not load search results')");
+    await browser.wait("!!document.body?.innerText.includes('Could not load search results')");
     assert.equal(await browser.evaluate("document.body.innerText.includes('PAGE ')"),false);
     assert.deepEqual(failures,[]);assert.deepEqual(browser.errors,[]);
   } finally {await browser.close();}
@@ -175,7 +175,7 @@ test("a photo-matching response slower than the polling interval still loads and
         const page=url.searchParams.has("before")?2:1;
         reads.push(page);
         await delay(5500);
-        body={...pageMetadata(1000,page,500),enabled:true,platform:null,
+        body={...pageMetadata(1000,page,500),id:album.id,contentVersion:0,referenceRevision:0,photoMatchingRevision:0,enabled:true,platform:null,
           nextCursor:page===1?501:null,
           photos:Array.from({length:500},(_,i)=>({id:(page===1?1000:500)-i,caption:"Synthetic slow photo",
             captionSource:null,identificationManual:false,status:"not_requested",error:null,matchStatus:null}))};
@@ -192,11 +192,17 @@ test("a photo-matching response slower than the polling interval still loads and
     await browser.evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Edit Event').click()`);
     await browser.wait(`${root}?.textContent.includes('PAGE 1 OF 2')`);
     assert.deepEqual(reads,[1],"a polling tick must not replace the initial slow request");
+    await browser.evaluate(`(()=>{
+      const el=document.querySelector('[aria-label="Sim-racing platform (optional)"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'Unsaved platform');
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+    })()`);
     await browser.evaluate(`${root}.querySelector('button[aria-label="Select photo 1000"]').click()`);
     await browser.wait(`${root}.textContent.includes('1 of 50 photos selected')`);
     await browser.evaluate(`[...${root}.querySelectorAll('button')].find(b=>b.textContent==='Older photos').click()`);
     await browser.wait(`${root}?.textContent.includes('PAGE 2 OF 2')`);
     assert.deepEqual(reads,[1,2],"a polling tick must not replace slow cursor navigation");
+    assert.equal(await browser.evaluate(`document.querySelector('[aria-label="Sim-racing platform (optional)"]').value`),"Unsaved platform");
     assert.equal(await browser.evaluate(`${root}.textContent.includes('1 of 50 photos selected')`),false);
     await browser.wait(`${root}.querySelector('button[aria-label="Select photo 500"]')?.disabled===false`);
     assert.deepEqual(failures,[]);assert.deepEqual(browser.errors,[]);
@@ -230,7 +236,7 @@ test("thumbnail and 500-photo cursor page counts retain safe selection and reset
         const preceding=before?total-before+1:0;
         const positionReset=!!before&&(preceding%500!==0||preceding>=total||preceding<500);
         const bounds=pageMetadata(total,before&&!positionReset?preceding/500+1:1,500);
-        body={...bounds,positionReset,enabled:true,platform:null,
+        body={...bounds,positionReset,id:album.id,contentVersion:0,referenceRevision:0,photoMatchingRevision:0,enabled:true,platform:null,
           photos:Array.from({length:Math.min(500,Math.max(0,total-(bounds.page-1)*500))},(_,i)=>({
             id:total-(bounds.page-1)*500-i,caption:`Photo ${total-(bounds.page-1)*500-i}`,captionSource:null,
             identificationManual:false,status:"not_requested",error:null,matchStatus:null,
