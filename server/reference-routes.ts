@@ -10,6 +10,7 @@ import { storage } from "./storage";
 import { events, referenceDocuments, mediaCleanup, mediaReservations, entryRowSchema, type Event } from "@shared/schema";
 import { applicableDocuments, seasonYear } from "./reference-matching";
 import { parseEntryFile } from "./entry-list";
+import { EntryListFileError } from "./iracing-entry-list";
 import { withVisionBudget } from "./ai-budget";
 import { kickAnalysisWorker } from "./analysis-jobs";
 import { readMediaStream } from "./media-storage";
@@ -91,16 +92,20 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
         const existing = await db.select().from(referenceDocuments).where(applicableDocuments(contextEvent));
         const session = options.session || null;
         const identical = existing.find(d => d.scope === options.scope && d.kind === options.kind && d.session === session && d.fingerprint === fingerprint);
-        if (identical) {
-          if (target && identical.id!==target.id) return res.status(409).json({error:"This source already belongs to another reference list"});
+         if (target && identical && identical.id!==target.id) return res.status(409).json({error:"This source already belongs to another reference list"});
+         if (identical && !req.body.rows) {
           if (seasonYear(event)!==options.seasonYear) {
             await db.update(events).set({referenceSeasonYear:options.seasonYear,referenceRevision:sql`${events.referenceRevision}+1`}).where(eq(events.id,event.id));
             void kickAnalysisWorker();
           }
           res.json({ id: identical.id, reused: true, rows: identical.rows }); return;
         }
-        const parsed = req.body.rows ? {rows:rowsSchema.parse(JSON.parse(req.body.rows)),issues:[]} :
-          await withMediaWorkBudget(()=>parseEntryFile(req.file!.buffer,req.file!.mimetype,req.file!.originalname,withVisionBudget));
+         // CSV validation is cheap and must also run for corrected previews; never
+         // let supplied rows bypass source size/structure limits. Vision isn't repeated.
+         const sourcePreview = !req.body.rows || extension === "csv"
+           ? await withMediaWorkBudget(()=>parseEntryFile(req.file!.buffer,req.file!.mimetype,req.file!.originalname,withVisionBudget))
+           : undefined;
+         const parsed = req.body.rows ? {rows:rowsSchema.parse(JSON.parse(req.body.rows)),issues:sourcePreview?.issues || []} : sourcePreview!;
         const rows = rowsSchema.parse(parsed.rows.map(row=>({...row,
           number: /^\d{0,4}$/.test(row.number) ? row.number : "",
           team:row.team.slice(0,160),car:row.car.slice(0,160)})));
@@ -167,7 +172,7 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
           if (reservation) await tx.delete(mediaReservations).where(eq(mediaReservations.id,reservation));
         });
         if (key) void storage.cleanupObjects();
-        res.status(error instanceof MediaLimitError?413:400).json({error:error instanceof MediaLimitError?error.message:"Reference import failed. Check the file or use a searchable CSV/XLSX/PDF."});
+         res.status(error instanceof MediaLimitError?413:400).json({error:error instanceof MediaLimitError || error instanceof EntryListFileError ? error.message:"Reference import failed. Check the file or use a searchable CSV/XLSX/PDF."});
       }
     });
   });

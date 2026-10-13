@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import sharp from "sharp";
 import { xlsxToCsv } from "./xlsx-reference";
+import { EntryListFileError, parseIRacingEntries } from "./iracing-entry-list";
 
 export const ENTRY_LIST_MODEL = "gpt-4.1-mini";
 export const ENTRY_LIST_LIMITS = {
@@ -94,7 +95,7 @@ function detectDelimiter(text: string): string {
   return [",", ";", "\t"][counts.indexOf(Math.max(...counts))];
 }
 
-function parseCsvRecords(text: string, delimiter: string): { records: CsvRecord[]; issues: string[] } {
+function parseCsvRecords(text: string, delimiter: string, strict = false): { records: CsvRecord[]; issues: string[] } {
   const records: CsvRecord[] = [];
   const issues: string[] = [];
   let values: string[] = [];
@@ -110,7 +111,8 @@ function parseCsvRecords(text: string, delimiter: string): { records: CsvRecord[
     values.push(cell.trim());
     cell = "";
     afterQuote = false;
-    if (values.length > ENTRY_LIST_LIMITS.columns) {
+    if (strict && values.length > 36) throw new EntryListFileError("CSV exceeds the supported column limit (32, or 36 for iRacing).");
+    if (!strict && values.length > ENTRY_LIST_LIMITS.columns) {
       malformed = true;
       values = values.slice(0, ENTRY_LIST_LIMITS.columns);
     }
@@ -118,7 +120,8 @@ function parseCsvRecords(text: string, delimiter: string): { records: CsvRecord[
   const finishRecord = () => {
     finishCell();
     if (values.some(value => value.length > 0)) {
-      if (records.length < ENTRY_LIST_LIMITS.rows + 2) records.push({ values, line: recordLine });
+      if (strict && records.length >= 2003) throw new EntryListFileError("CSV exceeds the supported row limit.");
+      if (strict || records.length < ENTRY_LIST_LIMITS.rows + 2) records.push({ values, line: recordLine });
     }
     values = [];
     recordCharacters = 0;
@@ -129,6 +132,7 @@ function parseCsvRecords(text: string, delimiter: string): { records: CsvRecord[
     const char = text[i];
     recordCharacters++;
     if (recordCharacters > 16_384) {
+      if (strict) throw new EntryListFileError(`CSV row near line ${recordLine} exceeds 16384 characters.`);
       malformed = true;
       while (i < text.length && text[i] !== "\n" && text[i] !== "\r") i++;
       finishRecord();
@@ -161,17 +165,21 @@ function parseCsvRecords(text: string, delimiter: string): { records: CsvRecord[
       cell = "";
       quoted = true;
     } else {
-      if (afterQuote && char.trim() !== "") malformed = true;
+      if ((afterQuote && char.trim() !== "") || char === '"') malformed = true;
       cell += char;
       afterQuote = false;
     }
+    if (strict && cell.length > ENTRY_LIST_LIMITS.cellCharacters)
+      throw new EntryListFileError(`CSV cell near line ${recordLine} exceeds 500 characters.`);
     if (cell.length > ENTRY_LIST_LIMITS.cellCharacters * 4) malformed = true;
   }
   if (quoted) {
+    if (strict) throw new EntryListFileError(`Unclosed CSV quoted field near line ${recordLine}.`);
     issues.push(`Unclosed quoted field near line ${recordLine}; that final row was ignored.`);
   } else if (cell.length || values.length) {
     finishRecord();
   }
+  if (malformed && strict) throw new EntryListFileError("Malformed CSV quoting. No partial list was imported.");
   if (malformed) issues.push("Some CSV content exceeded safe row or column limits or had malformed quoting.");
   return { records, issues };
 }
@@ -186,10 +194,16 @@ function headerIndexes(header: string[]): { indexes: Partial<Record<EntryField, 
   return { indexes, matched: Object.keys(indexes).length };
 }
 
-function parseTable(text: string): EntryListParseResult {
+function parseTable(text: string, strictCsv = false): EntryListParseResult {
   const cleanText = text.replace(/^\uFEFF/, "");
-  const { records, issues } = parseCsvRecords(cleanText, detectDelimiter(cleanText));
+  const { records, issues } = parseCsvRecords(cleanText, detectDelimiter(cleanText), strictCsv);
   if (!records.length) return { rows: [], issues: [...issues, "No entry rows could be read from this file."] };
+  if (strictCsv) {
+    const iracing = parseIRacingEntries(records);
+    if (iracing) return iracing;
+    if (records.some(record => record.values.length > ENTRY_LIST_LIMITS.columns))
+      throw new EntryListFileError("CSV entry lists must contain at most 32 columns.");
+  }
 
   const detectedHeader = headerIndexes(records[0].values);
   const driverColumns = records[0].values.map((name,index)=>({name,index}))
@@ -200,12 +214,19 @@ function parseTable(text: string): EntryListParseResult {
     ? detectedHeader.indexes
     : { number: 0, team: 1, car: 2, drivers: 3 };
   const data = hasHeader ? records.slice(1) : records;
+  if (strictCsv && data.length > ENTRY_LIST_LIMITS.rows)
+    throw new EntryListFileError("CSV entry lists must contain at most 500 data rows.");
   const rows: EditableEntryRow[] = [];
 
   for (const record of data.slice(0, ENTRY_LIST_LIMITS.rows)) {
     const row = emptyRow();
-    if (hasHeader && driverColumns.length) row.drivers=Array.from(new Set(driverColumns.map(index=>
-      (record.values[index] || "").trim()).filter(Boolean))).join("; ").slice(0,ENTRY_LIST_LIMITS.cellCharacters);
+    if (hasHeader && driverColumns.length) {
+      const drivers = Array.from(new Set(driverColumns.map(index=>
+        (record.values[index] || "").trim()).filter(Boolean))).join("; ");
+      if (strictCsv && drivers.length > ENTRY_LIST_LIMITS.cellCharacters)
+        throw new EntryListFileError(`Line ${record.line}: combined drivers exceed 500 characters.`);
+      row.drivers = drivers.slice(0, ENTRY_LIST_LIMITS.cellCharacters);
+    }
     for (const field of fields) {
       const index = indexes[field];
       if (index !== undefined && !(field==="drivers" && hasHeader && driverColumns.length)) row[field] = (record.values[index] || "").trim().slice(0, ENTRY_LIST_LIMITS.cellCharacters);
@@ -490,14 +511,14 @@ export async function parseEntryFile(buffer: Buffer, mime: string, name: string,
   }
   const type = validateType(buffer, mime, name);
   if (type === "csv") {
-    if (buffer.length > ENTRY_LIST_LIMITS.csvBytes) throw new Error("CSV files must be 2 MB or smaller.");
+    if (buffer.length > ENTRY_LIST_LIMITS.csvBytes) throw new EntryListFileError("CSV files must be 2 MB or smaller.");
     let text: string;
     try {
       text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
     } catch {
-      throw new Error("CSV files must use valid UTF-8 text.");
+      throw new EntryListFileError("CSV files must use valid UTF-8 text.");
     }
-    return flagAmbiguousNumbers(parseTable(text));
+    return flagAmbiguousNumbers(parseTable(text, true));
   }
   if (buffer.length > (type === "pdf" ? ENTRY_LIST_LIMITS.documentBytes : ENTRY_LIST_LIMITS.imageBytes)) {
     throw new Error("The entry-list file exceeds the 8 MB limit.");

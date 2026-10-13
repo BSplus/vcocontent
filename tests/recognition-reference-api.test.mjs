@@ -14,6 +14,7 @@ import { registerRoutes } from "../server/routes.ts";
 import { analysisStatus, stopAnalysisWorker } from "../server/analysis-jobs.ts";
 import { stopImportWorker } from "../server/nextcloud.ts";
 import { matchReferences } from "../server/reference-matching.ts";
+import { readFile } from "node:fs/promises";
 
 const realFetch = globalThis.fetch;
 const previousAI = { base: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, key: process.env.AI_INTEGRATIONS_OPENAI_API_KEY };
@@ -30,6 +31,7 @@ let providerResult = { tags: ["Day", "Race Car"], vehicles: [
 const identity = { number: "007", team: "Manual team", drivers: "Manual driver", vehicle: "Manual car",
   manufacturer: "", racingClass: "", discipline: "", source: "manual" };
 const csv = "Number,Team,Car,Drivers\n007,Apex,GT3,Ada One\n";
+const iracing = await readFile(new URL("../attached_assets/eventresult_82799828_0_1791893901877.csv", import.meta.url), "utf8");
 const image = `data:image/webp;base64,${(await sharp({ create: { width: 64, height: 64, channels: 3, background: "green" } }).webp().toBuffer()).toString("base64")}`;
 const wait = async check => {
   for (let i = 0; i < 250; i++) {
@@ -180,6 +182,75 @@ test("API validation and entry-list errors use English without changing access o
   }
   assert.deepEqual(await (await api(`/api/events/${event.id}/entries`)).json(), []);
   assert.equal((await storage.getMediaItem(item.id)).caption, "Approved caption");
+});
+
+test("iRacing previews are read-only for admin/creator; corrections save explicitly on event and reference paths", async () => {
+  const preview = async (path, role, content = iracing) => {
+    const form = new FormData();
+    form.append("file", new Blob([content], { type: "text/csv" }), "iracing.csv");
+    return realFetch(base + path, { method: "POST", headers: role ? { "x-fixture-role": role } : {}, body: form });
+  };
+  for (const role of ["owner", "admin"]) {
+    const event = await album(), item = await photo(event.id);
+    await api(`/api/events/${event.id}/entries`, role, { rows: [{ number: "777", team: "Original", car: "GT3", drivers: "Original driver" }] });
+    const originalSource = await (await importFile(event.id, {}, csv, role)).json();
+    const beforeRevision = (await storage.getEvent(event.id)).referenceRevision;
+    for (const path of ["/api/events/entries/preview", `/api/events/${event.id}/entries/preview`]) {
+      const response = await preview(path, role);
+      assert.equal(response.status, 200);
+      const parsed = await response.json();
+      assert.equal(parsed.rows.length, 59);
+      assert.equal(parsed.rows.reduce((n, row) => n + row.drivers.split("; ").length, 0), 205);
+      assert.equal(parsed.rows.find(row => row.number === "091").team, "Porsche Coanda $091");
+    }
+    assert.equal((await storage.getEventEntries(event.id))[0].team, "Original");
+    assert.equal((await storage.getMediaItem(item.id)).caption, "Approved caption");
+    assert.equal((await storage.getEvent(event.id)).referenceRevision, beforeRevision);
+    assert.equal(await (await api(`/api/events/${event.id}/references/${originalSource.id}/source`, role)).text(), csv);
+    assert.equal((await preview(`/api/events/${event.id}/entries/preview`, "other")).status, 403);
+    assert.equal((await preview("/api/events/entries/preview", null)).status, 401);
+    const parsed = await (await preview(`/api/events/${event.id}/entries/preview`, role)).json();
+    // The original export contains 08 and 8: the preview flags ambiguity, and the operator corrects it.
+    const seen = new Set();
+    const corrected = parsed.rows.map(({ issues, ...row }, i) => {
+      const key = String(Number(row.number));
+      if (seen.has(key)) row.number = String(900 + i);
+      seen.add(String(Number(row.number)));
+      return row;
+    });
+    corrected[0].team = "Reviewed team";
+    assert.equal((await api(`/api/events/${event.id}/entries`, role, { rows: corrected })).status, 200);
+    assert.equal((await storage.getEventEntries(event.id)).length, 59);
+    assert.equal((await storage.getEventEntries(event.id)).find(row => row.number === "08").number, "08");
+    for (const kind of ["entry", "result"]) {
+      corrected[0].team = "Reviewed team";
+      const response = await importFile(event.id, { kind, rows: JSON.stringify(corrected) }, iracing, role);
+      assert.equal(response.status, 201);
+      const doc = await response.json();
+      assert.equal(doc.rows.length, 59);
+      assert.equal(doc.rows[0].team, "Reviewed team");
+      assert.equal(await (await api(`/api/events/${event.id}/references/${doc.id}/source`, role)).text(), iracing);
+      corrected[0].team = "Second correction";
+      const repeat = await importFile(event.id, { kind, replaceId: doc.id, rows: JSON.stringify(corrected) }, iracing, role);
+      assert.equal(repeat.status, 201);
+      assert.equal((await repeat.json()).rows[0].team, "Second correction", "same-source reimport must not discard reviewed changes");
+    }
+    const invalid = await importFile(event.id, { rows: JSON.stringify(corrected) }, iracing.replace('"AI"', '"Unexpected"'), role);
+    assert.equal(invalid.status, 400);
+    assert.match((await invalid.json()).error, /iRacing result columns/);
+    assert.equal((await storage.getMediaItem(item.id)).caption, "Approved caption");
+
+    const creationPreview = await (await preview("/api/events/entries/preview", role)).json();
+    assert.equal(creationPreview.rows.length, 59);
+    const created = await api(role === "admin" ? "/api/events" : "/api/creator/events", role, {
+      title: "Reviewed iRacing fixture", description: "Disposable", date: "2026-07-12", entryRows: corrected,
+    }, "POST");
+    assert.equal(created.status, 201);
+    const createdEvent = await created.json();
+    ownedEvents.push(createdEvent.id);
+    assert.equal((await storage.getEventEntries(createdEvent.id)).length, 59);
+    assert.equal((await storage.getEventEntries(createdEvent.id))[0].team, "Second correction");
+  }
 });
 
 test("caption/tag/identification edits persist with ownership and strict field validation", async () => {

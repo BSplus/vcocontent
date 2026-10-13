@@ -1,8 +1,95 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createCanvas } from "@napi-rs/canvas";
+import { readFile } from "node:fs/promises";
 
 const { parseEntryFile, ENTRY_LIST_LIMITS } = await import("../server/entry-list.ts");
+const iracing = await readFile(new URL("../attached_assets/eventresult_82799828_0_1791893901877.csv", import.meta.url), "utf8");
+const parseCsv = text => parseEntryFile(Buffer.from(text), "text/csv", "entries.csv");
+const exportLines = iracing.trim().split(/\r?\n/);
+
+test("the real iRacing export groups 59 teams and all 205 drivers without result identities", async () => {
+  const parsed = await parseCsv(iracing);
+  assert.equal(parsed.rows.length, 59);
+  assert.equal(parsed.rows.reduce((count, row) => count + row.drivers.split("; ").length, 0), 205);
+  assert.equal(new Set(parsed.rows.map(row => row.number)).size, 59);
+  assert.deepEqual(parsed.rows.find(row => row.number === "08"), {
+    number: "08", team: "Coanda Esports $08", car: "Ferrari 499P", racingClass: "GTP",
+    drivers: "Mitchell deJong; Elvis Rankin; Julien Soenen", issues: ["Duplicate or ambiguous number (including leading zeros)."],
+  });
+  const porsche = parsed.rows.find(row => row.number === "091");
+  assert.equal(porsche.team, "Porsche Coanda $091");
+  assert.equal(porsche.racingClass, "GTP");
+  assert.equal(porsche.drivers, "Alejandro Sánchez; Joshua K Rogers; Dayne Warren; Xander Reed");
+  assert.equal(parsed.rows.find(row => row.number === "003").racingClass, "Dallara P217");
+  assert.ok(parsed.rows.some(row => row.racingClass === "IMSA23"));
+  assert.ok(parsed.rows.every(row => !("position" in row) && !("rating" in row) && !("eventName" in row)));
+});
+
+test("iRacing grouping is independent of row order, team names and finishing positions", async () => {
+  const parsed = await parseCsv([exportLines[3], ...exportLines.slice(4).reverse()].join("\n"));
+  assert.equal(parsed.rows.length, 59);
+  assert.equal(parsed.rows.find(row => row.number === "2").drivers, "Michael Romanidis; Nicolas Mateo; Dries Van Langendonck");
+  assert.equal(parsed.rows.filter(row => row.team === "DRAGO RACING").length, 4);
+  const bom = await parseCsv("\uFEFF" + iracing.replace(/\n/g, "\r\n"));
+  assert.equal(bom.rows.length, 59);
+});
+
+test("iRacing missing teams, drivers and contradictory IDs remain reviewable without invented assignments", async () => {
+  const missing = await parseCsv([exportLines[3], ...exportLines.slice(5, 8)].join("\n"));
+  assert.equal(missing.rows.length, 1);
+  assert.equal(missing.rows[0].team, "");
+  assert.match(missing.rows[0].issues.join(" "), /Missing team row/);
+  assert.equal(missing.rows[0].drivers, "Dries Van Langendonck; Nicolas Mateo; Michael Romanidis");
+  const empty = await parseCsv([exportLines[3], exportLines[4]].join("\n"));
+  assert.equal(empty.rows[0].drivers, "");
+  assert.match(empty.rows[0].issues.join(" "), /Missing drivers/);
+  const conflicting = await parseCsv([exportLines[3], exportLines[4],
+    exportLines[5].replace('"3","2","0"', '"3","99","0"'), exportLines[6]].join("\n"));
+  assert.equal(conflicting.rows[0].drivers, "Nicolas Mateo");
+  assert.match(conflicting.rows[0].issues.join(" "), /conflicting car, class or number/);
+  const duplicate = await parseCsv([exportLines[3], exportLines[4], exportLines[4], exportLines[5]].join("\n"));
+  assert.equal(duplicate.rows[0].drivers, "");
+  assert.equal(duplicate.rows[0].team, "");
+  assert.match(duplicate.rows[0].issues.join(" "), /Multiple team rows/);
+  const invalid = await parseCsv([exportLines[3], exportLines[5].replace('"-441000"', '""')].join("\n"));
+  assert.equal(invalid.rows[0].drivers, "");
+  assert.match(invalid.rows[0].issues.join(" "), /Invalid or missing Team ID/);
+  const disputed = await parseCsv([exportLines[3], exportLines[4], exportLines[5],
+    exportLines[5].replace("Dries Van Langendonck", "Other name")].join("\n"));
+  assert.equal(disputed.rows[0].drivers, "");
+  assert.match(disputed.rows[0].issues.join(" "), /Conflicting names/);
+});
+
+test("iRacing malformed preambles, unknown columns, ragged rows and limits reject the entire file", async () => {
+  for (const text of [
+    iracing.replace('"Start Time"', '"Unrecognized metadata"'),
+    iracing.replace('"2026-01-17T12:00:00Z"', '"bad date"'),
+    iracing.replace('"AI"', '"Unknown column"'),
+    iracing.replace('"Cust ID"', '"Customer"'),
+    [exportLines[3], exportLines[4].slice(0, -4)].join("\n"),
+  ]) await assert.rejects(parseCsv(text), /iRacing|quoted/);
+  await assert.rejects(parseCsv([exportLines[3], ...Array(2001).fill(exportLines[4])].join("\n")), /2000/);
+  await assert.rejects(parseCsv(iracing.replace("DRAGO RACING", "x".repeat(501))), /500 characters/);
+  await assert.rejects(parseCsv(iracing.replace("DRAGO RACING", "x".repeat(161))), /160 characters/);
+  await assert.rejects(parseCsv([exportLines[3], ...Array.from({ length: 501 }, (_, i) =>
+    exportLines[4].replaceAll('"-441000"', `"${-500000 - i}"`))].join("\n")), /500 vehicles/);
+  await assert.rejects(parseCsv(Array(36).fill("x".repeat(460)).join(",")), /16384 characters/);
+});
+
+test("simple CSV remains ordinary; oversize or malformed CSV never silently truncates", async () => {
+  const ordinary = await parseCsv("Number,Team,Car,Drivers\n08,Apex,GT3,Ada\n");
+  assert.equal(ordinary.rows[0].number, "08");
+  assert.equal(ordinary.rows[0].team, "Apex");
+  for (const [text, error] of [
+    [Array(33).fill("x").join(","), /32 columns/],
+    [Array(37).fill("x").join(","), /column limit/],
+    [Array(501).fill("1,A,B,C").join("\n"), /500 data rows/],
+    ['1,A,B,"Unclosed', /Unclosed/],
+    ['1,A,B,"quoted"x', /Malformed/],
+    ["1,A,B," + "x".repeat(501), /500 characters/],
+  ]) await assert.rejects(parseCsv(text), error);
+});
 
 test("XLSX references retain optional metadata without requiring it in legacy entry files", async () => {
   const { default: JSZip } = await import("jszip");

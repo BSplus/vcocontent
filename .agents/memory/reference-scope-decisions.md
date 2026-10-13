@@ -14,3 +14,9 @@ Treat event creation and source-file saving as one user-visible operation, even 
 **Why:** The event can exist before the original reference finishes uploading. Enabling Done at that point permits premature closing and can discard the file needed for recovery.
 
 **How to apply:** Keep close/Done blocked during source saving, retain the original File for retries without recreating the event, and reuse already parsed rows only when they belong to that exact File. Do not run the same document vision extraction twice.
+
+Reviewing a source reference and reviewing an event's own entry list are separate decisions, even when both use the same parser and confirmation workflow.
+
+**Why:** Sharing a mutable correction draft between those decisions can save one file's lineup with another source, or replace the event list merely because a reference was selected. The requested import behavior preserves existing lists, sources and captions until their respective explicit save.
+
+**How to apply:** Keep confirmed source corrections tied to their original file and separate from the event draft. Event creation may save both, but must not infer an event-list replacement from a reference preview.

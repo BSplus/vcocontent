@@ -7,6 +7,7 @@ import { Loader2, Upload, Plus, Trash2, FileText, Download } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import PhotoMatchingControls from "@/components/photo-matching-controls";
+import ReferenceImportPreview from "@/components/reference-import-preview";
 
 export interface EventEntryRow {
   number: string;
@@ -110,7 +111,11 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [stagedReferenceName, setStagedReferenceName] = useState("");
   const [stagedReferenceFile, setStagedReferenceFile] = useState<File | null>(null);
-  const [parsedReferenceFile, setParsedReferenceFile] = useState<File | null>(null);
+  const [stagedReferenceRows, setStagedReferenceRows] = useState<EventEntryRow[]>([]);
+  const [referencePreview, setReferencePreview] = useState<{
+    file: File; rows: EventEntryRow[]; issues: string[]; target: ReferenceDocument | null;
+  } | null>(null);
+  const [referenceConfirmed, setReferenceConfirmed] = useState(false);
   const [reimportTarget, setReimportTarget] = useState<ReferenceDocument | null>(null);
   const [referencesLoading, setReferencesLoading] = useState(false);
   const [expandedReferenceIds, setExpandedReferenceIds] = useState<Set<number>>(() => new Set());
@@ -167,7 +172,7 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
     }
   };
 
-  const importReference = async (id: number, file: File, replacing?: ReferenceDocument | null) => {
+  const importReference = async (id: number, file: File, correctedRows: EventEntryRow[], replacing?: ReferenceDocument | null) => {
     setReferenceBusy(true);
     setReferenceError(null);
     try {
@@ -177,6 +182,7 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
       body.append("scope", replacing?.scope ?? referenceScope);
       body.append("seasonYear", String(replacing?.seasonYear ?? (eventId !== null ? referenceSeasonYear : seasonYear ?? referenceSeasonYear)));
       body.append("session", replacing?.session ?? referenceSession);
+      body.append("rows", JSON.stringify(correctedRows));
       if (replacing) {
         body.append("replaceId", String(replacing.id));
         body.append("title", replacing.title);
@@ -184,6 +190,8 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
       const response = await fetch(`/api/events/${id}/references`, { method: "POST", credentials: "include", body });
       if (!response.ok) throw new Error(await responseError(response, "Could not import reference document."));
       await loadReferences(id);
+      setReferencePreview(null);
+      setReferenceConfirmed(false);
       void queryClient.invalidateQueries({queryKey:["/api/creator/usage"]});
       toast({ title: replacing ? "Reference reimported" : "Reference imported", description: "The source document and parsed entries are now available." });
     } catch (reason) {
@@ -203,9 +211,9 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
       scope: referenceScope,
       seasonYear: seasonYear ?? referenceSeasonYear,
       session: referenceSession,
-      rows:parsedReferenceFile===stagedReferenceFile && !previewing && !error && rows.length ? rows : undefined,
+      rows: stagedReferenceRows,
     });
-  }, [eventId, stagedReferenceFile, parsedReferenceFile, rows, previewing, error, referenceKind, referenceScope, seasonYear, referenceSeasonYear, referenceSession, onReferenceSelection]);
+  }, [eventId, stagedReferenceFile, stagedReferenceRows, referenceKind, referenceScope, seasonYear, referenceSeasonYear, referenceSession, onReferenceSelection]);
 
   useEffect(() => {
     if (eventId === null) return;
@@ -274,12 +282,12 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
   useEffect(() => {
     if (eventId !== null) return;
     onDraftChange?.({
-      rows: !previewing && !error && rows.length
+      rows: !previewing && !error && rows.length && (!previewMode || confirmed)
         ? rows.map(({ number, team, car, drivers, manufacturer, racingClass, discipline }) => ({ number, team, car, drivers, manufacturer, racingClass, discipline }))
         : null,
-      blocked: previewing || !!error || (previewMode && !rows.length),
+      blocked: previewing || !!error || !!referencePreview || referenceBusy || (previewMode && (!rows.length || !confirmed)),
     });
-  }, [eventId, rows, previewing, error, previewMode, onDraftChange]);
+  }, [eventId, rows, previewing, error, previewMode, confirmed, referencePreview, referenceBusy, onDraftChange]);
 
   const changeRow = (index: number, field: keyof Pick<EventEntryRow, "number" | "team" | "car" | "drivers" | "manufacturer" | "racingClass" | "discipline">, value: string) => {
     setRows(current => current.map((row, rowIndex) =>
@@ -307,7 +315,6 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
       const result = await response.json();
       if (!Array.isArray(result.rows)) throw new Error("The server returned an invalid entry preview.");
       setRows(result.rows.map((row: unknown) => normalizeRow(row as Partial<EventEntryRow>)));
-      setParsedReferenceFile(file);
       setIssues(Array.isArray(result.issues) ? result.issues.filter((issue: unknown): issue is string => typeof issue === "string") : []);
       setLoadFailed(false);
       setPreviewMode(true);
@@ -317,6 +324,26 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
       setPreviewing(false);
       if (fileRef.current) fileRef.current.value = "";
     }
+  };
+
+  const previewReference = async (file: File, target: ReferenceDocument | null) => {
+    setReferenceBusy(true);
+    setReferenceError(null);
+    setReferenceConfirmed(false);
+    setReferencePreview({ file, rows: [], issues: [], target });
+    const body = new FormData();
+    body.append("file", file);
+    try {
+      const response = await fetch(eventId === null ? "/api/events/entries/preview" : `/api/events/${eventId}/entries/preview`,
+        { method: "POST", credentials: "include", body });
+      if (!response.ok) throw new Error(await responseError(response, "Could not preview the reference."));
+      const result = await response.json();
+      if (!Array.isArray(result.rows)) throw new Error("Invalid reference preview.");
+      setReferencePreview({ file, target, rows: result.rows.map(normalizeRow),
+        issues: Array.isArray(result.issues) ? result.issues : [] });
+    } catch (reason) {
+      setReferenceError(reason instanceof Error ? reason.message : "Could not preview the reference.");
+    } finally { setReferenceBusy(false); }
   };
 
   const saveRows = async () => {
@@ -396,14 +423,14 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
       <div className="space-y-3 rounded-md bg-muted/30 p-3">
         <div>
           <h4 className="font-medium">Entry & result references</h4>
-          <p className="text-sm text-muted-foreground">Import CSV, XLSX, PDF or a screenshot. Entries are parsed automatically; you can correct them below.</p>
+           <p className="text-sm text-muted-foreground">Preview CSV (including iRacing team results), XLSX, PDF or a screenshot, correct the entries, then confirm saving.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Select value={referenceKind} onValueChange={value => setReferenceKind(value as "entry" | "result")}>
+          <Select disabled={referenceBusy || !!referencePreview} value={referenceKind} onValueChange={value => setReferenceKind(value as "entry" | "result")}>
             <SelectTrigger aria-label="Reference type"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="entry">Entry list</SelectItem><SelectItem value="result">Result list</SelectItem></SelectContent>
           </Select>
-          <Select value={referenceScope} onValueChange={value => setReferenceScope(value as "event" | "season")}>
+          <Select disabled={referenceBusy || !!referencePreview} value={referenceScope} onValueChange={value => setReferenceScope(value as "event" | "season")}>
             <SelectTrigger aria-label="Reference scope"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="event">This event</SelectItem>
               {(referencesMeta.canUseSeason || (eventId === null && !!seriesId)) && <SelectItem value="season">Series season ({eventId === null ? seasonYear ?? referenceSeasonYear : referenceSeasonYear})</SelectItem>}
@@ -413,29 +440,18 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-40 flex-1 space-y-1">
             <Label htmlFor="reference-session">Session or race (optional)</Label>
-            <Input id="reference-session" value={referenceSession} onChange={event => setReferenceSession(event.target.value)} placeholder="e.g. Race 1" />
+            <Input id="reference-session" disabled={referenceBusy || !!referencePreview} value={referenceSession} onChange={event => setReferenceSession(event.target.value)} placeholder="e.g. Race 1" />
           </div>
           <Input ref={referenceFileRef} type="file" className="hidden" accept=".csv,.xlsx,.xls,.pdf,.jpg,.jpeg,.png,.webp"
             aria-label="Choose an entry or result reference"
             onChange={event => {
               const file = event.target.files?.[0];
               if (!file) return;
-              if (eventId === null) {
-                setStagedReferenceFile(file);
-                setStagedReferenceName(file.name);
-                onReferenceSelection?.({
-                  file,
-                  kind: referenceKind,
-                  scope: referenceScope,
-                  seasonYear: seasonYear ?? referenceSeasonYear,
-                  session: referenceSession,
-                });
-                toast({ title: "Reference ready", description: "It will be imported automatically after the event is created." });
-              } else void importReference(eventId, file, reimportTarget);
+               void previewReference(file, reimportTarget);
               setReimportTarget(null);
               event.target.value = "";
             }} />
-          <Button type="button" variant="outline" disabled={referenceBusy} onClick={() => {
+          <Button type="button" variant="outline" disabled={referenceBusy || !!referencePreview} onClick={() => {
             setReimportTarget(null);
             referenceFileRef.current?.click();
           }}>
@@ -456,6 +472,22 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
         )}
         {eventId === null && stagedReferenceName && <p role="status" className="text-sm text-muted-foreground">Selected: {stagedReferenceName} · it will be imported automatically after event creation.</p>}
         {referenceError && <p role="alert" className="text-sm text-destructive">{referenceError}</p>}
+        {referencePreview && <ReferenceImportPreview name={referencePreview.file.name} rows={referencePreview.rows}
+          issues={referencePreview.issues} confirmed={referenceConfirmed} busy={referenceBusy}
+          onConfirm={setReferenceConfirmed}
+          onRows={next => { setReferencePreview({ ...referencePreview, rows: next }); setReferenceConfirmed(false); }}
+          onCancel={() => { setReferencePreview(null); setReferenceError(null); setReferenceConfirmed(false); }}
+          onSave={() => {
+            if (!referenceConfirmed || !referencePreview.rows.length) return;
+            if (eventId !== null) void importReference(eventId, referencePreview.file, referencePreview.rows, referencePreview.target);
+            else {
+              setStagedReferenceFile(referencePreview.file);
+              setStagedReferenceName(referencePreview.file.name);
+              setStagedReferenceRows(referencePreview.rows);
+              setReferencePreview(null);
+              setReferenceConfirmed(false);
+            }
+          }} />}
         {eventId !== null && referencesLoading && <p role="status" className="text-sm text-muted-foreground">Loading reference documents…</p>}
         {eventId !== null && !referencesLoading && !referenceError && references.length === 0 &&
           <p className="text-sm text-muted-foreground">No reference documents yet. Choose a file to import an entry or result list.</p>}
@@ -475,7 +507,7 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
               </div>
               <div className="flex flex-wrap gap-1">
                 {document.downloadUrl && <Button type="button" size="sm" variant="ghost" asChild><a href={document.downloadUrl} target="_blank" rel="noreferrer"><Download className="mr-1 h-4 w-4" />Source</a></Button>}
-                <Button type="button" size="sm" variant="outline" disabled={referenceBusy} onClick={() => {
+                <Button type="button" size="sm" variant="outline" disabled={referenceBusy || !!referencePreview} onClick={() => {
                   setReimportTarget(document);
                   referenceFileRef.current?.click();
                 }}><Upload className="mr-1 h-4 w-4" />Reimport</Button>
@@ -573,10 +605,10 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
               <Upload className="mr-2 h-4 w-4" /> Choose file
             </Button>
           </div>
-          {eventId !== null && <label className="flex items-start gap-2 text-sm">
+          {(eventId !== null || previewMode) && <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={confirmed} disabled={saving || loading || loadFailed}
               onChange={event => setConfirmed(event.target.checked)} className="mt-1" />
-            <span>I reviewed these rows and confirm replacing the event’s saved entry list.</span>
+            <span>{eventId === null ? "I reviewed these rows and confirm adding them when the event is created." : "I reviewed these rows and confirm replacing the event’s saved entry list."}</span>
           </label>}
           {eventId === null ? (
             <>
