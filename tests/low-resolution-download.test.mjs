@@ -14,6 +14,7 @@ const store = mockMediaStorage();
 test.after(() => store.restore());
 const key = "media-00000000-0000-4000-8000-000000000000.png";
 const item = { id: 42, type: "image", url: `/api/media/files/${key}`, thumbnail: "unreadable-thumbnail" };
+const event = { id: 7, title: "Ä Nürburgring / Finale", date: new Date("2026-10-13T00:00:00Z") };
 async function collect(stream) {
   const chunks = [];
   for await (const chunk of stream) chunks.push(chunk);
@@ -28,23 +29,46 @@ test("modern and historical Low-Res read the large photo, orient, never upscale 
   const writes = store.writes.length;
   const original = Buffer.from(source);
   for (const photo of [item, { ...item, url: `data:image/jpeg;base64,${source.toString("base64")}` }]) {
-    const result = await downloadStream(photo, "low");
-    assert.equal(result.contentType, "image/webp");
-    assert.equal(result.filename, "media-42-low.webp");
+    const result = await downloadStream(photo, event, "low");
+    assert.equal(result.contentType, "image/jpeg");
+    assert.equal(result.filename, "vco_2026-10-13_ae-nuerburgring-finale_m42_low.jpg");
     const bytes = await collect(result.stream);
     assert.ok(bytes.length <= 500_000);
     const m = await sharp(bytes).metadata();
+    assert.equal(m.format, "jpeg");
+    assert.deepEqual([...bytes.subarray(0, 3)], [255, 216, 255]);
+    await sharp(bytes).stats();
     assert.deepEqual([m.width, m.height], [800, 1600]);
   }
   assert.equal(store.writes.length, writes);
   assert.deepEqual(store.objects.get(key), original);
   const tiny = await sharp({ create: { width: 40, height: 25, channels: 3, background: "red" } }).png().toBuffer();
   store.objects.set(key, tiny);
-  const result = await downloadStream(item, "low");
+  const result = await downloadStream(item, event, "low");
   const bytes = await collect(result.stream);
   const m = await sharp(bytes).metadata();
   assert.deepEqual([m.width, m.height], [40, 25]);
   assert.ok(bytes.length < 10_000, "No minimum size or artificial padding");
+});
+
+test("high delivery preserves modern and historical photo/video bytes and actual extensions", async () => {
+  for (const [mime, extension] of [
+    ["image/jpeg", "jpg"], ["image/png", "png"], ["image/webp", "webp"], ["image/gif", "gif"],
+    ["video/mp4", "mp4"], ["video/quicktime", "mov"], ["video/webm", "webm"],
+  ]) {
+    const bytes = mime.startsWith("image/")
+      ? await sharp({ create: { width: 20, height: 30, channels: 3, background: "#887744" } })
+        .toFormat(extension === "jpg" ? "jpeg" : extension).toBuffer()
+      : Buffer.from(`unchanged video fixture ${mime}`);
+    const sourceKey = `media-00000000-0000-4000-8000-000000000000.${extension}`;
+    store.objects.set(sourceKey, bytes);
+    for (const url of [`/api/media/files/${sourceKey}`, `data:${mime};base64,${bytes.toString("base64")}`]) {
+      const result = await downloadStream({ ...item, type: mime.startsWith("video/") ? "video" : "image", url }, event, "high");
+      assert.equal(result.contentType, mime);
+      assert.equal(result.filename, `vco_2026-10-13_ae-nuerburgring-finale_m42_high.${extension}`);
+      assert.deepEqual(await collect(result.stream), bytes);
+    }
+  }
 });
 
 test("Low-Res quality ladder accepts exact decimal limit before bounded resolution fallback", async () => {
@@ -64,15 +88,61 @@ test("Low-Res quality ladder accepts exact decimal limit before bounded resoluti
   await assert.rejects(fitLowResolution(async () => Buffer.alloc(500_001)), /cannot fit/);
 });
 
+test("transparent PNG and WebP flatten onto white in a fully decodable JPEG", async () => {
+  for (const format of ["png", "webp"]) {
+    const input = await sharp({ create: { width: 40, height: 25, channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 } } })[format]().toBuffer();
+    const bytes = await prepareLowResolution(input, new AbortController().signal);
+    const metadata = await sharp(bytes).metadata();
+    assert.equal(metadata.format, "jpeg");
+    assert.equal(metadata.hasAlpha, false);
+    assert.deepEqual([metadata.width, metadata.height], [40, 25]);
+    const pixels = await sharp(bytes).raw().toBuffer();
+    assert.ok(pixels.every(value => value >= 254));
+  }
+});
+
+test("detail-rich deterministic input uses real JPEG resolution fallback without severe compression", async () => {
+  const width = 1800, height = 1200, raw = Buffer.alloc(width * height * 3);
+  let seed = 73;
+  for (let i = 0; i < raw.length; i++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    raw[i] = Math.floor((seed >>> 24) * 160 / 256);
+  }
+  const input = await sharp(raw, { raw: { width, height, channels: 3 } }).png().toBuffer();
+  const output = await prepareLowResolution(input, new AbortController().signal);
+  assert.ok(output.length <= 500_000);
+  const metadata = await sharp(output).metadata();
+  assert.equal(metadata.format, "jpeg");
+  assert.deepEqual([metadata.width, metadata.height], [960, 640]);
+  const reference = await sharp(input).resize(metadata.width, metadata.height).raw().toBuffer();
+  const decoded = await sharp(output).raw().toBuffer();
+  let mse = 0;
+  for (let i = 0; i < reference.length; i++) mse += (reference[i] - decoded[i]) ** 2;
+  mse /= reference.length;
+  assert.ok(10 * Math.log10(255 ** 2 / mse) > 25, "Detail-rich resized reference retains >25 dB PSNR");
+});
+
+test("uncompressible detail fails explicitly instead of exceeding the JPEG byte budget", async () => {
+  const width = 960, height = 960, raw = Buffer.alloc(width * height * 3);
+  let seed = 19;
+  for (let i = 0; i < raw.length; i++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    raw[i] = seed >>> 24;
+  }
+  const input = await sharp(raw, { raw: { width, height, channels: 3 } }).png().toBuffer();
+  await assert.rejects(prepareLowResolution(input, new AbortController().signal), /cannot fit.*High-Res/);
+});
+
 test("missing, corrupt, truncated, oversized and pixel-bomb inputs fail with temporary cleanup", async () => {
   const before = await tempFiles();
   store.objects.delete(key);
-  await assert.rejects(downloadStream(item, "low"), /Media storage upstream/);
+  await assert.rejects(downloadStream(item, event, "low"), /Media storage upstream/);
   store.objects.set(key, Buffer.from("not a photo"));
-  await assert.rejects(downloadStream(item, "low"));
+  await assert.rejects(downloadStream(item, event, "low"));
   const source = await sharp({ create: { width: 400, height: 300, channels: 3, background: "red" } }).png().toBuffer();
   store.objects.set(key, source.subarray(0, source.length - 30));
-  await assert.rejects(downloadStream(item, "low"));
+  await assert.rejects(downloadStream(item, event, "low"));
   const bomb = await sharp({ create: { width: 6500, height: 6500, channels: 3, background: "red" } }).png().toBuffer();
   await assert.rejects(lowResolutionDownload(() => Readable.from(bomb)));
   await assert.rejects(lowResolutionDownload(() => Readable.from([])), /empty/);
@@ -127,12 +197,13 @@ test("storage reader errors do not write objects", async () => {
   const old = Client.prototype.downloadAsStream;
   const writes = store.writes.length;
   Client.prototype.downloadAsStream = () => new Readable({ read() { this.destroy(new Error("offline source")); } });
-  try { await assert.rejects(downloadStream(item, "low"), /Media storage upstream/); }
+  try { await assert.rejects(downloadStream(item, event, "low"), /Media storage upstream/); }
   finally { Client.prototype.downloadAsStream = old; }
   assert.equal(store.writes.length, writes);
 });
 
 test("abort during native Sharp encoding is handled without uncaught stream errors or delivery", async () => {
+  const source = await sharp({ create: { width: 1200, height: 800, channels: 3, background: "#774433" } }).png().toBuffer();
   const controller = new AbortController();
   const old = sharp.prototype.toBuffer;
   let encoding = false;
@@ -143,7 +214,44 @@ test("abort during native Sharp encoding is handled without uncaught stream erro
     return operation;
   };
   try {
-    await assert.rejects(prepareLowResolution("attached_assets/#89_3.png", controller.signal), /failed|cancelled/);
+    await assert.rejects(prepareLowResolution(source, controller.signal), /failed|cancelled/);
     assert.equal(encoding, true);
   } finally { sharp.prototype.toBuffer = old; }
+});
+
+test("cancelled native JPEG work retains its CPU slot until its bounded operation settles", async () => {
+  const source = await sharp({ create: { width: 40, height: 25, channels: 3, background: "red" } }).png().toBuffer();
+  const controller = new AbortController();
+  const old = sharp.prototype.toBuffer;
+  let started, release;
+  const encodingStarted = new Promise(resolve => { started = resolve; });
+  const held = new Promise(resolve => { release = resolve; });
+  sharp.prototype.toBuffer = async function(...args) {
+    const result = await old.apply(this, args);
+    started();
+    await held;
+    return result;
+  };
+  let releaseOther;
+  const other = withMediaWorkBudget(() => new Promise(resolve => { releaseOther = resolve; }));
+  const encoding = lowResolutionDownload(() => Readable.from(source), controller.signal);
+  const rejection = assert.rejects(encoding, /cancelled/);
+  let ran = false;
+  let queued;
+  try {
+    await encodingStarted;
+    controller.abort();
+    queued = withMediaWorkBudget(async () => { ran = true; });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(ran, false, "Aborting must not free the still-active native slot");
+    release();
+    await rejection;
+    await queued;
+    assert.equal(ran, true);
+  } finally {
+    release();
+    releaseOther();
+    await Promise.allSettled([encoding, other, ...(queued ? [queued] : [])]);
+    sharp.prototype.toBuffer = old;
+  }
 });

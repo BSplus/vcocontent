@@ -218,11 +218,16 @@ test("recovered import skips saved media and clears its encrypted credentials", 
 
 test("native download reauthorizes access, counts delivery atomically and not authorization", async () => {
   const album = await event(); const item = await photo(album.id);
+  const suffix = randomUUID();
+  const [account] = await db.insert(users).values({
+    username: `download-${suffix}`, email: `download-${suffix}@example.invalid`,
+    password: "unused-fixture", isAdmin: true,
+  }).returning();
   const app = express();
   // Identity fixture for this isolated test server, never application auth.
   app.use((req, _res, next) => {
     req.isAuthenticated = () => req.headers["x-test-identity"] === "admin";
-    req.user = req.isAuthenticated() ? { id: 1, isAdmin: true } : undefined; next();
+    req.user = req.isAuthenticated() ? account : undefined; next();
   });
   const server = await registerRoutes(app); await stopImportWorker(); await stopAnalysisWorker();
   server.listen(0, "127.0.0.1"); await once(server, "listening");
@@ -232,7 +237,8 @@ test("native download reauthorizes access, counts delivery atomically and not au
     assert.equal((await realFetch(`${base}/api/media/${item.id}/download?quality=low`, { method: "POST" })).status, 200);
     assert.equal((await storage.getMediaItem(item.id)).downloadCount, 0);
     const response = await realFetch(`${base}/api/media/${item.id}/download?quality=low`);
-    assert.match(response.headers.get("content-disposition"), /attachment; filename="media-\d+-low.webp"/);
+    assert.match(response.headers.get("content-disposition"), /attachment; filename="vco_\d{4}-\d{2}-\d{2}_temporary-process-test_m\d+_low.jpg"/);
+    assert.equal(response.headers.get("content-type"), "image/jpeg");
     assert.equal(response.headers.get("cache-control"), "private, no-store");
     assert.ok((await response.arrayBuffer()).byteLength > 0);
     await until(async () => (await storage.getMediaItem(item.id)).downloadCount === 1);
@@ -243,7 +249,10 @@ test("native download reauthorizes access, counts delivery atomically and not au
     await until(async () => (await storage.getMediaItem(item.id)).downloadCount === 4);
     assert.equal((await realFetch(`${base}/api/media/${item.id}/download?quality=invalid`)).status, 400);
     assert.equal((await realFetch(`${base}/api/media/${item.id}/analysis`)).status, 401);
-  } finally { server.close(); await once(server, "close"); }
+  } finally {
+    server.close(); await once(server, "close");
+    await db.delete(users).where(eq(users.id, account.id));
+  }
 });
 
 test("aborted streamed originals are destroyed and never counted", async () => {

@@ -1,5 +1,18 @@
 # Photo quality and storage review
 
+## Download contract checks
+
+`node --import tsx scripts/test-image-downloads.mjs --enable-uploads` runs against disposable
+local PostgreSQL and mocked storage, with uploads enabled only in that isolated
+test environment. Filename tests include decomposed umlauts, header/path
+characters, empty/long titles, UTC day boundaries and all supported MIME types.
+Low-Res checks decode JPEG pixels, verify white transparency, EXIF orientation,
+no enlargement, exact byte limits, bounded resolution fallback, original-byte
+identity, temporary cleanup and native-work cancellation/concurrency.
+A deterministic detail-rich noise fixture fits at 960 × 640 and retains
+over 25 dB PSNR against the equivalently resized input. This is a mechanical
+regression check, not a guarantee of professional photographic quality.
+
 ## Previous behavior and the new contract
 
 Every new photo formerly became a max-2560px WebP, trying quality
@@ -33,14 +46,24 @@ Free quota.
   quality ladder is retained; smaller edges are a bounded fallback if necessary.
   There is no lower-size target and no enlargement.
 - **Low-Res download:** on demand from the saved high-resolution file or Creator
-  original, never normally from the thumbnail. Oriented WebP at most **1600px**
+  original, never normally from the thumbnail. Oriented JPEG at most **1600px**
   long edge and **500,000 bytes**, no enlargement, minimum size or padding.
   Try quality 100/98/95/90/85/80; only if none fits, try 1280px then 960px
   at those steps. Historical decodable Base64 photos use their large field too;
-  lost original detail cannot be recovered. Menu text is **Low-Res · up to
+  lost original detail cannot be recovered. Transparency is flattened onto white.
+  JPEG uses 4:4:4 chroma sampling. Menu text is **Low-Res · JPEG · up to
   0.50 MB**; High-Res still displays actual stored bytes and provenance.
   The `lowBytes` database value remains *thumbnail storage*, not download size.
   No new object, persistent cache or quota/cleanup entry is created.
+  All delivered files use `vco_YYYY-MM-DD_event-slug_m<ID>_<high|low>.<ext>`,
+  e.g. `vco_2026-10-13_event-name_m797_low.jpg`. The date is the saved event
+  date in UTC, never the download date or the server's local timezone.
+  Event titles become lowercase ASCII slugs (ä/ö/ü → ae/oe/ue, ß → ss,
+  accents removed), limited to 80 characters. Other characters become hyphens;
+  empty slugs use `event-<event ID>`. Extensions follow the delivered MIME:
+  Low-Res is always `.jpg` / `image/jpeg`; High-Res and video bytes and formats
+  remain unchanged. Official, Creator and historical downloads share this rule.
+  Credits remain available through the existing credit function, not filenames.
   Sources are capped at the existing historical 100-MiB limit and configured
   image pixel limit (40 MP by default). Modern inputs spool to bounded temporary
   disk, cleaned on success, error or abort; historical Base64 decoding remains

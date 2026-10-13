@@ -48,8 +48,8 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
       people.push(user);
     }
     storage.cleanupObjects=async()=>savedCleanup.call(storage,people.map(p=>p.id));
-    const gallery=await storage.createEvent({title:"Original fixture",description:"Synthetic",date:new Date(),creatorId:people[0].id});
-    const official=await storage.createEvent({title:"Official fixture",description:"Synthetic",date:new Date()});
+    const gallery=await storage.createEvent({title:"Original fixture",description:"Synthetic",date:new Date("2026-10-13T00:00:00Z"),creatorId:people[0].id});
+    const official=await storage.createEvent({title:"Official fixture",description:"Synthetic",date:new Date("2026-10-13T00:00:00Z")});
     galleries.push(gallery.id,official.id);
     await db.update(events).set({visibility:"published",safetyStatus:"legacy"}).where(eq(events.id,gallery.id));
     const app=express();
@@ -88,6 +88,7 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
       assert.equal(authorization.status,200);
       const delivery=await request((await authorization.json()).url,role);
       assert.equal(delivery.status,200);assert.equal(delivery.headers.get("content-type"),mime);
+       assert.equal(delivery.headers.get("content-disposition"),`attachment; filename="vco_2026-10-13_original-fixture_m${item.id}_high.${format==="jpeg"?"jpg":format}"`);
       assert.equal(hash(Buffer.from(await delivery.arrayBuffer())),hash(bytes));
       // The count commits after streaming, not on the authorization request.
       for(let i=0;i<20 && (await storage.getMediaItem(item.id)).downloadCount!==1;i++) await new Promise(r=>setTimeout(r,20));
@@ -96,11 +97,13 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
       assert.equal((await request(`/api/media/${item.id}/download?quality=low`)).status,401);
       const lowDelivery = await request(`/api/media/${item.id}/download?quality=low`,role);
       assert.equal(lowDelivery.status,200);
-      assert.equal(lowDelivery.headers.get("content-type"),"image/webp");
-      assert.equal(lowDelivery.headers.get("content-disposition"),`attachment; filename="media-${item.id}-low.webp"`);
+      assert.equal(lowDelivery.headers.get("content-type"),"image/jpeg");
+      assert.equal(lowDelivery.headers.get("content-disposition"),`attachment; filename="vco_2026-10-13_original-fixture_m${item.id}_low.jpg"`);
       const lowBytes=Buffer.from(await lowDelivery.arrayBuffer());
       assert.ok(lowBytes.length<=500_000);
       const lowMeta=await sharp(lowBytes).metadata();
+       assert.equal(lowMeta.format,"jpeg");
+       await sharp(lowBytes).stats();
       assert.deepEqual([lowMeta.width,lowMeta.height],[48,32]);
       assert.equal(store.writes.length,writes);
       for(let i=0;i<20 && (await storage.getMediaItem(item.id)).downloadCount!==2;i++) await new Promise(r=>setTimeout(r,20));
@@ -178,6 +181,8 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
       url:`data:image/webp;base64,${legacyBytes.toString("base64")}`,thumbnail:"broken-thumbnail",tags:["unchanged"],caption:"Unchanged"});
     const legacyLow=await request(`/api/media/${historical.id}/download?quality=low`);
     assert.equal(legacyLow.status,200);
+    assert.equal(legacyLow.headers.get("content-type"),"image/jpeg");
+    assert.equal(legacyLow.headers.get("content-disposition"),`attachment; filename="vco_2026-10-13_official-fixture_m${historical.id}_low.jpg"`);
     assert.ok((await legacyLow.arrayBuffer()).byteLength<=500_000);
     for(let i=0;i<20 && (await storage.getMediaItem(historical.id)).downloadCount!==1;i++) await new Promise(r=>setTimeout(r,20));
     assert.equal((await storage.getMediaItem(historical.id)).downloadCount,1);
@@ -235,6 +240,7 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
     const importedLowBytes=Buffer.from(await importedLow.arrayBuffer());
     assert.ok(importedLowBytes.length<=500_000);
     const importedLowMeta=await sharp(importedLowBytes).metadata();
+    assert.equal(importedLowMeta.format,"jpeg");
     assert.deepEqual([importedLowMeta.width,importedLowMeta.height],[1280,1600]);
     assert.equal((await request(`/api/media/${imported.id}/download?quality=high`)).status,401);
   } finally {

@@ -49,7 +49,8 @@ export async function prepareLowResolution(source: string | Buffer, signal: Abor
     const image = sharp(source, options).rotate()
       .resize({ width: edge, height: edge, fit: "inside", withoutEnlargement: true })
       .timeout({ seconds: Math.min(10, Math.floor(remaining / 1000)) })
-      .webp({ quality, effort: 4 });
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality, chromaSubsampling: "4:4:4" });
     const cancel = () => image.destroy();
     signal.addEventListener("abort", cancel, { once: true });
     try {

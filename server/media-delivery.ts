@@ -1,8 +1,8 @@
-import type { MediaItem } from "@shared/schema";
+import type { Event, MediaItem } from "@shared/schema";
 import { Readable } from "stream";
 import { lowResolutionDownload } from "./low-resolution-download";
 import { getMediaContentType, readMediaStream } from "./media-storage";
-import { topShotDownloadName } from "../client/src/lib/top-shot-download";
+import { downloadFilename } from "./download-filename";
 
 function legacyImage(value: string) {
   if (!value || value.length > 140 * 1048576 + 100) throw new Error("Invalid legacy media");
@@ -13,7 +13,7 @@ function legacyImage(value: string) {
   return { data, contentType: match[1] };
 }
 
-export async function downloadStream(item: MediaItem, quality: "high" | "low", signal?: AbortSignal) {
+export async function downloadStream(item: MediaItem, event: Pick<Event, "id" | "title" | "date">, quality: "high" | "low", signal?: AbortSignal) {
   const source = item.url;
   const key = /^\/api\/media\/files\/((?:media|thumb)-[0-9a-f-]{36}\.(?:jpg|png|webp|gif|mp4|mov|webm))$/.exec(source)?.[1];
   let contentType: string;
@@ -26,9 +26,9 @@ export async function downloadStream(item: MediaItem, quality: "high" | "low", s
       if (!legacy.contentType.startsWith("image/")) throw new Error("Invalid photo source");
       return Readable.from(legacy.data);
     }, signal);
-    contentType = "image/webp";
+    contentType = "image/jpeg";
     stream = Readable.from(bytes);
-    return { stream, contentType, filename: topShotDownloadName(item, quality, source, contentType) };
+    return { stream, contentType, filename: downloadFilename(item, event, quality, contentType) };
   }
   if (key) {
     contentType = getMediaContentType(key);
@@ -40,5 +40,5 @@ export async function downloadStream(item: MediaItem, quality: "high" | "low", s
     contentType = legacy.contentType;
     stream = Readable.from(legacy.data);
   }
-  return { stream, contentType, filename: topShotDownloadName(item, quality, source, contentType) };
+  return { stream, contentType, filename: downloadFilename(item, event, quality, contentType) };
 }

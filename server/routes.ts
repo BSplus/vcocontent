@@ -398,7 +398,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (req.query.operation!==undefined && (!req.user || !await validDownloadOperation(req.query.operation,req.user.id,id,quality)))
         return res.status(400).json({error:"Download authorization expired. Please request a new download."});
       const operation=typeof req.query.operation==="string"?req.query.operation:randomUUID();
-      const { stream, contentType, filename } = await downloadStream(item, quality, controller.signal);
+      const { stream, contentType, filename } = await downloadStream(item, event, quality, controller.signal);
       if (res.destroyed) { stream.destroy(); return; }
       res.setHeader("Content-Type", contentType);
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

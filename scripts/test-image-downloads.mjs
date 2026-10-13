@@ -53,7 +53,7 @@ try {
     ...(files.length?files:["tests/media-objects.test.mjs","tests/low-resolution-download.test.mjs","tests/image-download-routes.test.mjs","tests/media-budget.test.mjs",
       // Photo import/offline downloads are exercised by image-download-routes.
       // The broader mixed video/import suite can still be requested explicitly.
-      "tests/creator-upload.test.mjs","tests/download-access.test.mjs"])],{env,stdio:"inherit"});
+      "tests/creator-upload.test.mjs","tests/download-access.test.mjs","tests/download-filename.test.mjs"])],{env,stdio:"inherit"});
   const [code]=await once(child,"exit");
   process.exitCode=code ?? 1;
 } finally {

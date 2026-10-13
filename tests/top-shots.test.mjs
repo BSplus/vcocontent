@@ -9,7 +9,7 @@ import ws from "ws";
 import { db } from "../server/db.ts";
 import { events, mediaItems, users } from "../shared/schema.ts";
 import { eq } from "drizzle-orm";
-import { topShotDownloadName } from "../client/src/lib/top-shot-download.ts";
+import { downloadFilename } from "../server/download-filename.ts";
 
 const base = process.env.TEST_BASE_URL || "http://127.0.0.1:5000";
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -186,12 +186,12 @@ test("top shots rank public photos and videos together without creator or premiu
   }
 });
 
-test("top shots preserve actual photo and video download formats, including poster", () => {
-  assert.equal(topShotDownloadName({ id: 1, type: "image" }, "high", "/media/photo.webp", "image/webp"), "media-1-high.webp");
-  assert.equal(topShotDownloadName({ id: 1, type: "image" }, "low", "/media/photo.webp", "image/jpeg"), "media-1-low.jpg");
-  assert.equal(topShotDownloadName({ id: 2, type: "video" }, "high", "/media/clip.webm", "video/webm"), "media-2-high.webm");
-  assert.equal(topShotDownloadName({ id: 2, type: "video" }, "high", "/api/media/legacy/2/file", "video/quicktime"), "media-2-high.mov");
-  assert.equal(topShotDownloadName({ id: 2, type: "video" }, "low", "/media/poster.webp", "image/webp"), "media-2-poster.webp");
+test("top shots preserve actual photo and video download formats", () => {
+  const event = { id: 7, title: "Event name", date: new Date("2026-10-13T00:00:00Z") };
+  for (const [id, quality, mime, extension] of [
+    [1, "high", "image/webp", "webp"], [1, "low", "image/jpeg", "jpg"],
+    [2, "high", "video/webm", "webm"], [2, "high", "video/quicktime", "mov"],
+  ]) assert.equal(downloadFilename({ id }, event, quality, mime), `vco_2026-10-13_event-name_m${id}_${quality}.${extension}`);
 });
 
 test("top shots cards and preview keep portrait media contained and gate video playback", async () => {

@@ -23,6 +23,6 @@ test("only VCO low-res photos are anonymous downloads", () => {
 test("download options display measured per-variant megabytes", () => {
   assert.equal(downloadOptionLabel({ highBytes: 2_560_000, lowBytes: 87_000, url:"/api/media/files/media-00000000-0000-4000-8000-000000000000.webp" }, "high"), "High-Res Download · optimized (2.56 MB)");
   assert.equal(downloadOptionLabel({ highBytes: 2_560_000, url:"/api/media/files/media-00000000-0000-8000-8000-000000000000.jpg" }, "high"), "Original Download · uploaded file (2.56 MB)");
-  assert.equal(downloadOptionLabel({ highBytes: 2_560_000, lowBytes: 87_000 }, "low"), "Low-Res · up to 0.50 MB");
-  assert.equal(downloadOptionLabel({ highBytes: null, lowBytes: null }, "low"), "Low-Res · up to 0.50 MB");
+  assert.equal(downloadOptionLabel({ highBytes: 2_560_000, lowBytes: 87_000 }, "low"), "Low-Res · JPEG · up to 0.50 MB");
+  assert.equal(downloadOptionLabel({ highBytes: null, lowBytes: null }, "low"), "Low-Res · JPEG · up to 0.50 MB");
 });

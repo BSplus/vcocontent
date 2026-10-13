@@ -4,7 +4,7 @@ import { isCreatorOriginal } from "@shared/image-provenance";
 export type DownloadQuality = "high" | "low";
 
 export function downloadOptionLabel(item: MediaItem, quality: DownloadQuality): string {
-  if (quality === "low") return "Low-Res · up to 0.50 MB";
+  if (quality === "low") return "Low-Res · JPEG · up to 0.50 MB";
   const bytes = item.highBytes;
   const size = typeof bytes === "number" && bytes > 0
     ? `${(bytes / 1_000_000).toFixed(2)} MB`
