@@ -193,13 +193,13 @@ export default function HomePage() {
               </div>
               {topShotsLoading ? <div role="status" aria-label="Loading Top shots" className="mobile-gallery-row grid grid-cols-1 gap-4 md:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="mobile-gallery-card h-72 animate-pulse rounded-md bg-card/70" />)}</div> : topShotsError ? <div role="alert" className="border border-border bg-card p-5"><p>Top shots are temporarily unavailable.</p><Button variant="outline" className="mt-3" onClick={() => void retryTopShots()}>Try again</Button></div> : (
                 <MobileGalleryRow label="Top shots" className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  {topShots.slice(0, 3).map((shot) => <button key={shot.id} type="button" onClick={(event) => { previewOpener.current = event.currentTarget; setSelectedMedia(shot); }} aria-label={`Preview ${shot.type === "video" ? "video" : "photo"}: ${shot.caption || `Media ${shot.id}`}`} className="group flex min-w-0 flex-col overflow-hidden rounded-md border border-foreground/15 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                  {topShots.slice(0, 3).map((shot) => <button key={shot.id} type="button" onClick={(event) => { previewOpener.current = event.currentTarget; setSelectedMedia(shot); }} aria-label={`Preview ${shot.type === "video" ? "video" : "photo"}: ${shot.caption || `Media ${shot.id}`}`} className="group flex w-full min-w-0 max-w-full flex-col overflow-hidden rounded-md border border-foreground/15 bg-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                       <span className="relative flex h-60 w-full items-center justify-center bg-background sm:h-72 md:h-64 lg:h-72">
                       <VisibleThumbnail anticipate={shot.id === topShots[0]?.id} src={shot.thumbnail} alt="" className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none" />
                       {shot.type === "video" && <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded bg-black/85 px-2 py-1 text-xs font-semibold text-white"><PlayCircle className="h-4 w-4" /> Video</span>}
                     </span>
                       <span className="flex w-full items-center justify-between gap-3 p-4">
-                       <span className="line-clamp-2 min-w-0 text-sm font-semibold">{shot.caption || (shot.type === "video" ? "Featured video" : "Featured photo")}</span>
+                        <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere] text-sm font-semibold">{shot.caption || (shot.type === "video" ? "Featured video" : "Featured photo")}</span>
                        <span className="shrink-0 text-xs font-semibold text-foreground/70">{shot.downloadCount} downloads</span>
                     </span>
                      <span className="flex w-full items-center gap-2 border-t border-foreground/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-primary"><Eye className="h-3.5 w-3.5" />Preview {shot.type === "video" ? "video" : "photo"}</span>
