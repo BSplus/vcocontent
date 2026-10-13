@@ -39,8 +39,10 @@ async function query(statement: ReturnType<typeof sql>) {
 }
 export type RouteQuery = typeof query;
 export function assertNewMediaUploadsEnabled() {
-  if (process.env.MEDIA_STORAGE_PROVIDER === "r2" &&
-      process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED !== "true") throw new ObjectStoreError("configuration");
+  const enabled = process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED;
+  if (enabled === "false" ||
+      (process.env.MEDIA_STORAGE_PROVIDER === "r2" && enabled !== "true"))
+    throw new ObjectStoreError("configuration");
 }
 export async function routeFor(key: string, registered = false) {
   assertMediaKey(key);

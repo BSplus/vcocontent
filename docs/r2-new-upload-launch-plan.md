@@ -1,6 +1,9 @@
 # R2 new-upload launch — first report
 
-**Current scope:** [database-only dummy reset and Production preparation](r2-production-launch-preparation.md).
+**Current scope:** [Production R2 launch checklist](r2-production-launch-checklist.md).
+The old database-reset prerequisite below is superseded. Keep the accepted clean
+Production database. The old Nextcloud connection and document 48 are not needed
+and must not be restored. Do not execute old cleanup SQL or migrate dummy media.
 Earlier reversible archival recommendations below are superseded and their
 tooling removed. No legacy media migration or archival system is required.
 

@@ -1,5 +1,10 @@
 # Launch cleanup: Development complete, Production operator action pending
 
+**Historical status only. Current launch plan:
+[Production R2 launch checklist](r2-production-launch-checklist.md). Production cleanup
+is not a prerequisite and must not be executed under the current instructions.
+The older approvals and deletion steps below are not current execution authority.**
+
 13 October 2026. Cleanup explicitly approved. No new archive, migration,
 backup service or rollback rehearsal is required. No deployment or Production
 R2 activation is authorized.

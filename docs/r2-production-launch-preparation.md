@@ -1,3 +1,9 @@
+# Superseded launch prerequisites
+
+**Use [the Production R2 launch checklist](r2-production-launch-checklist.md).
+Database-only cleanup is no longer required; no destructive Production cleanup,
+schema publication or R2 activation is authorized by the historical preparation below.**
+
 # Clean-library reset and Production R2 launch preparation
 
 **Current status:** [Development cleanup result and Production operator steps](launch-cleanup-status.md).
