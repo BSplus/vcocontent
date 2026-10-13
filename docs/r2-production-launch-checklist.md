@@ -130,17 +130,26 @@ A healthy startup/config check is not proof of real S3 connectivity.
 
 ### 3. You authorize; Agent runs one controlled Production smoke
 
-Keep the deployment **private**. Use existing eligible Creator/admin accounts
+**Current controlling procedure:** see
+`docs/r2-production-smoke-procedure.md`. The operator requires normal uploads
+blocked BEFORE, DURING and AFTER the test, with exact-scope cleanup. The proposed
+smoke-only authorization is not implemented yet and needs separate approval and
+manual publishing. Do not flip the global flag to `true` for a smoke window.
+This supersedes the earlier temporary-global-gate/private-window approach.
+
+Use existing eligible Creator/admin accounts
 and an existing second non-admin account; do not change roles or create users
 to manufacture test permissions.
 
-Approve one access-isolated test window. Only then temporarily permit the test
-uploads. If other users/API clients can upload during this window, do not open
-the global gate until test access is isolated. Ordinary public uploads stay closed.
+Approve one bounded test run using only the scoped authorization in the
+controlling procedure. No other users or API clients receive upload permission.
+Deployment privacy is optional additional protection; ordinary uploads stay
+closed regardless of visibility.
 
 Scope: one small Creator photo + preview and one short official video + poster,
 with at most one normal AI replacement poster: **five test-owned objects maximum**.
-Record the new IDs/keys; no bulk import, dummy migration or cleanup.
+Record the new IDs/keys; no bulk import, dummy migration or existing-data cleanup.
+Remove only this run's test data according to the controlling procedure.
 
 | Required check | PASS criterion |
 |---|---|
@@ -153,15 +162,20 @@ Record the new IDs/keys; no bulk import, dummy migration or cleanup.
 | Downloads | Link issuance counts 0; completed official-video transfer counts 1; replay still counts 1 |
 | Normal processing | AI/safety jobs settle normally; refreshed URLs point to the current valid poster |
 
+The controlling procedure keeps test galleries in draft. If official-download
+statistics require public content, defer that distinct workflow check rather
+than publishing dummy data or weakening access controls; identify it explicitly
+in the report, not as a measured PASS.
+
 Quota accounting is measured in the smoke; limit enforcement is covered by the
 existing regression/configuration checks, not by filling a real Creator's quota.
 Anonymous application checks use no app session; the private platform access gate
 must not be mistaken for application permission denial.
 
-Return the upload gate to **`false` in a guaranteed finally step**, including
-failure, and confirm the runtime has adopted it. Apply configuration changes
-through Publishing/re-publish as required. Keep test galleries hidden afterward;
-no separate deletion/cleanup operation is needed.
+Keep the upload gate **`false` throughout**, including on failure. Revoke scoped
+permissions, drain only test-owned work, remove only exact manifest-owned rows
+and keys, and verify actual absence. Hidden galleries alone are no longer
+sufficient for this smoke: the operator explicitly requires cleanup.
 
 ### 4. You approve normal uploads after the recorded smoke PASS
 
