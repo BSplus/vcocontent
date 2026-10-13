@@ -76,6 +76,31 @@ test("environment isolation and read-only production gates use synthetic credent
   assert.throws(()=>mediaDatabaseFingerprint("https://example.invalid"),ObjectStoreError);
 });
 
+test("credential isolation diagnostic names the resolved environment and keys without exposing values",()=>{
+  const production={...config,MEDIA_STORAGE_ENVIRONMENT:"production",NODE_ENV:"production",REPLIT_DEPLOYMENT:"1",
+    MEDIA_STORAGE_PRODUCTION_APPROVED:"true",R2_BUCKET:PRODUCTION_MEDIA_BUCKET,
+    R2_PROD_ACCESS_KEY_ID:"synthetic-prod-access",R2_PROD_SECRET_ACCESS_KEY:"synthetic-prod-secret"};
+  delete production.R2_DEV_ACCESS_KEY_ID;
+  delete production.R2_DEV_SECRET_ACCESS_KEY;
+  for (const [environment,base,keys] of [
+    ["production",production,["R2_DEV_ACCESS_KEY_ID","R2_DEV_SECRET_ACCESS_KEY"]],
+    ["development",config,["R2_PROD_ACCESS_KEY_ID","R2_PROD_SECRET_ACCESS_KEY"]],
+  ]) {
+    for (const value of ["", "synthetic-conflicting-value-must-not-appear"]) {
+      assert.throws(()=>r2Config({...base,...Object.fromEntries(keys.map(key=>[key,value]))}),error=>{
+        assert.ok(error instanceof ObjectStoreError);
+        assert.equal(error.code,"configuration");
+        assert.equal(error.message,"Media storage configuration");
+        assert.deepEqual(error.diagnostic,{reason:"opposite_environment_credentials",environment,conflictingKeys:keys});
+        const output=JSON.stringify(error);
+        for (const sensitive of ["synthetic-conflicting-value-must-not-appear","synthetic-prod-access","synthetic-prod-secret",databaseUrl])
+          assert.ok(!output.includes(sensitive));
+        return true;
+      });
+    }
+  }
+});
+
 test("actual S3 adapter contract: private put, metadata, pinned Range, existence, delete, no bearer signing",async()=>{
   const objects=new Map(),calls=[];
   const client={async send(command,options) {

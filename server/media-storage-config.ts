@@ -1,8 +1,19 @@
 import { createHash } from "node:crypto";
 
 type Environment = Record<string, string | undefined>;
+type MediaConfigurationDiagnostic = {
+  reason: "opposite_environment_credentials";
+  environment: "development" | "production";
+  conflictingKeys: readonly (
+    "R2_DEV_ACCESS_KEY_ID" | "R2_DEV_SECRET_ACCESS_KEY" |
+    "R2_PROD_ACCESS_KEY_ID" | "R2_PROD_SECRET_ACCESS_KEY"
+  )[];
+};
 export class ObjectStoreError extends Error {
-  constructor(public code: "configuration" | "authorization" | "missing" | "upstream" | "integrity" | "retained") {
+  constructor(
+    public code: "configuration" | "authorization" | "missing" | "upstream" | "integrity" | "retained",
+    public diagnostic?: MediaConfigurationDiagnostic,
+  ) {
     super(`Media storage ${code}`); this.name = "ObjectStoreError";
   }
 }

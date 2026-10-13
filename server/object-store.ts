@@ -31,10 +31,14 @@ export function objectMime(key: string) {
 export function r2Config(env = process.env) {
   const environment = mediaStorageEnvironment(env);
   const forbidden = environment === "development"
-    ? ["R2_PROD_ACCESS_KEY_ID","R2_PROD_SECRET_ACCESS_KEY"]
-    : ["R2_DEV_ACCESS_KEY_ID","R2_DEV_SECRET_ACCESS_KEY"];
-  if (forbidden
-    .some(key => Object.hasOwn(env,key))) throw new ObjectStoreError("configuration");
+    ? ["R2_PROD_ACCESS_KEY_ID","R2_PROD_SECRET_ACCESS_KEY"] as const
+    : ["R2_DEV_ACCESS_KEY_ID","R2_DEV_SECRET_ACCESS_KEY"] as const;
+  const conflictingKeys = forbidden.filter(key => Object.hasOwn(env,key));
+  if (conflictingKeys.length) throw new ObjectStoreError("configuration", {
+    reason: "opposite_environment_credentials",
+    environment,
+    conflictingKeys,
+  });
   const prefix = environment === "development" ? "R2_DEV" : "R2_PROD";
   if (!/^[0-9a-f]{32}$/.test(env.R2_ACCOUNT_ID || "") ||
       !/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(env.R2_BUCKET || "") ||
