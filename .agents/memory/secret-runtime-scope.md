@@ -52,6 +52,10 @@ without credential inspection, secret renaming or repeatedly ineffective UI
 exclusions. It is an explicit isolation workaround, not evidence that the
 original injection source was identified.
 
+The operator confirmed that the isolated startup worked after publishing.
+Retain this Production-only isolation unless runtime evidence establishes that
+the original unwanted injection has been resolved.
+
 **How to apply:** Retain Production/authentication/integration configuration and
 all target, bucket and upload safeguards. Applying the prepared command still
 requires the operator's publish; preparation does not authorize automatic
