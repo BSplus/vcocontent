@@ -5,12 +5,14 @@ import { db } from "./db";
 import { events, nextcloudSources } from "@shared/schema";
 import { encryptManifest, decryptManifest } from "./import-manifest";
 import { NextcloudError, resolveSource, type SourceInput } from "./nextcloud";
+import { mediaCreditSchema } from "@shared/media-credit";
 
 export const sourceEdits = z.array(z.object({
   id: z.string().uuid().optional(),
   link: z.string().url().max(2048),
   password: z.string().max(256).optional(),
   removePassword: z.boolean().optional(),
+  photographer: mediaCreditSchema.optional(),
 })).max(10);
 type SavedSource = SourceInput & { id: string };
 
@@ -19,8 +21,8 @@ export async function savedSourceInputs(eventId: number): Promise<SavedSource[]>
   return row ? decryptManifest<SavedSource[]>(row.encrypted) : [];
 }
 export async function readSources(eventId: number) {
-  return (await savedSourceInputs(eventId)).map(({ id, link, password }) => ({
-    id, link, hasPassword: !!password,
+  return (await savedSourceInputs(eventId)).map(({ id, link, password, photographer }) => ({
+    id, link, hasPassword: !!password, photographer: photographer || "",
   }));
 }
 export function mergeSourceEdits(previous: SavedSource[], edits: z.infer<typeof sourceEdits>) {
@@ -30,8 +32,9 @@ export function mergeSourceEdits(previous: SavedSource[], edits: z.infer<typeof 
     if (edit.id && (!old || ids.has(edit.id))) throw new NextcloudError("Saved sources changed. Reopen the dialog.");
     if (edit.id) ids.add(edit.id);
     const source = { id: old?.id || randomUUID(), link: edit.link.trim(),
+      photographer: edit.photographer === undefined ? old?.photographer : edit.photographer,
       password: edit.removePassword ? undefined : edit.password !== undefined ? edit.password : old?.password };
-    resolveSource(source);
+    source.photographer = resolveSource(source).photographer;
     return source;
   });
 }

@@ -9,7 +9,7 @@ test("public event and image pages return escaped, indexable server HTML", async
   const getEvent = storage.getEvent;
   const getMediaItem = storage.getMediaItem;
   const images = searchData.images;
-  const template = "<!doctype html><html><head></head><body>App</body></html>";
+  const template = '<!doctype html><html><head></head><body><div id="root"></div></body></html>';
   try {
     process.env.PUBLIC_SITE_URL = "https://photos.example.test";
     searchData.images = async () => [];
@@ -28,6 +28,14 @@ test("public event and image pages return escaped, indexable server HTML", async
     assert.ok(!image.html.includes("<script>alert"));
     assert.match(image.html, /rel="canonical" href="https:\/\/photos.example.test\/media\/3"/);
     assert.match(image.html, /og:image" content="https:\/\/photos.example.test\/api\/media\/files\/thumb-/);
+    storage.getMediaItem = async id => id === 3 ? {
+      id, eventId: 8, type: "video", caption: "Video fixture",
+      photographer: "Zoë 李 & Crew", isPremium: false, thumbnail: "/api/media/files/thumb-12345678-1234-1234-1234-123456789abc.webp",
+    } : undefined;
+    const video = await seoHtml({ path: "/", originalUrl: "/media/3" }, template);
+    assert.match(video.html, /Videographer: Zoë 李 &amp; Crew/);
+    assert.match(video.html, /Video by Zoë 李 &amp; Crew/);
+    assert.ok(!video.html.includes("Photographer:") && !video.html.includes("Photo by"));
     assert.equal((await seoHtml({ path: "/", originalUrl: "/events/99" }, template)).status, 404);
     assert.equal((await seoHtml({ path: "/", originalUrl: "/media/99" }, template)).status, 404);
   } finally {

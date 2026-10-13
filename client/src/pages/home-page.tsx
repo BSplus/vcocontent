@@ -24,6 +24,7 @@ import { usePhotoSwipe } from "@/hooks/use-photo-swipe";
 import { ShareMenu } from "@/components/share-menu";
 import MediaRightsNotice from "@/components/media-rights-notice";
 import "@/components/media-preview-mobile.css";
+import { creditText, creditByline } from "@shared/media-credit";
 
 export default function HomePage() {
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
@@ -220,7 +221,7 @@ export default function HomePage() {
                   <span className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
                   <span className="absolute bottom-0 left-0 right-0 p-4">
                     <span className="line-clamp-2 block text-sm font-semibold text-white">{item.caption || "Creator media"}</span>
-                     <span className="mt-2 flex items-center justify-between gap-2 text-xs text-white/85"><span>{item.photographer ? `By ${item.photographer}` : "Creator spotlight"}</span><span className="text-accent">{item.downloadCount} downloads</span></span>
+                      <span className="mt-2 flex items-center justify-between gap-2 text-xs text-white/85"><span>{creditByline(item) || "Creator spotlight"}</span><span className="text-accent">{item.downloadCount} downloads</span></span>
                   </span>
                    <span className="absolute left-3 top-3 flex items-center gap-1.5 bg-background/90 px-2.5 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-accent"><Eye className="h-3.5 w-3.5" />Preview {item.type === "video" ? "video" : "photo"}</span>
                 </button>)}
@@ -259,7 +260,7 @@ export default function HomePage() {
               <Button variant="outline" size="icon" className="h-11 w-11" aria-label="Next media item" disabled={previewIndex >= previewItems.length - 1} onClick={() => navigatePreview(1)}><ChevronRight /></Button>
             </div>}
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>{selectedMedia.photographer && <p className="text-sm text-foreground/70">Photographer: {selectedMedia.photographer}</p>}{selectedMedia.caption && <p className="mt-1 text-sm">{selectedMedia.caption}</p>}</div>
+              <div>{selectedMedia.photographer && <p className="text-sm text-foreground/70">{creditText(selectedMedia)}</p>}{selectedMedia.caption && <p className="mt-1 text-sm">{selectedMedia.caption}</p>}</div>
                <div className="flex w-full flex-wrap gap-2 md:w-auto">
                <DropdownMenu>
                   <DropdownMenuTrigger asChild><Button variant="outline" className="min-h-11"><Download className="mr-2 h-4 w-4" />Download options</Button></DropdownMenuTrigger>
@@ -268,7 +269,7 @@ export default function HomePage() {
                   {selectedMedia.type === "image" && <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "low")}>{downloadOptionLabel(selectedMedia, "low")}</DropdownMenuItem>}
                 </DropdownMenuContent>
               </DropdownMenu>
-               <ShareMenu url={`${window.location.origin}/media/${selectedMedia.id}`} title={selectedMedia.caption || "Media item"} />
+               <ShareMenu url={`${window.location.origin}/media/${selectedMedia.id}`} title={selectedMedia.caption || "Media item"} description={creditByline(selectedMedia)} />
                <Link href={`/media/${selectedMedia.id}`} className="inline-flex min-h-11 items-center px-3 text-sm underline">Media details</Link>
                </div>
             </div>

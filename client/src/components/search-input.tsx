@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { MediaItem } from "@shared/schema";
 import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { creditText } from "@shared/media-credit";
 
 interface SearchInputProps {
   items: MediaItem[];
@@ -72,7 +73,7 @@ export function SearchInput({ items, value, onChange, onSearch, className }: Sea
   const getSuggestionPreview = (item: MediaItem) => {
     const parts = [];
     if (item.caption) parts.push(item.caption);
-    if (item.photographer) parts.push(`📸 ${item.photographer}`);
+    if (item.photographer) parts.push(creditText(item));
     if (item.tags?.length) parts.push(`🏷️ ${item.tags.join(', ')}`);
     return parts.length ? parts.join(' - ') : 'Media item';
   };
@@ -84,7 +85,7 @@ export function SearchInput({ items, value, onChange, onSearch, className }: Sea
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
-              placeholder="Search by description, photographer, or tags..."
+              placeholder="Search descriptions, photographers / videographers, or tags..."
               value={value}
               onChange={(e) => handleSearch(e.target.value)}
               className="pl-10"
@@ -126,7 +127,7 @@ export function SearchInput({ items, value, onChange, onSearch, className }: Sea
                     {(item.photographer || (item.tags?.length ?? 0) > 0) && (
                       <span className="text-xs text-muted-foreground">
                         {[
-                          item.photographer && `📸 ${item.photographer}`,
+                          item.photographer && creditText(item),
                           item.tags?.length && `🏷️ ${item.tags.join(', ')}`
                         ].filter(Boolean).join(' · ')}
                       </span>

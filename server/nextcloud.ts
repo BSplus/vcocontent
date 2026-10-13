@@ -15,11 +15,12 @@ import { createMediaKeys, uploadMedia, type MediaType } from "./media-storage";
 import { enqueueAnalysis } from "./analysis-jobs";
 import { encryptManifest, decryptManifest } from "./import-manifest";
 import { savedSourceInputs, saveSources } from "./nextcloud-sources";
+import { mediaCreditSchema } from "@shared/media-credit";
 
 export class NextcloudError extends Error {}
-export type SourceInput = { link: string; password?: string };
-type Source = { base: URL; root: URL; auth: string };
-type Found = { href: URL; name: string; bytes: number; type: MediaType; mime: string };
+export type SourceInput = { link: string; password?: string; photographer?: string };
+type Source = { base: URL; root: URL; auth: string; photographer?: string };
+type Found = { href: URL; name: string; bytes: number; type: MediaType; mime: string; sourceIndex?: number; photographer?: string };
 const MAX_FILES = Math.min(500, mediaPolicy.eventCount);
 const MAX_BYTES = Math.min(500 * 1048576, mediaPolicy.eventBytes);
 const MAX_DIRS = 300;
@@ -65,6 +66,9 @@ function safePath(url: URL, base: URL): void {
 }
 
 export function resolveSource(input: SourceInput): Source {
+  const credit = mediaCreditSchema.optional().safeParse(input.photographer);
+  if (!credit.success) throw new NextcloudError("Credit cannot exceed 150 characters and must be text.");
+  const photographer = credit.data;
   if (input.link.length > 2048 || (input.password?.length ?? 0) > 256)
     throw new NextcloudError("The Nextcloud link or share password is too long.");
   let link: URL;
@@ -93,7 +97,7 @@ export function resolveSource(input: SourceInput): Source {
       throw new NextcloudError("Invalid subfolder.");
     const root = new URL(`${prefix(base)}/public.php/dav/files/${share[1]}/${parts.map(encodeURIComponent).join("/")}${parts.length ? "/" : ""}`, base);
     safePath(root, base);
-    return { base, root, auth: "Basic " + Buffer.from(`${share[1]}:${input.password || ""}`).toString("base64") };
+    return { base, root, photographer, auth: "Basic " + Buffer.from(`${share[1]}:${input.password || ""}`).toString("base64") };
   }
   if (!configuredBase || configuredBase.origin !== link.origin || prefix(configuredBase) !== prefix(base))
     throw new NextcloudError("Internal Nextcloud access is not configured yet.");
@@ -121,7 +125,7 @@ export function resolveSource(input: SourceInput): Source {
   });
   const root = new URL(`${prefix(base)}/remote.php/dav/files/${encodeURIComponent(username)}/${parts.join("/")}${parts.length ? "/" : ""}`, base);
   safePath(root, base);
-  return { base, root, auth: "Basic " + Buffer.from(`${username}:${password}`).toString("base64") };
+  return { base, root, photographer, auth: "Basic " + Buffer.from(`${username}:${password}`).toString("base64") };
 }
 
 async function request(url: URL, source: Source, method: string, signal?: AbortSignal): Promise<Response> {
@@ -167,7 +171,8 @@ export async function discover(inputs: SourceInput[]): Promise<{ sources: Source
   let skipped = 0, directories = 0, bytes = 0;
   const deadline = AbortSignal.timeout(60000);
   const seen = new Set<string>();
-  for (const source of sources) {
+  for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex++) {
+    const source = sources[sourceIndex];
     const queue = [source.root];
     const visited = new Set<string>();
     while (queue.length) {
@@ -205,7 +210,7 @@ export async function discover(inputs: SourceInput[]): Promise<{ sources: Source
         if (files.length >= MAX_FILES || bytes + length > MAX_BYTES)
           throw new NextcloudError(`Import limit reached (${MAX_FILES} media items or ${Math.floor(MAX_BYTES / 1048576)} MiB).`);
         bytes += length;
-        files.push({ href, name, bytes: length, ...media });
+        files.push({ href, name, bytes: length, ...media, sourceIndex, photographer: source.photographer });
       }
     }
   }
@@ -401,7 +406,9 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
     if (Date.now() - started > MAX_MS) throw new NextcloudError("Import time limit reached.");
     const [lease] = await db.select({ token: nextcloudJobs.workerToken }).from(nextcloudJobs).where(owned);
     if (!lease) throw new NextcloudError("Import lease expired");
-    const source = sources.find(s => file.href.origin === s.root.origin &&
+    // New snapshots bind each file to the source that discovered it. Older
+    // snapshots retain their original path-based lookup and empty credit.
+    const source = file.sourceIndex !== undefined ? sources[file.sourceIndex] : sources.find(s => file.href.origin === s.root.origin &&
       (file.href.pathname === s.root.pathname || file.href.pathname.startsWith(s.root.pathname.replace(/\/$/, "") + "/")))!;
     const key = createHash("sha256").update(file.href.href).digest("hex");
     await db.insert(nextcloudFiles).values({ eventId, sourceKey: key, name: file.name }).onConflictDoNothing();
@@ -446,7 +453,7 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
       const item = await storage.finishMedia(reservation, insertMediaItemSchema.parse({
          eventId, type: saved.mediaType, url: saved.url, thumbnail: saved.thumbnail, storedBytes: saved.storedBytes,
           highBytes: saved.highBytes, lowBytes: saved.lowBytes,
-        objectCount: saved.objectCount, caption: file.name, tags: [], isPremium: false,
+        objectCount: saved.objectCount, caption: file.name, photographer: file.photographer, tags: [], isPremium: false,
        }), record.id, workerToken, true);
       reservation = undefined;
        await queueTags(item.id);

@@ -36,7 +36,7 @@ interface UploadModalProps {
   onOpenChange: (open: boolean) => void;
   eventId: number | null;
 }
-type SourceEntry = { id?: string; link: string; password: string; hasPassword?: boolean; removePassword?: boolean };
+type SourceEntry = { id?: string; link: string; password: string; hasPassword?: boolean; removePassword?: boolean; photographer?: string };
 
 export default function UploadModal({
   open,
@@ -104,8 +104,8 @@ export default function UploadModal({
       || query.state.data.analysisPending > 0 ? 4000 : false,
   });
 
-   const sources = () => links.filter(entry => entry.link.trim()).map(({ id, link, password, removePassword }) =>
-     ({ id, link: link.trim(), password: password || undefined, removePassword }));
+   const sources = () => links.filter(entry => entry.link.trim()).map(({ id, link, password, removePassword, photographer }) =>
+     ({ id, link: link.trim(), password: password || undefined, removePassword, photographer: photographer || "" }));
    const sourcesDirty = JSON.stringify(links) !== JSON.stringify(savedLinks.length ? savedLinks : [{ link: "", password: "" }]);
    const activeImport = !!importProgress && ["scanning", "queued", "running"].includes(importProgress.status);
   const nextcloudPost = async (url: string, body: unknown) => {
@@ -128,7 +128,7 @@ export default function UploadModal({
     }
   };
   const applySavedSources = (data: { sources: Omit<SourceEntry, "password">[] }) => {
-    const entries = data.sources.map(source => ({ ...source, password: "" }));
+    const entries = data.sources.map(source => ({ ...source, photographer: source.photographer || "", password: "" }));
     setSavedLinks(entries);
     setLinks(entries.length ? entries : [{ link: "", password: "" }]);
     setSourcesLoaded(true);
@@ -675,6 +675,10 @@ export default function UploadModal({
                     <Input aria-label={`Share password for link ${i + 1}`} type="password" autoComplete="off"
                       placeholder={entry.hasPassword && !entry.removePassword ? "Saved password kept (enter to replace)" : "Share password (if needed)"} value={entry.password}
                       onChange={e => { const next = [...links]; next[i] = { ...entry, password: e.target.value }; setLinks(next); setPreview(null); }} />
+                    <Label htmlFor={`nc-credit-${i}`}>Photographer / Videographer for link {i + 1}</Label>
+                    <Input id={`nc-credit-${i}`} maxLength={150} value={entry.photographer || ""} aria-describedby={`nc-credit-help-${i}`}
+                      onChange={e => { const next = [...links]; next[i] = { ...entry, photographer: e.target.value }; setLinks(next); setPreview(null); }} />
+                    <p id={`nc-credit-help-${i}`} className="text-sm text-muted-foreground">Optional. Applies only to newly imported files from this source, not to existing media or a running import. Independent of the uploading account and tags.</p>
                     {entry.hasPassword && <Button type="button" variant="ghost" onClick={() => {
                       const next = [...links]; next[i] = { ...entry, password: "", removePassword: !entry.removePassword }; setLinks(next); setPreview(null);
                     }}>{entry.removePassword ? "Keep saved password" : "Remove saved password"}</Button>}

@@ -1,3 +1,5 @@
+import { creditLabel } from "@shared/media-credit";
+
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, char => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -29,10 +31,10 @@ export function eventLinks(items: { id: number; title: string; date: Date | stri
   return `<ul>${items.map(item => `<li><a href="/events/${item.id}">${escapeHtml(item.title)}</a> ${escapeHtml(dateLabel(item.date))}</li>`).join("")}</ul>`;
 }
 
-export function imageLinks(items: { id: number; thumbnail: string; caption: string | null; photographer: string | null }[], eventTitle: string): string {
+export function imageLinks(items: { id: number; type?: string; thumbnail: string; caption: string | null; photographer: string | null }[], eventTitle: string): string {
   return `<div class="public-preview-grid">${items.map(item => {
     const thumbnail = publicThumbnail(item);
-    const label = item.caption || `${eventTitle} photo`;
-    return thumbnail ? `<figure><a href="/media/${item.id}"><img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(label)}" loading="lazy" width="480" height="320"><figcaption>${escapeHtml(label)}</figcaption></a>${item.photographer ? `<p>Photographer: ${escapeHtml(item.photographer)}</p>` : ""}</figure>` : "";
+    const label = item.caption || `${eventTitle} ${item.type === "video" ? "video" : "photo"}`;
+    return thumbnail ? `<figure><a href="/media/${item.id}"><img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(label)}" loading="lazy" width="480" height="320"><figcaption>${escapeHtml(label)}</figcaption></a>${item.photographer ? `<p>${creditLabel(item.type === "video" ? "video" : "image")}: ${escapeHtml(item.photographer)}</p>` : ""}</figure>` : "";
   }).join("")}</div>`;
 }

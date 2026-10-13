@@ -48,7 +48,7 @@ export function AdvancedSearch({
   return (
     <form onSubmit={handleSearch} className={`w-full ${className}`}>
       <label htmlFor="media-search" className="block text-sm font-semibold mb-2">Search media</label>
-      <p id="media-search-help" className="text-sm text-foreground/75 mb-3">Search captions, photographers, tags or entry details. Use Filters to narrow the results.</p>
+      <p id="media-search-help" className="text-sm text-foreground/75 mb-3">Search captions, photographers / videographers, tags or entry details. Use Filters to narrow the results.</p>
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -118,7 +118,7 @@ export function AdvancedSearch({
                     }
                   />
                   <label htmlFor="photographer" className="text-sm font-medium">
-                    Photographers
+                    Photographers / Videographers
                   </label>
                 </div>
 

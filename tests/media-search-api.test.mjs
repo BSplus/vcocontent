@@ -34,6 +34,8 @@ test("public caption search filters the complete stock before paging without cha
     const target = await photo(official);
     const video = await photo(official, { type: "video" });
     const fieldOnly = await photo(official, { caption: "Other team", photographer: "MAHLE RACING TEAM" });
+    const videoCredit = await photo(official, { type: "video", caption: "Other video", photographer: "Zoë 李 Videography" });
+    const photoCredit = await photo(official, { caption: "Other photo", photographer: "Zoë 李 Photography" });
     await db.insert(mediaItems).values(Array.from({ length: 60 }, (_, index) => ({
       eventId: official.id, type: "image", caption: `Unrelated filler ${index}`,
       url: "/fixture.webp", thumbnail: "/fixture.webp",
@@ -76,6 +78,9 @@ test("public caption search filters the complete stock before paging without cha
     assert.deepEqual(ids(await search("/api/media?q=MAHLE&fields=caption&type=image")), [target.id, legacy.id]);
     assert.deepEqual(ids(await search("/api/media?q=MAHLE&fields=caption&type=video")), [video.id]);
     assert.deepEqual(ids(await search("/api/media?q=MAHLE&fields=photographer")), [fieldOnly.id]);
+    assert.deepEqual(ids(await search("/api/media?q=Zo%C3%AB%20%E6%9D%8E&fields=photographer")), ids([photoCredit, videoCredit]));
+    assert.deepEqual(ids(await search("/api/media?q=Zo%C3%AB&fields=photographer&type=video")), [videoCredit.id]);
+    assert.deepEqual(ids(await search("/api/media?q=Zo%C3%AB&fields=photographer&type=image")), [photoCredit.id]);
     assert.deepEqual(await search("/api/media?q=MAHLE&fields="), []);
     assert.deepEqual(await search("/api/media?q=MAHLE&fields=tags,identification"), []);
     const defaults = await search("/api/media?q=MAHLE");

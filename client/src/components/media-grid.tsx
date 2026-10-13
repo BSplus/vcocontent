@@ -37,6 +37,7 @@ import CommunityActions from "@/components/community-actions";
 import VideoPreview from "@/components/video-preview";
 import { usePhotoSwipe } from "@/hooks/use-photo-swipe";
 import "./media-preview-mobile.css";
+import { creditLabel, creditByline } from "@shared/media-credit";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -250,7 +251,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
             </div>
             <div className="p-4 space-y-2">
               <p className="text-sm font-medium line-clamp-2 min-h-5">{item.caption || (item.type === 'video' ? 'Video' : 'Photo')}</p>
-              {item.photographer && <p className="text-sm text-foreground/75">By {item.photographer}</p>}
+              {item.photographer && <p className="text-sm text-foreground/75">{creditByline(item)}</p>}
               <div className="flex flex-wrap items-center gap-2 pt-2">
                 {item.type === "image" && <CommunityActions kind="media" id={item.id} title={item.caption || "photo"} compact />}
                 <Button variant="outline" size="sm" className="min-h-11" onClick={(event) => openItem(item, index, event.currentTarget)}>Preview</Button>
@@ -340,7 +341,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               <div>
                 {selectedItem?.photographer && (
                   <p className="text-sm text-muted-foreground">
-                    Photographer: {selectedItem.photographer}
+                    {creditLabel(selectedItem.type)}: {selectedItem.photographer}
                   </p>
                 )}
               </div>
@@ -361,7 +362,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                 <ShareMenu 
                   url={`${window.location.origin}/media/${selectedItem?.id}`}
                   title={selectedItem?.caption || 'Media item'}
-                  description={selectedItem?.photographer ? `Photo by ${selectedItem.photographer}` : undefined}
+                  description={selectedItem ? creditByline(selectedItem) : undefined}
                 />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

@@ -39,6 +39,7 @@ import { ShieldCheck, ShieldAlert, EyeOff } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import AssignNumberAction from "@/components/assign-number-dialog";
+import { creditLabel } from "@shared/media-credit";
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -490,7 +491,7 @@ export default function AdminDashboard() {
                                 <span className="text-xs text-muted-foreground">Safety: {media.safetyStatus || "unknown"}</span>
                               </div>
                               <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
-                                <dt className="text-muted-foreground">Photographer</dt><dd className="break-words">{media.photographer || "Not provided"}</dd>
+                                <dt className="text-muted-foreground">{creditLabel(item.type)}</dt><dd className="break-words">{media.photographer || "Not provided"}</dd>
                                 <dt className="text-muted-foreground">Tags</dt><dd className="break-words">{tags.length ? tags.join(", ") : "No tags"}</dd>
                                 <dt className="text-muted-foreground">Type</dt><dd>{item.type}</dd>
                               </dl>

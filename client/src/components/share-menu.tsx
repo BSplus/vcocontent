@@ -19,7 +19,7 @@ export function ShareMenu({ url, title, description }: ShareMenuProps) {
   const { toast } = useToast();
 
   const shareUrls = {
-    x: `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title || '')}`,
+    x: `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent([title, description].filter(Boolean).join("\n"))}`,
     facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
     linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
     instagram: `instagram://camera`
@@ -52,7 +52,7 @@ export function ShareMenu({ url, title, description }: ShareMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon">
+        <Button variant="outline" size="icon" aria-label="Share">
           <Share2 className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>

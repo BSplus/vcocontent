@@ -16,6 +16,8 @@ import ws from "ws";
 const video = Buffer.from("000000186674797069736f6d0000020069736f6d6d703431", "hex");
 const objectKey = /^\/api\/media\/files\/((?:media|thumb)-[0-9a-f-]{36}\.(?:jpg|png|gif|webp|mp4|mov|webm))$/;
 const uploadDir = path.join(tmpdir(), "vco-media-uploads");
+// This flag is process-local and inherited only by disposable test servers.
+if (process.env.VCO_TEST_OBJECTS) process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED = "true";
 
 async function storageKeys(objects) {
   const keys = [];
@@ -120,10 +122,11 @@ async function json(response, status) {
   return JSON.parse(text);
 }
 
-function multipart(bytes, filename, mime, type) {
+function multipart(bytes, filename, mime, type, photographer = "  Zoë 李  ") {
   const form = new FormData();
   form.set("type", type);
   form.set("caption", `Smoke test ${type}`);
+  form.set("photographer", photographer);
   form.set("file", new Blob([bytes], { type: mime }), filename);
   return form;
 }
@@ -233,6 +236,7 @@ test("verified creator photo uploads, video rejection, delivery and ownership", 
         body: multipart(bytes, filename, mime, type),
       }), 201);
       uploaded.push(media);
+      assert.equal(media.photographer, "Zoë 李");
       assert.equal(media.eventId, eventId);
       assert.equal(media.type, type);
       assert.match(media.url, objectKey);
@@ -284,9 +288,17 @@ test("verified creator photo uploads, video rejection, delivery and ownership", 
     );
     const longCaption = "Entry 007 — Team One, Porsche, A. Driver. ".repeat(8);
     const updatedImage = await json(await owner(`/api/media/${uploaded[0].id}`, {
-      method: "PUT", json: true, body: { caption: longCaption, tags: ["Manual"] },
+      method: "PUT", json: true, body: { caption: longCaption, tags: ["Manual"], photographer: "  José & <Studio>  " },
     }), 200);
     assert.equal(updatedImage.caption, longCaption);
+    assert.equal(updatedImage.photographer, "José & <Studio>");
+    await json(await owner(`/api/media/${uploaded[0].id}`, {
+      method: "PUT", json: true, body: { photographer: "x".repeat(151) },
+    }), 400);
+    assert.equal((await json(await owner(`/api/media/${uploaded[0].id}`), 200)).photographer, "José & <Studio>");
+    await json(await owner(`/api/events/${eventId}/media/upload`, {
+      method: "POST", body: multipart(image, "long-credit.png", "image/png", "image", "x".repeat(151)),
+    }), 400);
     await json(await outsider(`/api/media/${uploaded[0].id}`, {
       method: "PUT", json: true, body: { caption: "Hijacked" },
     }), 403);

@@ -11,6 +11,7 @@ import MediaRightsNotice from "@/components/media-rights-notice";
 import CommunityActions from "@/components/community-actions";
 import { ShareMenu } from "@/components/share-menu";
 import VideoPreview from "@/components/video-preview";
+import { creditText, creditByline } from "@shared/media-credit";
 
 export default function MediaDetail() {
   const [, params] = useRoute("/media/:id");
@@ -44,9 +45,9 @@ export default function MediaDetail() {
             ? <VideoPreview key={item.id} src={item.url} poster={item.thumbnail} signedIn={!!user} className="max-h-[75vh]" />
             : <img src={item.thumbnail} alt={item.caption || "Esports racing photo"} className="max-h-[75vh] max-w-full object-contain" />}
         </div>
-        {item.photographer && <p className="mt-4">Photographer: {item.photographer}</p>}
+        {item.photographer && <p className="mt-4">{creditText(item)}</p>}
         <div className="mt-4 md:mt-6 flex flex-wrap gap-2 md:gap-3 [&>button]:min-h-11 [&>a]:min-h-11">
-          <ShareMenu url={window.location.href} title={item.caption || "VCO photo"} />
+          <ShareMenu url={window.location.href} title={item.caption || (item.type === "video" ? "VCO video" : "VCO photo")} description={creditByline(item)} />
           <Button variant="outline" onClick={async () => {
             const configuredCanonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href;
             let sourceUrl = `${window.location.origin}${window.location.pathname}`;
@@ -59,7 +60,7 @@ export default function MediaDetail() {
               }
             }
             const credit = [
-              item.photographer?.trim() ? `Photographer: ${item.photographer.trim()}` : "",
+              creditText(item),
               item.caption?.trim() || "",
               `Source: ${sourceUrl}`,
             ].filter(Boolean).join("\n");

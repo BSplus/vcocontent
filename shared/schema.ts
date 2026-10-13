@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { boundedGalleryThumbnailSql } from "./media-query-policy";
+import { mediaCreditSchema } from "./media-credit";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -421,7 +422,7 @@ export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   url: z.union([z.string().url(), z.string().regex(/^\/api\/media\/files\/media-[0-9a-f-]{36}\.(jpg|png|gif|webp|mp4|mov|webm)$/)]),
   thumbnail: z.union([z.string().url(), z.string().regex(/^\/api\/media\/files\/thumb-[0-9a-f-]{36}\.webp$/)]),
   caption: z.string().max(1000, "Caption cannot exceed 1000 characters").optional(),
-  photographer: z.string().optional(),
+  photographer: mediaCreditSchema.optional(),
   tags: z.array(z.string()),
   category: z.string().optional(),
   identification: z.array(identificationSchema).max(12).optional(),

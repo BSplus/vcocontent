@@ -60,3 +60,4 @@
 - [Secret runtime scope](secret-runtime-scope.md) — environment-labelled secret existence is inventory, not proof of credential injection in the running deployment.
 - [Production recovery](production-recovery-boundary.md) — operator confirmed 7-day PITR; record offset timestamps, not snapshot IDs, and never test restore on live data.
 - [Live browser runtime](live-browser-runtime.md) — a testing skill can outlive runtime support; use bounded Chromium CDP checks without auth bypass or counted downloads.
+- [Media credit boundaries](media-credit-boundaries.md) — authorship is independent of uploader/accounts and tags; no automatic profile fallback or retroactive source-credit changes.

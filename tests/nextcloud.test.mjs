@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { discover, resolveSource } from "../server/nextcloud.ts";
-import { startImport, importStatus, stopImportWorker, updateGallery } from "../server/nextcloud.ts";
+import { startImport, importStatus, stopImportWorker, updateGallery, resumeImport } from "../server/nextcloud.ts";
 import { readSources, saveSources } from "../server/nextcloud-sources.ts";
 import { db } from "../server/db.ts";
-import { nextcloudSources, mediaAnalysisJobs } from "../shared/schema.ts";
+import { nextcloudSources, nextcloudJobs, mediaAnalysisJobs } from "../shared/schema.ts";
+import { encryptManifest, decryptManifest } from "../server/import-manifest.ts";
 import { eq } from "drizzle-orm";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -24,6 +25,8 @@ const base = "https://cloud.example.invalid";
 const publicBase = "https://nextcloud.bs-plus.de";
 const vcoBase = "https://nextcloud.vco-motorsports.com";
 const syntheticToken = "TEST_ONLY_NOT_A_REAL_SHARE";
+// Opt in only inside the disposable runner; never open workspace/live uploads.
+if (process.env.VCO_TEST_OBJECTS) process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED = "true";
 const previous = {
   base: process.env.NEXTCLOUD_BASE_URL,
   user: process.env.NEXTCLOUD_USERNAME,
@@ -56,6 +59,80 @@ function dav(folder, entries) {
 function mockOrigin(origin, handler, transport = globalThis.fetch) {
   return (url, options) => new URL(url).origin === origin
     ? handler(url, options) : transport(url, options);
+}
+
+for (const legacy of [false, true]) {
+  test(`source-specific credit snapshots survive resume and source edits (legacy=${legacy})`, { timeout: 60000 }, async () => {
+    const event = await storage.createEvent({ title: "Credit recovery fixture", description: "Synthetic only", date: new Date() });
+    const transport = globalThis.fetch;
+    const image = await sharp({ create: { width: 16, height: 16, channels: 3, background: "red" } }).jpeg().toBuffer();
+    let broken = true;
+    let extra = false;
+    const inputs = [
+      { link: `${base}/s/CREDIT_ONE`, password: "one", photographer: "  Zoë 李  " },
+      { link: `${base}/s/CREDIT_TWO`, password: "two", photographer: "José & <Studio>" },
+    ];
+    globalThis.fetch = mockOrigin(base, (url, options) => {
+      const p = new URL(url).pathname;
+      const second = p.includes("CREDIT_TWO");
+      assert.equal(Buffer.from(options.headers.Authorization.slice(6), "base64").toString(), second ? "CREDIT_TWO:two" : "CREDIT_ONE:one");
+      if (options.method === "PROPFIND") return new Response(dav(p,
+        [[p + (second ? "retry.jpg" : "good.jpg"), false, image.length],
+          ...(extra ? [[p + "new.jpg", false, image.length]] : [])]), { status: 207 });
+      return new Response(second && p.endsWith("retry.jpg") && broken ? Buffer.from("broken") : image);
+    }, transport);
+    const finish = async () => {
+      for (let i = 0; i < 150; i++) {
+        const result = await importStatus(event.id);
+        if (["partial", "completed", "error"].includes(result.status)) return result;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      throw new Error("Credit fixture import timed out");
+    };
+    try {
+      await startImport(event.id, inputs);
+      assert.equal((await finish()).status, "partial");
+      await stopImportWorker();
+      const [job] = await db.select().from(nextcloudJobs).where(eq(nextcloudJobs.eventId, event.id));
+      const manifest = decryptManifest(job.manifest);
+      assert.deepEqual(manifest.files.map(file => [file.sourceIndex, file.photographer]),
+        [[0, "Zoë 李"], [1, "José & <Studio>"]]);
+      if (legacy) {
+        delete manifest.inputs;
+        for (const file of manifest.files) { delete file.sourceIndex; delete file.photographer; }
+        await db.update(nextcloudJobs).set({ manifest: encryptManifest(manifest) }).where(eq(nextcloudJobs.eventId, event.id));
+      }
+      const saved = await readSources(event.id);
+      const [beforeEdit] = await db.select().from(nextcloudJobs).where(eq(nextcloudJobs.eventId, event.id));
+      const [good] = await storage.getMediaItems(event.id);
+      assert.equal(good.photographer, "Zoë 李");
+      await storage.updateMediaItem(good.id, { photographer: "Manual" });
+      await saveSources(event.id, saved.map(source => ({ id: source.id, link: source.link, photographer: "Future only" })));
+      assert.equal((await readSources(event.id))[0].hasPassword, true);
+      const [unchanged] = await db.select().from(nextcloudJobs).where(eq(nextcloudJobs.eventId, event.id));
+      assert.equal(unchanged.manifest, beforeEdit.manifest);
+      assert.equal(decryptManifest(unchanged.manifest).files[1].photographer, legacy ? undefined : "José & <Studio>");
+      broken = false;
+      await resumeImport(event.id);
+      assert.equal((await finish()).status, "completed");
+      const media = await storage.getMediaItems(event.id);
+      assert.equal(media.length, 2);
+      assert.equal(media.find(item => item.caption === "retry.jpg").photographer, legacy ? null : "José & <Studio>");
+      assert.equal((await storage.getMediaItem(good.id)).photographer, "Manual");
+      await stopImportWorker();
+      extra = true;
+      await updateGallery(event.id);
+      assert.equal((await finish()).status, "completed");
+      const updated = await storage.getMediaItems(event.id);
+      assert.equal(updated.length, 4);
+      assert.deepEqual(updated.filter(item => item.caption === "new.jpg").map(item => item.photographer), ["Future only", "Future only"]);
+      assert.equal((await storage.getMediaItem(good.id)).photographer, "Manual");
+    } finally {
+      await stopImportWorker();
+      globalThis.fetch = transport;
+      await storage.deleteEvent(event.id);
+    }
+  });
 }
 
 test("persistent private sources, password edits, restart and non-destructive current-run updates", { timeout: 60000 }, async () => {
@@ -109,10 +186,13 @@ test("persistent private sources, password edits, restart and non-destructive cu
     body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   try {
     assert.deepEqual(await readSources(event.id), []);
-    const savedResponse = await api("/sources", { sources: [{ link, password }, { link: second }] });
+    const savedResponse = await api("/sources", { sources: [{ link, password, photographer: "  Zoë 李  " }, { link: second, photographer: "Other" }] });
     assert.equal(savedResponse.status, 200);
     const saved = (await savedResponse.json()).sources;
     assert.equal(saved.length, 2); assert.equal(saved[0].hasPassword, true);
+    assert.equal(saved[0].photographer, "Zoë 李");
+    assert.equal(saved[1].photographer, "Other");
+    assert.equal((await api("/sources", { sources: [{ link, photographer: "x".repeat(151) }] })).status, 400);
     assert.ok(!JSON.stringify(saved).includes(password));
     assert.equal(propfinds, 0, "saving does not scan");
     const [encrypted] = await db.select().from(nextcloudSources).where(eq(nextcloudSources.eventId, event.id));
@@ -141,18 +221,22 @@ test("persistent private sources, password edits, restart and non-destructive cu
     // Initial analysis must settle before comparing an unchanged job across updates.
     await stopAnalysisWorker();
     const [item] = await storage.getMediaItems(event.id);
-    await storage.updateMediaItem(item.id, { caption: "Preserved manual caption", tags: ["manual-tag"] });
+    assert.equal(item.photographer, "Zoë 李");
+    await storage.updateMediaItem(item.id, { caption: "Preserved manual caption", tags: ["manual-tag"], photographer: "Manual credit" });
     const before = await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id));
     await stopImportWorker();
     entries.push("new.jpg");
+    await saveSources(event.id, saved.map(source => ({ id: source.id, link: source.link, photographer: "New credit" })));
     await updateGallery(event.id);
     assert.deepEqual((await finish()).run, { found: 2, existing: 1, imported: 1, skipped: 0, failed: 0 });
+    assert.equal((await storage.getMediaItems(event.id)).find(media => media.caption === "new.jpg").photographer, "New credit");
     assert.deepEqual(await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id)), before);
     await stopImportWorker();
     await updateGallery(event.id);
     assert.deepEqual((await finish()).run, { found: 2, existing: 2, imported: 0, skipped: 0, failed: 0 });
     assert.equal(gets, 2, "existing files never downloaded again");
     assert.equal((await storage.getMediaItem(item.id)).caption, "Preserved manual caption");
+    assert.equal((await storage.getMediaItem(item.id)).photographer, "Manual credit");
     assert.deepEqual((await storage.getMediaItem(item.id)).tags, ["manual-tag"]);
     await stopImportWorker();
     password = "replacement";
@@ -446,7 +530,7 @@ test("mixed import validates content and size, serves video posters safely, and 
       : repaired && (name === "bad.jpg" || name === "mismatch.jpg") ? jpeg : contents.get(name);
     return new Response(data, { status: 200, headers: { "Content-Length": String(name === "overflow.mp4" && !repaired ? 51 * 1048576 : data.length) } });
   };
-  const source = [{ link: `${base}/s/mixed` }];
+  const source = [{ link: `${base}/s/mixed`, photographer: "  Mixed Zoë 李  " }];
   const finish = async () => {
     for (let i = 0; i < 160; i++) {
       const result = await importStatus(event.id);
@@ -459,6 +543,7 @@ test("mixed import validates content and size, serves video posters safely, and 
     const preview = await discover(source);
     assert.equal(preview.files.filter(file => file.type === "image").length, 6);
     assert.equal(preview.files.filter(file => file.type === "video").length, 6);
+    assert.ok(preview.files.every(file => file.photographer === "Mixed Zoë 李" && file.sourceIndex === 0));
     assert.equal(preview.skipped, 2, "unknown and oversized advertised file are skipped");
     await startImport(event.id, source);
     const first = await finish();

@@ -6,6 +6,7 @@ import { searchData } from "./public-search-data";
 import { dateLabel, escapeHtml, eventLinks, imageLinks, jsonLd, publicThumbnail, summary } from "./seo-markup";
 import { ARCHIVE_FAQ } from "@shared/public-content";
 import { SITE_NAME, HOME_TITLE, HOME_DESCRIPTION, SOCIAL_IMAGE, SOCIAL_IMAGE_ALT } from "@shared/site-metadata";
+import { creditText } from "@shared/media-credit";
 
 const defaultTitle = HOME_TITLE;
 const defaultDescription = HOME_DESCRIPTION;
@@ -104,7 +105,7 @@ export async function seoHtml(req: Request, html: string): Promise<{ html: strin
       indexable = item.type === "image" && !!thumbnail;
       body = `<p><a href="/events/${event.id}">Back to event gallery</a></p><h1>${escapeHtml(caption || `Sim racing ${kind}`)}</h1>`;
       if (thumbnail) body += `<img class="public-photo" src="${escapeHtml(thumbnail)}" alt="${escapeHtml(imageAlt)}" width="960" height="640">`;
-      if (item.photographer) body += paragraph(`Photographer: ${item.photographer}`);
+      if (item.photographer) body += paragraph(creditText(item));
       body += `<p>Event: <a href="/events/${event.id}">${escapeHtml(event.title)}</a> ${escapeHtml(dateLabel(event.date))}</p>`;
       body += paragraph("Download availability does not grant a reuse licence. Check the applicable rights and permissions before publishing or reusing media.");
       body += `<p><a href="/auth">Register or sign in for original downloads</a></p>`;

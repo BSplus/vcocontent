@@ -33,6 +33,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { analysisPending, requestAnalysis, type AnalysisState } from "@/hooks/use-media-analysis";
 import { useAuth } from "@/hooks/use-auth";
 import LegalLinks from "@/components/legal-links";
+import { mediaCreditSchema, uploadCreditLabel } from "@shared/media-credit";
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -334,6 +335,11 @@ export default function MediaUploadModal({
       setUploads(previous => previous.map(u => u.file === upload.file ? { ...u, ...changes } : u));
     };
     try {
+      const credit = mediaCreditSchema.safeParse(form.getValues("photographer") || "");
+      if (!credit.success) {
+        toast({ title: "Credit too long", description: "Maximum 150 characters.", variant: "destructive" });
+        return;
+      }
       if ((form.getValues("caption") || "").length > 1000) {
         toast({ title: "Caption too long", description: "Maximum 1000 characters.", variant: "destructive" });
         return;
@@ -356,7 +362,7 @@ export default function MediaUploadModal({
             upload,
             tags,
             caption: form.getValues("caption") || "",
-            photographer: form.getValues("photographer") || "",
+            photographer: credit.data,
           });
           
           // Analysis commits with the saved media; never await the model here.
@@ -576,12 +582,15 @@ export default function MediaUploadModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="photographer">Photographer</Label>
+            <Label htmlFor="photographer">{uploadCreditLabel(uploads.map(u => u.file.type.startsWith("video/") || /\.(mp4|mov|webm)$/i.test(u.file.name) ? "video" : "image"))}</Label>
             <Input
               id="photographer"
+              maxLength={150}
+              aria-describedby="upload-credit-help"
               {...form.register("photographer")}
               className="touch-auto"
             />
+            <p id="upload-credit-help" className="text-sm text-muted-foreground">Optional. This name applies to all files in this upload, independently of the uploading account and tags.</p>
           </div>
 
           <div className="space-y-2">

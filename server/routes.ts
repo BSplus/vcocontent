@@ -48,6 +48,7 @@ import { effectiveEventChanges } from "@shared/event-changes";
 import {supportedPhotoObservations} from "./utils/photo-number-evidence";
 import { registerManualNumberRoutes } from "./manual-number-routes";
 import { registerMediaEdge, edgeOrigin, publicPreviewVersion } from "./media-edge";
+import { mediaCreditSchema } from "@shared/media-credit";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -449,7 +450,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   });
 
   const nextcloudRequest = z.object({
-    sources: z.array(z.object({ link: z.string().url().max(2048), password: z.string().max(256).optional() })).min(1).max(10),
+    sources: z.array(z.object({ link: z.string().url().max(2048), password: z.string().max(256).optional(), photographer: mediaCreditSchema.optional() })).min(1).max(10),
   });
   // Explicit private endpoints: never include source data in public event records.
   for (const action of ["sources", "update", "preview"] as const) {
@@ -744,7 +745,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
           const metadata = z.object({
             type: z.enum(["image", "video"]),
             caption: z.string().max(1000).optional(),
-            photographer: z.string().max(150).optional(),
+            photographer: mediaCreditSchema.optional(),
             tags: z.string().max(1500).optional(),
             autoTag: z.enum(["true", "false"]).optional(),
           }).parse(req.body);
@@ -920,7 +921,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (!event || !canManageEvent(req.user, event.creatorId)) return res.status(403).json({ error: "Access denied." });
       const changes = z.object({
         caption: z.string().max(1000).optional(),
-        photographer: z.string().max(150).optional(),
+        photographer: mediaCreditSchema.optional(),
         tags: z.array(z.string().max(100)).max(100).optional(),
         category: z.string().max(100).optional(),
         identification: z.array(identificationSchema).max(12).optional(),

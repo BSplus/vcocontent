@@ -24,6 +24,7 @@ import { parseEditableTags, reconcileAnalysisTags } from "@/lib/reconcile-analys
 import VideoPreview from "@/components/video-preview";
 import { useAuth } from "@/hooks/use-auth";
 import AssignNumberAction from "@/components/assign-number-dialog";
+import { creditLabel, mediaCreditSchema } from "@shared/media-credit";
 
 interface EditMediaModalProps {
   open: boolean;
@@ -51,7 +52,7 @@ type CaptionScene = "Race Action" | "Start" | "Finish";
 
 const editFormSchema = z.object({
   caption: z.string().max(1000, "Caption cannot exceed 1000 characters"),
-  photographer: z.string(),
+  photographer: mediaCreditSchema,
   tags: z.string(),
 });
 
@@ -429,11 +430,13 @@ export default function EditMediaModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="photographer">Photographer</Label>
+            <Label htmlFor="photographer">{creditLabel(mediaItem.type)}</Label>
             <Input
               id="photographer"
+              maxLength={150}
               {...form.register("photographer")}
             />
+            {form.formState.errors.photographer && <p role="alert" className="text-sm text-destructive">{form.formState.errors.photographer.message}</p>}
           </div>
 
           <div className="space-y-2">

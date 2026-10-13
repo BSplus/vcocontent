@@ -91,7 +91,7 @@ test("edit dialog reloads two saved sources, preserves passwords and separates s
       if (request.method === "POST") {
         saves++;
         lastEdits = JSON.parse(request.postData).sources;
-        saved = lastEdits.map(edit => ({ id: edit.id, link: edit.link,
+        saved = lastEdits.map(edit => ({ id: edit.id, link: edit.link, photographer: (edit.photographer || "").trim(),
           hasPassword: edit.removePassword ? false : !!edit.password || saved.find(s => s.id === edit.id)?.hasPassword || false }));
       }
       data = { sources: saved };
@@ -118,6 +118,8 @@ test("edit dialog reloads two saved sources, preserves passwords and separates s
     await browser.command("Page.navigate", { url: new URL("/admin/dashboard", base).href });
     await open();
     assert.equal(await browser.evaluate("document.querySelector('#nc-link-0').value"), saved[0].link);
+    assert.equal(await browser.evaluate("document.querySelector('#nc-credit-0').value"), "");
+    assert.match(await browser.evaluate("document.querySelector('#nc-credit-help-0').textContent"), /only to newly imported files/);
     assert.equal(await browser.evaluate("document.querySelector('input[type=password]').value"), "");
     assert.match(await browser.evaluate("document.querySelector('input[type=password]').placeholder"), /Saved password kept/);
     assert.match(await browser.evaluate("document.querySelector('[role=dialog]').innerText"), /never deletes gallery media, tags or captions/);
@@ -125,6 +127,8 @@ test("edit dialog reloads two saved sources, preserves passwords and separates s
     await click("Cancel"); await browser.wait("!document.querySelector('[role=dialog]')");
     await open();
     assert.equal(await browser.evaluate("document.querySelector('#nc-link-1').value"), saved[1].link);
+    await setInput("#nc-credit-0", "Zoë 李");
+    await setInput("#nc-credit-1", "José & Studio");
     await setInput("#nc-link-1", saved[1].link + "?path=%2FSubfolder");
     assert.equal(await browser.evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Update gallery').disabled"), true);
     await click("Save sources");
@@ -132,9 +136,13 @@ test("edit dialog reloads two saved sources, preserves passwords and separates s
     assert.equal(saves, 1); assert.equal(updates, 0);
     assert.equal(lastEdits[0].password, undefined);
     assert.equal(lastEdits[0].removePassword, undefined);
+    assert.equal(lastEdits[0].photographer, "Zoë 李");
+    assert.equal(lastEdits[1].photographer, "José & Studio");
     await browser.command("Page.reload");
     await open();
     assert.equal(await browser.evaluate("document.querySelector('#nc-link-1').value"), saved[1].link);
+    assert.equal(await browser.evaluate("document.querySelector('#nc-credit-0').value"), "Zoë 李");
+    assert.equal(await browser.evaluate("document.querySelector('#nc-credit-1').value"), "José & Studio");
     run = { found: 4, existing: 4, imported: 0, skipped: 0, failed: 0 };
     await click("Update gallery");
     await browser.wait("document.querySelector('[role=dialog]').innerText.includes('All supported media already present')");
