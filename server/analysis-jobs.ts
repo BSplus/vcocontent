@@ -320,7 +320,7 @@ export async function drainAnalysisQueue() {
         (owned.replaceCaption!==null && current.captionSource==="preserved" && current.caption===owned.replaceCaption);
       const caption = proposal && replaceable ? proposal.caption :
         !owned.photoWorkflow && event?.creatorId && current.type==="image" && current.captionSource==="auto_pending" && !current.caption
-        ? communityCaption(event) : undefined;
+        ? communityCaption(event,eventSeries?.name || null) : undefined;
       const publicChanged = JSON.stringify([current.tags,current.identification,current.category]) !==
         JSON.stringify([merged,identification,category]) || caption!==undefined;
       await tx.update(mediaItems).set({ tags: merged, identification,

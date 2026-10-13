@@ -123,7 +123,8 @@ test("four completed tags-only historical photos upgrade only explicitly selecte
     if(i<2){assert.equal(saved.captionSource,"photo_automatic");assert.match(saved.caption,/#007 Apex/);
       assert.match(saved.caption,/#007 Apex — Prototype — Registered One; Registered Two$/);
       assert.doesNotMatch(saved.caption,/Registered lineup:|registered Line-up/i);
-      for(const text of ["iRacing","IMSA","Round 2","Sebring","20 September 2026"])assert.ok(saved.caption.includes(text));}
+       assert.ok(saved.caption.startsWith("IMSA Esports Global Championship 2026 · Round 2 · Sebring International Raceway · iRacing · 20 September 2026 | "));
+       assert.ok(!saved.caption.includes(e.title));}
     else assert.equal(saved.caption,`${587+i}.jpg`);
   }
   await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:photos.map(p=>p.id),confirmed:true,replacePreservedIds:[]});
@@ -139,7 +140,7 @@ test("four completed tags-only historical photos upgrade only explicitly selecte
   assert.equal((await storage.getMediaItem(photos[2].id)).caption,"589.jpg");
   await storage.updateEvent(e.id,{platform:"ACC",track:"Corrected Track",round:"3"});
   for(const p of photos)await settled(p.id);
-  assert.match((await storage.getMediaItem(photos[0].id)).caption,/ACC.*Round 3.*Corrected Track/);
+   assert.match((await storage.getMediaItem(photos[0].id)).caption,/^IMSA Esports Global Championship 2026 · Round 3 · Corrected Track · ACC · 20 September 2026/);
   assert.equal(calls-before,4);
   const publicPhotos=await (await api(`/api/events/${e.id}/media`,undefined,"anonymous")).json();
   assert.equal(publicPhotos.find(p=>p.id===photos[0].id).caption,(await storage.getMediaItem(photos[0].id)).caption);
@@ -183,12 +184,39 @@ test("reading stored captions never cleans up lineup labels; future caption prev
     const preview=await api(`/api/media/${p.id}/caption-preview`,{});
     assert.equal(preview.status,200);
     const suggestion=(await preview.json()).suggestion;
-    assert.ok(suggestion.startsWith("iRacing · "));
+     assert.ok(suggestion.startsWith("IMSA Esports Global Championship 2026 · Round 2 · Sebring International Raceway · iRacing · 20 September 2026"));
     assert.match(suggestion,/#007 Apex — Prototype — Registered One; Registered Two$/);
     assert.equal((await storage.getMediaItem(p.id)).caption,caption,"suggestions do not save or clean up history");
   }
   assert.match(generated.caption,/#007 Apex — Prototype — Registered One; Registered Two$/);
   assert.equal(calls,before);assert.equal(auditCalls,audits);
+});
+
+test("preview and photo/community workers share series context and title fallback without provider calls",async()=>{
+  for (const mode of ["series","no-series","blank-series"]) {
+    for (const enabled of [true,false]) {
+      const e=await album(enabled,owner.id);
+      if(mode==="no-series") {
+        await db.update(events).set({seriesId:null}).where(eq(events.id,e.id));e.seriesId=null;
+      } else if(mode==="blank-series") {
+        await db.update(series).set({name:"   "}).where(eq(series.id,e.seriesId));
+      }
+      const p=await photo(e);scope([p]);
+      // Reuse completed synthetic observations: no Vision or safety request.
+      await db.insert(mediaAnalysisJobs).values({mediaId:p.id,fingerprint:itemAnalysisFingerprint(p,true),
+        status:"queued",referenceOnly:true,recognition:[],generatedTags:[],photoWorkflow:enabled,
+        photoMatchingRevision:e.photoMatchingRevision});
+      const before=calls,audits=auditCalls;
+      const saved=await settled(p.id);
+      const first=mode==="series"?"IMSA Esports Global Championship 2026":e.title;
+      const expected=`${first} · Round 2 · Sebring International Raceway · iRacing · 20 September 2026`;
+      assert.equal(saved.caption,expected);
+      const response=await api(`/api/media/${p.id}/caption-preview`,{},"owner");
+      assert.equal(response.status,200);
+      assert.equal((await response.json()).suggestion,expected);
+      assert.equal(calls,before);assert.equal(auditCalls,audits);
+    }
+  }
 });
 
 test("upload and Nextcloud initial jobs honour opt-in, placeholders and upload AI decision",async()=>{

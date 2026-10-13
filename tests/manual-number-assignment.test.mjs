@@ -160,7 +160,8 @@ test("protected manual, imported/editorial and intentionally cleared captions re
     assert.equal(saved.caption,listed.options[0].caption);
     assert.match(saved.caption,/#007 Apex — Prototype — One; Two$/);
     assert.doesNotMatch(saved.caption,/Registered lineup:|registered Line-up/i);
-    assert.match(saved.caption,/Fixture platform.*Fixture series.*Fixture race/);
+    assert.ok(saved.caption.startsWith(`Fixture series ${fixture} · Round 2 · Fixture track · Fixture platform · 3 August 2026 | `));
+    assert.ok(!saved.caption.includes("Fixture race"));
   }
 });
 test("photos/videos correct a single vehicle and preserve other entries, tags and credits; search sees stored identity",async()=>{
@@ -182,7 +183,7 @@ test("photos/videos correct a single vehicle and preserve other entries, tags an
 });
 test("assignment previews and saved captions omit missing drivers and never truncate a complete lineup",async()=>{
   for(const kind of ["missing","overflow"]){
-    const e=await album(null,kind==="overflow"?{title:"x".repeat(990)}:{}),m=await photo(e);
+    const e=await album(null,kind==="overflow"?{title:"x".repeat(990),seriesId:null}:{}),m=await photo(e);
     await doc(e,[row("007","Apex",{drivers:kind==="missing"?"":"Complete driver / ".repeat(29)})]);
     const listed=await options(m),preview=listed.options[0].caption;
     if(kind==="missing")assert.match(preview,/#007 Apex — Prototype$/);
@@ -194,6 +195,24 @@ test("assignment previews and saved captions omit missing drivers and never trun
     assert.equal((await storage.getMediaItem(m.id)).caption,preview);
   }
 });
+test("assignment preview and save use title fallback when series is absent or unusable",async()=>{
+  for (const mode of ["no-series","blank-series"]) {
+    const e=await album(null,{round:"Round 2",track:null,platform:null});
+    if(mode==="no-series") {
+      await db.update(events).set({seriesId:null}).where(eq(events.id,e.id));e.seriesId=null;
+    } else {
+      await db.update(series).set({name:"   "}).where(eq(series.id,e.seriesId));
+    }
+    const m=await photo(e);await doc(e,[row()]);
+    const listed=await options(m);
+    const expected="Fixture race · Round 2 · 3 August 2026 | #007 Apex — Prototype — One; Two";
+    assert.equal(listed.options[0].caption,expected);
+    const response=await assign(m,listed);
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).caption,expected);
+  }
+});
+
 test("reference edits, deletion, session/context changes and concurrent editor edits reject stale saves",async()=>{
   for(const change of ["reference","delete","session","caption","event","target"]){
     const e=await album(),m=await photo(e,{identification:[ident()]});const d=await doc(e,[row()]);

@@ -3,6 +3,20 @@ import type { EntryRow, Event, Identification } from "@shared/schema";
 export const scenes = ["Race Action", "Start", "Finish"] as const;
 export type Scene = typeof scenes[number];
 
+type CaptionEvent = Pick<Event, "title" | "date" | "round" | "track" | "platform">;
+
+/** Shared context for newly generated captions; never rewrites stored text. */
+function captionContext(event: CaptionEvent, seriesName: string | null = null): string {
+  const round = event.round?.trim();
+  const date = event.date ? new Date(event.date) : null;
+  return [seriesName?.trim() || event.title?.trim(),
+    round ? (/^round\b/i.test(round) ? round : `Round ${round}`) : null,
+    event.track?.trim(), event.platform?.trim(),
+    date && Number.isFinite(+date) ? date.toLocaleDateString("en-GB",
+      { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" }) : null,
+  ].filter(Boolean).join(" · ");
+}
+
 export function normalizeNumber(value: string): string {
   return value.replace(/^0+(?=\d)/, "");
 }
@@ -18,16 +32,16 @@ export function entryConflicts(rows: EntryRow[]): string[] {
 }
 
 export function proposeCaption(
-  event: Pick<Event, "title" | "date" | "round" | "track" | "platform">,
+  event: CaptionEvent,
   entries: EntryRow[],
   observedNumbers: string[],
   scene: Scene | null,
+  seriesName: string | null = null,
 ) {
   const numbers = Array.from(new Set(observedNumbers.filter(number => /^[0-9]{1,4}$/.test(number)))).slice(0, 12);
   const matches = entries.filter(entry => numbers.some(number => normalizeNumber(number) === normalizeNumber(entry.number)));
   const safeMatch = numbers.length === 1 && matches.length === 1 ? matches[0] : null;
-  const date = new Date(event.date).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
-  const context = [event.platform, event.title, event.round, event.track, date].filter(Boolean).join(" · ");
+  const context = captionContext(event, seriesName);
   const suggestion = safeMatch
     ? `${context} — ${[`#${safeMatch.number} ${safeMatch.team}`.trim(), safeMatch.car, safeMatch.drivers].filter(Boolean).join(" — ")}`
     : `${context}${scene ? ` — ${scene}` : ""}`;
@@ -38,22 +52,18 @@ export function proposeCaption(
 
 /** Conservative automatic captions never turn tags or registered lineups into
  * evidence of who appears in a photograph. Event context is sufficient. */
-export function communityCaption(event: Pick<Event,"title"|"date"|"round"|"track"|"platform">) {
-  return proposeCaption(event,[],[],null).suggestion;
+export function communityCaption(event: CaptionEvent, seriesName: string | null = null) {
+  return proposeCaption(event,[],[],null,seriesName).suggestion;
 }
 
 /** Deterministic, reference-backed caption; never claims a pictured driver's identity. */
 export function matchedPhotoCaption(
-  event: Pick<Event,"title"|"date"|"round"|"track"|"platform">,
+  event: CaptionEvent,
   seriesName: string | null,
   identification: Identification[],
   manuallyConfirmed = false,
 ) {
-  const date = new Date(event.date);
-  const context = [event.platform, seriesName, event.title,
-    event.round ? (/^round\b/i.test(event.round) ? event.round : `Round ${event.round}`) : null,
-    event.track, Number.isFinite(+date) ? date.toLocaleDateString("en-GB",
-      {timeZone:"UTC",day:"numeric",month:"long",year:"numeric"}) : null].filter(Boolean).join(" · ");
+  const context = captionContext(event, seriesName);
   // An explicit assignment can coexist with other visual-only vehicles. Include
   // only confirmed entries, without asserting identities for those other rows.
   const captionEntries = manuallyConfirmed ? identification.filter(row =>

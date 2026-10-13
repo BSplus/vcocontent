@@ -148,7 +148,7 @@ test("failed and aborted streams never enter history",async()=>{
   } finally {Client.prototype.downloadAsStream=original;}
 });
 test("caption dates are English and tags/lineups never become depicted identities",()=>{
-  assert.equal(communityCaption(community),"iRacing · Community fixture · Fixture circuit · 10 October 2026");
+  assert.equal(communityCaption(community),"Community fixture · Fixture circuit · iRacing · 10 October 2026");
 });
 test("profile editing is moderated and cannot change roles, credits, other accounts or external pictures",async()=>{
   const name=`profile-${token}`;
@@ -196,7 +196,7 @@ test("new community captions are automatic, safety-versioned; history/import and
   const automatic=await queued("auto_pending");await drainAnalysisQueue();
   const result=await storage.getMediaItem(automatic.id);
   assert.equal(result.caption,communityCaption(community));assert.equal(result.captionSource,"automatic");
-  assert.ok(result.caption.startsWith("iRacing · Community fixture · "));
+  assert.ok(result.caption.startsWith("Community fixture · Fixture circuit · iRacing · "));
   assert.equal(result.safetyStatus,"approved");assert.equal(result.contentVersion,result.safetyVersion);
   assert.doesNotMatch(result.caption,/Porsche|Fictional Driver/);
   // Without verification configuration, even checked metadata cannot publish.
@@ -222,7 +222,7 @@ test("preview and background context captions carry only the saved platform, inc
     await db.insert(mediaAnalysisJobs).values({mediaId:item.id,fingerprint:"tags:"+analysisFingerprint(item.thumbnail)});
     assert.equal(await drainAnalysisQueue(),true);
     const saved=await storage.getMediaItem(item.id);
-    const expected=`${platform ? platform+" · " : ""}${title} · 10 October 2026`.slice(0,1000);
+    const expected=`${title} · ${platform ? platform+" · " : ""}10 October 2026`.slice(0,1000);
     assert.equal(saved.caption,expected);
     assert.equal(saved.captionSource,"automatic");
     assert.equal(saved.safetyStatus,"approved");

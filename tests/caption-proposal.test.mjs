@@ -8,8 +8,8 @@ const entries = [
   { number: "12", team: "South Racing", car: "Ferrari 296", drivers: "C. Three" },
 ];
 
-test("all caption paths start with the saved platform and preserve their existing context formatting", () => {
-  const context = "iRacing · GT Masters · Round 4 · Nürburgring · 28 September 2026";
+test("all caption paths use title, round, track, platform and date without a series", () => {
+  const context = "GT Masters · Round 4 · Nürburgring · iRacing · 28 September 2026";
   assert.equal(communityCaption(event), context);
   assert.equal(proposeCaption(event, entries, ["7"], null).suggestion,
     `${context} — #007 North Racing — Porsche 911 — A. One / B. Two`);
@@ -63,8 +63,8 @@ test("automatic and manual photo captions keep every vehicle and complete lineup
     assert.equal(result.matchStatus, "matched");
     assert.equal(result.caption, `${context} | ${vehicles}`);
   }
-  for (const text of ["iRacing", "Series", "GT Masters", "Round 4", "Nürburgring", "28 September 2026"])
-    assert.ok(context.includes(text));
+  assert.equal(context, "Series · Round 4 · Nürburgring · iRacing · 28 September 2026");
+  assert.ok(!context.includes("GT Masters"));
 });
 
 test("absent drivers and optional car/team fields leave no empty separators or invented names", () => {
@@ -104,23 +104,63 @@ test("1000-character boundary retains whole lineups, overflow omits all vehicles
   const exactEvent = { ...event, title: event.title + "x".repeat(1000 - base.length) };
   const exact = proposeCaption(exactEvent, [row], ["7"], null).suggestion;
   assert.equal(exact.length, 1000);
-  assert.ok(exact.startsWith("iRacing · "));
+  assert.ok(exact.startsWith("GT Masters"));
   assert.ok(exact.endsWith(row.drivers));
   const overflowEvent = { ...exactEvent, title: exactEvent.title + "x" };
   assert.equal(proposeCaption(overflowEvent, [row], ["7"], null).suggestion, communityCaption(overflowEvent));
   const hugeEvent = { ...photoEvent, title: "x".repeat(1100) };
   assert.equal(matchedPhotoCaption(hugeEvent, null, identities).caption,
-    `${photoEvent.platform} · ${hugeEvent.title}`.slice(0, 1000));
+    hugeEvent.title.slice(0, 1000));
   assert.equal(proposeCaption(hugeEvent, [row], ["7"], null).suggestion,
-    `${photoEvent.platform} · ${hugeEvent.title}`.slice(0, 1000));
-  assert.equal(communityCaption(hugeEvent), `${photoEvent.platform} · ${hugeEvent.title}`.slice(0, 1000));
+    hugeEvent.title.slice(0, 1000));
+  assert.equal(communityCaption(hugeEvent), hugeEvent.title.slice(0, 1000));
 });
 
-test("community context and scene-only proposals respect the exact text limit and keep the platform on fallback", () => {
+test("community context and scene-only proposals respect the exact text limit", () => {
   const base = communityCaption(event);
   const exactEvent = { ...event, title: event.title + "x".repeat(1000 - base.length) };
   assert.equal(communityCaption(exactEvent).length, 1000);
-  assert.ok(communityCaption(exactEvent).startsWith("iRacing · "));
+  assert.ok(communityCaption(exactEvent).startsWith("GT Masters"));
   assert.equal(proposeCaption(exactEvent, [], [], "Start").suggestion, communityCaption(exactEvent));
   assert.equal(communityCaption({ ...exactEvent, title: exactEvent.title + "x" }).length, 1000);
+});
+
+test("series replaces title in every path, and unusable series names fall back to title", () => {
+  for (const seriesName of ["Saved series", null, undefined, "", "   "]) {
+    const context = `${seriesName === "Saved series" ? seriesName : event.title} · Round 4 · Nürburgring · iRacing · 28 September 2026`;
+    assert.equal(communityCaption(event, seriesName), context);
+    assert.equal(proposeCaption(event, entries, ["7"], null, seriesName).suggestion,
+      `${context} — #007 North Racing — Porsche 911 — A. One / B. Two`);
+    assert.equal(proposeCaption(event, entries, ["7", "12"], "Start", seriesName).suggestion, `${context} — Start`);
+    assert.equal(matchedPhotoCaption(event, seriesName, []).caption, context);
+    for (const manual of [false, true]) {
+      assert.equal(matchedPhotoCaption(event, seriesName, identities, manual).caption,
+        `${context} | #007 North Racing — Porsche 911 — A. One / B. Two | #12 South Racing — Ferrari 296 — C. Three`);
+    }
+  }
+});
+
+test("round normalization, absent metadata and invalid dates are consistent across generators", () => {
+  for (const round of ["4", "Round 4", "round 4", " Round 4 "]) {
+    const e = {...event, round};
+    const context = `Saved series · ${round.trim() === "4" ? "Round 4" : round.trim()} · Nürburgring · iRacing · 28 September 2026`;
+    assert.equal(communityCaption(e, "Saved series"), context);
+    assert.equal(proposeCaption(e, [], [], null, "Saved series").suggestion, context);
+    assert.equal(matchedPhotoCaption(e, "Saved series", []).caption, context);
+  }
+  for (const missing of [null, undefined, "", "   "]) {
+    const e = {...event, round:missing, track:missing, platform:missing, date:new Date("invalid")};
+    assert.equal(communityCaption(e), "GT Masters");
+    assert.equal(proposeCaption(e, [], [], null, "Saved series").suggestion, "Saved series");
+    assert.equal(matchedPhotoCaption(e, "Saved series", []).caption, "Saved series");
+  }
+});
+
+test("a long series also falls back to context without partial lineups", () => {
+  const seriesName = "S".repeat(940);
+  const context = communityCaption(event, seriesName);
+  assert.ok(context.length <= 1000);
+  assert.equal(proposeCaption(event, entries, ["7"], null, seriesName).suggestion, context);
+  for (const manual of [false, true])
+    assert.equal(matchedPhotoCaption(event, seriesName, identities, manual).caption, context);
 });

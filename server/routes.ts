@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { pageMetadata } from "@shared/pagination";
-import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, updateSeriesSchema, entryRowSchema, identificationSchema, users, events as eventsTable, mediaAnalysisJobs, mediaItems, type EntryRow } from "@shared/schema";
+import { insertEventSchema, insertMediaItemSchema, insertSeriesSchema, updateSeriesSchema, entryRowSchema, identificationSchema, users, events as eventsTable, mediaAnalysisJobs, mediaItems, series, type EntryRow } from "@shared/schema";
 import express from "express";
 import path from "path";
 import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
@@ -905,7 +905,8 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
         await identifyEntries(event,detected.vehicles.filter(v=>v.number),media.recognitionSession,db,true,true);
       const entries=identified.filter(row=>row.source!=="visual").map(row=>({
         number:row.number,team:row.team,car:row.vehicle,drivers:row.drivers}));
-      const result = proposeCaption(event, entries, media.identificationManual ? identified.map(row=>row.number).filter(Boolean) : detected.numbers, scene);
+      const [eventSeries] = event.seriesId ? await db.select({name:series.name}).from(series).where(eq(series.id,event.seriesId)) : [];
+      const result = proposeCaption(event, entries, media.identificationManual ? identified.map(row=>row.number).filter(Boolean) : detected.numbers, scene, eventSeries?.name || null);
       return res.json({ ...result, scene });
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid scene type." });
