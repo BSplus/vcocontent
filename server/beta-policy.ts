@@ -17,9 +17,9 @@ export function creatorAllowed(user: {isAdmin?: boolean; isCreator?: boolean; cr
   return !!user && !user.suspended && (user.isAdmin ||
     (user.creatorStatus !== "rejected" && (user.isCreator || user.creatorStatus === "approved")));
 }
-export function safeState(item: {safetyStatus: string; safetyPolicy: string | null; contentVersion: number; safetyVersion: number}) {
-  return item.safetyStatus === "legacy" || (item.safetyStatus === "approved" &&
-    item.safetyPolicy === SAFETY_POLICY && item.contentVersion === item.safetyVersion);
+export function safeState(item: {archivedAt?: unknown; safetyStatus: string; safetyPolicy: string | null; contentVersion: number; safetyVersion: number}) {
+  return !item.archivedAt && (item.safetyStatus === "legacy" || (item.safetyStatus === "approved" &&
+    item.safetyPolicy === SAFETY_POLICY && item.contentVersion === item.safetyVersion));
 }
 export function safetyRetryAllowed(item: Parameters<typeof safeState>[0]) {
   return item.safetyStatus==="error" || (
@@ -33,10 +33,11 @@ export const publicEventPredicate = () => sql`(not ${events.adminHidden} and (${
     and ${verificationConfigured()} and exists(select 1 from users vu where vu.id=${events.creatorId} and vu.email_verified_at is not null)))
   and exists(select 1 from users bu where bu.id=${events.creatorId}
     and not bu.suspended and coalesce(bu.creator_status,'none') <> 'rejected'))))`;
-export const publicMediaPredicate = () => sql`(${events.creatorId} is null or (
+export const activeMediaPredicate = () => sql`${mediaItems.archivedAt} is null`;
+export const publicMediaPredicate = () => sql`(${activeMediaPredicate()} and (${events.creatorId} is null or (
   ${mediaItems.safetyStatus}='legacy' or (${mediaItems.safetyStatus}='approved'
     and ${mediaItems.safetyPolicy}=${SAFETY_POLICY} and ${mediaItems.contentVersion}=${mediaItems.safetyVersion}
-    and ${verificationConfigured()} and exists(select 1 from users vu where vu.id=${events.creatorId} and vu.email_verified_at is not null))))`;
+    and ${verificationConfigured()} and exists(select 1 from users vu where vu.id=${events.creatorId} and vu.email_verified_at is not null)))))`;
 
 /** Persistent cross-process sliding buckets; reserve before provider/file work. */
 export async function takeBetaRate(key: string, limit: number, windowMs: number) {
@@ -59,12 +60,12 @@ export async function creatorUsage(executor: any, creatorId: number) {
       select regexp_replace(m.url,'^/api/media/files/','') as key, max(coalesce(m.high_bytes,
         case when m.url like 'data:%' then
           octet_length(decode(split_part(m.url,',',2),'base64')) else null end))::bigint as bytes
-        from media_items m join events e on e.id=m.event_id where e.creator_id=${creatorId} group by m.url
+        from media_items m join events e on e.id=m.event_id where e.creator_id=${creatorId} and m.archived_at is null group by m.url
       union all
       select regexp_replace(m.thumbnail,'^/api/media/files/',''), max(coalesce(m.low_bytes,
         case when m.thumbnail like 'data:%' then
           octet_length(decode(split_part(m.thumbnail,',',2),'base64')) else null end))::bigint
-        from media_items m join events e on e.id=m.event_id where e.creator_id=${creatorId} group by m.thumbnail
+        from media_items m join events e on e.id=m.event_id where e.creator_id=${creatorId} and m.archived_at is null group by m.thumbnail
       union all
       select source_key,max(stored_bytes) from reference_documents
         where owner_id=${creatorId} and source_key is not null group by source_key
@@ -86,7 +87,7 @@ export async function creatorUsage(executor: any, creatorId: number) {
         and not exists(select 1 from media_reservations r where r.storage_key=c.key or r.thumbnail_key=c.key)) as pending_cleanup,
       (select count(*) from events where creator_id=${creatorId}) as galleries,
       (select count(*) from media_items m join events e on e.id=m.event_id
-        where e.creator_id=${creatorId} and m.type='image') +
+        where e.creator_id=${creatorId} and m.archived_at is null and m.type='image') +
       (select count(distinct c.photo_token) from media_cleanup c where c.creator_id=${creatorId}
         and c.photo_token is not null
         and not exists(select 1 from media_items m where 'item:'||m.id=c.photo_token)

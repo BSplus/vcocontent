@@ -172,6 +172,8 @@ export const mediaItems = pgTable("media_items", {
   category: text("category"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   downloadCount: integer("download_count").notNull().default(0),
+  // Archive is reversible and never deletes objects or historical relationships.
+  archivedAt: timestamp("archived_at"),
   isPremium: boolean("is_premium").notNull().default(false),
   creditCost: integer("credit_cost").default(1),
   storedBytes: bigint("stored_bytes", { mode: "number" }),
@@ -233,6 +235,18 @@ export const downloadHistory = pgTable("download_history", {
   quality: text("quality").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, t=>[index("downloads_user_date").on(t.userId,t.createdAt)]);
+
+/** Provider identity is additive; legacy media URLs and UUIDs never change. */
+export const mediaObjectRoutes = pgTable("media_object_routes", {
+  key: text("key").primaryKey(),
+  provider: text("provider").notNull(),
+  state: text("state").notNull(),
+  sha256: text("sha256"),
+  size: bigint("size", {mode:"number"}),
+  mime: text("mime"),
+  objectVersion: text("object_version"),
+  updatedAt: timestamp("updated_at", {withTimezone:true}).notNull().defaultNow(),
+});
 
 export const mediaReservations = pgTable("media_reservations", {
   id: text("id").primaryKey(),
@@ -413,7 +427,7 @@ export const insertMediaItemSchema = createInsertSchema(mediaItems).extend({
   identification: z.array(identificationSchema).max(12).optional(),
   isPremium: z.boolean().optional(),
   creditCost: z.number().min(1, "Credit cost must be at least 1").optional(),
-}).omit({photoMatchStatus:true,captionSource:true,contentVersion:true,safetyVersion:true,safetyStatus:true,safetyPolicy:true,safetyReason:true});
+}).omit({archivedAt:true,photoMatchStatus:true,captionSource:true,contentVersion:true,safetyVersion:true,safetyStatus:true,safetyPolicy:true,safetyReason:true});
 
 // Export types
 export type InsertUser = z.infer<typeof insertUserSchema>;

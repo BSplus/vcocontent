@@ -1,0 +1,38 @@
+I approve the one-time dummy-data cleanup in Development and Production, strictly limited to the two separately verified cleanup manifests.
+
+Development
+
+* Delete the 75 identified dummy media records.
+* Delete the 23 identified dummy events.
+* Remove the identified dependent import-file record and completed job.
+
+Production
+
+* Delete the 209 identified dummy media records.
+* Delete only events 29, 30 and 31.
+* Preserve event/gallery 224 as a configuration container.
+* Preserve its existing Nextcloud connection and reference document 48 unchanged.
+* Set gallery 224 to visibility=draft and admin_hidden=true.
+* Clear its obsolete cover and selected thumbnail references.
+* Remove only the identified dependent records: 205 analysis jobs, 209 import-file records, one import job, two likes, one favourite, one download-history row and one download operation.
+
+Mandatory safeguards
+
+1. Before execution, independently reverify the exact database target and manifest for each environment. Never reuse the Development manifest for Production.
+2. If record counts, IDs, ownership, dependencies or database fingerprints differ from the approved manifests, stop and request renewed approval.
+3. Preserve all 34 Development accounts and all 37 Production accounts, including authentication and roles.
+4. Preserve all three series definitions, settings, integrations and other non-dummy configuration.
+5. Never delete physical Replit storage objects or R2 objects.
+6. Use database operations that cannot trigger unintended physical media deletion or background cleanup jobs.
+7. Verify that no cascading deletion can affect the Nextcloud connection or reference document 48.
+8. Execute and verify each environment separately. A successful Development cleanup must not be treated as evidence that Production cleanup is safe.
+9. Preserve a verified database recovery point before destructive changes and confirm the cleanup can be recovered if necessary.
+10. Produce a concise post-cleanup report with actual deleted counts, preserved resources, remaining media/events and any errors.
+
+Approval boundaries
+
+This approval covers only the specified dummy-data cleanup.
+
+It does not authorize Production R2 activation, Production schema changes, deployment, deletion of physical storage objects or any additional data reset.
+
+Stop if any safeguard fails rather than broadening the scope.

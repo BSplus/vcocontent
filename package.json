@@ -12,9 +12,14 @@
     "test:media-processes": "node --import tsx --test --test-concurrency=1 tests/media-processes.test.mjs tests/nextcloud.test.mjs tests/ai-tagger.test.mjs tests/download-access.test.mjs tests/caption-proposal.test.mjs",
     "test:video-analysis": "node --import tsx --test --test-concurrency=1 tests/video-analysis.test.mjs tests/video-ingestion.test.mjs",
     "test:video-playback": "npm run build && node --import tsx --test --test-concurrency=1 tests/video-delivery.test.mjs tests/video-playback.test.mjs",
+    "test:r2": "node scripts/test-image-downloads.mjs tests/r2-storage.test.mjs tests/r2-new-upload.test.mjs tests/r2-development-probe.test.mjs tests/dummy-content-reset-plan.test.mjs tests/production-cleanup-transaction.test.mjs",
+    "r2:preflight": "node --import tsx scripts/r2-preflight.mjs",
+    "media:reset-plan": "node --import tsx scripts/dummy-content-reset-plan.mjs",
+    "r2:config-check": "node --import tsx scripts/media-storage-config-check.mjs",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1150.0",
     "@fontsource/big-shoulders-display": "^5.3.0",
     "@fontsource/ibm-plex-sans-condensed": "^5.3.0",
     "@fontsource/orbitron": "^5.2.5",

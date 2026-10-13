@@ -55,3 +55,6 @@
 - [Performance measurement boundary](performance-measurement-boundary.md) — local plan improvements are comparative evidence, not VM latency promises; isolate timed phases.
 - [Single-use action responses](single-use-action-responses.md) — automatic retries can hide committed success; lost responses need an uncertain outcome, not a success claim.
 - [Visual baseline builds](visual-baseline-builds.md) — isolated screenshot baselines need the original CSS toolchain and the same assets; a successful build alone is insufficient.
+- [Live smoke object scope](live-smoke-object-scope.md) — automatic video AI can create a replacement poster beyond the initial upload-pair allowlist; stop rather than broaden cleanup.
+- [Secret runtime scope](secret-runtime-scope.md) — environment-labelled secret existence is inventory, not proof of credential injection in the running deployment.
+- [Production recovery](production-recovery-boundary.md) — operator confirmed 7-day PITR; record offset timestamps, not snapshot IDs, and never test restore on live data.

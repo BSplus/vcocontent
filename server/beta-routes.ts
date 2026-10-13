@@ -31,8 +31,8 @@ export function registerBetaRoutes(app: Express) {
     try {
       res.setHeader("Cache-Control","private, no-store");
       const stats=await db.execute(sql`select e.id as event_id,
-        count(m.id) filter(where m.type='image') as photos,
-        count(m.id) filter(where m.type='video') as videos,
+        count(m.id) filter(where m.type='image' and m.archived_at is null) as photos,
+        count(m.id) filter(where m.type='video' and m.archived_at is null) as videos,
         coalesce(sum(m.download_count),0) as downloads
         from events e left join media_items m on m.event_id=e.id
         where e.creator_id=${req.user!.id} group by e.id`);
@@ -47,7 +47,7 @@ export function registerBetaRoutes(app: Express) {
       if (!Number.isSafeInteger(page) || page<1) return res.status(400).json({error:"Invalid page"});
       res.setHeader("Cache-Control","private, no-store");
       const items = await db.select({item:mediaItems}).from(mediaItems).innerJoin(events,eq(events.id,mediaItems.eventId))
-        .where(eq(events.creatorId,req.user!.id)).orderBy(desc(mediaItems.id)).limit(48).offset((page-1)*48);
+        .where(and(sql`${mediaItems.archivedAt} is null`,eq(events.creatorId,req.user!.id))).orderBy(desc(mediaItems.id)).limit(48).offset((page-1)*48);
       res.json(items.map(r=>({...r.item,
         url:r.item.url.startsWith("data:")?`/api/media/legacy/${r.item.id}/file`:r.item.url,
         thumbnail:r.item.thumbnail.startsWith("data:")?`/api/media/legacy/${r.item.id}/thumbnail`:r.item.thumbnail,
@@ -104,7 +104,7 @@ export function registerBetaRoutes(app: Express) {
   app.get("/api/admin/safety",requireAdmin,async(_req,res)=>{
     res.setHeader("Cache-Control","private, no-store");
     try {
-      res.json({media:await db.select().from(mediaItems).where(inArray(mediaItems.safetyStatus,["review","error"])).limit(100),
+      res.json({media:await db.select().from(mediaItems).where(and(sql`${mediaItems.archivedAt} is null`,inArray(mediaItems.safetyStatus,["review","error"]))).limit(100),
         events:await db.select().from(events).where(inArray(events.safetyStatus,["review","error"])).limit(100)});
     } catch { res.status(503).json({error:"Safety review could not be loaded."}); }
   });
@@ -120,7 +120,7 @@ export function registerBetaRoutes(app: Express) {
       const updated = await db.transaction(async tx=>{
         const [current] = await tx.select().from(table).where(eq(table.id,id)).for("update");
         // Explicitly blocked and failed/incomplete checks cannot be bypassed.
-        if (!current || current.safetyStatus!=="review" || current.safetyVersion!==current.contentVersion ||
+        if (!current || ("archivedAt" in current && current.archivedAt) || current.safetyStatus!=="review" || current.safetyVersion!==current.contentVersion ||
           current.safetyPolicy!==policy || current.contentVersion!==version) return false;
         await tx.insert(safetyReviews).values({resource:kind,resourceId:id,version:current.contentVersion,
           adminId:req.user!.id,decision,reason});

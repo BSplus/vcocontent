@@ -11,8 +11,8 @@ import { Client } from "@replit/object-storage";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { createVideoPreview } from "./video-preview";
 import { preparePhoto, DOWNLOAD_BYTES, type ImageStrategy } from "./image-downloads";
-import { Storage } from "@google-cloud/storage";
 import type { VideoSource } from "./video-delivery";
+import { putMediaObject, openMediaObject, mediaVideoSource, deleteRoutedMediaObject, type RouteQuery } from "./media-object-routing";
 
 const TEMP_UPLOAD_DIR = path.join(tmpdir(), "vco-media-uploads");
 
@@ -134,12 +134,7 @@ async function validateFileSignature(file: Express.Multer.File, type: MediaType)
 }
 
 async function uploadFromFilename(objectName: string, filename: string): Promise<void> {
-  const result = await getStorageClient().uploadFromFilename(
-    objectName,
-    filename,
-    { compress: false },
-  );
-  checkUploadResult(result, objectName);
+  await putMediaObject(objectName, filename);
 }
 
 /**
@@ -209,12 +204,7 @@ async function performUploadMedia(
       if (beforePersist) await beforePersist(file.size+100*1024, { storageKey, thumbnailKey });
       await uploadFromFilename(storageKey, file.path);
       thumbnailBytes = posterBytes.length;
-      const posterResult = await getStorageClient().uploadFromBytes(
-        thumbnailKey,
-        posterBytes,
-        { compress: false },
-      );
-      checkUploadResult(posterResult, "video poster");
+      await putMediaObject(thumbnailKey, posterBytes);
     }
 
     return {
@@ -259,8 +249,9 @@ export function createMediaKeys(mime: string, strategy: ImageStrategy = "officia
   return { storageKey: `media-${id}.${extension[mime]}`, thumbnailKey: `thumb-${id}.webp` };
 }
 
-export async function deleteMediaObject(key: string): Promise<void> {
+export async function deleteMediaObject(key: string, registered = false, transactionQuery?: RouteQuery): Promise<void> {
   assertStoredKey(key);
+  if (/^(media|thumb)-/.test(key)) return deleteRoutedMediaObject(key,registered,transactionQuery);
   const result = await getStorageClient().delete(key, { ignoreNotFound: true });
   checkUploadResult(result, `deletion of ${key}`);
 }
@@ -276,16 +267,14 @@ export async function deleteStoredMedia(saved: StoredMedia): Promise<void> {
  */
 export function readMediaStream(key: string): Readable {
   assertStoredKey(key);
-  return getStorageClient().downloadAsStream(key);
+  return /^(media|thumb)-/.test(key) ? openMediaObject(key) : getStorageClient().downloadAsStream(key);
 }
-
-let videoBucket: Promise<ReturnType<Storage["bucket"]>> | undefined;
 
 /** Only generated small previews; originals can never be overwritten through this helper. */
 export async function writeVideoPreview(key: string, bytes: Buffer): Promise<void> {
   if (!/^thumb-[0-9a-f-]{36}\.webp$/.test(key) || !bytes.length || bytes.length >= 100 * 1024)
     throw new Error("Invalid video preview");
-  checkUploadResult(await getStorageClient().uploadFromBytes(key, bytes, { compress: false }), "video preview");
+  await putMediaObject(key, bytes);
 }
 
 /** Content type for a previously generated key, for the authorized route. */
@@ -302,33 +291,5 @@ export function getMediaContentType(key: string): string {
 
 export async function readVideoSource(key: string): Promise<VideoSource> {
   assertStoredKey(key);
-  const file = (await getVideoBucket()).file(key);
-  const [metadata] = await file.getMetadata();
-  const size = Number(metadata.size);
-  if (!Number.isSafeInteger(size) || size <= 0 || !metadata.generation || metadata.contentEncoding) throw new Error("Invalid video object");
-  // Pin the generation so length and bytes cannot disagree during replacement.
-  const pinned = (await getVideoBucket()).file(key, { generation: metadata.generation });
-  return { size, open: range => pinned.createReadStream({ ...range, decompress: false }) };
-}
-
-function getVideoBucket() {
-  return videoBucket ??= (async () => {
-    const response = await fetch("http://127.0.0.1:1106/object-storage/default-bucket",
-      { signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) throw new Error("Video storage unavailable");
-    const value = await response.json();
-    if (typeof value.bucketId !== "string" || !value.bucketId) throw new Error("Video storage unavailable");
-    const client = new Storage({
-      projectId: "",
-      timeout: 15_000,
-      retryOptions: { autoRetry: false },
-      credentials: {
-        type: "external_account", audience: "replit", subject_token_type: "access_token",
-        token_url: "http://127.0.0.1:1106/token",
-        credential_source: { url: "http://127.0.0.1:1106/credential", format: { type: "json", subject_token_field_name: "access_token" } },
-        universe_domain: "googleapis.com",
-      },
-    });
-    return client.bucket(value.bucketId);
-  })().catch(error => { videoBucket = undefined; throw error; });
+  return mediaVideoSource(key);
 }

@@ -9,7 +9,7 @@ import path from "path";
 import { requireAuth, requireAdmin, requireCreator, requireOwnershipOrAdmin } from "./middleware/auth";
 import { log } from "./vite";
 import { db } from "./db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { isAITaggingConfigured, testManagedOpenAI, detectRaceNumbers } from "./utils/ai-tagger";
 import { entryConflicts, proposeCaption, scenes } from "./caption-proposal";
 import { parseEntryFile } from "./entry-list";
@@ -47,6 +47,7 @@ import { registerPhotoMatchingRoutes } from "./photo-matching-routes";
 import { effectiveEventChanges } from "@shared/event-changes";
 import {supportedPhotoObservations} from "./utils/photo-number-evidence";
 import { registerManualNumberRoutes } from "./manual-number-routes";
+import { registerMediaEdge, edgeOrigin, publicPreviewVersion } from "./media-edge";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -87,6 +88,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   registerReferenceRoutes(app, requireCreator);
   registerPhotoMatchingRoutes(app, requireCreator);
   registerManualNumberRoutes(app);
+  registerMediaEdge(app);
   const openAITestCooldowns = new Map<number, number>();
   const captionDetections = new Map<number, { thumbnail: string; expires: number; result: Promise<Awaited<ReturnType<typeof detectRaceNumbers>>> }>();
   // Auth already set up in index.ts
@@ -702,6 +704,11 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (isOriginal && (!req.isAuthenticated() || record.isPremium || event?.isPremium)) {
         return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Download file not available" });
       }
+      const edge = !isOriginal && edgeOrigin();
+      if (edge) {
+        const version = await publicPreviewVersion(key);
+        if (version) return res.redirect(307,`${edge}/preview/${key}/${version}`);
+      }
       res.setHeader("Content-Type", getMediaContentType(key));
       res.setHeader("Cache-Control", "private, no-store");
       res.setHeader("X-Content-Type-Options", "nosniff");
@@ -852,7 +859,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const jobs = await db.select({ mediaId: mediaAnalysisJobs.mediaId, status: mediaAnalysisJobs.status,
         tags: mediaItems.tags, generatedTags: mediaAnalysisJobs.generatedTags, error: mediaAnalysisJobs.error })
         .from(mediaAnalysisJobs).innerJoin(mediaItems, eq(mediaItems.id, mediaAnalysisJobs.mediaId))
-        .where(eq(mediaItems.eventId, id)).limit(1000);
+        .where(and(sql`${mediaItems.archivedAt} is null`,eq(mediaItems.eventId, id))).limit(1000);
       res.setHeader("Cache-Control", "private, no-store");
       res.json(jobs);
     } catch { res.status(503).json({ error: "Analysis status unavailable" }); }

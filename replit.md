@@ -171,6 +171,77 @@ Preferred communication style: Simple, everyday language.
 - Historical public images remain unreviewed legacy content. New public image/profile/cover/text versions require the applicable gate. Changing safety prompts/categories requires a safety policy version bump.
 - Tests must mock mail and AI, use synthetic images, isolate queue consumers and clean only their own storage objects. Do not send real verification mail during routine tests.
 
+
+## R2 development preparation
+- **Current launch scope supersedes existing-media migration:** the operator states
+  that all existing content is dummy/test data, VCO Content Database is not yet
+  actively used, and explicitly approves an
+  empty media library without the old gallery photos/videos. Stop migration,
+  copy-only pilot and reconciliation work; use separate private EU R2 buckets for
+  new gallery/media uploads. Preserve all users/roles/settings/integrations;
+  dummy media and galleries/events are approved for the scoped database-only
+  cleanup, not migration or archival. Physical files are not approved for deletion.
+  The operator wants no additional backup system or separate rollback rehearsal
+  solely for disposable test content; keep the existing target/dependency/PITR
+  safeguards and use the supported manual Production workflow.
+  Current reset/Production preparation: `docs/r2-production-launch-preparation.md`.
+  Development stages R2 as the new gallery-upload target with routing enabled,
+  but `MEDIA_STORAGE_NEW_UPLOADS_ENABLED=false` prevents real writes until separate
+  smoke approval. Existing unmapped media remains on Replit; no archive has run.
+  The approved live smoke stopped: four initial objects passed SHA/size/MIME,
+  a grouped delivery check returned an untraced 404, and automatic video analysis wrote
+  a fifth replacement poster. Gate reclosed; subsequently approved five-key
+  cleanup passed, with all test objects/records removed and original 75 unchanged.
+  See `docs/r2-development-delivery-investigation.md`: the old poster URL reproduces
+  404 after AI replacement; authenticated photo/preview and refreshed poster pass
+  locally. Historical failed request is unconfirmed. Prepared runner is corrected;
+  the separately approved final live smoke subsequently passed with exactly five
+  test-owned objects, fresh metadata, real browser playback, Range, integrity,
+  access restrictions, quota accounting and deduplicated statistics.
+  See `docs/r2-final-development-smoke-report.md`. All test objects/records were
+  cleaned up; the subsequently approved Development reset removed the 75 dummy
+  media and 23 events, preserving all 34 accounts and configuration. Development
+  upload gate is closed. See `docs/launch-cleanup-status.md` for current results
+  and approved Production operator instructions.
+  Do not recreate uploads or activate Production without approval.
+  Archive/restore tooling is removed; read-only reset planning has no apply mode
+  and generates Development-only SQL that defaults to ROLLBACK.
+  Do not delete physical Replit objects or assume any account is disposable.
+  Current minimal preservation plan: `docs/r2-clean-library-preservation-plan.md`.
+  Preserve Production event 224 as an admin-hidden/draft configuration container,
+  its Nextcloud connection and document 48. Delete only dummy media and events
+  29/30/31 within the approved manifest. Production commit is operator-run and
+  pending; all 23 Development events have been removed.
+  Clear only the retained container's cover/thumbnail and visibility fields;
+  preserve its ownership/series/reference metadata, all accounts and integrations.
+  Draft alone does not hide official events: `admin_hidden=true` is required.
+  Do not disable routing while active R2 mappings exist. Production target,
+  schema, credentials/activation and smoke remain separately gated.
+  No Production switch, reset, existing-object deletion or deployment without
+  separate explicit approval. Profile/reference storage remains unchanged.
+- Current environment-specific configuration, Development-only probe target and Cloudflare
+  audit-scope clarification: `docs/r2-environment-configuration.md`. Do not infer permission
+  to run a real R2 probe from adding secrets; the operator requires explicit authorization.
+- Operator reports separate private EU Standard buckets `vco-content-media` (Production)
+  and `vco-content-media-dev` (Development), with separate bucket-scoped tokens created.
+   The authorized Development-only probe passed upload/read/SHA/cleanup; manual
+   Development bucket review is operator-confirmed complete. Its unsigned S3
+   HTTP 400 was an invalid public-access verification method, not exposure evidence.
+  Evidence and remaining gates: `docs/r2-development-connectivity-report.md`.
+  Read-only anonymous-check analysis and proposed correction:
+  `docs/r2-anonymous-access-investigation.md`. Unsigned S3 failure is not proof that
+  public `r2.dev`/custom-domain access is disabled; do not repeat live tests without approval.
+ - Replit remains the unchanged default until approved Development activation.
+   Adapter/Worker details: `docs/r2-development.md`; migration commands there are
+   historical, not current launch requirements or approved operations.
+- Evidence, infrastructure blockers, measured local comparisons and dated cost assumptions:
+  `docs/r2-migration-report.md`. `npm run test:r2` uses disposable local PostgreSQL and
+  synthetic disk-backed providers, never a connected/production database.
+- The new additive schema belongs to the existing explicitly approved development setup,
+  not production startup. Further real tests, media pilots and any provider/routing switch
+  require new explicit approval. Bucket settings remain pending manual verification; no
+  account-wide audit token is used. Protected transfers still use the existing proxy.
+
 ## Legal information
 
 - The public English Imprint includes informational simulation/game-provider sources with platform and regional scope, not a reuse licence or acceptance requirement. Source checks and unresolved legal review are documented in `docs/legal-change-and-gap-report.md`.

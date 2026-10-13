@@ -57,7 +57,7 @@ export async function enqueueAnalysis(item: Item, options: boolean | { retry?: b
   await db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(${LOCK})`);
     const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,item.id));
-    if (!current) throw new AnalysisUnavailable("Photo no longer exists.");
+    if (!current || current.archivedAt) throw new AnalysisUnavailable("Photo no longer exists.");
     const [event] = current.eventId ? await tx.select().from(events).where(eq(events.id,current.eventId)) : [];
     const photoWorkflow = current.type==="image" && !!event?.photoMatchingEnabled;
     if (settings.photoWorkflow && !photoWorkflow) throw new AnalysisUnavailable("Enable photo matching before processing photos.");
@@ -152,7 +152,7 @@ async function claimAnalysis() {
       where media_id = (select j.media_id from media_analysis_jobs j
         left join media_items m on m.id=j.media_id left join events e on e.id=m.event_id
         left join users u on u.id=e.creator_id
-        where ((j.status='queued' and j.available_at<=now()) or
+        where m.archived_at is null and ((j.status='queued' and j.available_at<=now()) or
           (j.status='completed' and j.recognition is not null and e.reference_revision>j.reference_revision
             and (not j.photo_workflow or (e.photo_matching_enabled and e.photo_matching_revision=j.photo_matching_revision))))
         and ${testCreatorNames===undefined?sql`true`:sql`(j.media_id=any(${testIdsArray}::int[]) or u.username=any(${testNamesArray}::text[]))`}
@@ -197,7 +197,7 @@ export async function drainAnalysisQueue() {
   const videoJob = claimed.fingerprint.startsWith("video:");
   try {
     const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, claimed.mediaId));
-    if (!item) return true;
+    if (!item || item.archivedAt) return true;
     if (claimed.photoWorkflow) {
       const [event]=item.eventId ? await db.select().from(events).where(eq(events.id,item.eventId)) : [];
       if (!event?.photoMatchingEnabled || event.photoMatchingRevision!==claimed.photoMatchingRevision) {
@@ -287,7 +287,7 @@ export async function drainAnalysisQueue() {
         .where(and(eq(mediaAnalysisJobs.mediaId, item.id), eq(mediaAnalysisJobs.workerToken, claimed.token))).for("update");
       if (!owned || owned.fingerprint !== claimed.fingerprint) return;
       const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,item.id)).for("update");
-      if (!current || (current.type === "video" ? itemAnalysisFingerprint(current) :
+      if (!current || current.archivedAt || (current.type === "video" ? itemAnalysisFingerprint(current) :
         prefix + analysisFingerprint(current.thumbnail)) !== claimed.fingerprint) return;
       if (owned.photoWorkflow && (!event?.photoMatchingEnabled ||
         event.photoMatchingRevision!==owned.photoMatchingRevision || current.eventId!==item.eventId)) {

@@ -9,12 +9,13 @@ import { deleteMediaObject, writeVideoPreview } from "./media-storage";
 import { randomUUID } from "crypto";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
-import { creatorUsage, lockedCreatorBudget, publicEventPredicate, publicMediaPredicate, SAFETY_POLICY } from "./beta-policy";
+import { creatorUsage, lockedCreatorBudget, publicEventPredicate, publicMediaPredicate, activeMediaPredicate, SAFETY_POLICY } from "./beta-policy";
 import { EventImageError, galleryFilePattern, galleryLegacyPattern, galleryThumbnailReference } from "./gallery-thumbnail-policy";
 import { boundedGalleryThumbnailSql } from "@shared/media-query-policy";
 import { planMediaSearchTerms } from "./media-search-plan";
 import { effectiveEventChanges } from "@shared/event-changes";
 import { enqueueTransactionalEmail } from "./transactional-emails";
+import { assertNewMediaUploadsEnabled } from "./media-object-routing";
 
 type SafeUser = Omit<User, "password">;
 type EventUpdateResult = Event & { saveStatus: "saved" | "unchanged" };
@@ -197,8 +198,8 @@ class DatabaseStorage implements IStorage {
       const file = galleryFilePattern.exec(value);
       const legacy = galleryLegacyPattern.exec(value);
       if (!file && !legacy) continue; // Official uploads were decoded by the route.
-      const [photo] = await tx.select().from(mediaItems).where(file
-        ? eq(mediaItems.thumbnail, value) : eq(mediaItems.id, Number(legacy![1]))).for("share");
+      const [photo] = await tx.select().from(mediaItems).where(and(activeMediaPredicate(),file
+        ? eq(mediaItems.thumbnail, value) : eq(mediaItems.id, Number(legacy![1])))).for("share");
       if (!photo || galleryThumbnailReference(photo, { ...before, ...event }) !== value)
         throw new EventImageError("The selected photo is no longer eligible. Choose another gallery photo.");
     }
@@ -257,6 +258,8 @@ class DatabaseStorage implements IStorage {
       await db.transaction(async tx => {
         if (eventExists[0].creatorId) await tx.execute(sql`select id from users where id=${eventExists[0].creatorId} for update`);
         await tx.execute(sql`select id from events where id = ${id} for update`);
+        const archived = await tx.execute(sql`select id from media_items where event_id=${id} and archived_at is not null limit 1`);
+        if (archived.rows.length) throw new Error("Restore archived media before deleting this gallery.");
         const documents = await tx.select({key:referenceDocuments.sourceKey,bytes:referenceDocuments.storedBytes}).from(referenceDocuments)
           .where(eq(referenceDocuments.eventId,id));
         for (const doc of documents) if (doc.key) await tx.insert(mediaCleanup).values({key:doc.key,creatorId:eventExists[0].creatorId,storedBytes:doc.bytes}).onConflictDoNothing();
@@ -330,7 +333,7 @@ class DatabaseStorage implements IStorage {
 
   // Media management methods
   async getAllMediaItems(page = 1, limit = 48): Promise<MediaItem[]> {
-    return await db.select(mediaListColumns).from(mediaItems).orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit);
+    return await db.select(mediaListColumns).from(mediaItems).where(activeMediaPredicate()).orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit);
   }
 
   async listPublicMedia(page = 1, limit = 48, search = "", type?: "image" | "video",
@@ -379,7 +382,7 @@ class DatabaseStorage implements IStorage {
     return await db
       .select(mediaListColumns)
       .from(mediaItems)
-      .where(eq(mediaItems.eventId, eventId)).orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit);
+      .where(and(activeMediaPredicate(),eq(mediaItems.eventId, eventId))).orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit);
   }
 
   async getEventThumbnailOptions(event: Event, page = 1): Promise<MediaItem[]> {
@@ -398,7 +401,7 @@ class DatabaseStorage implements IStorage {
     // Filter before pagination so videos or pending photos cannot hide later choices.
     // Only bounded inline thumbnails are read, never gallery originals.
     return db.select({ ...mediaListColumns, url: sql<string>`''` }).from(mediaItems)
-      .where(and(eq(mediaItems.eventId, event.id), eq(mediaItems.type, "image"),
+      .where(and(activeMediaPredicate(),eq(mediaItems.eventId, event.id), eq(mediaItems.type, "image"),
         eq(mediaItems.isPremium, false),
         or(...(!event.creatorId ? [eq(mediaItems.safetyStatus, "legacy")] : []),
           and(eq(mediaItems.safetyStatus, "approved"), eq(mediaItems.safetyPolicy, SAFETY_POLICY),
@@ -411,7 +414,7 @@ class DatabaseStorage implements IStorage {
   }
 
   async countEventMedia(eventId: number, manager: boolean): Promise<number> {
-    const source = manager ? db.select({ id: mediaItems.id }).from(mediaItems).where(eq(mediaItems.eventId, eventId))
+    const source = manager ? db.select({ id: mediaItems.id }).from(mediaItems).where(and(activeMediaPredicate(),eq(mediaItems.eventId, eventId)))
       : this.publicEventMediaQuery(eventId);
     const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(source.as("event_media"));
     return row.total;
@@ -428,14 +431,14 @@ class DatabaseStorage implements IStorage {
     const result = await db
       .select()
       .from(mediaItems)
-      .where(eq(mediaItems.id, id))
+      .where(and(activeMediaPredicate(),eq(mediaItems.id, id)))
       .limit(1);
     return result[0];
   }
 
   async createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem> {
     const event = mediaItem.eventId ? await this.getEvent(mediaItem.eventId) : undefined;
-    const result = await db.insert(mediaItems).values({...mediaItem,
+    const result = await db.insert(mediaItems).values({...mediaItem,archivedAt:null,
       ...(event?.creatorId?{safetyStatus:"error",safetyReason:"Safety check pending."}:{})}).returning();
     return result[0];
   }
@@ -449,7 +452,7 @@ class DatabaseStorage implements IStorage {
         safetyStatus:sql`case when exists(select 1 from events e where e.id=${mediaItems.eventId} and e.creator_id is not null) then 'error' else ${mediaItems.safetyStatus} end`,
         safetyReason:sql`case when exists(select 1 from events e where e.id=${mediaItems.eventId} and e.creator_id is not null) then 'Safety check pending.' else ${mediaItems.safetyReason} end`,
       })
-      .where(eq(mediaItems.id, id))
+      .where(and(activeMediaPredicate(),eq(mediaItems.id, id)))
       .returning();
 
     if (result.length === 0) {
@@ -462,7 +465,7 @@ class DatabaseStorage implements IStorage {
   async deleteMediaItem(id: number): Promise<void> {
     await db.transaction(async tx => {
       const [item] = await tx.select().from(mediaItems).where(eq(mediaItems.id, id));
-      if (!item) return;
+      if (!item || item.archivedAt) return;
       const event = item.eventId ? await tx.select().from(events).where(eq(events.id,item.eventId)).then(rows=>rows[0]) : undefined;
       if (event?.creatorId) await tx.execute(sql`select id from users where id=${event.creatorId} for update`);
       if (item.eventId) await tx.execute(sql`select id from events where id = ${item.eventId} for update`);
@@ -476,8 +479,8 @@ class DatabaseStorage implements IStorage {
   async findMediaByKey(key: string): Promise<MediaItem | undefined> {
     const url = `/api/media/files/${key}`;
     const [item] = await db.select().from(mediaItems)
-      .where(or(and(eq(mediaItems.url, url), sql`${mediaItems.url} like '/api/media/files/%'`),
-        and(eq(mediaItems.thumbnail, url), sql`${mediaItems.thumbnail} like '/api/media/files/%'`))).limit(1);
+      .where(and(activeMediaPredicate(),or(and(eq(mediaItems.url, url), sql`${mediaItems.url} like '/api/media/files/%'`),
+        and(eq(mediaItems.thumbnail, url), sql`${mediaItems.thumbnail} like '/api/media/files/%'`)))).limit(1);
     return item;
   }
 
@@ -490,6 +493,7 @@ class DatabaseStorage implements IStorage {
   }
 
   async reserveMedia(id: string, eventId: number, creatorId: number | null, bytes: number, storageKey: string, thumbnailKey: string, adminUpload = false): Promise<void> {
+    assertNewMediaUploadsEnabled();
     await db.transaction(async tx => {
       // Lock the creator first, then the event. Serializes budgets across events
       // and across app instances; the reservation remains until commit/failure.
@@ -506,9 +510,9 @@ class DatabaseStorage implements IStorage {
           select (select coalesce(sum(coalesce(m.stored_bytes,
               case when m.url like 'data:%' then length(m.url) * 3 / 4 else 0 end +
               case when m.thumbnail like 'data:%' then length(m.thumbnail) * 3 / 4 else 0 end)), 0) from media_items m
-            left join events e on e.id = m.event_id where ${filter}) +
+            left join events e on e.id = m.event_id where m.archived_at is null and ${filter}) +
             (select coalesce(sum(reserved_bytes), 0) from media_reservations where ${pending}) as bytes,
-          (select count(*) from media_items m left join events e on e.id = m.event_id where ${filter}) +
+          (select count(*) from media_items m left join events e on e.id = m.event_id where m.archived_at is null and ${filter}) +
             (select count(*) from media_reservations where ${pending}) as count`);
         return { bytes: Number(result.rows[0].bytes), count: Number(result.rows[0].count) };
       };
@@ -538,7 +542,7 @@ class DatabaseStorage implements IStorage {
       const community = !!reservation.creatorId;
       const [event] = await tx.select().from(events).where(eq(events.id,reservation.eventId)).for("update");
       const photoWorkflow = mediaItem.type==="image" && !!event?.photoMatchingEnabled;
-      const [item] = await tx.insert(mediaItems).values({...mediaItem,
+      const [item] = await tx.insert(mediaItems).values({...mediaItem,archivedAt:null,
         captionSource:nextcloudFileId && mediaItem.type==="image" ? "nextcloud_placeholder" :
           (community || photoWorkflow) && mediaItem.type==="image" && !mediaItem.caption ? "auto_pending" : "preserved",
         manualTags:mediaItem.tags || [],
@@ -648,6 +652,10 @@ class DatabaseStorage implements IStorage {
 
   async cleanupObjects(creatorIds?: readonly number[]): Promise<void> {
     if (creatorIds?.length===0) return;
+    // Cleanup must respect retained migration sources even in an older process
+    // still running with Replit defaults. Missing additive schema is not an error.
+    const routingTable = await db.execute(sql`select to_regclass('media_object_routes') as name`);
+    const registeredRoutes = !!routingTable.rows[0]?.name;
     const scope = creatorIds ? sql`creator_id in (${sql.join(creatorIds.map(id=>sql`${id}`),sql`,`)})` : undefined;
     // Expired uploads are marked for cleanup after an hour. No successful
     // upload may still use the reservation by then (see route timeout policy).
@@ -670,7 +678,7 @@ class DatabaseStorage implements IStorage {
             .where(or(eq(mediaItems.url, url), eq(mediaItems.thumbnail, url))).limit(1);
           const [document] = await tx.select({id:referenceDocuments.id}).from(referenceDocuments)
             .where(eq(referenceDocuments.sourceKey,item.key)).limit(1);
-          if (!referenced && !document) await deleteMediaObject(item.key);
+          if (!referenced && !document) await deleteMediaObject(item.key,registeredRoutes,statement=>tx.execute(statement));
           await tx.delete(mediaCleanup).where(eq(mediaCleanup.key, item.key));
         });
       } catch (error) {

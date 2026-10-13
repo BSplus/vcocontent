@@ -8,6 +8,7 @@ import { registerSeoRoutes } from "./seo-routes";
 import { verifyRecognitionSchema } from "./recognition-schema-readiness";
 import { registerRequestParsers } from "./request-parsers";
 import { startTransactionalEmailWorker } from "./transactional-emails";
+import { verifyMediaStorageReadiness } from "./media-object-routing";
 
 const app = express();
 
@@ -103,6 +104,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 (async () => {
+  await verifyMediaStorageReadiness();
   if (isProduction) await verifyRecognitionSchema();
   registerSeoRoutes(app);
 

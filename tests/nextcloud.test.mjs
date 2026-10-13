@@ -8,6 +8,9 @@ import { nextcloudSources, mediaAnalysisJobs } from "../shared/schema.ts";
 import { eq } from "drizzle-orm";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { stopAnalysisWorker } from "../server/analysis-jobs.ts";
 import { pool } from "../server/db.ts";
 import { storage } from "../server/storage.ts";
@@ -403,9 +406,18 @@ test("mixed import validates content and size, serves video posters safely, and 
   const png = await sharp(jpeg).png().toBuffer();
   const gif = await sharp(jpeg).gif().toBuffer();
   const webp = await sharp(jpeg).webp().toBuffer();
-  const mp4 = Buffer.from("00000000667479706d703432", "hex");
-  const mov = Buffer.from("000000006674797071742020", "hex");
-  const webm = Buffer.from("1a45dfa34286810142828104", "hex");
+  // Header-only containers are no longer valid inputs for the real FFmpeg poster pipeline.
+  const videoDirectory = await mkdtemp(path.join(tmpdir(),"nextcloud-video-fixture-"));
+  const videoBytes = {};
+  try {
+    for (const [extension,codec,format] of [["mp4","libx264","mp4"],["mov","libx264","mov"],["webm","libvpx","webm"]]) {
+      const filename = path.join(videoDirectory,`fixture.${extension}`);
+      await promisify(execFile)("ffmpeg",["-v","error","-f","lavfi","-i","color=c=red:s=64x48:r=8:d=1",
+        "-threads","1","-c:v",codec,"-f",format,filename]);
+      videoBytes[extension] = await readFile(filename);
+    }
+  } finally {await rm(videoDirectory,{recursive:true,force:true});}
+  const {mp4,mov,webm} = videoBytes;
   const contents = new Map([
     ["one.jpg", jpeg], ["two.png", png], ["three.gif", gif], ["four.webp", webp],
     ["five.mp4", mp4], ["six.mov", mov], ["seven.webm", webm],

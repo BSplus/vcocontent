@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
 import { events, eventEntries, mediaItems, mediaAnalysisJobs, referenceDocuments, series } from "@shared/schema";
@@ -22,14 +22,14 @@ const automaticSources = new Set(["auto_pending","automatic","photo_automatic","
 export function registerManualNumberRoutes(app: Express) {
   // A coherent snapshot across context, historical entries and season documents.
   const resolve = async (tx: any, id: number, user: Express.User | undefined, replaceIndex?: number, write = false) => {
-    const [initial] = await tx.select().from(mediaItems).where(eq(mediaItems.id,id));
+    const [initial] = await tx.select().from(mediaItems).where(and(sql`${mediaItems.archivedAt} is null`,eq(mediaItems.id,id)));
     if (!initial) throw new AssignmentError(404,"Media item not found.");
     if (!initial.eventId) throw new AssignmentError(403,"This media has no managed event.");
     const query = tx.select().from(events).where(eq(events.id,initial.eventId));
     const [event] = await (write ? query.for("update") : query);
     if (!event || !canManage(user,event)) throw new AssignmentError(403,"Access denied.");
     if (write) await tx.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,id)).for("update");
-    const itemQuery = tx.select().from(mediaItems).where(eq(mediaItems.id,id));
+    const itemQuery = tx.select().from(mediaItems).where(and(sql`${mediaItems.archivedAt} is null`,eq(mediaItems.id,id)));
     const [item] = await (write ? itemQuery.for("update") : itemQuery);
     if (!item || item.eventId !== event.id) throw new AssignmentError(409,"Media changed. Reload and select again.");
     if (!["image","video"].includes(item.type)) throw new AssignmentError(400,"Assign number is available for photos and videos only.");

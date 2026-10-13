@@ -1,0 +1,53 @@
+The final Cloudflare R2 Development smoke test has passed. We are ready to prepare the VCO Content Database for its initial Production launch.
+
+All existing gallery photos, videos and content records are dummy/test data. No legacy media migration or archival system is required.
+
+Please proceed with launch preparation, keeping the implementation minimal.
+
+1. Clean-library reset
+
+Prepare a one-time cleanup of existing dummy content, including media, galleries, test events and related test-only records.
+
+* Preserve application schema, functionality, authentication, roles, system settings and integrations.
+* Preserve any real administrative accounts or configuration data.
+* Remove obsolete references, covers, thumbnails, likes, favourites and download history belonging exclusively to deleted dummy content.
+* Do not delete physical Replit storage objects at this stage.
+* Do not assume that all user accounts can be deleted.
+* Provide an exact deletion summary and dependency check before execution.
+
+2. Production R2 preparation
+
+Verify the Production configuration requirements for the private EU bucket vco-content-media.
+
+* Production-only credentials: R2_PROD_ACCESS_KEY_ID and R2_PROD_SECRET_ACCESS_KEY.
+* Verify the Production database target independently.
+* Keep Production and Development credentials strictly separated.
+* Confirm the required Production environment variables and activation flags.
+* Prepare a safe activation and rollback procedure for new uploads.
+* Do not introduce legacy migration infrastructure or a Cloudflare Worker for this initial launch.
+
+3. Launch verification
+
+Prepare a minimal Production smoke test covering:
+
+* One new photo and preview
+* One short video and poster
+* Authenticated delivery and browser playback
+* Basic permissions and quota accounting
+* Download statistics
+* Cleanup of only the test-created records and R2 objects
+
+Approval boundaries
+
+You may perform read-only audits and prepare code/configuration changes in Development.
+
+Do not execute the dummy-data cleanup, modify the Production database, enable Production R2, enter Production credentials, deploy or run Production smoke tests without my separate explicit approval.
+
+Please report:
+
+1. Exact dummy-data cleanup scope
+2. Required Production Secrets and configurations
+3. Any remaining blockers
+4. The shortest safe sequence to launch
+
+Our priority is a clean, reliable Production launch with R2 as the default storage for new media—not preserving or migrating test content.

@@ -67,7 +67,7 @@ test("Low-Res quality ladder accepts exact decimal limit before bounded resoluti
 test("missing, corrupt, truncated, oversized and pixel-bomb inputs fail with temporary cleanup", async () => {
   const before = await tempFiles();
   store.objects.delete(key);
-  await assert.rejects(downloadStream(item, "low"), /missing object/);
+  await assert.rejects(downloadStream(item, "low"), /Media storage upstream/);
   store.objects.set(key, Buffer.from("not a photo"));
   await assert.rejects(downloadStream(item, "low"));
   const source = await sharp({ create: { width: 400, height: 300, channels: 3, background: "red" } }).png().toBuffer();
@@ -127,7 +127,7 @@ test("storage reader errors do not write objects", async () => {
   const old = Client.prototype.downloadAsStream;
   const writes = store.writes.length;
   Client.prototype.downloadAsStream = () => new Readable({ read() { this.destroy(new Error("offline source")); } });
-  try { await assert.rejects(downloadStream(item, "low"), /offline source/); }
+  try { await assert.rejects(downloadStream(item, "low"), /Media storage upstream/); }
   finally { Client.prototype.downloadAsStream = old; }
   assert.equal(store.writes.length, writes);
 });

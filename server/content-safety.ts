@@ -75,6 +75,7 @@ export async function reviewMediaSafety(id: number, creatorId: number) {
     return;
   }
   const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id,id));
+  if (item?.archivedAt) return;
   if (!item) return;
   const key = /^\/api\/media\/files\/(media-[0-9a-f-]{36}\.(?:jpg|png|gif|webp))$/.exec(item.url)?.[1];
   let result = {status:"blocked",reason:"Public community files must be supported static photos. This source stays private."};
@@ -120,7 +121,7 @@ export async function reviewMediaSafety(id: number, creatorId: number) {
   }
   await db.update(mediaItems).set({safetyStatus:result.status,safetyReason:result.reason,
     safetyVersion:item.contentVersion,safetyPolicy:SAFETY_POLICY})
-    .where(and(eq(mediaItems.id,id),eq(mediaItems.contentVersion,item.contentVersion),eq(mediaItems.url,item.url)));
+    .where(and(sql`${mediaItems.archivedAt} is null`,eq(mediaItems.id,id),eq(mediaItems.contentVersion,item.contentVersion),eq(mediaItems.url,item.url)));
 }
 export async function reviewEventSafety(id: number, creatorId: number) {
   if (!await takeBetaRate(`safety:${creatorId}`,30,3600000)) return;

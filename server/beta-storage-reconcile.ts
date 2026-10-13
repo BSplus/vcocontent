@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { events, mediaItems, referenceDocuments, mediaCleanup } from "@shared/schema";
 import { readMediaStream } from "./media-storage";
@@ -31,7 +31,7 @@ export async function reconcileCreatorStorage(creatorId: number) {
     measured.set(source,bytes); return bytes;
   };
   const rows = await db.select({item:mediaItems}).from(mediaItems).innerJoin(events,eq(events.id,mediaItems.eventId))
-    .where(eq(events.creatorId,creatorId)).limit(2001);
+    .where(and(sql`${mediaItems.archivedAt} is null`,eq(events.creatorId,creatorId))).limit(2001);
   const docs = await db.select().from(referenceDocuments).where(eq(referenceDocuments.ownerId,creatorId)).limit(501);
   let updated = 0, unresolved = 0;
   // Bound one admin action; repeat if a large historical account has more rows.
@@ -40,7 +40,7 @@ export async function reconcileCreatorStorage(creatorId: number) {
     try {
       const highBytes = await size(item.url), lowBytes = await size(item.thumbnail);
       await db.update(mediaItems).set({highBytes,lowBytes,storedBytes:highBytes+(item.url===item.thumbnail?0:lowBytes)})
-        .where(and(eq(mediaItems.id,item.id),eq(mediaItems.url,item.url),eq(mediaItems.thumbnail,item.thumbnail)));
+        .where(and(sql`${mediaItems.archivedAt} is null`,eq(mediaItems.id,item.id),eq(mediaItems.url,item.url),eq(mediaItems.thumbnail,item.thumbnail)));
       updated++;
     } catch {unresolved++;}
   }

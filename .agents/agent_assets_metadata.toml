@@ -140,3 +140,199 @@ mtime_ms = 1791846757955
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/5bc8c384-fff3-4160-a55b-5c7286659194/7808e9b8-22a3-4fd0-8298-ba7e8a18aa19"
 storage_version_token = "1791847395282972"
 content_type = "image/png"
+
+[[outputs]]
+id = "bJhrOzlavhXCHhYAzqbb-"
+uri = "file://docs/r2-migration-report.md"
+type = "text"
+title = "R2 preparation report"
+description = "Historical local pilot, benchmarks and cost models, with links to the later scoped Development connectivity evidence."
+logical_id = "90229119-dc7a-4fe7-ad22-07a211f47e7c"
+content_hash = "sha256:71f2c2d02c8a2b11282da1231abaebf447ff230f3f0f3ccc3be0414390fa8bea"
+size = 13799
+mtime_ms = 1791850287702
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/90229119-dc7a-4fe7-ad22-07a211f47e7c/9f5f8f26-ebc2-4c21-9aa5-99ac23ad1ee1"
+storage_version_token = "1791850405850510"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "bIVK1D4dJXPxw7pow8eLA"
+uri = "file://docs/r2-development.md"
+type = "text"
+title = "R2 preparation and rollback guide"
+description = "Development operating instructions; environment-specific configuration is clarified in docs/r2-environment-configuration.md. No Production approval."
+logical_id = "7337a074-90b4-477d-8e81-664c388afbb2"
+content_hash = "sha256:eb4718adf59f857c77ac97d5ce8df4c95fa227aead60e2a0f29e66065885de52"
+size = 15161
+mtime_ms = 1791850287610
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/7337a074-90b4-477d-8e81-664c388afbb2/c5a3ddd0-c862-4e67-927c-5a40acffa118"
+storage_version_token = "1791850406479780"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "4xwjuhnrX-gNrCu-owtxu"
+uri = "file://docs/r2-development-connectivity-report.md"
+type = "text"
+title = "R2 connectivity and integrity — confirmed results"
+description = "Authenticated Development connectivity, SHA-256 and cleanup passed; operator-confirmed manual bucket review is complete. Unsigned S3 HTTP 400 is an invalid public-access verification method, not evidence of exposure."
+logical_id = "9931fd38-9530-4698-bad5-c309e8c98efd"
+content_hash = "sha256:629eb293698bfeb1f18594a24839229ddb178664dfe2a75b8684fc82e896acbd"
+size = 5800
+mtime_ms = 1791851229206
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/9931fd38-9530-4698-bad5-c309e8c98efd/a295941b-bff6-40d6-b66d-5c5ddd2c8e8c"
+storage_version_token = "1791851443246200"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "18HqdjdKpO3gE1UDl6wNs"
+uri = "file://docs/r2-anonymous-access-investigation.md"
+type = "text"
+title = "R2 anonymous-access investigation"
+description = "Read-only diagnosis: S3 and public bucket URLs are separate surfaces; exact HTTP 400 error cannot be recovered. Proposed manual verification and optional scoped diagnostics, not executed."
+logical_id = "d6be4d7d-516c-4896-8b31-3909c143ad33"
+content_hash = "sha256:6698e84555c5354447fa52b7d961edfe3e6a3e280a37fc507ddce5cc4d8ed108"
+size = 8206
+mtime_ms = 1791850287702
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/d6be4d7d-516c-4896-8b31-3909c143ad33/91d11811-6829-4b60-ad8a-33aa93109954"
+storage_version_token = "1791850407702441"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "kJGHrFEj-8HCrNpnI6CRI"
+uri = "file://docs/r2-development-pilot-readiness.md"
+type = "text"
+title = "Development media pilot — readiness and proposed plan"
+description = "Read-only readiness findings, conditional media candidates, source-isolation/schema/tooling blockers, exact proposed scope, verification gates and rollback. No pilot, routing activation or Worker deployment."
+logical_id = "99d7a230-dd7f-4c2f-a732-5ed6ee4ddcef"
+content_hash = "sha256:a66d7f79d429114369500d8590fe49dc06124016e4bda8c1dcf2e6bf6f346015"
+size = 7608
+mtime_ms = 1791851275842
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/99d7a230-dd7f-4c2f-a732-5ed6ee4ddcef/db579e7c-9fc3-4421-8ba1-4d8649c2fd3f"
+storage_version_token = "1791851443906142"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "av8Wlhe_qk1y_IqD7jTIK"
+uri = "file://docs/r2-new-upload-launch-plan.md"
+type = "text"
+title = "R2 new-upload launch — first report"
+description = "Simplified architecture, read-only media-reference audit, proposed non-destructive empty-library reset, exact Production configuration and two-item Development smoke plan. No storage switch, reset, upload or deployment performed."
+logical_id = "20c79a62-b258-4a76-b265-7e877ea68415"
+content_hash = "sha256:d536176981b460180b2435534380fe9c3b7f902e79351bb835e79096345c4c13"
+size = 9424
+mtime_ms = 1791852287634
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/20c79a62-b258-4a76-b265-7e877ea68415/44ddfd9a-7e04-4889-b901-ca96c13ac72b"
+storage_version_token = "1791852397211221"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "dBKpA2QCtglO1tIO6oFJo"
+uri = "file://docs/r2-new-upload-readiness.md"
+type = "text"
+title = "R2 Development readiness"
+description = "Implemented staged configuration, exact pending 75-record archive, smoke plan, rollback and separately gated Production setup."
+logical_id = "0e3da441-3df7-4cff-9855-d9690dd6561a"
+content_hash = "sha256:6e27fbb73260ba12650a52a855a152af8f103052a2a181c7b10e43a4e286ce04"
+size = 12497
+mtime_ms = 1791854588182
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/0e3da441-3df7-4cff-9855-d9690dd6561a/21d61af1-3678-4833-af7f-e0972c35cd1c"
+storage_version_token = "1791854779348184"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "mqZBm7KyOzIonvs3xQ7PB"
+uri = "file://docs/r2-development-live-smoke-report.md"
+type = "text"
+title = "R2 Development smoke report — cleanup PASS"
+description = "Five approved test objects deleted and verified absent; associated test records removed; original 75 media unchanged. Delivery 404 remains unresolved and the upload gate stays closed."
+logical_id = "307d4bdd-5f8e-4905-8c54-91eaa8fb5484"
+content_hash = "sha256:20928662c7159b399ed4bbd36eb4470d8c1b12155114c3facf6e4a4da4391146"
+size = 6494
+mtime_ms = 1791876681871
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/307d4bdd-5f8e-4905-8c54-91eaa8fb5484/f649f71c-52be-49ff-96e1-4b883d2419f2"
+storage_version_token = "1791876725571069"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "p-mQ856wgNSORN0OfR24h"
+uri = "file://docs/r2-development-delivery-investigation.md"
+type = "text"
+title = "R2 delivery investigation and cleanup recheck"
+description = "Reproduced stale AI-poster 404 locally; authenticated photo/preview and refreshed poster pass. Prepared runner corrected, five keys absent with zero repeat deletions, upload gate closed; no new live smoke."
+logical_id = "d1365be7-5177-4470-ac1a-5b7be71cb297"
+content_hash = "sha256:e8cc71a07f482e06eaaff975fcfa40d461b3089b6f7f3c5bf0dd90c25870f8fa"
+size = 5825
+mtime_ms = 1791877363915
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/d1365be7-5177-4470-ac1a-5b7be71cb297/19304936-60e6-4a9c-8417-950680feb49a"
+storage_version_token = "1791877454506865"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "Y_SxAf-PlvKtvHPCBLHF7"
+uri = "file://docs/r2-final-development-smoke-report.md"
+type = "text"
+title = "Final R2 Development smoke — PASS"
+description = "Authenticated uploads, fresh AI poster, integrity, browser playback/Range, private access, quota accounting, deduplicated statistics and exact five-object cleanup passed. Original 75 unchanged; upload gate closed."
+logical_id = "90619111-1ef6-4269-82a8-d5012532cccf"
+content_hash = "sha256:e1424bd4e6c94628af319f575dc0d6b8de86b15ed35f4e3766310a6a4821bfea"
+size = 5729
+mtime_ms = 1791878035791
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/90619111-1ef6-4269-82a8-d5012532cccf/e35371f3-adc6-494a-b5d8-cd9c036de21e"
+storage_version_token = "1791878127802994"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "BQRppCRTG_NBOioRIs33K"
+uri = "file://docs/r2-production-launch-preparation.md"
+type = "text"
+title = "Clean-library reset and Production launch preparation"
+description = "Exact separate Development/Production scopes, protected dependency blockers, all required Production flags/Secrets, safe rollback and maximum-five-object Production smoke checklist. Preparation only: no reset, Production writes or deployment."
+logical_id = "3a6d35d6-1de5-429d-ae43-bba97253be96"
+content_hash = "sha256:850c6c991fc5796f176cf7f3e65a611036c8469c7a814898d6483519c1b04df5"
+size = 12561
+mtime_ms = 1791879169871
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/3a6d35d6-1de5-429d-ae43-bba97253be96/215ccf81-e001-4a4b-85f5-9e2be695756a"
+storage_version_token = "1791879331331541"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "EIheRJAosP0IRuGqXiyri"
+uri = "file://docs/r2-clean-library-preservation-plan.md"
+type = "text"
+title = "Separate Development and Production cleanup plans"
+description = "Verified independent manifests: delete Development75media/23events; delete Production209media/events29,30,31 while preserving hidden container224, its Nextcloud connection and document48. All accounts/series/physical objects preserved; no execution."
+logical_id = "541de26b-107c-466b-8acb-9bb28495f093"
+content_hash = "sha256:504e0abb3eafe82c17895c21da703185baf063cfc35ffe544ecee3d94ed65615"
+size = 6774
+mtime_ms = 1791879691596
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/541de26b-107c-466b-8acb-9bb28495f093/86368952-91d6-4aa5-8a88-793fb53f2d48"
+storage_version_token = "1791879838643817"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "25Cj_FNnksiE6fpzmDqSb"
+uri = "file://docs/production-cleanup-recovery.md"
+type = "text"
+title = "Production PITR assessment and guarded cleanup runbook"
+description = "Recovery prerequisites, timestamp and whole-database rollback limitations, exact operator transaction safeguards and local verification results. Production transaction remains unexecuted and defaults to rollback."
+logical_id = "efc52ddc-6a66-4e6f-b8a7-64359896fc39"
+content_hash = "sha256:caaa75067894c3bb02c24d3b9890e9f821f439dd4f8d8861632c10660ac1d26c"
+size = 7056
+mtime_ms = 1791881867451
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/efc52ddc-6a66-4e6f-b8a7-64359896fc39/e1de9b56-7f20-45a6-965e-64a50b63ee51"
+storage_version_token = "1791881919004934"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "sNCydu-kOb3WOYnACpsNl"
+uri = "file://docs/launch-cleanup-status.md"
+type = "text"
+title = "Development cleanup result and Production commit instructions"
+description = "Actual Development deletions and preserved fingerprints, short manual Production commit steps using the existing guarded SQL, and pending Production R2 schema/configuration. No Production mutation, deployment or physical-object deletion."
+logical_id = "ce28ed34-9b81-462e-adfb-7a2844809454"
+content_hash = "sha256:f3092a2f32234bf2ff6f7cb6908191fbb1c56f6dba744559f8fe6e3beb2c5464"
+size = 8256
+mtime_ms = 1791882482211
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/ce28ed34-9b81-462e-adfb-7a2844809454/915f5073-6fe1-4a44-851e-9cf5121bcdc2"
+storage_version_token = "1791882616327364"
+content_type = "text/markdown"

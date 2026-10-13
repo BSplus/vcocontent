@@ -409,7 +409,7 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
     const queueTags = async (mediaId: number) => {
       try {
         const [item] = await db.select().from(mediaItems).where(eq(mediaItems.id, mediaId));
-        if (!item) return;
+        if (!item || item.archivedAt) return;
         await enqueueAnalysis(item);
         await db.update(nextcloudFiles).set({ aiWarning: null }).where(eq(nextcloudFiles.id, record.id));
       } catch {

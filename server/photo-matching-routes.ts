@@ -26,7 +26,7 @@ export function registerPhotoMatchingRoutes(app: Express, requireCreator: Reques
         return res.status(400).json({error:"Invalid photo page."});
       if (expectedPage !== undefined && (!Number.isSafeInteger(expectedPage) || expectedPage < 1 || expectedPage > 1000000))
         return res.status(400).json({error:"Invalid photo page."});
-      const predicate = and(eq(mediaItems.eventId,event.id),eq(mediaItems.type,"image"));
+      const predicate = and(sql`${mediaItems.archivedAt} is null`,eq(mediaItems.eventId,event.id),eq(mediaItems.type,"image"));
       const [count] = await db.select({
         total:sql<number>`count(*)::int`,
         preceding:sql<number>`count(*) filter (where ${before ?? 0} > 0 and ${mediaItems.id} >= ${before ?? 0})::int`,
