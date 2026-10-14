@@ -1,78 +1,77 @@
-# Optional online brand verification
+# Optional online brand existence check
 
-## Operator's requirement
+## Current operator-approved rule
 
-Automatically recognized brand/company names need an online existence check
-before becoming searchable brand tags. Unclear names, ambiguous matches,
-unavailable checks and timeouts omit **only** the brand tag. They must not
-reject an upload, prevent publication, fail ordinary tagging or gate entry-list
-matching. No fuzzy correction to a conveniently similar real company.
+This is a lightweight **existence sanity check**, not strict company or legal
+identity verification. A matching website (MOZA RACING → mozaracing.com) **or**
+a normal search result naming the brand/products is enough. Retailer and product
+results count. Some errors are acceptable; the objective is to avoid imaginary
+or obviously nonexistent brands without making recognition unusable.
 
-Both requirements apply: independently checked on-car pixel evidence **and**
-online naming evidence. A real company found online does not prove that its
-logo appears on the car. A logo does not establish a sponsorship contract.
+No official-source classification, exact verbatim quote, structured JSON
+verdict, matching classifier URL or secondary model verification is required.
+This replaces the earlier overly strict evidence gate.
 
-## Implementation and boundaries
+The independent on-car visual checks remain unchanged. Online existence does
+not prove that a logo appears on the car, identify a team or establish a
+sponsorship relationship. Ordinary tags, captions, entry matching, permissions
+and independent publication safety remain unchanged.
 
-- The shared photo/video analysis worker filters automatic brand tags before
-  saving/merging them. Ordinary scene tags, identity matching, caption handling,
-  editor suppression, permissions and independent publication safety remain
-  unchanged. Manual/editor-authored tags are not retroactively deleted.
-- Uses the existing managed OpenAI integration, with no new credentials or
-  schema. Sends the candidate company name, not photos, filenames, event details
-  or account information, to the hosted web lookup.
-- Requires a completed real web-search record, a completed verdict, an exact
-  observed-name match, unambiguous authoritative/official naming evidence,
-  and an actual cited HTTPS URL whose source title names the brand.
-- Model memory, URL guesses, invented aliases, retailer/directory-only mentions
-  and an HTTP 200 by themselves are insufficient.
-- Hosted search may return cited prose instead of the requested JSON. A small
-  structured classification then assesses only that retrieved evidence. Its
-  quote must occur in the retrieved text; its URL must be an actual source
-  citation. Pretty-printed valid JSON is supported without accepting multiple
-  or partial verdicts.
-- The app does not fetch model-supplied websites itself. Source retrieval stays
-  with the hosted web tool; no arbitrary-host application fetch is introduced.
-- One uncached name lookup per analysis; one concurrent lookup per process,
-  with same-name in-flight coalescing. Cached confirmed brands remain available
-  when another name is being checked. Additional unresolved names are omitted.
-- A lookup needs one web request and, if the reply is prose, at most one small
-  classification request. Overall optional deadline: 6.5 seconds; no retries.
-  This runs in background analysis, outside DB transactions and the numeric
-  Vision slots. It can add bounded background-analysis latency but never becomes
-  a required success condition for uploads/publication/ordinary tags.
-- Bounded process-local cache: 256 names; positive 24 hours, negative 1 hour,
-  transport/deadline failures 2 minutes. Cache receipts contain only brand,
-  public source URL and check time. Restart loses this cache, never trusts it as
-  persisted approval. Multiple app processes have separate caches.
-- No automatic old-media reanalysis or cleanup. No Production changes or publish.
+## Implementation and limits
 
-## Verification status
+- The shared photo/video analysis worker filters automatically generated brand
+  tags before saving them. A failed/uncertain lookup omits **only** brand tags:
+  it cannot reject committed uploads or become a publication success condition.
+  Editor-authored tags and removals are not retroactively overwritten.
+- Uses the existing managed OpenAI hosted web search with one request per
+  uncached lookup, no second classification request, no retries or new secrets.
+  Sends only the candidate name, not images, filenames, events or accounts.
+- Requires an actual completed web search and a usable cited search result
+  or tool-returned source. A successful HTTP response or unbacked model assertion
+  alone does not count.
+- Either a domain label matching the space/punctuation-normalized brand name,
+  or a source title naming the brand, suffices. Plain prose and tracking-query
+  differences do not invalidate results. Registered company identity and
+  exclusivity of the name are not investigated.
+- Clearly fictional/nonexistent-only result titles are excluded. Unrelated
+  results, empty search evidence, guessed aliases and lookalike domains with
+  neither a matching label nor a named brand/product result do not pass.
+- Source URLs are HTTPS without credentials. The app does not fetch
+  model-supplied websites itself; retrieval stays with the hosted web tool.
+  Receipts use the neutral `sourceUrl` field: a result need not be official.
+- Existing bounded process-local cache remains: 256 names, positive 24 hours,
+  negative 1 hour, lookup failure 2 minutes. Same-name requests coalesce.
+- One uncached candidate per analysis and one concurrent lookup per process;
+  already cached brands remain available. Additional unresolved names are
+  omitted rather than delaying ordinary tagging indefinitely.
+- Optional overall deadline: 6.5 seconds, outside transactions and the numeric
+  Vision slots. A cold lookup can add bounded background-analysis latency;
+  errors/timeouts never fail ordinary analysis.
+- No database/schema changes, new services, archive reanalysis or cleanup.
 
-- Earlier disposable-DB run: 45 checks passed, including photo brand search,
-  no-entry-list operation, editor suppression, caption preservation, and a failed
-  online check that still finishes ordinary analysis and saves ordinary tags.
-- Further isolated checks cover pretty-printed JSON, multi-verdict rejection,
-  source-quote provenance, the two-stage retrieval/classification path and
-  non-Latin brand-name matching.
-- Development live probes reached the existing hosted web tool successfully
-  (HTTP 200 with actual completed search records and URL citations). The
-  structured-classification endpoint also returned HTTP 200.
-- Those probes did **not** produce an accepted MOZA RACING receipt in the code
-  version tested live. Local investigation identified overly strict single-line
-  JSON handling; the corrected complete-object parser passes local tests.
-  One operator-authorized final Development check after that correction was
-  performed on 2026-10-14. It made exactly one web request and one structured
-  classification request (both HTTP 200), completing in approximately 3.5 seconds.
-  The web response contained a completed search record and one actual source
-  citation whose title named MOZA RACING. The classifier returned the exact name,
-  confirmed=true, ambiguous=false and the official site `https://mozaracing.com/`.
-  Nevertheless, the application's stricter source-evidence acceptance did
-  **not** produce a receipt: the brand tag was omitted and the ordinary `Day`
-  tag remained. The bounded probe did not identify which exact source guard
-  rejected the evidence. Do not claim a proven quote/URL mismatch, or describe
-  positive real-provider brand verification as passed.
-- Repeated live probes were stopped rather than relaxing source/name safeguards.
-  Unknown brands remain omitted, and ordinary tags are preserved.
+## Verification
 
-No Production data, settings, credentials or deployment were changed.
+Current simplified implementation, 14 October 2026:
+
+- TypeScript check and production build passed.
+- 21 focused checks passed: named product results, retailer results, matching
+  domains with generic titles, tracking URL differences, legacy/new search
+  records, no secondary classifier, non-Latin names, unrelated/fictional results,
+  coalescing/cache expiry and failure/timeout behaviour.
+- Three selected disposable-database integration checks passed: persisted photo
+  brand search and caption/identity preservation; no-entry-list/no-number
+  recognition and editor suppression; failed web lookup preserving ordinary
+  tags and finishing analysis. The other 26 photo tests were deliberately
+  skipped in this focused run, not claimed as rerun.
+- **One real Development lookup passed.** Managed provider returned HTTP 200;
+  MOZA RACING was accepted with source
+  `https://us.mozaracing.com/pages/about-us`. One web request, approximately
+  3.4 seconds; ordinary `Day` tag preserved. No classification request.
+
+Earlier strict-gate attempts reached real web sources and a positive classifier
+verdict but failed the application's overly strict acceptance. Those historical
+failures are superseded by the current operator-approved existence check.
+
+The live test confirms the online existence check, not the accuracy of reading
+every logo in actual photos/videos. The on-car visual pipeline is unchanged.
+No Production data, settings, credentials or publishing were changed.

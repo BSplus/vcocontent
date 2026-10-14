@@ -3,14 +3,26 @@ import assert from "node:assert/strict";
 import {parseOnlineBrandReceipt,createOnlineBrandVerifier,managedWebLookup} from "../server/brand-online-verification.ts";
 import {brandOnlineResponse} from "./helpers/brand-online-fixture.mjs";
 
-test("exact brand requires a completed real-search record and cited authoritative naming evidence",()=>{
+test("a named ordinary product search result is enough",()=>{
   const proof=brandOnlineResponse("MOZA RACING");
   assert.equal(parseOnlineBrandReceipt(proof,"MOZA RACING",100).name,"MOZA RACING");
 });
-test("pretty-printed valid JSON preserves the same source checks",()=>{
+test("mozaracing.com is enough even with a generic website title",()=>{
   const proof=brandOnlineResponse("MOZA RACING"),part=proof.output[1].content[0];
-  const parsed=JSON.parse(part.text.split("\n")[1]);
-  part.text="Authoritative cited evidence.\n"+JSON.stringify(parsed,null,2);
+  part.text="Website found.";
+  part.annotations[0]={type:"url_citation",url:"https://mozaracing.com/?utm_source=search",title:"Home"};
+  assert.equal(parseOnlineBrandReceipt(proof,"MOZA RACING",100).sourceUrl,"https://mozaracing.com/?utm_source=search");
+});
+test("retailer results work without an official website or structured verdict",()=>{
+  const proof=brandOnlineResponse("MOZA RACING");
+  proof.output[1].content[0].annotations[0]={type:"url_citation",url:"https://sim-shop.com/products/wheel",title:"Moza Racing R12 Wheel Base – Buy Online"};
+  proof.output[1].content[0].text="Product available from a retailer.";
+  assert.equal(parseOnlineBrandReceipt(proof,"MOZA RACING",100).sourceUrl,"https://sim-shop.com/products/wheel");
+});
+test("differences in quotes, JSON formatting and URL tracking no longer veto a real result",()=>{
+  const proof=brandOnlineResponse("MOZA RACING");
+  proof.output[1].content[0].text='No JSON, quote or classifier required.';
+  proof.output[1].content[0].annotations[0].url+="?utm_source=search";
   assert.equal(parseOnlineBrandReceipt(proof,"MOZA RACING",100).name,"MOZA RACING");
 });
 test("non-Latin names cannot match unrelated Latin source titles as empty strings",()=>{
@@ -19,43 +31,35 @@ test("non-Latin names cannot match unrelated Latin source titles as empty string
   proof.output[1].content[0].annotations[0].title="Some Other Company";
   assert.equal(parseOnlineBrandReceipt(proof,"比亚迪",100),undefined);
 });
-test("two verdicts and a fabricated quote outside the actual retrieved evidence are rejected",()=>{
+test("newer search source records and legacy completed search records work",()=>{
   const proof=brandOnlineResponse("MOZA RACING");
-  proof.brandSourceText="No such literal brand name was retrieved.";
-  assert.equal(parseOnlineBrandReceipt(proof,"MOZA RACING",100),undefined);
-  delete proof.brandSourceText;
-  proof.output[1].content[0].text+="\n"+proof.output[1].content[0].text.split("\n")[1];
-  assert.equal(parseOnlineBrandReceipt(proof,"MOZA RACING",100),undefined);
+  proof.output[1].content[0].annotations=[];
+  proof.output[0].action.sources=[{url:"https://sim-shop.com/",title:"MOZA RACING Products"}];
+  assert.equal(parseOnlineBrandReceipt(proof,"MOZA RACING",100).name,"MOZA RACING");
+  const legacy=brandOnlineResponse("MOZA RACING");delete legacy.output[0].action;
+  assert.equal(parseOnlineBrandReceipt(legacy,"MOZA RACING",100).name,"MOZA RACING");
 });
-test("cited prose is classified separately and a pretty-printed verdict retains real source provenance",async()=>{
+test("one web lookup suffices; no secondary model classification is called",async()=>{
   let searches=0,classifications=0;
-  const search=brandOnlineResponse("MOZA RACING"),part=search.output[1].content[0];
-  const original=JSON.parse(part.text.split("\n")[1]);
-  part.text="MOZA RACING official commercial brand";
+  const search=brandOnlineResponse("MOZA RACING");
   const client={
-    responses:{create:async()=>{searches++;return search;}},
-    chat:{completions:{create:async payload=>{
-      classifications++;
-      assert.equal(payload.response_format.json_schema.strict,true);
-      assert.ok(JSON.parse(payload.messages[1].content).citations.length>0);
-      return {choices:[{finish_reason:"stop",message:{content:JSON.stringify(original,null,2)}}]};
-    }}},
+    responses:{create:async payload=>{searches++;assert.equal(payload.store,false);return search;}},
+    chat:{completions:{create:async()=>{classifications++;throw new Error("Must not classify");}}},
   };
   const verifier=createOnlineBrandVerifier({lookup:(name,signal)=>managedWebLookup(name,signal,client)});
   assert.deepEqual(await verifier.filter(["Day","Brand: MOZA RACING"]),["Day","Brand: MOZA RACING"]);
-  assert.equal(searches,1);assert.equal(classifications,1);
+  assert.equal(searches,1);assert.equal(classifications,0);
 });
 for(const [name,mutate] of [
   ["model assertion without a web search",r=>{r.output.shift();}],
   ["unfinished web search",r=>{r.output[0].status="in_progress";}],
   ["incomplete response",r=>{r.status="incomplete";}],
   ["missing actual URL citation",r=>{r.output[1].content[0].annotations=[];}],
-  ["citation to another page",r=>{r.output[1].content[0].annotations[0].url="https://another-site.com/";}],
   ["generic source title without the name",r=>{r.output[1].content[0].annotations[0].title="Directory Home";}],
-  ["nearby but different company",r=>{r.output[1].content[0].text=JSON.stringify({name:"MOZA",confirmed:true,ambiguous:false,officialUrl:"https://brand-fixture.com/moza%20racing",sourceQuote:"MOZA"});}],
-  ["ambiguous company",r=>{r.output[1].content[0].text=JSON.stringify({name:"MOZA RACING",confirmed:true,ambiguous:true,officialUrl:"https://brand-fixture.com/moza%20racing",sourceQuote:"MOZA RACING"});}],
-  ["private/insecure source",r=>{r.output[1].content[0].text=JSON.stringify({name:"MOZA RACING",confirmed:true,ambiguous:false,officialUrl:"http://127.0.0.1/",sourceQuote:"MOZA RACING"});}],
-  ["invented quote without the exact name",r=>{r.output[1].content[0].text=JSON.stringify({name:"MOZA RACING",confirmed:true,ambiguous:false,officialUrl:"https://brand-fixture.com/moza%20racing",sourceQuote:"A racing company"});}],
+  ["nearby but different company",r=>{r.output[1].content[0].annotations[0].title="NOZA RACING Products";}],
+  ["private/insecure source",r=>{r.output[1].content[0].annotations[0].url="http://127.0.0.1/";}],
+  ["fictional-only result",r=>{r.output[1].content[0].annotations[0].title="MOZA RACING – Fictional Company";}],
+  ["lookalike domain without a named product result",r=>{r.output[1].content[0].annotations[0]={type:"url_citation",url:"https://notmozaracing.com/",title:"Home"};}],
 ])test(`${name} is omitted`,()=>{
   const proof=brandOnlineResponse("MOZA RACING");mutate(proof);
   assert.equal(parseOnlineBrandReceipt(proof,"MOZA RACING",100),undefined);

@@ -25,27 +25,21 @@ lesbare Nummer finden, ohne daraus eine Team- oder Fahreridentität zu erfinden.
 prüfen. Der fehlende Nummernbeleg verhindert Identitätsmatching, nicht einen
 separat belastbaren Markenbeleg. Sichtbare Logos belegen keinen Sponsorenvertrag.
 
-Automatisch erkannte Marken/Unternehmen vor Übernahme als Tag online abgleichen:
-Es muss diese Marke unter dem erkannten Namen wirklich geben. Bei unsicherer
-Schreibweise oder fehlendem belastbarem Beleg keinen Markentag schreiben.
-Der Online-Check darf Veröffentlichung und übrige Vertaggung niemals blockieren.
+Der Online-Abgleich ist nur ein einfacher Existenz-/Plausibilitätscheck.
+„Das Ziel ist, dass es funktioniert.“ Wenn MOZA Racing erkannt wird und eine
+Website mozaracing.com existiert, reicht das. Auch eine normale Web-Suche mit
+passenden Marken-/Produktresultaten reicht, einschließlich Händlerresultaten.
+Es geht darum, Fantasiemarken bzw. garantiert nicht existierende Marken zu
+vermeiden; der Betreiber akzeptiert dabei ausdrücklich Raum für Fehler.
+Der Check darf Veröffentlichung und übrige Vertaggung niemals blockieren.
 
-**Why:** Der Betreiber verlangt ausdrücklich Vorsicht vor falsch erkannten
-Markennamen und einen Online-Abgleich, ohne daraus eine Upload-/Publikationshürde
-zu machen.
+**Why:** Der Betreiber hat die zu strengen Hürden ausdrücklich korrigiert.
+Offizielle Firmenidentität, exakte Quellenzitate und strukturierte
+Verifikationsurteile sind für diesen Zweck nicht nötig.
 
-**How to apply:** Pixelbeleg und Existenzbeleg getrennt prüfen; keine ähnliche
-reale Firma als Ersatz erraten. Unklare, fehlgeschlagene oder abgelaufene
-Online-Prüfungen lassen nur das Markenfeld leer. Bestehende andere Tags,
+**How to apply:** Die tatsächlich gefundenen Suchresultate nutzen: passende
+Website oder ein Resultat, das die erkannte Marke bzw. ihre Produkte nennt,
+genügen. Keine zweite KI-Verifikationsrunde verlangen. Fehlende Ergebnisse oder
+fehlgeschlagene Checks lassen nur den Markentag weg. Bildbeleg, andere Tags,
 Captions, Matching-Grenzen und unabhängige Safety-Prüfungen bleiben erhalten.
-
-Erfolgreiche Hosted-Web-Suche kann zitierte Prosa statt des gewünschten
-strukturierten Urteils liefern. Ein HTTP 200 ist kein Markenbeleg.
-
-**Why:** Reale Development-Abfragen lieferten Suchbelege und Zitate, aber nicht
-automatisch ein akzeptierbares, strukturiertes Markenurteil.
-
-**How to apply:** Bei Aufbereitung der Suchantwort tatsächliche Quellenbelege
-erhalten; eine zweite Modellantwort aus Weltwissen ist kein Ersatz für
-Online-Verifikation. Keine Sicherheitsbedingungen lockern, nur um einen
-positiven Test zu erhalten.
+Der Web-Check belegt keine Sponsorenbeziehung und keine abgebildete Teamidentität.
