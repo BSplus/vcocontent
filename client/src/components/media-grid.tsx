@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MediaItem } from "@shared/schema";
-import { Eye, PlayCircle, Download, Pencil, Trash2, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, Play, PlayCircle, Download, Pencil, Trash2, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import EditMediaModal from "./edit-media-modal";
@@ -224,7 +224,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
             <div className="relative">
               <button
                 type="button"
-                className="block w-full aspect-[4/3] bg-black/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                className="relative block w-full aspect-[4/3] bg-black/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                 aria-label={`${isSelectionMode ? (selectedItems.has(item.id) ? 'Deselect' : 'Select') : `Preview ${item.type === 'video' ? 'video' : 'photo'}`}: ${item.caption || `Media ${item.id}`}`}
                 aria-pressed={isSelectionMode ? selectedItems.has(item.id) : undefined}
                 onClick={(event) => {
@@ -233,6 +233,15 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                 }}
               >
                 <img src={item.thumbnail} alt={item.caption || (item.type === 'video' ? 'Video preview' : 'Photo preview')} loading="lazy" className="h-full w-full object-contain" />
+                {item.type === "video" && !isSelectionMode && (
+                  <span
+                    aria-hidden="true"
+                    data-video-play-overlay
+                    className="pointer-events-none absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white"
+                  >
+                    <Play className="ml-0.5 h-6 w-6 fill-current" />
+                  </span>
+                )}
                 <span className="absolute bottom-3 right-3 rounded bg-black/80 px-2 py-1 text-sm text-white flex items-center gap-2">
                   {isSelectionMode ? <Check className="h-4 w-4" /> : item.type === 'video' ? <PlayCircle className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   {isSelectionMode ? (selectedItems.has(item.id) ? 'Deselect' : 'Select') : 'Preview'}

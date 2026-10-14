@@ -36,6 +36,7 @@ Preferred communication style: Simple, everyday language.
 - “Recent events” and “Creator events” identify event-list destinations; upcoming listings are calendar information, not gallery links.
 - “Preview” opens a dialog, “Media details” navigates to the media page, and “Download options” opens the existing quality menu. Download counts are statistics.
 - In admin selection mode, thumbnail labels say Select/Deselect; the explicit Preview button still opens a preview.
+- Shared media-grid video thumbnails have a decorative centered play indicator without hover, hidden in admin selection mode. Event galleries, search and creator profiles share it; home special layouts do not. Focused checks: `node --import tsx --test tests/media-grid-video-ui.test.mjs`.
 - Creator media editing stays visible without hover and returns keyboard focus to its opener.
 - Focused browser checks: `node --test tests/ui-click-targets.test.mjs`. These use isolated API fixtures without database writes; they verify UI role boundaries, not authenticated backend ownership.
 - Public media search uses PostgreSQL results before pagination, with debounced input and URL-driven filters/pages; never re-filter returned pages in the browser.

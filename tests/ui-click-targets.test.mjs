@@ -70,7 +70,8 @@ test("click targets on desktop and touch with isolated API fixtures (no database
   await browser.command("Fetch.enable", { patterns: [{ urlPattern: "*/api/*", requestStage: "Request" }] });
   const visit = async (path, ready) => {
     await browser.command("Page.navigate", { url: new URL(path, base).href });
-    await browser.wait(ready);
+    try { await browser.wait(ready); }
+    catch (error) { throw new Error(`${error.message}\nRuntime errors: ${JSON.stringify(browser.errors)}`, { cause: error }); }
   };
   const escape = async () => {
     // Radix installs its document-level dismissal listener after the first paint.
