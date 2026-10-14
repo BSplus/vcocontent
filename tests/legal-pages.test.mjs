@@ -91,6 +91,7 @@ test("legal pages load without login with mobile-readable text, working navigati
       assert.ok(html.includes(`<title data-vco-seo="true">${title} | VCO Media Database</title>`));
       await browser.command("Page.navigate", { url: new URL(path, base).href });
       await browser.wait(`!!document.querySelector('article') && document.title===${JSON.stringify(`${title} | VCO Media Database`)}`);
+      await browser.wait(`document.querySelector('article')?.innerText.includes(${JSON.stringify(path === "/imprint" ? "DE331164657" : "no automatic account-expiry")}) === true`);
       const state = await browser.evaluate(`({
         path:location.pathname, text:document.querySelector('article').innerText,
         width:innerWidth, scrollWidth:document.documentElement.scrollWidth,
@@ -104,7 +105,7 @@ test("legal pages load without login with mobile-readable text, working navigati
       assert.ok(state.scrollWidth <= state.width + 1, JSON.stringify(state));
       assert.ok(state.font >= 16 && state.line >= 24);
       assert.equal(state.lang, "en");
-      for (const link of ["/imprint", "/privacy-policy", "mailto:info@vco-esports.com"]) assert.ok(state.links.includes(link));
+      for (const link of ["/imprint", "/privacy-policy", "/support"]) assert.ok(state.links.includes(link));
       assert.doesNotMatch(state.cookies, /sidebar:state/);
        if (path === "/imprint") {
          assert.match(state.text, /DE331164657/);

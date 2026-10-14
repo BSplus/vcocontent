@@ -54,6 +54,7 @@ import { activeMediaTagsSql } from "./media-tag-sql";
 import { legacyThumbnail } from "./legacy-thumbnail";
 import { sendPrivateThumbnail, thumbnailDigest } from "./thumbnail-cache";
 import { sendPreparedThumbnail } from "./prepared-thumbnail";
+import { registerSupportRoutes } from "./support-routes";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -89,6 +90,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   app.use("/api",(_req,res,next)=>{res.setHeader("Cache-Control","private, no-store");next();});
   registerEventThumbnailRoute(app);
   registerBetaRoutes(app);
+  registerSupportRoutes(app);
   registerCommunityRoutes(app);
   registerCreatorEventAssociationRoutes(app);
   registerReferenceRoutes(app, requireCreator);

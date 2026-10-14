@@ -245,6 +245,9 @@ Preferred communication style: Simple, everyday language.
 
 ## Legal information
 
+- Public support implementation and mock-only verification: `docs/support-form.md`.
+  A real support inbox/Reply-To test and publication need separate operator approval.
+
 - The public English Imprint includes informational simulation/game-provider sources with platform and regional scope, not a reuse licence or acceptance requirement. Source checks and unresolved legal review are documented in `docs/legal-change-and-gap-report.md`.
 - `docs/gallery-creator-terms-review.md` remains a repository-only REVIEW DRAFT, NOT IN FORCE. Do not publish it or introduce acceptance steps without separate approval.
 - Focused legal text/navigation/mobile checks: `node --test --test-concurrency=1 tests/legal-pages.test.mjs`, plus `npm run check` and `npm run build`. Technical checks are not legal clearance.

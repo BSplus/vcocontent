@@ -20,3 +20,13 @@ Keep authentication action links out of the ordinary notification outbox.
 **Why:** Event-notification retries retain plaintext content snapshots for idempotency; persisting raw verification/reset tokens there would undermine the existing hash-only token storage boundary.
 
 **How to apply:** Preserve direct secure verification delivery. When adding password reset, use a secure token-specific delivery path rather than treating its raw action URL as a normal queued event payload.
+
+Keep support enquiries on the direct-delivery path, not in the notification
+outbox or a new ticket archive.
+
+**Why:** The operator explicitly requested a lightweight public contact form
+without storing full support messages in the application database.
+
+**How to apply:** Future reliability changes may retain bounded pseudonymous
+delivery-control information, but must not add message-content persistence or
+automatic visitor replies without separate approval.

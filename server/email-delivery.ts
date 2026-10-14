@@ -18,8 +18,11 @@ function emailLogo() {
 }
 
 /** Acceptance is not inbox delivery. Never log bodies, recipients or action URLs. */
-export async function sendBrandedEmail(to: string, template: EmailContent, idempotencyKey: string) {
+export async function sendBrandedEmail(to: string, template: EmailContent, idempotencyKey: string, replyTo?: string) {
   if (!verificationConfigured()) throw new EmailDeliveryError();
+  if (replyTo !== undefined && (!/^[^\s<>\r\n]+@[^\s<>\r\n]+\.[^\s<>\r\n]+$/.test(replyTo) || replyTo.length > 254))
+    throw new EmailDeliveryError();
+  const logo = await emailLogo().catch(() => { throw new EmailDeliveryError(); });
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -28,11 +31,19 @@ export async function sendBrandedEmail(to: string, template: EmailContent, idemp
     },
     body: JSON.stringify({
       from: process.env.RESEND_FROM, to: [to], ...template,
-      attachments: [{ filename: "vco-logo.png", content: await emailLogo(),
+      ...(replyTo === undefined ? {} : { reply_to: replyTo }),
+      attachments: [{ filename: "vco-logo.png", content: logo,
         content_type: "image/png", content_id: "vco-logo" }],
     }),
     signal: AbortSignal.timeout(10000),
   });
-  await response.body?.cancel();
-  if (!response.ok) throw new EmailDeliveryError(response.status);
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new EmailDeliveryError(response.status);
+  }
+  if (replyTo !== undefined) {
+    const accepted = await response.json();
+    if (!accepted || typeof accepted.id !== "string" || !accepted.id)
+      throw new Error("Email acceptance could not be confirmed.");
+  } else await response.body?.cancel();
 }

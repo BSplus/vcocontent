@@ -149,6 +149,9 @@ export async function seoHtml(req: Request, html: string): Promise<{ html: strin
   } else if (pathname === "/imprint") {
     title = "Imprint | VCO Media Database";
     description = "Company information and media rights for the VCO Media Database.";
+  } else if (pathname === "/support") {
+    title = "Contact VCO Support | VCO Media Database";
+    description = "Contact VCO about the media gallery, media rights or account restrictions using our public support form.";
   } else if (pathname === "/privacy-policy") {
     title = "Privacy Policy | VCO Media Database";
     description = "Privacy information for VCO galleries, accounts, creator uploads and AI processing.";

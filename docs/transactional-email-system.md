@@ -1,5 +1,10 @@
 # Transactional email system
 
+Public support delivery reuses the same branded transport but is deliberately
+outside the notification outbox. See [Support form](support-form.md) for its
+fixed recipient, validated Reply-To, persistent budgets, outcome handling and
+separately authorised inbox test. Existing verification messages are unchanged.
+
 ## Audit and implemented scope
 
 | Email | Before this change | Current implementation |

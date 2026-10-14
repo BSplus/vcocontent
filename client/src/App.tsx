@@ -22,6 +22,7 @@ import CreatorProfile from "@/pages/creator-profile";
 import Imprint from "@/pages/imprint";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import CreditsPage from "@/pages/credits";
+import SupportPage from "@/pages/support";
 import AccountPage from "@/pages/account";
 import NavigationScroll from "@/components/navigation-scroll";
 import PageMetadata from "@/components/page-metadata";
@@ -92,6 +93,7 @@ function Router() {
       <Route path="/imprint" component={Imprint} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/credits" component={CreditsPage} />
+      <Route path="/support" component={SupportPage} />
       <ProtectedRoute path="/admin/dashboard" component={AdminDashboard} requireAdmin />
       <ProtectedRoute path="/admin/users" component={AdminUsers} requireAdmin />
       <ProtectedRoute path="/creator/dashboard" component={CreatorDashboard} requireCreator />
