@@ -129,8 +129,8 @@ export const identificationSchema = z.object({
   racingClass: z.string().trim().max(160),
   discipline: z.string().trim().max(160),
   source: z.enum(["reference", "visual", "manual"]).default("manual"),
-  // Server provenance for independently checked PHOTO numbers; absent on
-  // historical observations and video detections. Not a physical-driver claim.
+  // Server provenance for independently checked source-pixel numbers. Video
+  // additionally requires its frame checkpoint. Not a physical-driver claim.
   numberEvidence: z.enum(["vehicle-crop-v2"]).optional(),
   numberPanelRegion:photoVehicleRegionSchema.optional(),
   vehicleRegion:photoVehicleRegionSchema.optional(),

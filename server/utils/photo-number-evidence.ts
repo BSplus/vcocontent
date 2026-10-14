@@ -46,14 +46,14 @@ export async function photoVehicleCrop(bytes:Buffer,region:Region):Promise<Buffe
 }
 // Whole-car geometry is a first-pass ANCHOR, not proof. Only an independent
 // whole-image car/panel reading AND its actual source-pixel crop can certify it.
-export async function verifyPhotoObservations(image:string,vehicles:Identification[]):Promise<Identification[]> {
+export async function verifyPhotoObservations(image:string,vehicles:Identification[], suppliedClient?:NonNullable<ReturnType<typeof getOpenAIClient>>):Promise<Identification[]> {
   const confirmed=new Set<number>();
   const candidates=vehicles.flatMap((v,index)=>v.number&&validRegion(v.vehicleRegion)?[{v,index}]:[]);
   if(candidates.length && /^data:image\/(?:webp|jpeg|png);base64,/.test(image)) {
     const bytes=Buffer.from(image.split(",")[1],"base64");
     const dimensions=await sharp(bytes).metadata();
     if(!await hasOpaqueNeutralPatch(bytes)){
-      const client=getOpenAIClient();if(!client)throw new Error("AI recognition unavailable");
+      const client=suppliedClient||getOpenAIClient();if(!client)throw new Error("AI recognition unavailable");
       const crops=await Promise.all(candidates.map(async({v,index})=>({
         index,bytes:await photoVehicleCrop(bytes,v.vehicleRegion!),
         panel:validRegion(v.numberPanelRegion)?await sharp(await photoVehicleCrop(bytes,v.numberPanelRegion!))

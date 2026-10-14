@@ -11,7 +11,7 @@ import {supportedPhotoObservations} from "./utils/photo-number-evidence";
 import { identifyEntries } from "./reference-matching";
 import { withVisionBudget, VisionBusy } from "./ai-budget";
 import { sampleVideo, SAMPLING_VERSION, cleanupVideoTemps } from "./video-sampling";
-import { aggregateVideo, recognizeVideoBatch, type VideoEvidence } from "./video-recognition";
+import { aggregateVideo, recognizeVideoBatch, checkVideoNumbers, VIDEO_NUMBER_PIPELINE, type VideoEvidence } from "./video-recognition";
 import { classifyVideoFailure, videoFailureRecord, type VideoFailureStage } from "./video-failures";
 import { communityCaption, matchedPhotoCaption } from "./caption-proposal";
 import { storage } from "./storage";
@@ -227,7 +227,8 @@ export async function drainAnalysisQueue() {
       videoStage="file_access";
       await sampleVideo(item, async sample => {
         let evidence = claimed.videoEvidence;
-        if (!evidence || evidence.sourceHash !== sample.sourceHash) evidence = {
+        if (!evidence || evidence.sourceHash !== sample.sourceHash || evidence.numberPipeline !== VIDEO_NUMBER_PIPELINE) evidence = {
+          numberPipeline: VIDEO_NUMBER_PIPELINE,
           sourceHash: sample.sourceHash, duration: sample.duration, samplingMs: sample.samplingMs,
           timestamps: sample.frames.map(f => f.timestamp), frames: [], providerRequests: 0, analyzedFrames: 0,
           promptTokens: null, completionTokens: null, usageUnavailableRequests: 0, cost: null,
@@ -251,31 +252,35 @@ export async function drainAnalysisQueue() {
           await persist();
         }
         await persist();
-        const pending = sample.frames.filter(f => !evidence!.frames.some(done => done.hash === f.hash));
+        const pending = sample.frames.filter(f => !evidence!.frames.some(done => done.hash === f.hash && done.timestamp === f.timestamp));
         for (let i = 0; i < pending.length; i += 4) {
           videoStage="ai_request";
           await withVisionBudget(async () => {
             evidence!.providerRequests++;
             evidence!.usageUnavailableRequests = (evidence!.usageUnavailableRequests || 0) + 1;
             await persist(); // Count requests even when the response is lost.
-            const batch = await recognizeVideoBatch(pending.slice(i, i + 4));
+            const batch = await recognizeVideoBatch(pending.slice(i, i + 4), async usage => {
+              evidence!.usageUnavailableRequests--;
+              evidence!.promptTokens = (evidence!.promptTokens || 0) + usage.prompt;
+              evidence!.completionTokens = (evidence!.completionTokens || 0) + usage.completion;
+              await persist();
+            });
             evidence!.frames.push(...batch.frames);
             evidence!.analyzedFrames = evidence!.frames.length;
-            if (batch.usage) {
-              evidence!.usageUnavailableRequests--;
-              evidence!.promptTokens = (evidence!.promptTokens || 0) + batch.usage.prompt;
-              evidence!.completionTokens = (evidence!.completionTokens || 0) + batch.usage.completion;
-            }
             await persist();
           });
         }
+        videoStage="ai_request";
+        await checkVideoNumbers(sample.frames, evidence, persist);
         videoStage="result_parsing";
         videoResult = aggregateVideo(evidence.frames);
       });
     }
     const result = claimed.referenceOnly && claimed.recognition
       ? { tags: claimed.generatedTags || [], vehicles:item.type==="image"
-          ? supportedPhotoObservations(claimed.recognition) : claimed.recognition }
+          ? supportedPhotoObservations(claimed.recognition) : claimed.videoEvidence?.numberPipeline === VIDEO_NUMBER_PIPELINE
+            ? aggregateVideo(claimed.videoEvidence.frames).vehicles
+            : supportedPhotoObservations(claimed.recognition.map(v=>({...v,numberEvidence:undefined}))) }
       : videoResult ? videoResult
       : tagOnly
         ? { tags: await withVisionBudget(async () => generateTagsForImage(await analysisImageInput(item.thumbnail))), vehicles: null }
@@ -291,6 +296,15 @@ export async function drainAnalysisQueue() {
       const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,item.id)).for("update");
       if (!current || current.archivedAt || (current.type === "video" ? itemAnalysisFingerprint(current) :
         prefix + analysisFingerprint(current.thumbnail)) !== claimed.fingerprint) return;
+      if (current.type==="video" && current.eventId!==item.eventId) {
+        // Do not apply the old event's references after a concurrent move.
+        // Retain checked pixels for a local rematch in the new event.
+        await tx.update(mediaAnalysisJobs).set({status:"completed",workerToken:null,
+          recognition:result.vehicles,generatedTags:tags,referenceRevision:-1,
+          error:"Event changed during analysis; references will be checked again.",updatedAt:new Date()})
+          .where(eq(mediaAnalysisJobs.mediaId,item.id));
+        return;
+      }
       if (owned.photoWorkflow && (!event?.photoMatchingEnabled ||
         event.photoMatchingRevision!==owned.photoMatchingRevision || current.eventId!==item.eventId)) {
         await tx.update(mediaAnalysisJobs).set({status:"completed",workerToken:null,
@@ -310,7 +324,7 @@ export async function drainAnalysisQueue() {
       }
        const merged = claimed.referenceOnly ? withoutRetiredMediaTags(current.tags || []) : Array.from(new Set([...manualTags,...freshTags])).slice(0,100);
       const identification = current.identificationManual || !result.vehicles ? current.identification : event
-        ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx,owned.photoWorkflow,item.type==="image") : result.vehicles;
+        ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx,owned.photoWorkflow || item.type==="video",true) : result.vehicles;
       const category = claimed.referenceOnly ? current.category : await categorizeContent(merged);
       const [eventSeries] = event?.seriesId ? await tx.select({name:series.name}).from(series).where(eq(series.id,event.seriesId)) : [];
       const proposal = owned.photoWorkflow && event && !current.identificationManual

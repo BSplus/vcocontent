@@ -3,8 +3,8 @@ import { db } from "./db";
 import { referenceDocuments, eventEntries, type Event, type EntryRow, type Identification } from "@shared/schema";
 import { supportedPhotoObservations } from "./utils/photo-number-evidence";
 import { photoTeamHintConflict, photoManufacturerHintConflict } from "./photo-team-hints";
-// Only photo callers require pixel provenance. Video reference matching keeps
-// its existing aggregation policy; explicitly manual assignments are protected.
+// Video callers supply frame-bound checked observations and use the same strict
+// uniqueness/conflict gates as photos; manual assignments remain protected.
 
 export const normalizedNumber = (number: string) => number.replace(/^0+(?=\d)/, "");
 export const seasonYear = (event: Event) => event.referenceSeasonYear || new Date(event.date).getUTCFullYear();

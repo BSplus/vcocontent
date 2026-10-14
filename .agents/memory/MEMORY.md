@@ -64,3 +64,4 @@
 - [Media credit boundaries](media-credit-boundaries.md) — authorship is independent of uploader/accounts and tags; no automatic profile fallback or retroactive source-credit changes.
 - [Event dialog reproduction](event-dialog-reproduction.md) — repeated whitespace reports need geometry and shipped-build comparison; a screenshot alone does not prove the previous fix is absent.
 - [Safety outage fixtures](safety-outage-fixtures.md) — scope safety failure injection separately from ordinary creation quotas or the wrong request fails.
+- [Video number evidence](video-number-evidence-boundary.md) — rejecting historical weak readings proves a safety-policy change, not live recognition improvement; reviewed frozen pixels remain necessary.

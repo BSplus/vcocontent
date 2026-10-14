@@ -14,7 +14,7 @@ import { storage } from "../server/storage.ts";
 import { mediaAnalysisJobs, mediaItems, mediaReservations, mediaCleanup, events, referenceDocuments } from "../shared/schema.ts";
 import { frameTarget, sampleVideo, cleanupVideoTemps, videoTool } from "../server/video-sampling.ts";
 import { mediaPolicy } from "../server/media-policy.ts";
-import { aggregateVideo, recognizeVideoBatch } from "../server/video-recognition.ts";
+import { aggregateVideo, recognizeVideoBatch, VIDEO_NUMBER_PIPELINE } from "../server/video-recognition.ts";
 import { enqueueAnalysis, analysisStatus, drainAnalysisQueue, stopAnalysisWorker, itemAnalysisFingerprint, setAnalysisQueueTestScope } from "../server/analysis-jobs.ts";
 import sharp from "sharp";
 
@@ -56,6 +56,18 @@ function mockProvider(work = async () => {}) {
     requests++;
     const request = JSON.parse(options.body);
     const frames = request.messages[1].content.filter(c => c.type === "image_url");
+    if (request.model !== "gpt-4.1-mini") {
+      const regions = [[0,0,500,1000],[500,0,500,1000]];
+      const numbers = ["089","90"];
+      const localization = request.messages[0].content.startsWith("Localize");
+      const content = localization ? {scene:null,vehicles:numbers.map((number,index)=>({number,vehicleRegion:regions[index]}))}
+        : {fullImageReadings:numbers.map((number,index)=>({number,vehicleRegion:regions[index],
+          panelRegion:[regions[index][0]+100,200,100,100]})),
+          vehicleReadings:request.messages[1].content.filter(c=>c.type==="text"&&c.text.startsWith("Vehicle crop"))
+            .map(c=>({vehicleIndex:Number(c.text.split(" ").at(-1)),number:numbers[Number(c.text.split(" ").at(-1))]}))};
+      return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify(content)}}],
+        usage:{prompt_tokens:200,completion_tokens:100}}),{headers:{"content-type":"application/json"}});
+    }
     assert.ok(frames.length >= 1 && frames.length <= 4);
     assert.ok(frames.every(f => f.image_url.url.startsWith("data:image/jpeg;base64,")));
     assert.ok(request.max_tokens <= 2400);
@@ -181,12 +193,13 @@ test("aggregation retains multiple numbers, clears contradictory identities and 
     frame(["Day", "GT Car", "Dry Track"], [observation("089", { team: "Team A", vehicle: "GT Car" }), observation("90")]),
     frame(["Night", "Stock Car", "Rain", "Wet Track"], [observation("089", { team: "Team B", vehicle: "Stock Car" })]),
   ]);
-  assert.deepEqual(result.vehicles.map(v => v.number), ["90"]);
+  assert.ok(result.vehicles.every(v => !v.number), "weak numbers never certify identities");
+  assert.equal(result.vehicles.length,3, "unknown cars are not discarded");
   assert.ok(!result.tags.includes("Day") && !result.tags.includes("Night"));
   assert.ok(!result.tags.includes("GT Car") && !result.tags.includes("Stock Car"));
   assert.ok(!result.tags.includes("Dry Track"));
   const agreed = aggregateVideo([frame(["Day"], [observation("089")]), frame(["Day"], [observation("89")])]);
-  assert.equal(agreed.vehicles.length, 1); assert.equal(agreed.vehicles[0].drivers, "");
+  assert.equal(agreed.vehicles.length, 2); assert.ok(agreed.vehicles.every(v=>!v.number&&!v.drivers));
 });
 test("aggregation of historical frames drops retired tags without suppressing compatible virtual labels", () => {
   const result = aggregateVideo([
@@ -277,7 +290,7 @@ test("durable batches survive retries, edits, reference revisions and failed new
   await db.update(mediaAnalysisJobs).set({ availableAt: new Date() }).where(eq(mediaAnalysisJobs.mediaId, item.id));
   const before = requests;
   await drainAnalysisQueue();
-  assert.equal(requests - before, 1, "successful batch must not be resent");
+  assert.equal(requests - before, 9, "successful batch must not be resent; four frames receive two independent checks");
   let saved = await storage.getMediaItem(item.id);
   assert.ok(saved.tags.includes("manual edited")); assert.ok(!saved.tags.includes("Day"));
   assert.equal(saved.caption, "Caption edited during analysis");
@@ -286,8 +299,10 @@ test("durable batches survive retries, edits, reference revisions and failed new
   assert.match(saved.thumbnail, /^\/api\/media\/files\/thumb-/);
   assert.ok(previews.get(saved.thumbnail.split("/").at(-1)).length < 100 * 1024);
   assert.ok(completed.videoEvidence.posterSourceHash);
-  assert.equal(completed.videoEvidence.providerRequests, 3);
-  assert.equal(completed.videoEvidence.promptTokens, 400);
+  assert.equal(completed.videoEvidence.providerRequests, 11);
+  assert.equal(completed.videoEvidence.numberRequests,8);
+  assert.equal(completed.videoEvidence.numberPipeline,VIDEO_NUMBER_PIPELINE);
+  assert.equal(completed.videoEvidence.promptTokens, 2000);
   assert.equal(completed.videoEvidence.usageUnavailableRequests, 1);
   assert.ok(completed.videoEvidence.analyzedFrames <= 8);
   const reused = requests;
@@ -339,4 +354,36 @@ test("a running video renews its lease, rejects a second claimant and fences a l
   mockProvider();
   await drainAnalysisQueue();
   assert.equal((await analysisStatus(item.id)).status, "completed");
+});
+test("historical policy rematches without AI, while explicit reanalysis and changed sources require fresh checked pixels",async()=>{
+  videoBytes=await clip(1,"static");
+  const item=await media();mockProvider();
+  await enqueueAnalysis(item);
+  await until(async()=>(await analysisStatus(item.id)).status==="completed");
+  const [first]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,item.id));
+  assert.ok(first.recognition.some(v=>v.number==="089"));
+  await db.update(mediaAnalysisJobs).set({videoEvidence:{...first.videoEvidence,numberPipeline:"historical"}})
+    .where(eq(mediaAnalysisJobs.mediaId,item.id));
+  await db.insert(referenceDocuments).values({eventId:item.eventId,ownerId:null,seasonYear:2026,scope:"event",
+    kind:"entry",session:null,title:"Historical regression",fingerprint:randomUUID(),identityKey:randomUUID(),
+    rows:[{number:"89",team:"Do not infer",car:"Stock Car",drivers:"Registered only"}]});
+  await db.update(events).set({referenceRevision:1}).where(eq(events.id,item.eventId));
+  const before=requests;await drainAnalysisQueue();
+  assert.equal(requests,before);
+  assert.ok((await storage.getMediaItem(item.id)).identification.every(v=>!v.number&&!v.drivers));
+  await enqueueAnalysis(await storage.getMediaItem(item.id),{reanalyse:true});
+  await until(async()=>(await analysisStatus(item.id)).status==="completed");
+  const [fresh]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,item.id));
+  assert.equal(fresh.videoEvidence.numberPipeline,VIDEO_NUMBER_PIPELINE);
+  assert.equal(requests-before,3,"one weak batch, one localization and one independent audit");
+  assert.ok((await storage.getMediaItem(item.id)).identification.some(v=>v.team==="Do not infer"));
+  const priorHash=fresh.videoEvidence.sourceHash;
+  videoBytes=await clip(2);
+  await storage.updateMediaItem(item.id,{url:url()});
+  await enqueueAnalysis(await storage.getMediaItem(item.id));
+  await until(async()=>(await analysisStatus(item.id)).status==="completed");
+  const [changed]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,item.id));
+  assert.notEqual(changed.videoEvidence.sourceHash,priorHash);
+  assert.ok(changed.videoEvidence.frames.every(f=>f.numberCheck?.hash!==first.videoEvidence.frames[0].hash));
+  assert.equal((await storage.getMediaItem(item.id)).caption,"Approved caption");
 });

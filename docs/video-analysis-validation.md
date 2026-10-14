@@ -1,5 +1,13 @@
 # Efficient video analysis validation
 
+## Independent video number checks
+
+See [Video number evidence review](video-number-evidence-review.md) for the
+current bounded, frame-bound number pipeline, isolated reproduction commands,
+historical #99/#9 and #65 comparison, measured mocked overhead and explicit
+live-evidence limitations. The original pilot below remains unmodified and
+unreviewed; it is not validation of the new number-check pipeline.
+
 ## Implementation and bounds
 
 - Only trusted private original keys (`media-<uuid>.mp4|mov|webm`) are read. No provider receives the video or audio. Temporary originals are byte-limited to the configured video upload limit.
