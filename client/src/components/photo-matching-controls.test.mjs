@@ -70,18 +70,15 @@ test("event photo matching settings, preserved replacement consent, protected it
     const platform = `document.querySelector('[aria-label="Sim-racing platform (optional)"]')`;
     await browser.wait(`!!(${platform})`);
     assert.equal(await browser.evaluate(`${platform}.value`), "", "platform must not be guessed");
-    await browser.evaluate(`(()=>{const el=${platform};const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
-      setter.call(el,'Assetto Corsa Competizione');el.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-    await click(browser, button("Save platform"));
-    await delay(200);
-    assert.equal(patches.at(-1).platform, "Assetto Corsa Competizione");
-    assert.equal(patches.at(-1).enabled, undefined);
+    assert.equal(await browser.evaluate(`!!document.querySelector('#photo-match-platform-${eventId}')`), false);
+    assert.equal(await browser.evaluate(`document.body.textContent.includes('Save platform')`), false);
 
     await click(browser, `document.querySelector('#photo-match-enabled-${eventId}')`);
     await browser.wait(`document.querySelector('#photo-match-enabled-${eventId}')?.getAttribute('aria-checked')==='true'`);
     await browser.wait("document.body.innerText.includes('Enabled for new uploads')");
     await delay(200);
     assert.equal(patches.at(-1).enabled, true);
+    assert.deepEqual(patches.at(-1), { enabled: true });
 
     assert.equal(await browser.evaluate(`document.querySelector('[aria-label="Select photo 95612"]').disabled`), true,
       "manual identification cannot be selected");

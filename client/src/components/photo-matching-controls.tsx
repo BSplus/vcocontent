@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Image as ImageIcon, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { PageMetadata } from "@shared/pagination";
@@ -60,7 +59,6 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
   const [data, setData] = useState<MatchingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [platformDraft, setPlatformDraft] = useState("");
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
@@ -71,8 +69,6 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
   const [before, setBefore] = useState<number | undefined>();
   const [previousPages, setPreviousPages] = useState<Array<number | undefined>>([]);
   const previousCaptions = useRef<string | null>(null);
-  const platformInitialized = useRef(false);
-  const platformDirty = useRef(false);
   const confirmedSettings = useRef<PhotoMatchingSettings | null>(null);
   const alive = useRef(true);
   const writeInFlight = useRef(false);
@@ -117,10 +113,6 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
         setPreviousPages([]);
         setPositionNotice("The photo list changed. Returned to the first page and cleared the selection.");
       }
-      if (acceptsSettings && (!platformInitialized.current || !platformDirty.current)) {
-        setPlatformDraft(result.platform || "");
-        platformInitialized.current = true;
-      }
       if (acceptsSettings) confirmedSettings.current = settings;
       const activeNow = photos.some(photo => isActive(photo.status));
       const captionSnapshot=JSON.stringify(photos.map(photo=>[photo.id,photo.caption,photo.captionSource]));
@@ -139,7 +131,7 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
       if (checkingSave) {
         setUnknownSave(false);
         setSaveError(null);
-        setSaveNotice("Current saved settings loaded. Your input has been kept; compare it before saving again.");
+        setSaveNotice("Current saved matching settings loaded. Review them before changing automatic matching again.");
       }
     } catch (reason) {
       if (controller.signal.aborted || !alive.current || generation !== writeGeneration.current) return;
@@ -194,12 +186,8 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
       if (!alive.current) return;
       confirmedSettings.current = result;
       setData(current => current ? { ...current, ...result } : current);
-      if (changes.platform !== undefined) {
-        setPlatformDraft(result.platform || "");
-        platformDirty.current = false;
-      }
       setError(null);
-      setSaveNotice(`${changes.platform !== undefined ? "Platform saved" : "Matching settings saved"}.${
+      setSaveNotice(`Matching settings saved.${
         result.safetyCheckStatus === "unavailable" ? " Safety review is currently unavailable; this does not undo the save." : ""}`);
       void queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}`] });
     } catch (reason) {
@@ -292,19 +280,7 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
         </div>
       ) : data ? (
         <>
-          <div className="grid gap-3 rounded-md bg-muted/30 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
-            <div className="space-y-1">
-              <Label htmlFor={`photo-match-platform-${eventId}`}>Sim-racing platform (optional)</Label>
-              <div className="flex max-w-lg flex-wrap gap-2">
-                <Input id={`photo-match-platform-${eventId}`} value={platformDraft} maxLength={120}
-                  placeholder="e.g. iRacing" aria-label="Sim-racing platform (optional)"
-                  onChange={event => { platformDirty.current = true; setPlatformDraft(event.target.value); }} disabled={saving} />
-                <Button type="button" variant="outline" disabled={saving || unknownSave || platformDraft.trim() === (data.platform || "")}
-                  onClick={() => void saveSettings({ platform: platformDraft.trim() || null })}>
-                  Save platform
-                </Button>
-              </div>
-            </div>
+          <div className="rounded-md bg-muted/30 p-3">
             <div className="flex items-center gap-3 sm:justify-end">
               <div className="text-right">
                 <Label htmlFor={`photo-match-enabled-${eventId}`} className="block">Automatic matching</Label>

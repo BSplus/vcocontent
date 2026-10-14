@@ -4,6 +4,7 @@ import express from "express";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { db, pool } from "../server/db.ts";
 import { events, users } from "../shared/schema.ts";
 import { storage } from "../server/storage.ts";
@@ -31,7 +32,12 @@ test.before(async () => {
     if (role === "admin") admin = u; else if (role === "owner") owner = u; else other = u;
   }
   // Safety quota database failure, not a provider request. No AI or workers.
-  db.execute = async () => { throw new Error("Synthetic safety outage"); };
+  db.execute = async query => {
+    // Allow creator creation throttling; fail only the independent safety quota.
+    if (new PgDialect().sqlToQuery(query).params.some(value => typeof value === "string" && value.startsWith("safety:")))
+      throw new Error("Synthetic safety outage");
+    return originalExecute.call(db, query);
+  };
   globalThis.fetch = async () => { throw new Error("External network forbidden"); };
   const app = express(); app.use(express.json());
   app.use((req, _res, next) => {
@@ -49,6 +55,38 @@ test.after(async () => {
   await db.delete(users).where(inArray(users.id, userIds));
   storage.sessionStore.close(); await pool.end();
 });
+
+for (const role of ["admin", "owner"])
+  test(`${role}: general event creation and updates persist optional platform independently of matching`, async () => {
+    const response = await realFetch(`${base}${role === "admin" ? "/api/events" : "/api/creator/events"}`, {
+      method: "POST", headers: { "Content-Type": "application/json", "x-role": role },
+      body: JSON.stringify({ title: "Platform create fixture", description: "Disposable fixture", date: "2026-10-11", platform: "  iRacing  " }),
+    });
+    assert.equal(response.status, 201);
+    const created = await response.json(); ids.push(created.id);
+    assert.equal(created.platform, "iRacing"); assert.equal(created.photoMatchingEnabled, false);
+    assert.equal(created.creatorId, role === "owner" ? owner.id : null);
+    assert.equal((await api(created.id, { platform: "  ACC  " }, role, "PUT", "")).status, 200);
+    const saved = await storage.getEvent(created.id);
+    assert.equal(saved.platform, "ACC"); assert.equal(saved.referenceRevision, 1);
+    assert.equal(saved.contentVersion, 1); assert.equal(saved.photoMatchingEnabled, false);
+    const unchanged = await (await api(created.id, { platform: "ACC" }, role, "PUT", "")).json();
+    assert.equal(unchanged.saveStatus, "unchanged");
+    await api(created.id, { description: "Other changed field" }, role, "PUT", "");
+    await api(created.id, { enabled: true }, role);
+    assert.equal((await storage.getEvent(created.id)).platform, "ACC");
+    for (const invalid of ["x".repeat(121), 4]) {
+      assert.equal((await api(created.id, { platform: invalid }, role, "PUT", "")).status, 400);
+      assert.equal((await storage.getEvent(created.id)).platform, "ACC");
+    }
+    assert.equal((await api(created.id, { platform: "x".repeat(120) }, role, "PUT", "")).status, 200);
+    await api(created.id, { platform: "   " }, role, "PUT", "");
+    assert.equal((await storage.getEvent(created.id)).platform, null);
+    await api(created.id, { platform: "iRacing" }, role, "PUT", "");
+    await api(created.id, { platform: null }, role, "PUT", "");
+    assert.equal((await storage.getEvent(created.id)).platform, null);
+    assert.equal((await api(created.id, { platform: "bad" }, "other", "PUT", "")).status, 403);
+  });
 
 for (const role of ["admin", "owner"])
   test(`${role}: persisted platform without photos or opt-in, independent GET, toggle and other-field save`, async () => {

@@ -406,7 +406,8 @@ export const insertEventSchema = createInsertSchema(events).extend({
   description: z.string().min(1, "Description is required"),
   round: z.string().trim().max(100).nullable().optional(),
   track: z.string().trim().max(160).nullable().optional(),
-  platform: z.string().trim().max(120).nullable().optional(),
+  platform: z.string().trim().max(120, "Sim-racing platform cannot exceed 120 characters").nullable().optional()
+    .transform(value => value === "" ? null : value),
   coverImage: z.string().nullable().optional(),
   customThumbnail: z.string().nullable().optional(),
   date: z.coerce.date(),

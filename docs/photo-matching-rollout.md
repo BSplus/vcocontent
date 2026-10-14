@@ -60,6 +60,15 @@ After approved publication and schema readiness:
 
 ## Protection and corrections
 
+The optional **Sim-racing platform (optional)** field is part of the general
+Create/Edit Event metadata beside Round, Track and Race Series (example:
+`e.g. iRacing`). Save it using **Create Event** / **Update Event**, including
+clearing it explicitly. It is trimmed, limited to 120 characters, and does not
+require photos or matching opt-in. Photo matching has no separate platform
+editor; its toggle writes only the enabled setting. Existing server-side
+platform settings compatibility and caption context remain unchanged. This UI
+move does not initiate reanalysis or regenerate historical captions.
+
 New Nextcloud photo filenames are marked as replaceable placeholders. Legacy
 `preserved` captions are not guessed from `.jpg` or any other text pattern.
 This also protects historical empty `preserved` captions unless replacement is

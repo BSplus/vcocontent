@@ -40,6 +40,13 @@ interface UploadModalProps {
 type SourceEntry = { id?: string; link: string; password: string; hasPassword?: boolean; removePassword?: boolean; photographer?: string };
 
 export default function UploadModal({
+  ...props
+}: UploadModalProps) {
+  // Event-bound drafts must not survive a switch to another event or creation.
+  return <EventUploadModal key={props.eventId ?? "new"} {...props} />;
+}
+
+function EventUploadModal({
   open,
   onOpenChange,
   eventId,
@@ -230,11 +237,12 @@ export default function UploadModal({
       seriesId: undefined,
       round: "",
       track: "",
+       platform: "",
     } as any,
   });
 
   useEffect(() => {
-    if (open && eventData && isEditing && baseline.current?.id !== eventId) {
+    if (open && eventData?.id === eventId && isEditing && baseline.current?.id !== eventId) {
       baseline.current = eventData;
       const eventWithRaceDetails = eventData as Event & { round?: string | number | null; track?: string | null };
       form.reset({
@@ -246,6 +254,7 @@ export default function UploadModal({
         seriesId: eventData.seriesId || undefined,
         round: eventWithRaceDetails.round ?? "",
         track: eventWithRaceDetails.track ?? "",
+         platform: eventData.platform ?? "",
       } as any);
 
        setThumbnailPreview(eventData.customThumbnail ? `/api/events/${eventData.id}/thumbnail?field=customThumbnail` : null);
@@ -306,6 +315,7 @@ export default function UploadModal({
         });
     },
     onSuccess: async (event: Event) => {
+      queryClient.setQueryData([`/api/events/${event.id}`], event);
       queryClient.invalidateQueries({ queryKey: ["/api/creator/usage"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/creator/events"] });
@@ -346,6 +356,8 @@ export default function UploadModal({
       for (const field of ["title", "description", "round", "track", "seriesId"] as const) {
         if ((formData[field] || null) !== (previous[field] || null)) details[field] = formData[field] ?? null;
       }
+      const platform = formData.platform?.trim() || null;
+      if (platform !== (previous.platform?.trim() || null)) details.platform = platform;
       if (new Date(formData.date).toISOString().slice(0, 10) !== new Date(previous.date).toISOString().slice(0, 10))
         details.date = new Date(formData.date);
       setSaveProblem(null);
@@ -361,7 +373,11 @@ export default function UploadModal({
         /^\/api\/events\/creator\/\d+$/.test(query.queryKey[0]) });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/events"] });
       if (eventId) {
+         if ("title" in result && "date" in result) {
+           queryClient.setQueryData([`/api/events/${eventId}`], result);
+         }
         queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}`] });
+         queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}/photo-matching`] });
       }
       onOpenChange(false);
       toast({
@@ -601,6 +617,17 @@ export default function UploadModal({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="platform">Sim-racing platform (optional)</Label>
+            <Input id="platform" {...form.register("platform")} placeholder="e.g. iRacing"
+              aria-label="Sim-racing platform (optional)" className="touch-auto"
+              aria-invalid={!!form.formState.errors.platform}
+              aria-describedby={form.formState.errors.platform ? "platform-error" : undefined} />
+            {form.formState.errors.platform && (
+              <p id="platform-error" role="alert" className="text-sm text-destructive">{form.formState.errors.platform.message}</p>
+            )}
           </div>
 
           <EntryListEditor
