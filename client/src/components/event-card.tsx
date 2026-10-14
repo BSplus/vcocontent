@@ -12,8 +12,7 @@ import CommunityActions from "@/components/community-actions";
 import CreatorIdentity, { type PublicCreator } from "@/components/creator-identity";
 import { useState } from "react";
 import VisibleThumbnail from "./visible-thumbnail";
-
-const DEFAULT_EVENT_IMAGE = "/attached_assets/%2389_3.png";
+import { isLegacyEventImage, OFFICIAL_EVENT_IMAGE_FALLBACK } from "@/lib/event-image";
 
 interface EventCardProps {
   event: Event & { galleryThumbnail?: string | null };
@@ -26,8 +25,8 @@ export default function EventCard({ event }: EventCardProps) {
   const isCreatorEvent = !!event.creatorId;
   const canManageMedia = user?.isAdmin || (user?.isCreator && user.id === event.creatorId);
   const [failedImages, setFailedImages] = useState<string[]>([]);
-  const chosenImages = [event.customThumbnail, event.coverImage !== DEFAULT_EVENT_IMAGE ? event.coverImage : null]
-    .filter((url): url is string => !!url);
+  const chosenImages = [event.customThumbnail, event.coverImage]
+    .filter((url): url is string => !!url && !isLegacyEventImage(url));
   const { data: preview } = useQuery<{ galleryThumbnail: string | null }>({
     queryKey: [`/api/events/${event.id}/card-preview`],
     enabled: event.galleryThumbnail === undefined && !event.isPremium && !chosenImages.some(url => !failedImages.includes(url)),
@@ -42,7 +41,9 @@ export default function EventCard({ event }: EventCardProps) {
   });
   const thumbnailUrl = [...chosenImages,
     !event.isPremium ? event.galleryThumbnail ?? preview?.galleryThumbnail : null,
-    DEFAULT_EVENT_IMAGE].find(url => !!url && !failedImages.includes(url));
+    OFFICIAL_EVENT_IMAGE_FALLBACK].find(url => !!url && !failedImages.includes(url));
+  const isFallbackImage = thumbnailUrl === OFFICIAL_EVENT_IMAGE_FALLBACK;
+  const thumbnailClassName = `h-full w-full ${isFallbackImage ? "bg-[#17191b] p-7 object-contain" : "object-cover"}`;
   const imageError = () => {
     if (thumbnailUrl) setFailedImages(failed => failed.includes(thumbnailUrl) ? failed : [...failed, thumbnailUrl]);
   };
@@ -52,10 +53,10 @@ export default function EventCard({ event }: EventCardProps) {
     <Card className={`flex h-full flex-col overflow-hidden rounded-none border-border bg-card ${isUpcoming ? "" : "group transition-[border-color,background-color,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/65 motion-reduce:transform-none"}`}>
       <div className="relative aspect-[16/10] overflow-hidden bg-black/30">
         {isUpcoming ? (
-          thumbnailUrl && <VisibleThumbnail src={thumbnailUrl} onError={imageError} alt="" className="h-full w-full object-cover" />
+          thumbnailUrl && <VisibleThumbnail src={thumbnailUrl} onError={imageError} alt="" className={thumbnailClassName} />
         ) : (
           <Link href={galleryUrl} aria-label={`Open ${event.title} gallery`} className="block h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary">
-            {thumbnailUrl && <VisibleThumbnail src={thumbnailUrl} onError={imageError} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none" />}
+            {thumbnailUrl && <VisibleThumbnail src={thumbnailUrl} onError={imageError} alt="" className={`${thumbnailClassName} ${isFallbackImage ? "" : "transition-transform duration-300 group-hover:scale-[1.035] motion-reduce:transform-none"}`} />}
           </Link>
         )}
         <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3 pointer-events-none">
