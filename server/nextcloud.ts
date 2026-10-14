@@ -8,7 +8,7 @@ import { Readable, Transform } from "stream";
 import { XMLParser } from "fast-xml-parser";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { nextcloudFiles, nextcloudJobs, mediaItems, mediaAnalysisJobs, insertMediaItemSchema } from "@shared/schema";
+import { nextcloudFiles, nextcloudJobs, mediaItems, mediaAnalysisJobs, events, insertMediaItemSchema } from "@shared/schema";
 import { storage } from "./storage";
 import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { createMediaKeys, uploadMedia, type MediaType } from "./media-storage";
@@ -16,6 +16,7 @@ import { enqueueAnalysis } from "./analysis-jobs";
 import { encryptManifest, decryptManifest } from "./import-manifest";
 import { savedSourceInputs, saveSources } from "./nextcloud-sources";
 import { mediaCreditSchema } from "@shared/media-credit";
+import { automaticAnalysisStatusSql } from "./automatic-photo-matching";
 
 export class NextcloudError extends Error {}
 export type SourceInput = { link: string; password?: string; photographer?: string };
@@ -221,8 +222,9 @@ export async function importStatus(eventId: number) {
   const [job] = await db.select().from(nextcloudJobs).where(eq(nextcloudJobs.eventId, eventId));
   const files = await db.select({ name: nextcloudFiles.name, status: nextcloudFiles.status, sourceKey: nextcloudFiles.sourceKey,
     message: nextcloudFiles.message, aiWarning: nextcloudFiles.aiWarning, mediaId: nextcloudFiles.mediaId,
-    analysisStatus: mediaAnalysisJobs.status, analysisError: mediaAnalysisJobs.error })
+     analysisStatus: automaticAnalysisStatusSql(), analysisError: mediaAnalysisJobs.error })
     .from(nextcloudFiles).leftJoin(mediaAnalysisJobs, eq(nextcloudFiles.mediaId, mediaAnalysisJobs.mediaId))
+     .leftJoin(mediaItems,eq(mediaItems.id,nextcloudFiles.mediaId)).leftJoin(events,eq(events.id,mediaItems.eventId))
     .where(eq(nextcloudFiles.eventId, eventId)).orderBy(nextcloudFiles.id);
   const typedFiles = files.map(file => ({ ...file,
     aiWarning: file.analysisStatus && file.analysisStatus !== "failed" ? null : file.aiWarning,

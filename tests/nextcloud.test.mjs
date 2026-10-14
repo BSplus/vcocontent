@@ -12,7 +12,7 @@ import { promisify } from "node:util";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { stopAnalysisWorker } from "../server/analysis-jobs.ts";
+import { stopAnalysisWorker, drainAnalysisQueue, setAnalysisQueueTestScope } from "../server/analysis-jobs.ts";
 import { pool } from "../server/db.ts";
 import { storage } from "../server/storage.ts";
 import sharp from "sharp";
@@ -59,6 +59,71 @@ function dav(folder, entries) {
 function mockOrigin(origin, handler, transport = globalThis.fetch) {
   return (url, options) => new URL(url).origin === origin
     ? handler(url, options) : transport(url, options);
+}
+
+for (const timing of ["before","during","after"]) {
+  test(`confirmed list ${timing} Nextcloud import automatically catches every saved photo`,{timeout:60000},async()=>{
+    await stopImportWorker();await stopAnalysisWorker();
+    setAnalysisQueueTestScope([],[]);
+    const event=await storage.createEvent({title:`Automatic Nextcloud ${timing}`,description:"Disposable fixture",date:new Date("2026-10-14")});
+    const transport=globalThis.fetch;
+    const originalBase=process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,originalKey=process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    process.env.AI_INTEGRATIONS_OPENAI_BASE_URL="https://nc-auto-ai.example.invalid/v1";
+    process.env.AI_INTEGRATIONS_OPENAI_API_KEY="fixture-only";
+    const bytes=await sharp({create:{width:32,height:32,channels:3,background:"green"}}).jpeg().toBuffer();
+    let release;
+    const held=new Promise(resolve=>release=resolve);
+    const reviewedRows=[{number:"7",team:"Apex",car:"Prototype",drivers:"Registered One"}];
+    const folder=`/public.php/dav/files/AUTOMATIC_${timing}/`;
+    globalThis.fetch=async(url,options)=>{
+      const origin=new URL(url).origin;
+      if(origin==="https://nc-auto-ai.example.invalid")return new Response(JSON.stringify({
+        choices:[{finish_reason:"stop",message:{content:JSON.stringify({tags:["Day","Race Car"],vehicles:[]})}}]
+      }),{headers:{"Content-Type":"application/json"}});
+      if(origin!==base)return transport(url,options);
+      if(options.method==="PROPFIND")return new Response(dav(folder,[
+        [folder+"first.jpg",false,bytes.length],[folder+"second.jpg",false,bytes.length]
+      ]),{status:207});
+      if(timing==="during" && String(url).endsWith("second.jpg"))await held;
+      return new Response(bytes);
+    };
+    const wait=async check=>{
+      for(let i=0;i<200;i++){if(await check())return;await new Promise(r=>setTimeout(r,30));}
+      throw new Error("Automatic Nextcloud fixture did not settle");
+    };
+    try {
+      if(timing==="before")await storage.replaceEventEntries(event.id,reviewedRows);
+      await startImport(event.id,[{link:`${base}/s/AUTOMATIC_${timing}`}]);
+      if(timing==="during"){
+        await wait(async()=> (await importStatus(event.id)).importedImages>=1);
+        await storage.replaceEventEntries(event.id,reviewedRows);release();
+      }
+      await wait(async()=> (await importStatus(event.id)).status==="completed");
+      if(timing==="after")await storage.replaceEventEntries(event.id,reviewedRows);
+      const photos=await storage.getMediaItems(event.id);
+      assert.equal(photos.length,2);
+      setAnalysisQueueTestScope([],photos.map(p=>p.id));
+      assert.equal((await importStatus(event.id)).analysisPending,2,"status includes automatic backlog before admission");
+      await wait(async()=>{
+        await drainAnalysisQueue();
+        const state=await importStatus(event.id);
+        return state.analysisCompleted===2;
+      });
+      for(const p of photos){
+        const [job]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id));
+        assert.equal(job.photoWorkflow,true);assert.ok(job.fingerprint.startsWith("recognition:"));
+        const saved=await storage.getMediaItem(p.id);
+        assert.equal(saved.captionSource,"photo_automatic");
+        assert.equal(saved.photoMatchStatus,"no_unique_match");
+      }
+    } finally {
+      release();await stopImportWorker();await stopAnalysisWorker();
+      globalThis.fetch=transport;
+      if(originalBase===undefined)delete process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;else process.env.AI_INTEGRATIONS_OPENAI_BASE_URL=originalBase;
+      if(originalKey===undefined)delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;else process.env.AI_INTEGRATIONS_OPENAI_API_KEY=originalKey;
+      await storage.deleteEvent(event.id);await storage.cleanupObjects();
+    }
+  });
 }
 
 for (const legacy of [false, true]) {

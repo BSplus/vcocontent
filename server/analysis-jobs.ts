@@ -17,6 +17,7 @@ import { communityCaption, matchedPhotoCaption } from "./caption-proposal";
 import { storage } from "./storage";
 import { videoFrameThumbnail } from "./video-preview";
 import { withoutRetiredMediaTags } from "@shared/media-tag-policy";
+import { automaticEntrySql, automaticPhotoMatching, automaticAnalysisStatusSql } from "./automatic-photo-matching";
 
 // Database-wide budget, including multiple server processes. SDK retries are
 // disabled: only this queue owns retry/backoff and the persisted attempt count.
@@ -40,19 +41,17 @@ export class AnalysisUnavailable extends Error {}
 
 export async function analysisStatus(mediaId: number) {
   const [job] = await db.select({
-    status: sql<string>`case when ${mediaAnalysisJobs.status}='completed' and ${mediaAnalysisJobs.recognition} is not null
-      and coalesce(${events.referenceRevision},0)>${mediaAnalysisJobs.referenceRevision}
-      then 'queued' else ${mediaAnalysisJobs.status} end`, attempts: mediaAnalysisJobs.attempts,
+     status: automaticAnalysisStatusSql(), attempts: sql<number>`coalesce(${mediaAnalysisJobs.attempts},0)`,
     generatedTags: mediaAnalysisJobs.generatedTags, error: mediaAnalysisJobs.error,
     durationMs: mediaAnalysisJobs.durationMs,
     generation: mediaAnalysisJobs.generation,
-  }).from(mediaAnalysisJobs).leftJoin(mediaItems,eq(mediaItems.id,mediaAnalysisJobs.mediaId))
-    .leftJoin(events,eq(events.id,mediaItems.eventId)).where(eq(mediaAnalysisJobs.mediaId, mediaId));
+   }).from(mediaItems).leftJoin(mediaAnalysisJobs,eq(mediaItems.id,mediaAnalysisJobs.mediaId))
+     .leftJoin(events,eq(events.id,mediaItems.eventId)).where(eq(mediaItems.id, mediaId));
    return job ? { ...job, generatedTags: job.generatedTags === null ? null : withoutRetiredMediaTags(job.generatedTags) }
      : { status: "not_requested", attempts: 0, error: null, generatedTags: null };
 }
 
-export async function enqueueAnalysis(item: Item, options: boolean | { retry?: boolean; reanalyse?: boolean; recognition?: boolean; photoWorkflow?: boolean; replacePreserved?: boolean } = false, legacyReanalyse = false) {
+export async function enqueueAnalysis(item: Item, options: boolean | { retry?: boolean; reanalyse?: boolean; recognition?: boolean; photoWorkflow?: boolean; replacePreserved?: boolean; automatic?: boolean } = false, legacyReanalyse = false) {
   const settings = typeof options === "boolean" ? { retry: options, reanalyse: legacyReanalyse } : options;
   if (!["image", "video"].includes(item.type)) throw new AnalysisUnavailable("Unsupported media type");
   if (!isAITaggingConfigured()) throw new AnalysisUnavailable("AI tagging is not configured");
@@ -61,17 +60,23 @@ export async function enqueueAnalysis(item: Item, options: boolean | { retry?: b
     const [current] = await tx.select().from(mediaItems).where(eq(mediaItems.id,item.id));
     if (!current || current.archivedAt) throw new AnalysisUnavailable("Photo no longer exists.");
     const [event] = current.eventId ? await tx.select().from(events).where(eq(events.id,current.eventId)) : [];
-    const photoWorkflow = current.type==="image" && !!event?.photoMatchingEnabled;
-    if (settings.photoWorkflow && !photoWorkflow) throw new AnalysisUnavailable("Enable photo matching before processing photos.");
+     const photoWorkflow = current.type==="image" && !!event && await automaticPhotoMatching(event.id,tx,current.recognitionSession);
+     if (settings.photoWorkflow && !photoWorkflow) throw new AnalysisUnavailable("Save an applicable entry list before processing photos.");
     if (settings.photoWorkflow && current.identificationManual) throw new AnalysisUnavailable("Manual identification is protected.");
     const fingerprint = itemAnalysisFingerprint(current, settings.recognition || photoWorkflow);
-    const [existing] = await tx.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id));
+     const [existing] = await tx.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id)).for("update");
+     // Never replace a live lease: let it save its evidence, then upgrade/rematch.
+     if (current.type==="image" && existing?.status==="running") {
+       if (settings.replacePreserved && existing.photoWorkflow && current.captionSource==="preserved")
+         await tx.update(mediaAnalysisJobs).set({replaceCaption:current.caption}).where(eq(mediaAnalysisJobs.mediaId,item.id));
+       return;
+     }
     const sameInput=existing && (existing.fingerprint===fingerprint ||
       (current.type==="image" && existing.fingerprint.replace(/^(?:tags|recognition):/,"")===
         fingerprint.replace(/^(?:tags|recognition):/,"")));
     if (existing && (existing.status === "queued" || existing.status === "running") &&
       existing.fingerprint===fingerprint && (!photoWorkflow || (existing.photoWorkflow &&
-        existing.photoMatchingRevision===event!.photoMatchingRevision))) {
+         existing.referenceRevision===event!.referenceRevision))) {
       if (settings.replacePreserved && current.captionSource==="preserved") {
         await tx.update(mediaAnalysisJobs).set({replaceCaption:current.caption}).where(eq(mediaAnalysisJobs.mediaId,item.id));
       }
@@ -82,7 +87,7 @@ export async function enqueueAnalysis(item: Item, options: boolean | { retry?: b
       existing?.fingerprint === itemAnalysisFingerprint(current,true) && !settings.reanalyse) return;
     if (existing?.fingerprint === fingerprint && !settings.reanalyse &&
         (!settings.retry || existing.status !== "failed") &&
-        !(photoWorkflow && (!existing.photoWorkflow || existing.photoMatchingRevision!==event!.photoMatchingRevision ||
+         !(photoWorkflow && (!existing.photoWorkflow || existing.referenceRevision!==event!.referenceRevision ||
           (settings.replacePreserved && current.captionSource==="preserved" && existing.replaceCaption!==current.caption)))) return;
     const creator = await tx.execute(sql`select e.creator_id,u.is_admin from media_items m join events e on e.id=m.event_id
       left join users u on u.id=e.creator_id where m.id=${item.id}`);
@@ -90,7 +95,7 @@ export async function enqueueAnalysis(item: Item, options: boolean | { retry?: b
     if (owner?.creator_id && !owner.is_admin) {
       const hourly = Number(process.env.BETA_MANUAL_ANALYSES_PER_HOUR || 12);
       if (!Number.isSafeInteger(hourly) || hourly<1) throw new AnalysisUnavailable("Analysis fair-use policy is invalid.");
-      if (!await takeBetaRate(`analysis:${owner.creator_id}`,hourly,3600000))
+       if (!settings.automatic && !await takeBetaRate(`analysis:${owner.creator_id}`,hourly,3600000))
         throw new AnalysisUnavailable("You have reached the hourly analysis limit. Please try later.");
       const ownedPending = await tx.execute(sql`select count(*)::int as count from media_analysis_jobs j
         join media_items m on m.id=j.media_id join events e on e.id=m.event_id
@@ -106,7 +111,8 @@ export async function enqueueAnalysis(item: Item, options: boolean | { retry?: b
       recognition:sameInput ? existing!.recognition : null,
       referenceOnly: !!existing?.recognition && !!sameInput && !settings.reanalyse &&
         (existing.status==="completed" || existing.referenceOnly),
-      photoWorkflow, photoMatchingRevision:event?.photoMatchingRevision || 0,
+       photoWorkflow, photoMatchingRevision:event?.photoMatchingRevision || 0,
+       referenceRevision:event?.referenceRevision || 0,
       replaceCaption:settings.replacePreserved && current.captionSource==="preserved" ? current.caption : null,
       generation: (existing?.generation || 0) + 1, error: null, durationMs: null,
       availableAt: new Date(), updatedAt: new Date() };
@@ -115,8 +121,39 @@ export async function enqueueAnalysis(item: Item, options: boolean | { retry?: b
       target: mediaAnalysisJobs.mediaId, set: { ...values, videoEvidence },
     });
   });
-  void kickAnalysisWorker();
+   if (!settings.automatic) void kickAnalysisWorker();
   return analysisStatus(item.id);
+}
+
+/** The saved media/list pair is the durable work intent. Discover only a bounded
+ * batch; full queues/provider outages leave that intent intact across restarts.
+ * Running jobs are never replaced, failed current-revision jobs need an explicit
+ * retry, and cached observations avoid another paid recognition request.
+ */
+export async function reconcileAutomaticPhotos() {
+  const names=`{${(testCreatorNames||[]).join(",")}}`, ids=`{${testMediaIds.join(",")}}`;
+  const candidates=await db.execute(sql`select m.id from media_items m join events e on e.id=m.event_id
+    left join media_analysis_jobs j on j.media_id=m.id left join users u on u.id=e.creator_id
+    where m.type='image' and m.archived_at is null and not m.identification_manual
+      and ${automaticEntrySql("e",sql`m.recognition_session`)}
+      and (j.media_id is null or (j.status<>'running' and
+        (not j.photo_workflow or j.reference_revision<>e.reference_revision or j.fingerprint like 'tags:%')))
+      and (e.creator_id is null or (not u.suspended and coalesce(u.creator_status,'none')<>'rejected'))
+      and (e.creator_id is null or (select count(*) from media_analysis_jobs oj
+        join media_items om on om.id=oj.media_id join events oe on oe.id=om.event_id
+        where oe.creator_id=e.creator_id and oj.status in ('queued','running'))<100)
+      and ${testCreatorNames===undefined?sql`true`:sql`(m.id=any(${ids}::int[]) or u.username=any(${names}::text[]))`}
+    order by coalesce(u.analysis_last_served_at,timestamp '1970-01-01'),coalesce(j.updated_at,m.created_at),m.id limit 25`);
+  for (const row of candidates.rows) {
+    const [item]=await db.select().from(mediaItems).where(eq(mediaItems.id,Number(row.id)));
+    if (!item) continue;
+    try { await enqueueAnalysis(item,{automatic:true,photoWorkflow:true}); }
+    catch (error) {
+      if (!(error instanceof AnalysisUnavailable)) throw error;
+      // Admission is retried by the periodic worker; no intent was discarded.
+      continue;
+    }
+  }
 }
 
 let testCreatorNames: readonly string[] | undefined;
@@ -155,8 +192,8 @@ async function claimAnalysis() {
         left join media_items m on m.id=j.media_id left join events e on e.id=m.event_id
         left join users u on u.id=e.creator_id
         where m.archived_at is null and ((j.status='queued' and j.available_at<=now()) or
-          (j.status='completed' and j.recognition is not null and e.reference_revision>j.reference_revision
-            and (not j.photo_workflow or (e.photo_matching_enabled and e.photo_matching_revision=j.photo_matching_revision))))
+           (j.status='completed' and j.recognition is not null and e.reference_revision>j.reference_revision
+             and not j.photo_workflow))
         and ${testCreatorNames===undefined?sql`true`:sql`(j.media_id=any(${testIdsArray}::int[]) or u.username=any(${testNamesArray}::text[]))`}
         and (e.creator_id is null or (not u.suspended and coalesce(u.creator_status,'none')<>'rejected'
           and not exists(select 1 from media_analysis_jobs r join media_items rm on rm.id=r.media_id
@@ -185,6 +222,7 @@ async function claimAnalysis() {
 
 // Exported to permit deterministic worker tests (including restart recovery).
 export async function drainAnalysisQueue() {
+   await reconcileAutomaticPhotos();
   const claimed = await claimAnalysis();
   if (!claimed) return false;
   const started = Date.now();
@@ -202,9 +240,9 @@ export async function drainAnalysisQueue() {
     if (!item || item.archivedAt) return true;
     if (claimed.photoWorkflow) {
       const [event]=item.eventId ? await db.select().from(events).where(eq(events.id,item.eventId)) : [];
-      if (!event?.photoMatchingEnabled || event.photoMatchingRevision!==claimed.photoMatchingRevision) {
+       if (!event || !await automaticPhotoMatching(event.id,db,item.recognitionSession)) {
         await db.update(mediaAnalysisJobs).set({status:"completed",workerToken:null,replaceCaption:null,
-          error:"Photo matching was disabled before processing. No new analysis was performed.",updatedAt:new Date()})
+           error:"No applicable entry list. No new analysis was performed.",updatedAt:new Date()})
           .where(and(eq(mediaAnalysisJobs.mediaId,item.id),eq(mediaAnalysisJobs.workerToken,claimed.token)));
         return true;
       }
@@ -305,10 +343,10 @@ export async function drainAnalysisQueue() {
           .where(eq(mediaAnalysisJobs.mediaId,item.id));
         return;
       }
-      if (owned.photoWorkflow && (!event?.photoMatchingEnabled ||
-        event.photoMatchingRevision!==owned.photoMatchingRevision || current.eventId!==item.eventId)) {
+       if (owned.photoWorkflow && (!event || !await automaticPhotoMatching(event.id,tx,current.recognitionSession) ||
+         current.eventId!==item.eventId)) {
         await tx.update(mediaAnalysisJobs).set({status:"completed",workerToken:null,
-          recognition:result.vehicles,generatedTags:tags,error:"Photo matching was disabled or changed; no automatic changes were saved.",
+           recognition:result.vehicles,generatedTags:tags,error:"No applicable entry list; no automatic changes were saved.",
           updatedAt:new Date()}).where(eq(mediaAnalysisJobs.mediaId,item.id));
         return;
       }

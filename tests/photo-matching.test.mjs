@@ -4,15 +4,16 @@ import {randomUUID} from "node:crypto";
 import {once} from "node:events";
 import express from "express";
 import sharp from "sharp";
-import {eq,inArray,sql} from "drizzle-orm";
+import {and,eq,inArray,sql} from "drizzle-orm";
 import {db,pool} from "../server/db.ts";
 import {events,users,series,mediaItems,mediaAnalysisJobs,eventEntries,referenceDocuments,mediaReservations,nextcloudJobs,nextcloudFiles} from "../shared/schema.ts";
 import {storage} from "../server/storage.ts";
 import {registerRoutes} from "../server/routes.ts";
 import {stopImportWorker} from "../server/nextcloud.ts";
-import {analysisStatus,enqueueAnalysis,drainAnalysisQueue,setAnalysisQueueTestScope,stopAnalysisWorker,itemAnalysisFingerprint} from "../server/analysis-jobs.ts";
+import {analysisStatus,enqueueAnalysis,drainAnalysisQueue,reconcileAutomaticPhotos,setAnalysisQueueTestScope,stopAnalysisWorker,itemAnalysisFingerprint} from "../server/analysis-jobs.ts";
 import {matchedPhotoCaption} from "../server/caption-proposal.ts";
 import {matchReferences} from "../server/reference-matching.ts";
+import {automaticPhotoMatching} from "../server/automatic-photo-matching.ts";
 
 const realFetch=globalThis.fetch;
 const eventIds=[],userIds=[],seriesIds=[];
@@ -93,18 +94,19 @@ test.after(async()=>{
 });
 function scope(photos){setAnalysisQueueTestScope([owner.username,other.username],photos.map(p=>p.id));}
 
-test("default off, authorization and opt-in alone never analyse history",async()=>{
+test("legacy off flag does not block automatic history; authorization and obsolete switch rejection",async()=>{
   const e=await album(false);const p=await photo(e,{caption:"587.jpg"});
   scope([p]);
   assert.equal(e.photoMatchingEnabled,false);
   assert.equal((await api(`/api/events/${e.id}/photo-matching`,undefined,"other")).status,403);
   assert.equal((await api(`/api/events/${e.id}/photo-matching`,undefined,"anonymous")).status,401);
-  assert.equal((await api(`/api/events/${e.id}/photo-matching`,{enabled:true,platform:null},"admin","PATCH")).status,200);
+  assert.equal((await api(`/api/events/${e.id}/photo-matching`,{enabled:true,platform:null},"admin","PATCH")).status,400);
+  assert.equal((await (await api(`/api/events/${e.id}/photo-matching`)).json()).enabled,true);
   assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id))).length,0);
   assert.equal((await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:[p.id],confirmed:false})).status,400);
   await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:[p.id],confirmed:true,replacePreservedIds:[p.id]});
   const done=await settled(p.id);
-  assert.match(done.caption,/Apex/);assert.doesNotMatch(done.caption,/iRacing/);
+  assert.match(done.caption,/Apex/);assert.match(done.caption,/iRacing/);
 });
 
 test("four completed tags-only historical photos upgrade only explicitly selected preserved captions",async()=>{
@@ -219,7 +221,7 @@ test("preview and photo/community workers share series context and title fallbac
   }
 });
 
-test("upload and Nextcloud initial jobs honour opt-in, placeholders and upload AI decision",async()=>{
+test("upload and Nextcloud initial jobs ignore legacy opt-in and optional tagging decision",async()=>{
   for(const enabled of [false,true]){
     const e=await album(enabled);
     const token=randomUUID();
@@ -231,29 +233,44 @@ test("upload and Nextcloud initial jobs honour opt-in, placeholders and upload A
       const p=await storage.finishMedia(rid,{eventId:e.id,type:"image",url:image,thumbnail:image,caption:kind==="nextcloud"?"new.jpg":"",tags:[]},
         kind==="nextcloud"?file.id:undefined,kind==="nextcloud"?token:undefined,kind!=="declined");
       scope([p]);
-      if(kind==="declined"){assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id))).length,0);continue;}
       const [job]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id));
-      assert.equal(job.fingerprint.startsWith(enabled?"recognition:":"tags:"),true);
+      assert.equal(job.fingerprint.startsWith("recognition:"),true);
       if(kind==="nextcloud")assert.equal(p.captionSource,"nextcloud_placeholder");
       const done=await settled(p.id);
-      if(enabled){assert.equal(done.photoMatchStatus,"matched");assert.match(done.caption,/Apex/);}
-      else {assert.deepEqual(done.identification,[]);assert.equal(done.caption,kind==="nextcloud"?"new.jpg":"");}
+      assert.equal(done.photoMatchStatus,"matched");assert.match(done.caption,/Apex/);
       await enqueueAnalysis(done);await settled(p.id);
       assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id)))[0].fingerprint,job.fingerprint);
     }
   }
 });
 
-test("disable during provider response fences late results; re-enable reuses recognition safely",async()=>{
+test("event creation with confirmed rows and a real direct upload with tagging off queue automatic recognition",async()=>{
+  const response=await api("/api/events",{title:"Automatic creation fixture",description:"Synthetic fixture",
+    date:"2026-10-14",entryRows:[entry]});
+  assert.equal(response.status,201);
+  const e=await response.json();eventIds.push(e.id);scope([]);
+  const form=new FormData();
+  form.append("file",new Blob([await sharp({create:{width:32,height:32,channels:3,background:"green"}}).jpeg().toBuffer()],{type:"image/jpeg"}),"photo.jpg");
+  form.append("type","image");form.append("autoTag","false");form.append("caption","");form.append("tags",JSON.stringify(["Helmet"]));
+  const upload=await realFetch(base+`/api/events/${e.id}/media/upload`,{method:"POST",headers:{"x-fixture-role":"admin"},body:form});
+  assert.equal(upload.status,201);
+  const p=await upload.json();scope([p]);
+  assert.equal(p.analysis.status,"queued");
+  assert.equal((await (await api(`/api/events/${e.id}/photo-matching`)).json()).enabled,true);
+  const done=await settled(p.id);
+  assert.match(done.caption,/Apex/);assert.ok(done.tags.includes("Helmet"));
+});
+
+test("list deletion during provider response fences late results; restoring list reuses recognition safely",async()=>{
   const e=await album();const p=await photo(e);scope([p]);
   let release;gate=new Promise(r=>release=r);const started=new Promise(r=>entered=r);
   await enqueueAnalysis(p);await started;
-  assert.equal((await api(`/api/events/${e.id}/photo-matching`,{enabled:false,platform:"iRacing"},"admin","PATCH")).status,200);
+  await storage.replaceEventEntries(e.id,[]);
   release();gate=undefined;entered=undefined;await settled(p.id);
   assert.equal((await storage.getMediaItem(p.id)).caption,"");assert.deepEqual((await storage.getMediaItem(p.id)).identification,[]);
   const before=calls;
-  await api(`/api/events/${e.id}/photo-matching`,{enabled:true,platform:"iRacing"},"admin","PATCH");
-  await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:[p.id],confirmed:true});await settled(p.id);
+  await storage.replaceEventEntries(e.id,[entry]);
+  await settled(p.id);
   assert.equal(calls,before);assert.match((await storage.getMediaItem(p.id)).caption,/Apex/);
 });
 
@@ -261,7 +278,7 @@ test("parallel editor changes and running tags upgrade are fenced without overwr
   const e=await album(false);const p=await photo(e,{caption:"original.jpg"});scope([p]);
   let release;gate=new Promise(r=>release=r);const started=new Promise(r=>entered=r);
   await enqueueAnalysis(p);await started;
-  await api(`/api/events/${e.id}/photo-matching`,{enabled:true,platform:null},"admin","PATCH");
+  await api(`/api/events/${e.id}/photo-matching`,{platform:null},"admin","PATCH");
   await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:[p.id],confirmed:true,replacePreservedIds:[p.id]});
   assert.equal((await api(`/api/media/${p.id}`,{caption:"Editor's new text",tags:["Trophy"]},"admin","PUT")).status,200);
   release();gate=undefined;entered=undefined;
@@ -278,11 +295,11 @@ test("conservative multi-car captions and conflicts, season/session/owner bounda
     title:"Foreign owner",fingerprint:randomUUID(),identityKey:randomUUID(),rows:[entry]});
   await db.insert(referenceDocuments).values({eventId:e.id,seriesId:e.seriesId,ownerId:owner.id,seasonYear:2026,scope:"event",kind:"result",
     session:"Race 2",title:"Session only",fingerprint:randomUUID(),identityKey:randomUUID(),rows:[entry]});
-  await enqueueAnalysis(p);let saved=await settled(p.id);
-  assert.equal(saved.photoMatchStatus,"no_unique_match");assert.doesNotMatch(saved.caption,/Apex|Registered lineup/);
+  await enqueueAnalysis(p,{recognition:true});let saved=await settled(p.id);
+  assert.equal(saved.photoMatchStatus,null);assert.doesNotMatch(saved.caption,/Apex|Registered lineup/);
   const before=calls;
   assert.equal((await api(`/api/media/${p.id}`,{recognitionSession:"Race 2"},"owner","PUT")).status,200);
-  saved=await settled(p.id);assert.equal(saved.photoMatchStatus,"matched");assert.equal(calls,before);
+  saved=await settled(p.id);assert.equal(saved.photoMatchStatus,null);assert.equal(saved.identification[0].source,"reference");assert.equal(calls,before);
   const doc={scope:"event",kind:"entry",session:null,updatedAt:new Date(),rows:[entry,{...entry,team:"Conflicting team"}]};
   const matched=matchReferences([visible],[doc],null,e.title,true);
   assert.equal(matchedPhotoCaption(e,null,matched).matchStatus,"no_unique_match");
@@ -366,14 +383,14 @@ test("readable numbers with contradictory vehicles save context only, while gene
   }
 });
 
-test("queued opt-out work does not call Vision, and older photos remain selectable by page",async()=>{
+test("queued work without a list does not call Vision, and older photos remain selectable by page",async()=>{
   const e=await album();const p=await photo(e,{caption:"fixture.jpg"});scope([p]);
   await db.insert(mediaAnalysisJobs).values({mediaId:p.id,fingerprint:itemAnalysisFingerprint(p),status:"completed",generatedTags:["Day"]});
   await db.update(mediaAnalysisJobs).set({status:"queued",photoWorkflow:true,recognition:null,
     photoMatchingRevision:e.photoMatchingRevision,fingerprint:itemAnalysisFingerprint(p,true)})
     .where(eq(mediaAnalysisJobs.mediaId,p.id));
   const before=calls;
-  assert.equal((await api(`/api/events/${e.id}/photo-matching`,{enabled:false,platform:null},"admin","PATCH")).status,200);
+  await storage.replaceEventEntries(e.id,[]);
   await wait(async()=>{await drainAnalysisQueue();return (await analysisStatus(p.id)).status==="completed";});
   assert.equal(calls,before);assert.equal((await storage.getMediaItem(p.id)).caption,"fixture.jpg");
   scope([]);
@@ -387,6 +404,153 @@ test("queued opt-out work does not call Vision, and older photos remain selectab
   assert.ok(second.photos.some(photo=>photo.id===p.id));assert.equal(second.nextCursor,null);
   assert.equal(second.page,2);assert.equal(second.totalPages,2);assert.equal(second.hasMore,false);
   assert.equal((await api(`/api/events/${e.id}/photo-matching?before=invalid`)).status,400);
+});
+
+test("entry eligibility excludes empty, unconfirmed, result-only, foreign owner/year/title and session lists",async()=>{
+  const e=await album(false,owner.id);await storage.replaceEventEntries(e.id,[]);
+  const p=await photo(e);scope([p]);
+  const form=new FormData();
+  form.append("file",new Blob(["Number,Team,Car,Drivers\n7,Apex,Prototype,Registered One\n"],{type:"text/csv"}),"entry.csv");
+  assert.equal((await realFetch(base+`/api/events/${e.id}/references`,{method:"POST",headers:{"x-fixture-role":"owner"},body:form})).status,400);
+  assert.equal(await automaticPhotoMatching(e.id),false);
+  const doc=async extra=>{
+    const [d]=await db.insert(referenceDocuments).values({eventId:null,seriesId:e.seriesId,ownerId:owner.id,
+      seasonYear:2026,scope:"season",kind:"entry",title:"Fixture",fingerprint:randomUUID(),identityKey:randomUUID(),rows:[entry],...extra}).returning();
+    return d;
+  };
+  const invalid=await Promise.all([
+    doc({rows:[]}),doc({kind:"result"}),doc({ownerId:other.id}),doc({seasonYear:2025}),
+    doc({rows:[{...entry,eventName:"Another event"}]}),doc({session:"Race 2"}),
+  ]);
+  assert.equal(await automaticPhotoMatching(e.id),false);
+  await reconcileAutomaticPhotos();
+  assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id))).length,0);
+  assert.equal((await (await api(`/api/events/${e.id}/photo-matching`,undefined,"owner")).json()).photos[0].status,"missing_entry_list");
+  assert.equal(await automaticPhotoMatching(e.id,db,"Race 2"),true);
+  await db.delete(referenceDocuments).where(inArray(referenceDocuments.id,invalid.map(d=>d.id)));
+  const applicable=await doc({rows:[{...entry,eventName:e.title}]});
+  assert.equal(await automaticPhotoMatching(e.id),true);
+  await settled(p.id);
+  assert.match((await storage.getMediaItem(p.id)).caption,/Apex/);
+  await db.delete(referenceDocuments).where(eq(referenceDocuments.id,applicable.id));
+});
+
+test("later saved lists automatically catch missing, queued and completed tagging jobs without selections",async()=>{
+  const e=await album(false);await storage.replaceEventEntries(e.id,[]);
+  const ps=await Promise.all(["missing","queued","completed"].map(kind=>photo(e,{caption:`${kind}.jpg`,captionSource:"nextcloud_placeholder"})));
+  scope(ps);
+  for(const [i,status] of ["queued","completed"].entries())
+    await db.insert(mediaAnalysisJobs).values({mediaId:ps[i+1].id,fingerprint:itemAnalysisFingerprint(ps[i+1]),status,generatedTags:["Day"]});
+  await storage.replaceEventEntries(e.id,[entry]);
+  await Promise.all([reconcileAutomaticPhotos(),reconcileAutomaticPhotos()]);
+  for(const p of ps){
+    const done=await settled(p.id);assert.match(done.caption,/Apex/);
+    const [job]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id));
+    assert.equal(job.photoWorkflow,true);assert.equal(job.generation,p.id===ps[0].id?1:2);
+  }
+  const before=calls;
+  await reconcileAutomaticPhotos();await drainAnalysisQueue();
+  assert.equal(calls,before,"completed current revision is idempotent");
+});
+
+test("list saved during running tag analysis keeps its lease and automatically upgrades after completion",async()=>{
+  const e=await album(false);await storage.replaceEventEntries(e.id,[]);
+  const p=await photo(e,{caption:"file.jpg",captionSource:"nextcloud_placeholder"});scope([p]);
+  let release;gate=new Promise(r=>release=r);const started=new Promise(r=>entered=r);
+  try {
+    await enqueueAnalysis(p);await started;
+    const [before]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id));
+    await storage.replaceEventEntries(e.id,[entry]);
+    await Promise.all([reconcileAutomaticPhotos(),enqueueAnalysis(p)]);
+    const [after]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id));
+    assert.equal(after.workerToken,before.workerToken);assert.equal(after.generation,before.generation);
+  } finally {release();gate=undefined;entered=undefined;}
+  await wait(async()=>!(await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id)))[0].workerToken);
+  const done=await settled(p.id);
+  assert.match(done.caption,/Apex/);
+  assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id)))[0].photoWorkflow,true);
+});
+
+test("explicit historical caption replacement joins a running photo lease without a second recognition request",async()=>{
+  const e=await album(false),p=await photo(e,{caption:"Protected historical text"});scope([p]);
+  let release;gate=new Promise(r=>release=r);const started=new Promise(r=>entered=r);
+  let before;
+  try {
+    await enqueueAnalysis(p);await started;before=calls;
+    const [lease]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id));
+    const response=await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:[p.id],replacePreservedIds:[p.id]});
+    assert.equal(response.status,202);
+    const [joined]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id));
+    assert.equal(joined.workerToken,lease.workerToken);assert.equal(joined.generation,lease.generation);
+    assert.equal(joined.replaceCaption,"Protected historical text");
+  } finally {release();gate=undefined;entered=undefined;}
+  assert.match((await settled(p.id)).caption,/Apex/);assert.equal(calls,before);
+});
+
+test("full queue leaves durable missing work visible and admits it when capacity returns",async()=>{
+  const e=await album(false),p=await photo(e);scope([p]);
+  const background=await album(false);await storage.replaceEventEntries(background.id,[]);
+  const fillers=await db.insert(mediaItems).values(Array.from({length:1000},()=>({eventId:background.id,type:"image",url:image,thumbnail:image,tags:[]}))).returning();
+  await db.insert(mediaAnalysisJobs).values(fillers.map(m=>({mediaId:m.id,fingerprint:itemAnalysisFingerprint(m),status:"queued"})));
+  const before=calls;
+  await reconcileAutomaticPhotos();
+  assert.equal((await analysisStatus(p.id)).status,"queued");
+  assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id))).length,0);
+  assert.equal(calls,before);
+  await db.delete(mediaItems).where(inArray(mediaItems.id,fillers.map(m=>m.id)));
+  assert.match((await settled(p.id)).caption,/Apex/);
+});
+
+test("provider configuration outage preserves upload intent and automatically recovers admission",async()=>{
+  const e=await album(false),rid=randomUUID();
+  const key=process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  await db.insert(mediaReservations).values({id:rid,eventId:e.id,reservedBytes:1,storageKey:`fixture-${rid}`,thumbnailKey:`fixture-${rid}`});
+  let p;
+  try {
+    delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    p=await storage.finishMedia(rid,{eventId:e.id,type:"image",url:image,thumbnail:image,caption:"",tags:[]},undefined,undefined,false);
+    scope([p]);
+    assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id)))[0].status,"waiting");
+    await reconcileAutomaticPhotos();
+    assert.equal((await analysisStatus(p.id)).status,"queued");
+  } finally {process.env.AI_INTEGRATIONS_OPENAI_API_KEY=key;}
+  assert.match((await settled(p.id)).caption,/Apex/);
+});
+
+test("large gallery admission is bounded, resumable and uses stored observations across list revisions",async()=>{
+  const e=await album(false);
+  const ps=await db.insert(mediaItems).values(Array.from({length:527},()=>({eventId:e.id,type:"image",url:image,thumbnail:image,
+    caption:"Protected history",captionSource:"preserved",tags:["Helmet"],manualTags:["Helmet"]}))).returning();
+  scope(ps);
+  await db.insert(mediaAnalysisJobs).values(ps.map(p=>({mediaId:p.id,fingerprint:itemAnalysisFingerprint(p,true),status:"completed",recognition:[],generatedTags:[]})));
+  const before=calls;
+  await reconcileAutomaticPhotos();
+  let jobs=await db.select().from(mediaAnalysisJobs).where(inArray(mediaAnalysisJobs.mediaId,ps.map(p=>p.id)));
+  assert.equal(jobs.filter(j=>j.status==="queued").length,25);
+  assert.match((await settled(ps[0].id)).caption,/Protected history/);
+  for(let batch=0;batch<22;batch++){
+    // Simulate interruption/restart between completed bounded batches.
+    await db.update(mediaAnalysisJobs).set({status:"completed"}).where(and(
+      inArray(mediaAnalysisJobs.mediaId,ps.map(p=>p.id)),eq(mediaAnalysisJobs.status,"queued")));
+    await reconcileAutomaticPhotos();
+  }
+  jobs=await db.select().from(mediaAnalysisJobs).where(inArray(mediaAnalysisJobs.mediaId,ps.map(p=>p.id)));
+  assert.equal(jobs.filter(j=>j.photoWorkflow).length,527);
+  assert.equal(calls,before);
+  const first=await (await api(`/api/events/${e.id}/photo-matching`)).json();
+  assert.equal(first.photos.length,500);assert.equal(first.total,527);assert.ok(first.nextCursor);
+});
+
+test("expired automatic lease resumes cached evidence after a restart without repeating Vision",async()=>{
+  const e=await album(false),p=await photo(e);scope([p]);
+  await db.insert(mediaAnalysisJobs).values({mediaId:p.id,fingerprint:itemAnalysisFingerprint(p,true),status:"running",
+    photoWorkflow:true,referenceRevision:e.referenceRevision,attempts:1,workerToken:randomUUID(),
+    updatedAt:new Date(Date.now()-100000),referenceOnly:true,recognition:[],generatedTags:[]});
+  const before=calls;
+  await settled(p.id);
+  assert.equal(calls,before);
+  const [job]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id));
+  assert.equal(job.status,"completed");assert.equal(job.attempts,2);
 });
 
 test("both photo paths and legacy reuse suppress the Verstap false match",async()=>{

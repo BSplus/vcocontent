@@ -759,7 +759,7 @@ function EventUploadModal({
                   </>}
                    <p>Historical totals: {importProgress.imported}/{importProgress.total} files ({importProgress.importedImages} images, {importProgress.importedVideos} videos) · {importProgress.warnings} analysis warnings</p>
                   {importProgress.error && <p className="text-amber-600">{importProgress.error}</p>}
-                  <p>Tagging: {importProgress.analysisPending || 0} images still being processed · {importProgress.analysisCompleted || 0} complete. Files are already saved.</p>
+                  <p>Analysis: {importProgress.analysisPending || 0} media items waiting or being processed · {importProgress.analysisCompleted || 0} complete. Files are already saved. Matching runs automatically with a confirmed applicable entry list, including photos saved before the list.</p>
                   <div className="max-h-28 overflow-y-auto">
                     {importProgress.files.filter(file => file.message || file.aiWarning || file.analysisStatus === "failed").map((file, index) =>
                       <div key={index}>{file.name}: {file.message || (file.aiWarning || file.analysisStatus === "failed" ? "Analysis failed. You can retry." : "")}

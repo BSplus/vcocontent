@@ -8,9 +8,10 @@ import { analysisStatus, enqueueAnalysis, kickAnalysisWorker, AnalysisUnavailabl
 import { reviewEventSafety } from "./content-safety";
 import { pageMetadata } from "@shared/pagination";
 import { photoMatchingChangesSchema } from "@shared/photo-matching-settings";
+import { automaticEntrySql, automaticPhotoMatching } from "./automatic-photo-matching";
 
-const settings = (event: typeof events.$inferSelect) => ({
-  id: event.id, enabled: event.photoMatchingEnabled, platform: event.platform,
+const settings = async (event: typeof events.$inferSelect) => ({
+   id: event.id, enabled: await automaticPhotoMatching(event.id,db,null,true), platform: event.platform,
   contentVersion: event.contentVersion, referenceRevision: event.referenceRevision,
   photoMatchingRevision: event.photoMatchingRevision,
 });
@@ -49,32 +50,39 @@ export function registerPhotoMatchingRoutes(app: Express, requireCreator: Reques
       const metadata = pageMetadata(count.total, before ? count.preceding / 500 + 1 : 1,500);
       const photos = await db.select({id:mediaItems.id,caption:mediaItems.caption,captionSource:mediaItems.captionSource,
         identificationManual:mediaItems.identificationManual,matchStatus:mediaItems.photoMatchStatus,
-        status:sql<string>`case when ${mediaAnalysisJobs.status}='completed' and ${mediaAnalysisJobs.recognition} is not null
-          and ${event.referenceRevision}>${mediaAnalysisJobs.referenceRevision} and
-          (not ${mediaAnalysisJobs.photoWorkflow} or (${event.photoMatchingEnabled} and
-            ${event.photoMatchingRevision}=${mediaAnalysisJobs.photoMatchingRevision})) then 'queued'
-          else coalesce(${mediaAnalysisJobs.status},'not_requested') end`,
-        error:mediaAnalysisJobs.error}).from(mediaItems).leftJoin(mediaAnalysisJobs,eq(mediaAnalysisJobs.mediaId,mediaItems.id))
+         status:sql<string>`case when ${mediaItems.identificationManual} then 'manual_protected'
+           when not ${automaticEntrySql("events",sql`${mediaItems.recognitionSession}`)} then 'missing_entry_list'
+           when ${mediaAnalysisJobs.status}='running' then 'running'
+           when ${mediaAnalysisJobs.mediaId} is null or not ${mediaAnalysisJobs.photoWorkflow}
+             or ${events.referenceRevision}<>${mediaAnalysisJobs.referenceRevision} then 'queued'
+           when ${mediaAnalysisJobs.status}='waiting' then 'queued'
+           else ${mediaAnalysisJobs.status} end`,
+         error:sql<string | null>`coalesce(${mediaAnalysisJobs.error},
+           case when ${mediaAnalysisJobs.mediaId} is null and not ${mediaItems.identificationManual}
+             and ${automaticEntrySql("events",sql`${mediaItems.recognitionSession}`)}
+             then 'Waiting for automatic matching admission. Work is retained and retried in bounded batches.' end)`})
+         .from(mediaItems).leftJoin(mediaAnalysisJobs,eq(mediaAnalysisJobs.mediaId,mediaItems.id))
+         .innerJoin(events,eq(events.id,mediaItems.eventId))
         .where(and(predicate,
           before ? sql`${mediaItems.id}<${before}` : undefined)).orderBy(desc(mediaItems.id)).limit(501);
       const page=photos.slice(0,500);
-      res.json({...metadata,positionReset,...settings(event),photos:page,
+       res.json({...metadata,positionReset,...await settings(event),photos:page,
         nextCursor:photos.length>500 ? page[page.length-1].id : null});
     } catch {res.status(503).json({error:"Photo matching status could not be loaded."});}
   });
   app.patch("/api/events/:id/photo-matching", requireCreator, async (req,res) => {
     try {
       const event = await managed(req,res); if (!event) return;
-      const values = photoMatchingChangesSchema.parse(req.body);
+       const values = photoMatchingChangesSchema.parse(req.body);
+       if (values.enabled!==undefined)
+         return res.status(400).json({error:"Matching is automatic with an applicable entry list; there is no activation switch.",saveStatus:"rejected"});
       const saved = await db.transaction(async tx => {
         const [current] = await tx.select().from(events).where(eq(events.id,event.id)).for("update");
         if (!current || (!req.user!.isAdmin && current.creatorId!==req.user!.id)) throw new SettingsAccessError("Owner changed");
-        const enabled = values.enabled ?? current.photoMatchingEnabled;
         const platform = values.platform === undefined ? current.platform : values.platform || null;
-        if (current.photoMatchingEnabled===enabled && current.platform===platform)
+         if (current.platform===platform)
           return { ...current, saveStatus: "unchanged" as const };
-        const [updated] = await tx.update(events).set({photoMatchingEnabled:enabled,platform,
-          ...(current.photoMatchingEnabled!==enabled ? {photoMatchingRevision:sql`${events.photoMatchingRevision}+1`} : {}),
+         const [updated] = await tx.update(events).set({platform,
           ...(current.platform!==platform ? {referenceRevision:sql`${events.referenceRevision}+1`} : {}),
           contentVersion:sql`${events.contentVersion}+1`,
           ...(current.creatorId ? {safetyStatus:"error",safetyReason:"Safety check pending."} : {}),
@@ -88,7 +96,7 @@ export function registerPhotoMatchingRoutes(app: Express, requireCreator: Reques
         try { await reviewEventSafety(saved.id,saved.creatorId); }
         catch { safetyCheckStatus = "unavailable"; }
       }
-      res.json({...settings(saved),saveStatus:saved.saveStatus,
+       res.json({...await settings(saved),saveStatus:saved.saveStatus,
         ...(safetyCheckStatus ? {safetyCheckStatus} : {})});
       void Promise.resolve().then(wakeWorker).catch(() => console.error("Post-settings analysis wake-up failed"));
     } catch (reason) {
@@ -103,8 +111,8 @@ export function registerPhotoMatchingRoutes(app: Express, requireCreator: Reques
     try {
       const event = await managed(req,res); if (!event) return;
       const values = z.object({mediaIds:z.array(z.number().int().positive()).min(1).max(50),
-        confirmed:z.literal(true),replacePreservedIds:z.array(z.number().int().positive()).max(50).default([])}).strict().parse(req.body);
-      if (!event.photoMatchingEnabled) return res.status(409).json({error:"Enable photo matching before processing photos."});
+         confirmed:z.literal(true).optional(),replacePreservedIds:z.array(z.number().int().positive()).max(50).default([])}).strict().parse(req.body);
+       if (!await automaticPhotoMatching(event.id,db,null,true)) return res.status(409).json({error:"Save an applicable entry list before processing photos."});
       if (values.replacePreservedIds.some(id=>!values.mediaIds.includes(id)))
         return res.status(400).json({error:"Caption replacement must be explicitly selected for a selected photo."});
       const results = [];
@@ -125,6 +133,6 @@ export function registerPhotoMatchingRoutes(app: Express, requireCreator: Reques
         }
       }
       res.status(202).json({results});
-    } catch {res.status(400).json({error:"Select 1–50 photos and confirm AI processing."});}
+     } catch {res.status(400).json({error:"Select 1–50 photos to retry."});}
   });
 }

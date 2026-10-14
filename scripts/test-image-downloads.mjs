@@ -26,7 +26,7 @@ try {
   }
   if(!ready)throw new Error("Disposable local PostgreSQL failed to start");
   await exec("createdb",["-h","127.0.0.1","-p",String(pgPort),"-U","vco_test","photo_test"]);
-  const env={...process.env,DATABASE_URL:`postgresql://vco_test@127.0.0.1:${pgPort}/photo_test?sslmode=disable`,
+  const env={...process.env,TMPDIR:directory,DATABASE_URL:`postgresql://vco_test@127.0.0.1:${pgPort}/photo_test?sslmode=disable`,
     NODE_ENV:"development",MEDIA_STORAGE_ENVIRONMENT:"development",
     MEDIA_STORAGE_PROVIDER:"replit",MEDIA_STORAGE_ROUTING:"disabled",MEDIA_STORAGE_NEW_UPLOADS_ENABLED:enableUploads?"true":"false"};
   // Search indexes use a standard PostgreSQL extension, only in this disposable DB.

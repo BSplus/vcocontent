@@ -18,6 +18,7 @@ import { enqueueTransactionalEmail } from "./transactional-emails";
 import { assertNewMediaUploadsEnabled } from "./media-object-routing";
 import { assertMediaTagsAllowed, withoutRetiredMediaTags } from "@shared/media-tag-policy";
 import { activeMediaTagsSql } from "./media-tag-sql";
+import { automaticPhotoMatching } from "./automatic-photo-matching";
 
 type SafeUser = Omit<User, "password">;
 type EventUpdateResult = Event & { saveStatus: "saved" | "unchanged" };
@@ -587,13 +588,13 @@ class DatabaseStorage implements IStorage {
       if (mediaItem.eventId!==reservation.eventId) throw new Error("Upload event does not match its reservation");
       const community = !!reservation.creatorId;
       const [event] = await tx.select().from(events).where(eq(events.id,reservation.eventId)).for("update");
-      const photoWorkflow = mediaItem.type==="image" && !!event?.photoMatchingEnabled;
+      const photoWorkflow = mediaItem.type==="image" && !!event && await automaticPhotoMatching(event.id,tx);
       const [item] = await tx.insert(mediaItems).values({...mediaItem,archivedAt:null,
         captionSource:nextcloudFileId && mediaItem.type==="image" ? "nextcloud_placeholder" :
           (community || photoWorkflow) && mediaItem.type==="image" && !mediaItem.caption ? "auto_pending" : "preserved",
         manualTags:mediaItem.tags || [],
         ...(community ? {safetyStatus:"error",safetyReason:"Safety check pending."} : {})}).returning();
-      if (requestAnalysis) {
+      if (requestAnalysis || photoWorkflow) {
         await tx.execute(sql`select pg_advisory_xact_lock(761020)`);
         const pending = await tx.execute(sql`select count(*)::int as count from media_analysis_jobs where status in ('queued','running')`);
         const ownedPending = reservation.creatorId ? await tx.execute(sql`select count(*)::int as count
@@ -605,9 +606,12 @@ class DatabaseStorage implements IStorage {
         // unavailable provider must not discard a successful transfer.
         await tx.insert(mediaAnalysisJobs).values({ mediaId: item.id,
           fingerprint: itemAnalysisFingerprint(item,photoWorkflow),
-          photoWorkflow,photoMatchingRevision:event?.photoMatchingRevision || 0,
-          status: ready ? "queued" : "failed",
-          error: ready ? null : "AI analysis not started. Retry when the service is available." });
+          photoWorkflow:ready && photoWorkflow,photoMatchingRevision:event?.photoMatchingRevision || 0,
+          referenceRevision:event?.referenceRevision || 0,
+          status: ready ? "queued" : photoWorkflow ? "waiting" : "failed",
+          error: ready ? null : photoWorkflow
+            ? "Waiting for automatic matching admission. A full queue or unavailable AI service will be checked again automatically."
+            : "AI analysis not started. Retry when the service is available." });
       }
       if (nextcloudFileId) {
         const [file] = await tx.update(nextcloudFiles).set({ status: "saved", mediaId: item.id, message: null })

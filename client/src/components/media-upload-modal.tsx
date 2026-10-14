@@ -367,7 +367,8 @@ export default function MediaUploadModal({
           
           // Analysis commits with the saved media; never await the model here.
           updateUpload(upload, { mediaId: mediaResponse.id, status: "success", progress: 100,
-            aiStatus: community || upload.file.type.startsWith("video/") || autoTagEnabled ? "queued" : "not_requested" });
+             aiStatus: (mediaResponse as MediaItem & {analysis?: AnalysisState}).analysis?.status ??
+               (community || upload.file.type.startsWith("video/") || autoTagEnabled ? "queued" : "not_requested") });
 
         } catch (error) {
           updateUpload(upload, { status: error instanceof UploadRejected ? "error" : "unknown",
@@ -435,7 +436,7 @@ export default function MediaUploadModal({
          onInteractOutside={event => { if (uploadLock.current || selectionLock.current) event.preventDefault(); }}>
         <DialogHeader>
           <DialogTitle>Upload Media</DialogTitle>
-          <DialogDescription>Files are saved separately from background analysis and publication checks.</DialogDescription>
+          <DialogDescription>Matching runs automatically with a saved applicable entry list, even when optional photo tagging is off. Files are saved separately from background analysis and publication checks.</DialogDescription>
         </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); handleBulkUpload(); }} className="space-y-4">
           {attempted && <div role={uploading ? "status" : "alert"} className="rounded border border-border p-3 text-sm space-y-2">

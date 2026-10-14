@@ -15,11 +15,11 @@ async function click(browser, expression) {
   await browser.command("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
 }
 
-test("event photo matching settings, preserved replacement consent, protected items, confirmed process and polling", { timeout: 120000 }, async () => {
+test("automatic entry-list matching, preserved replacement consent, protected items, retry without confirmation and polling", { timeout: 120000 }, async () => {
   const browser = await uiBrowser();
   const patches = [], processRequests = [], apiReads = [];
   let pollCount = 0;
-  let settings = { id: eventId, enabled: false, platform: null, contentVersion: 0, referenceRevision: 0, photoMatchingRevision: 0 };
+  let settings = { id: eventId, enabled: true, platform: null, contentVersion: 0, referenceRevision: 0, photoMatchingRevision: 0 };
   const event = { id: eventId, title: "Photo matching fixture", description: "Fixture event",
     creatorId: null, date: "2026-10-10T12:00:00Z", visibility: "published", isPremium: false };
   const photoRows = () => [
@@ -73,12 +73,9 @@ test("event photo matching settings, preserved replacement consent, protected it
     assert.equal(await browser.evaluate(`!!document.querySelector('#photo-match-platform-${eventId}')`), false);
     assert.equal(await browser.evaluate(`document.body.textContent.includes('Save platform')`), false);
 
-    await click(browser, `document.querySelector('#photo-match-enabled-${eventId}')`);
-    await browser.wait(`document.querySelector('#photo-match-enabled-${eventId}')?.getAttribute('aria-checked')==='true'`);
-    await browser.wait("document.body.innerText.includes('Enabled for new uploads')");
-    await delay(200);
-    assert.equal(patches.at(-1).enabled, true);
-    assert.deepEqual(patches.at(-1), { enabled: true });
+    assert.equal(await browser.evaluate(`!!document.querySelector('#photo-match-enabled-${eventId}')`),false);
+    await browser.wait("document.body.innerText.includes('Matching automatically with an entry list')");
+    assert.equal(patches.length,0);
 
     assert.equal(await browser.evaluate(`document.querySelector('[aria-label="Select photo 95612"]').disabled`), true,
       "manual identification cannot be selected");
@@ -87,10 +84,10 @@ test("event photo matching settings, preserved replacement consent, protected it
     await click(browser, `document.querySelector('[aria-label="Select photo 95611"]')`);
     await click(browser, `[...document.querySelectorAll('[role="checkbox"]')].find(el=>el.closest('label')?.textContent.includes('Replace this explicitly preserved historical caption'))`);
     await browser.wait(`document.body.innerText.includes('Replace this explicitly preserved historical caption')`);
-    await click(browser, `[...document.querySelectorAll('[role="checkbox"]')].find(el=>el.closest('label')?.textContent.includes('I explicitly confirm'))`);
+    assert.equal(await browser.evaluate(`document.body.innerText.includes('I explicitly confirm')`),false);
     await click(browser, button("Process 1 selected photo"));
     await browser.wait("document.body.innerText.includes('Complete')");
-    assert.deepEqual(processRequests[0], { mediaIds: [95611], confirmed: true, replacePreservedIds: [95611] });
+    assert.deepEqual(processRequests[0], { mediaIds: [95611], replacePreservedIds: [95611] });
     await delay(4300);
     assert.ok(apiReads.length >= 3, "queued/running matching is polled until complete");
     assert.deepEqual(browser.errors, []);

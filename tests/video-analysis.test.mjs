@@ -282,7 +282,10 @@ test("durable batches survive retries, edits, reference revisions and failed new
     suppressedAITags: ["Day"], caption: "Caption edited during analysis",
     identification: [observation("7", { source: "manual", team: "Confirmed" })], identificationManual: true });
   release();
-  await until(async () => (await analysisStatus(item.id)).status === "queued");
+   await until(async () => {
+     const status=await analysisStatus(item.id);
+     return status.status==="queued" && status.attempts>=1;
+   });
   const [partial] = await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id));
   assert.equal(partial.videoEvidence.frames.length, 4);
   assert.equal(partial.videoEvidence.providerRequests, 2);
@@ -319,7 +322,10 @@ test("durable batches survive retries, edits, reference revisions and failed new
   assert.ok(saved.tags.includes("manual edited")); assert.ok(!saved.tags.includes("Day"));
   mockProvider(async () => { throw new Error("failed reanalysis"); });
   await enqueueAnalysis(saved, { reanalyse: true });
-  await until(async () => (await analysisStatus(item.id)).status === "queued");
+   await until(async () => {
+     const status=await analysisStatus(item.id);
+     return status.status==="queued" && status.attempts>=1;
+   });
   await db.update(mediaAnalysisJobs).set({ attempts: 2, availableAt: new Date() }).where(eq(mediaAnalysisJobs.mediaId, item.id));
   await drainAnalysisQueue();
   assert.equal((await analysisStatus(item.id)).status, "failed");

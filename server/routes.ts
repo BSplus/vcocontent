@@ -55,6 +55,7 @@ import { legacyThumbnail } from "./legacy-thumbnail";
 import { sendPrivateThumbnail, thumbnailDigest } from "./thumbnail-cache";
 import { sendPreparedThumbnail } from "./prepared-thumbnail";
 import { registerSupportRoutes } from "./support-routes";
+import { automaticAnalysisStatusSql } from "./automatic-photo-matching";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -801,8 +802,8 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
             isPremium: false,
           }), undefined, undefined, community || metadata.type === "video" || metadata.autoTag === "true",!!event.creatorId);
           if (event.creatorId) await reviewMediaSafety(item.id,event.creatorId);
-          res.status(201).json(await storage.getMediaItem(item.id));
-          if (community || metadata.type === "video" || metadata.autoTag === "true") void kickAnalysisWorker();
+          res.status(201).json({...await storage.getMediaItem(item.id),analysis:await analysisStatus(item.id)});
+          void kickAnalysisWorker();
         } catch (error) {
           console.error("Media upload failed");
           if (reservationId) await storage.abandonMedia(reservationId).catch(cleanupError => console.error("Upload cleanup pending:", cleanupError));
@@ -870,9 +871,10 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const event = await storage.getEvent(id);
       if (!event) return res.status(404).json({ error: "Event not found" });
       if (!canManageEvent(req.user, event.creatorId ?? null)) return res.status(403).json({ error: "Forbidden" });
-      const jobs = await db.select({ mediaId: mediaAnalysisJobs.mediaId, status: mediaAnalysisJobs.status,
+      const jobs = await db.select({ mediaId: mediaItems.id, status: automaticAnalysisStatusSql(),
         tags: activeMediaTagsSql(mediaItems.tags), generatedTags: activeMediaTagsSql(mediaAnalysisJobs.generatedTags), error: mediaAnalysisJobs.error })
-        .from(mediaAnalysisJobs).innerJoin(mediaItems, eq(mediaItems.id, mediaAnalysisJobs.mediaId))
+        .from(mediaItems).leftJoin(mediaAnalysisJobs, eq(mediaItems.id, mediaAnalysisJobs.mediaId))
+        .innerJoin(eventsTable,eq(eventsTable.id,mediaItems.eventId))
         .where(and(sql`${mediaItems.archivedAt} is null`,eq(mediaItems.eventId, id))).limit(1000);
       res.setHeader("Cache-Control", "private, no-store");
       res.json(jobs);
@@ -994,6 +996,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (entryConflicts(rows).length) return res.status(400).json({ error: "Duplicate or ambiguous race numbers (including leading zeros). Please correct them." });
       await storage.replaceEventEntries(event.id, rows);
       res.json({ rows });
+      void kickAnalysisWorker().catch(()=>console.error("Post-entry-list analysis wake-up failed"));
     } catch (error) {
       res.status(error instanceof z.ZodError ? 400 : 500).json({ error: error instanceof z.ZodError ? "Incomplete entry rows. Please check the number, team, car and drivers." : "The entry list could not be saved." });
     }

@@ -74,6 +74,8 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
           kind: z.enum(["entry","result"]).default("entry"),
           seasonYear: z.coerce.number().int().min(1990).max(2100).default(seasonYear(event)),
           session: z.string().trim().max(120).optional() }).parse(req.body);
+         if (options.kind==="entry" && !req.body.rows)
+           return res.status(400).json({error:"Review and confirm the entry-list rows before saving. An unconfirmed source does not start matching."});
         if (options.scope === "season" && !event.seriesId) return res.status(400).json({ error: "Choose a series before adding a season list" });
         let title = req.file.originalname.replace(/[/\\\r\n]/g,"_").slice(0,160);
         const extension = title.split(".").pop()?.toLowerCase();

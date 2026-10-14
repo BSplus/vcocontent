@@ -15,6 +15,7 @@ import { analysisStatus, stopAnalysisWorker } from "../server/analysis-jobs.ts";
 import { stopImportWorker } from "../server/nextcloud.ts";
 import { matchReferences } from "../server/reference-matching.ts";
 import { readFile } from "node:fs/promises";
+import { parseEntryFile } from "../server/entry-list.ts";
 
 const realFetch = globalThis.fetch;
 const previousAI = { base: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, key: process.env.AI_INTEGRATIONS_OPENAI_API_KEY };
@@ -57,6 +58,7 @@ async function photo(eventId) {
 async function importFile(eventId, extra = {}, content = csv, role = "owner") {
   const form = new FormData();
   form.append("file", new Blob([content], { type: "text/csv" }), "entries.csv");
+  if (extra.rows===undefined) form.append("rows",JSON.stringify((await parseEntryFile(Buffer.from(content),"text/csv","entries.csv")).rows));
   for (const [key, value] of Object.entries({ kind: "entry", scope: "event", seasonYear: "2026", session: "", ...extra })) form.append(key, String(value));
   return realFetch(`${base}/api/events/${eventId}/references`, {
     method: "POST", headers: role ? { "x-fixture-role": role } : {}, body: form,

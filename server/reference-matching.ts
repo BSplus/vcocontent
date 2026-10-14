@@ -9,7 +9,8 @@ import { photoTeamHintConflict, photoManufacturerHintConflict } from "./photo-te
 export const normalizedNumber = (number: string) => number.replace(/^0+(?=\d)/, "");
 export const seasonYear = (event: Event) => event.referenceSeasonYear || new Date(event.date).getUTCFullYear();
 export function applicableDocuments(event: Event) {
-  return or(eq(referenceDocuments.eventId, event.id),
+   return or(and(eq(referenceDocuments.eventId, event.id),
+     event.creatorId ? eq(referenceDocuments.ownerId,event.creatorId) : isNull(referenceDocuments.ownerId)),
     and(eq(referenceDocuments.scope, "season"),
       event.seriesId ? eq(referenceDocuments.seriesId, event.seriesId) : eq(referenceDocuments.id, -1),
       eq(referenceDocuments.seasonYear, seasonYear(event)),

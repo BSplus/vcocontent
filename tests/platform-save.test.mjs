@@ -89,7 +89,7 @@ for (const role of ["admin", "owner"])
   });
 
 for (const role of ["admin", "owner"])
-  test(`${role}: persisted platform without photos or opt-in, independent GET, toggle and other-field save`, async () => {
+  test(`${role}: persisted platform without photos, independent GET, obsolete toggle rejection and other-field save`, async () => {
     const e = await album(role === "owner" ? owner.id : null);
     const response = await api(e.id, { platform: "  iRacing  " }, role);
     assert.equal(response.status, 200);
@@ -99,8 +99,9 @@ for (const role of ["admin", "owner"])
     assert.equal(result.referenceRevision, 1); assert.equal(result.photoMatchingRevision, 0);
     if (role === "owner") assert.equal(result.safetyCheckStatus, "unavailable");
     for (const enabled of [true, false]) {
-      const toggle = await (await api(e.id, { enabled }, role)).json();
-      assert.equal(toggle.platform, "iRacing"); assert.equal(toggle.enabled, enabled);
+      const toggle = await api(e.id, { enabled }, role);
+      assert.equal(toggle.status,400);
+      assert.equal((await toggle.json()).saveStatus,"rejected");
     }
     assert.equal((await api(e.id, { title: "Other field saved" }, role, "PUT", "")).status, 200);
     const independent = await (await api(e.id, undefined, role, "GET", "")).json();
@@ -109,7 +110,7 @@ for (const role of ["admin", "owner"])
     assert.equal(matching.platform, "iRacing"); assert.deepEqual(matching.photos, []);
     const stored = await storage.getEvent(e.id);
     assert.equal(stored.platform, "iRacing"); assert.equal(stored.referenceRevision, 2);
-    assert.equal(stored.photoMatchingRevision, 2);
+    assert.equal(stored.photoMatchingRevision, 0);
     if (role === "owner") {
       assert.equal(stored.safetyStatus, "error");
       assert.ok(stored.contentVersion > stored.safetyVersion);
@@ -148,11 +149,11 @@ test("authorization, invalid and absent fields never write; lock rechecks owners
 
 test("parallel partial actions preserve both fields and post-commit reads cannot reject a save", async () => {
   const e = await album();
-  const results = await Promise.all([api(e.id, { platform: "iRacing" }), api(e.id, { enabled: true })]);
+  const results = await Promise.all([api(e.id, { platform: "iRacing" }), api(e.id, { title:"Parallel edit" },"admin","PUT","")]);
   assert.ok(results.every(response => response.status === 200));
   const stored = await storage.getEvent(e.id);
-  assert.equal(stored.platform, "iRacing"); assert.equal(stored.photoMatchingEnabled, true);
-  assert.equal(stored.referenceRevision, 1); assert.equal(stored.photoMatchingRevision, 1);
+  assert.equal(stored.platform, "iRacing"); assert.equal(stored.title,"Parallel edit");
+  assert.equal(stored.referenceRevision, 2); assert.equal(stored.photoMatchingRevision, 0);
   let reads = 0;
   storage.getEvent = async id => {
     if (++reads > 1) throw new Error("Synthetic post-commit read failure");

@@ -4,12 +4,9 @@ import { AlertTriangle, CheckCircle2, Image as ImageIcon, Loader2, RefreshCw, Sp
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import type { PageMetadata } from "@shared/pagination";
 import PageStatus from "@/components/page-status";
-import { photoMatchingSettingsSchema, settingsAtLeastAsNew, type PhotoMatchingSettings, type PhotoMatchingChanges } from "@shared/photo-matching-settings";
-import { savePhotoMatchingSettings } from "@/lib/photo-matching-save";
-import { EventSaveError } from "@/lib/event-save";
+import { photoMatchingSettingsSchema, type PhotoMatchingSettings } from "@shared/photo-matching-settings";
 
 interface MatchingPhoto {
   id: number;
@@ -58,53 +55,40 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
   const queryClient = useQueryClient();
   const [data, setData] = useState<MatchingResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const [replacePreserved, setReplacePreserved] = useState<Set<number>>(() => new Set());
-  const [confirmed, setConfirmed] = useState(false);
   const [localResults, setLocalResults] = useState<Record<number, { status: string; error?: string }>>({});
   const wasActive = useRef(false);
   const [before, setBefore] = useState<number | undefined>();
   const [previousPages, setPreviousPages] = useState<Array<number | undefined>>([]);
   const previousCaptions = useRef<string | null>(null);
-  const confirmedSettings = useRef<PhotoMatchingSettings | null>(null);
   const alive = useRef(true);
-  const writeInFlight = useRef(false);
-  const writeGeneration = useRef(0);
-  const [saveNotice, setSaveNotice] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [unknownSave, setUnknownSave] = useState(false);
   const request = useRef<AbortController | null>(null);
   const previousPhotoIds = useRef<string | null>(null);
   const [positionNotice, setPositionNotice] = useState<string | null>(null);
 
-  const refresh = useCallback(async (quiet = false, checkingSave = false) => {
-    if (writeInFlight.current) return;
+  const refresh = useCallback(async (quiet = false) => {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
-    const generation = writeGeneration.current;
     if (!quiet) setLoading(true);
     try {
       const response = await fetch(`/api/events/${eventId}/photo-matching${before ? `?before=${before}&page=${previousPages.length + 1}` : ""}`, { credentials: "include", signal: controller.signal });
       if (!response.ok) throw new Error(await readError(response, "Could not load photo matching."));
       const result = await response.json() as MatchingResponse;
-      if (controller.signal.aborted || !alive.current || generation !== writeGeneration.current) return;
+      if (controller.signal.aborted || !alive.current) return;
       if (!Array.isArray(result.photos)) throw new Error("The server returned an invalid photo matching response.");
       const parsed = photoMatchingSettingsSchema.safeParse(result);
       if (!parsed.success) throw new Error("The server returned invalid photo matching settings.");
       const settings = parsed.data;
       if (settings.id !== eventId) throw new Error("The server returned settings for another event.");
-      const acceptsSettings = !confirmedSettings.current || settingsAtLeastAsNew(settings, confirmedSettings.current);
-      if (checkingSave && !acceptsSettings) throw new Error("The server returned outdated settings. Check again.");
       const photos = result.photos.slice(0, 500);
       const ids = JSON.stringify(photos.map(photo => [photo.id, photo.identificationManual]));
       if (result.positionReset || (previousPhotoIds.current !== null && previousPhotoIds.current !== ids)) {
         setSelected(new Set());
         setReplacePreserved(new Set());
-        setConfirmed(false);
         setLocalResults({});
       }
       previousPhotoIds.current = ids;
@@ -113,7 +97,6 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
         setPreviousPages([]);
         setPositionNotice("The photo list changed. Returned to the first page and cleared the selection.");
       }
-      if (acceptsSettings) confirmedSettings.current = settings;
       const activeNow = photos.some(photo => isActive(photo.status));
       const captionSnapshot=JSON.stringify(photos.map(photo=>[photo.id,photo.caption,photo.captionSource]));
       if ((wasActive.current && !activeNow) || (previousCaptions.current!==null && previousCaptions.current!==captionSnapshot)) {
@@ -126,15 +109,10 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
       }
       wasActive.current = activeNow;
       previousCaptions.current=captionSnapshot;
-      setData({ ...result, ...confirmedSettings.current!, photos });
+      setData({ ...result, ...settings, photos });
       setError(null);
-      if (checkingSave) {
-        setUnknownSave(false);
-        setSaveError(null);
-        setSaveNotice("Current saved matching settings loaded. Review them before changing automatic matching again.");
-      }
     } catch (reason) {
-      if (controller.signal.aborted || !alive.current || generation !== writeGeneration.current) return;
+      if (controller.signal.aborted || !alive.current) return;
       setError(reason instanceof Error ? reason.message : "Could not load photo matching.");
     } finally {
       if (request.current === controller) {
@@ -154,7 +132,6 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
   useEffect(() => {
     setSelected(new Set());
     setReplacePreserved(new Set());
-    setConfirmed(false);
     setLocalResults({});
     wasActive.current = false;
     void refresh();
@@ -165,47 +142,16 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
     // Polling must not repeatedly abort slow initial/page requests. Explicit
     // refreshes and resource changes still cancel obsolete requests.
     const timer = window.setInterval(() => {
-      if (!request.current && !writeInFlight.current) void refresh(true);
+      if (!request.current) void refresh(true);
     }, 4000);
     return () => window.clearInterval(timer);
   }, [refresh]);
   const active=data?.photos.some(photo=>isActive(photo.status)) ?? false;
 
-  const saveSettings = async (changes: PhotoMatchingChanges) => {
-    if (!data || writeInFlight.current || unknownSave) return;
-    writeInFlight.current = true;
-    writeGeneration.current++;
-    request.current?.abort();
-    request.current = null;
-    setLoading(false);
-    setSaving(true);
-    setSaveError(null);
-    setSaveNotice(null);
-    try {
-      const result = await savePhotoMatchingSettings(eventId, changes);
-      if (!alive.current) return;
-      confirmedSettings.current = result;
-      setData(current => current ? { ...current, ...result } : current);
-      setError(null);
-      setSaveNotice(`Matching settings saved.${
-        result.safetyCheckStatus === "unavailable" ? " Safety review is currently unavailable; this does not undo the save." : ""}`);
-      void queryClient.invalidateQueries({ queryKey: [`/api/events/${eventId}`] });
-    } catch (reason) {
-      if (!alive.current) return;
-      const rejected = reason instanceof EventSaveError && reason.status === "rejected";
-      setUnknownSave(!rejected);
-      setSaveError(`${rejected ? "Changes rejected" : "Save status unknown"}: ${
-        reason instanceof Error ? reason.message : "Settings could not be confirmed."}`);
-    } finally {
-      writeInFlight.current = false;
-      if (alive.current) setSaving(false);
-    }
-  };
-
   const processSelected = async () => {
     const chosen = Array.from(selected).slice(0, 50).filter(id =>
       data?.photos.some(photo => photo.id === id && !photo.identificationManual));
-    if (!data || chosen.length === 0 || !confirmed) return;
+    if (!data || chosen.length === 0) return;
     const replacements = chosen.filter(id => replacePreserved.has(id) &&
       data.photos.some(photo => photo.id === id && isPreservedCaption(photo.captionSource)));
     setProcessing(true);
@@ -213,7 +159,7 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
     try {
       const response = await fetch(`/api/events/${eventId}/photo-matching/process`, {
         method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mediaIds: chosen, confirmed: true, replacePreservedIds: replacements }),
+        body: JSON.stringify({ mediaIds: chosen, replacePreservedIds: replacements }),
       });
       if (!response.ok) throw new Error(await readError(response, "Could not process selected photos."));
       const result = await response.json() as { results?: Array<{ id: number; status: string; error?: string }> };
@@ -235,7 +181,6 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
       ]);
       setSelected(new Set());
       setReplacePreserved(new Set());
-      setConfirmed(false);
       await refresh(true);
       if (failures) setError(`${failures} selected ${failures === 1 ? "photo needs" : "photos need"} attention. Review the status details below.`);
     } catch (reason) {
@@ -253,7 +198,6 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
       } else next.delete(id);
       return next;
     });
-    setConfirmed(false);
   };
 
   return (
@@ -263,11 +207,11 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
         <div className="min-w-0 flex-1">
           <h4 id="photo-matching-heading" className="font-semibold">Photo matching</h4>
           <p className="mt-1 text-sm text-muted-foreground">
-            Match event photos against the saved entry list. Enabling this applies to future uploads only; it never processes existing photos.
+            Matching automatically with an entry list. Saved, applicable entry lists automatically queue new and existing photos. Manual identifications and protected captions stay unchanged.
           </p>
         </div>
         <Button type="button" variant="ghost" size="icon" aria-label="Refresh photo matching status"
-          disabled={loading || saving || processing} onClick={() => void refresh()}>
+          disabled={loading || processing} onClick={() => void refresh()}>
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
@@ -283,27 +227,17 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
           <div className="rounded-md bg-muted/30 p-3">
             <div className="flex items-center gap-3 sm:justify-end">
               <div className="text-right">
-                <Label htmlFor={`photo-match-enabled-${eventId}`} className="block">Automatic matching</Label>
-                <p className="text-xs text-muted-foreground">{data.enabled ? "Enabled for new uploads" : "Off"}</p>
+                <p className="block font-medium">Matching automatically with an entry list</p>
+                <p className="text-xs text-muted-foreground">{data.enabled ? "Automatic processing for new and existing photos" : "Missing applicable entry list — save a confirmed entry list to start matching."}</p>
               </div>
-              <Switch id={`photo-match-enabled-${eventId}`} checked={data.enabled} disabled={saving || unknownSave}
-                onCheckedChange={enabled => {
-                  if (!enabled && data.enabled && !window.confirm("Turning off photo matching stops in-progress automatic matching writes and prevents automatic matching for new uploads. Existing results will remain unchanged.")) return;
-                  void saveSettings({ enabled });
-                }} />
             </div>
           </div>
-          {saving && <p className="text-xs text-muted-foreground" role="status">Saving settings…</p>}
-          {saveNotice && <p className="text-sm text-muted-foreground" role="status">{saveNotice}</p>}
-          {saveError && <p className="text-sm text-destructive" role="alert">{saveError}</p>}
-          {unknownSave && <Button type="button" variant="outline" disabled={loading || saving}
-            onClick={() => void refresh(false, true)}>Check saved settings</Button>}
 
           <div className="space-y-3">
             <div className="flex flex-wrap items-end justify-between gap-2">
               <div>
                 <h5 className="font-medium">Existing photos <span className="font-normal text-muted-foreground">({data.photos.length}{data.photos.length === 500 ? " max shown" : ""})</span></h5>
-                <p className="text-xs text-muted-foreground">Choose photos to process. Each request is limited to 50 photos.</p>
+                <p className="text-xs text-muted-foreground">Matching runs automatically in bounded batches. Select up to 50 photos to retry or explicitly replace individual preserved captions.</p>
               </div>
               {active && <span className="inline-flex items-center gap-2 text-xs text-muted-foreground" role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Matching in progress</span>}
             </div>
@@ -375,14 +309,7 @@ function EventPhotoMatchingControls({ eventId }: PhotoMatchingControlsProps) {
             {selected.size > 0 && (
               <div className="space-y-3 rounded-md border border-primary/25 bg-primary/5 p-3">
                 <p className="text-sm font-medium">{selected.size} of 50 photos selected</p>
-                <label className="flex cursor-pointer items-start gap-2 text-sm">
-                  <Checkbox checked={confirmed} onCheckedChange={value => setConfirmed(value === true)} disabled={processing} />
-                  <span className="inline-flex items-start gap-2">
-                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    I explicitly confirm that the selected photos will be sent for AI matching. Manual identifications are skipped; protected captions will not be replaced unless individually selected above.
-                  </span>
-                </label>
-                <Button type="button" disabled={!confirmed || processing || selected.size === 0} onClick={() => void processSelected()}>
+                <Button type="button" disabled={!data.enabled || processing || selected.size === 0} onClick={() => void processSelected()}>
                   {processing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                   {processing ? "Submitting photos…" : `Process ${selected.size} selected ${selected.size === 1 ? "photo" : "photos"}`}
                 </Button>

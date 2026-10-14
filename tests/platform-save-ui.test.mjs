@@ -115,12 +115,12 @@ for (const role of ["admin", "owner"])
       await f.open(); assert.equal(await browser.evaluate(`${platform}.value`), "iRacing");
       await browser.command("Page.reload"); await f.open();
       assert.equal(await browser.evaluate(`${platform}.value`), "iRacing");
-      await browser.wait(`!!document.querySelector('#photo-match-enabled-95601')`);
+      await browser.wait(`!!document.querySelector('[aria-label="Refresh photo matching status"]')`);
       await input(browser, "unsaved draft");
-      await click(browser, `document.querySelector('#photo-match-enabled-95601')`);
-      await browser.wait(`document.querySelector('#photo-match-enabled-95601')?.getAttribute('aria-checked')==='true'`);
-      await browser.wait(`document.body.textContent.includes('Matching settings saved')`);
-      assert.deepEqual(state.patches.at(-1), { enabled: true });
+      assert.equal(await browser.evaluate(`!!document.querySelector('#photo-match-enabled-95601')`),false);
+      await click(browser, `document.querySelector('[aria-label="Refresh photo matching status"]')`);
+      await browser.wait(`!document.querySelector('[aria-label="Refresh photo matching status"]').disabled`);
+      assert.deepEqual(state.patches, []);
       assert.equal(f.saved().platform, "iRacing");
       assert.equal(await browser.evaluate(`${platform}.value`), "unsaved draft");
       await input(browser, " iRacing ");
@@ -132,7 +132,7 @@ for (const role of ["admin", "owner"])
       assert.deepEqual(state.writes.at(-1), { platform: null });
       await f.open(); assert.equal(await browser.evaluate(`${platform}.value`), "");
       const independent = await browser.evaluate(`(async()=>await (await fetch('/api/events/95601')).json())()`);
-      assert.equal(independent.platform, null); assert.equal(independent.photoMatchingEnabled, true);
+      assert.equal(independent.platform, null); assert.equal(independent.photoMatchingEnabled, false);
       assert.deepEqual(state.errors, []); assert.deepEqual(browser.errors, []);
     } finally { await browser.close(); }
   });
