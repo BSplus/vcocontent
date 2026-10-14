@@ -315,6 +315,7 @@ export async function drainAnalysisQueue() {
         videoResult = aggregateVideo(evidence.frames);
       });
     }
+    let visualCaptionObservations:Awaited<ReturnType<typeof recognizeMotorsportImage>>["vehicles"] | undefined;
     const result = claimed.referenceOnly && claimed.recognition
       ? { tags: claimed.generatedTags || [], vehicles:item.type==="image"
           ? supportedPhotoObservations(claimed.recognition) : claimed.videoEvidence?.numberPipeline === VIDEO_NUMBER_PIPELINE
@@ -322,7 +323,12 @@ export async function drainAnalysisQueue() {
             : supportedPhotoObservations(claimed.recognition.map(v=>({...v,numberEvidence:undefined}))) }
       : videoResult ? videoResult
       : tagOnly
-        ? { tags: (await withVisionBudget(async () => recognizeMotorsportImage(await analysisImageInput(item.thumbnail),{tagsOnly:true}))).tags, vehicles: null }
+        ? await withVisionBudget(async () => {
+          const recognized=await recognizeMotorsportImage(await analysisImageInput(item.thumbnail),{tagsOnly:true});
+          visualCaptionObservations=recognized.vehicles;
+          // Do not turn a tags-only job into cached number/entry recognition.
+          return {tags:recognized.tags,vehicles:null};
+        })
         : await withVisionBudget(async () => recognizeMotorsportImage(await recognitionImageInput(item)));
      // Online lookup is optional, bounded, outside transactions and separate
      // from numeric Vision slots. Unconfirmed brand tags alone are discarded.
@@ -368,8 +374,11 @@ export async function drainAnalysisQueue() {
         ? await identifyEntries(event,result.vehicles,current.recognitionSession,tx,owned.photoWorkflow || item.type==="video",true) : result.vehicles;
       const category = claimed.referenceOnly ? current.category : await categorizeContent(merged);
       const [eventSeries] = event?.seriesId ? await tx.select({name:series.name}).from(series).where(eq(series.id,event.seriesId)) : [];
-      const proposal = owned.photoWorkflow && event && !current.identificationManual
-        ? matchedPhotoCaption(event,eventSeries?.name || null,identification) : undefined;
+      const proposal = event && !current.identificationManual && (owned.photoWorkflow ||
+        item.type==="video" || !!event.vehicle?.trim() ||
+        (visualCaptionObservations || result.vehicles || []).some(v=>v.manufacturerEvidence==="same-car-make-v1"))
+        ? matchedPhotoCaption(event,eventSeries?.name || null,identification,false,
+          visualCaptionObservations || result.vehicles || []) : undefined;
       const replaceable = current.captionSource==="photo_automatic" || current.captionSource==="nextcloud_placeholder" ||
         current.captionSource==="auto_pending" ||
         (owned.replaceCaption!==null && current.captionSource==="preserved" && current.caption===owned.replaceCaption);

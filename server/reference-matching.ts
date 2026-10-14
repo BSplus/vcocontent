@@ -82,6 +82,7 @@ export function matchReferences(visible: Identification[], documents: MatchDocum
     }
     if (entry && (!strictPhoto || !ambiguous) && (!strictPhoto || !!entry.team)) return { ...observed, team: entry.team || observed.team, drivers: entry.drivers,
       vehicle: entry.car || observed.vehicle, manufacturer: entry.manufacturer || observed.manufacturer,
+      referenceVehicle:entry.car,referenceManufacturer:entry.manufacturer || "",
       racingClass: entry.racingClass || observed.racingClass, discipline: entry.discipline || observed.discipline, source: "reference" };
     // Team-only branding can match a team, never infer an individual driver.
     if (!strictPhoto && !observed.number && observed.team) {

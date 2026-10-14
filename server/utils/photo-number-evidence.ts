@@ -6,6 +6,7 @@ import {mediaPolicy} from "../media-policy";
 import {hasOpaqueNeutralPatch} from "./photo-redaction";
 import {confirmedCommercialHints, confirmedVisibleBrands, VIDEO_BRANDING_LIMITS, videoBrandingPrompt, withoutCommercialTeamHints} from "./video-branding-evidence";
 import { BRAND_EVIDENCE_POLICY, visibleBrandTags } from "@shared/brand-tags";
+import {canonicalVehicleMake,VEHICLE_MAKE_POLICY} from "@shared/vehicle-makes";
 
 export const PHOTO_NUMBER_POLICY="vehicle-crop-v2";
 export const NUMBER_AUDIT_MODEL="gpt-5.6-terra";
@@ -16,6 +17,9 @@ export function supportedPhotoObservations(vehicles:Identification[]):Identifica
     const supported=v.source==="visual"&&/^\d{1,4}$/.test(v.number)&&v.numberEvidence===PHOTO_NUMBER_POLICY&&validRegion(v.vehicleRegion)&&
       (!v.numberPanelRegion||validRegion(v.numberPanelRegion));
     return {...v,number:supported?v.number:"",numberEvidence:supported?v.numberEvidence:undefined,
+      manufacturerEvidence:v.source==="visual"&&validRegion(v.vehicleRegion)&&canonicalVehicleMake(v.manufacturer)
+        ? v.manufacturerEvidence : undefined,
+      referenceVehicle:undefined,referenceManufacturer:undefined,
       numberPanelRegion:supported?v.numberPanelRegion:undefined,drivers:"",source:"visual",
       ...(v.number&&!supported?{team:""}:{}),
       ...(v.source==="reference"?{team:"",vehicle:"",manufacturer:"",racingClass:"",discipline:""}:{})};
@@ -27,12 +31,17 @@ export function checkedBrandTags(vehicles:Identification[]):string[] {
     .flatMap(v=>v.visibleBrands || []));
 }
 const readNumber=z.union([z.string().regex(/^\d{1,4}$/),z.literal("")]);
+const makeFields={
+  manufacturer:z.string().max(160).optional().catch(undefined),
+  manufacturerConfident:z.boolean().optional().catch(undefined),
+};
 const readings=z.object({
   // One reading per physical car, not a photo-global number set.
   fullImageReadings:z.array(z.object({
     number:readNumber,vehicleRegion:photoVehicleRegionSchema,panelRegion:photoVehicleRegionSchema.optional(),
+    ...makeFields,
   })).max(12),
-  vehicleReadings:z.array(z.object({vehicleIndex:z.number().int().min(0).max(11),number:readNumber})).max(12),
+  vehicleReadings:z.array(z.object({vehicleIndex:z.number().int().min(0).max(11),number:readNumber,...makeFields})).max(12),
   panelReadings:z.array(z.object({vehicleIndex:z.number().int().min(0).max(11),number:readNumber})).max(12).optional(),
 });
 function area(r:Region){return r[2]*r[3];}
@@ -54,17 +63,21 @@ export async function photoVehicleCrop(bytes:Buffer,region:Region):Promise<Buffe
 // Whole-car geometry is a first-pass ANCHOR, not proof. Only an independent
 // whole-image car/panel reading AND its actual source-pixel crop can certify it.
 export async function verifyPhotoObservations(image:string,vehicles:Identification[], suppliedClient?:NonNullable<ReturnType<typeof getOpenAIClient>>,
-  options?:{videoBranding?:boolean;visibleBrands?:boolean;onCommercialBranding?:(vehicleIndex:number,hints:string[])=>void}):Promise<Identification[]> {
+  options?:{videoBranding?:boolean;visibleBrands?:boolean;visualMakes?:boolean;onCommercialBranding?:(vehicleIndex:number,hints:string[])=>void}):Promise<Identification[]> {
   const confirmed=new Set<number>();
   const commercial=new Map<number,string[]>();
   const brands=new Map<number,string[]>();
+  const makes=new Map<number,string>();
   const numeric=vehicles.flatMap((v,index)=>v.number&&validRegion(v.vehicleRegion)?[{v,index}]:[]);
   const brandingCandidates=options?.visibleBrands ? vehicles.flatMap((v,index)=>
     validRegion(v.vehicleRegion)?[{v,index}]:[]).slice(0,VIDEO_BRANDING_LIMITS.vehicles)
     : options?.videoBranding ? numeric.filter(({v})=>v.team.trim() || v.referenceConstraints?.some(c=>c.team.trim()))
       .slice(0,VIDEO_BRANDING_LIMITS.vehicles) : [];
   const brandingIndices=brandingCandidates.map(c=>c.index);
-  const candidates=Array.from(new Map([...numeric,...brandingCandidates].map(c=>[c.index,c])).values());
+  const makeCandidates=options?.visualMakes?vehicles.flatMap((v,index)=>
+    validRegion(v.vehicleRegion)?[{v,index}]:[]).slice(0,3):[];
+  const makeIndices=makeCandidates.map(c=>c.index);
+  const candidates=Array.from(new Map([...numeric,...brandingCandidates,...makeCandidates].map(c=>[c.index,c])).values());
   if(candidates.length && /^data:image\/(?:webp|jpeg|png);base64,/.test(image)) {
     const bytes=Buffer.from(image.split(",")[1],"base64");
     const dimensions=await sharp(bytes).metadata();
@@ -87,7 +100,13 @@ All digits and BOTH ends of the entire number panel must be visible. Masked, cli
 Dashboard gear/speed/timing/position displays, headlamp stripes, sponsor/logo lettering, BMW i / FLIVERIES i are not race numbers even inside a frame.
 Where a labelled ORIGINAL panel crop is supplied, inspect it separately and record panelReadings for that index. Frame edges and paper/background outlines are not printed zeros. Verify the complete printed number from these actual pixels and the car context, not another vehicle. No guessed or hidden digits.
 ${crops.some(c=>c.panel)?"Only list panelReadings for explicitly labelled Original panel crop inputs.":"NO original panel crops are supplied in this request. panelReadings MUST be empty or omitted; a panel seen inside a vehicle crop is NOT a supplied panel crop. Do not invent additional inputs."}
-Preserve every printed leading zero. Never infer numbers from team/model/event knowledge. No model, class, team, driver or person claims. When uncertain leave empty.${brandingIndices.length?videoBrandingPrompt(brandingIndices):""}`},
+Preserve every printed leading zero. Never infer numbers from team/model/event knowledge. No model, class, team, driver or person claims. When uncertain leave empty.${brandingIndices.length?videoBrandingPrompt(brandingIndices):""}${makeIndices.length?`
+For manufacturer checking, additionally include manufacturer:string and manufacturerConfident:boolean in each fullImageReadings and vehicleReadings record.
+Independently identify ONLY the car manufacturer/make in full image and the same-car source crop, not an exact model.
+A clear factory badge/logo OR a clearly distinctive recognizable vehicle shape is allowed. A generic silhouette or unreadable logo is insufficient.
+Never treat a sponsor, retailer or equipment brand (e.g. MOZA, NordVPN) as the car manufacturer. Do not copy a suggested make between views.
+Use manufacturer:"", manufacturerConfident:false when uncertain. This is independent of a readable race number.
+Only manufacturer crop indices ${makeIndices.join(", ")} need these extra fields.`:""}`},
           {role:"user",content:[
             {type:"text",text:"Full image"},{type:"image_url",image_url:{url:image,detail:"high"}},
             ...crops.flatMap(({index,bytes,panel})=>[
@@ -123,6 +142,11 @@ Preserve every printed leading zero. Never infer numbers from team/model/event k
           const visible=confirmedVisibleBrands(raw.branding,evidence.fullImageReadings.indexOf(r),index);
           if(visible.length) brands.set(index,visible);
         }
+        if(makeIndices.includes(index) && !sharedAnchor && local.length===1 &&
+          local[0].number===r.number && r.manufacturerConfident && local[0].manufacturerConfident){
+          const fullMake=canonicalVehicleMake(r.manufacturer),cropMake=canonicalVehicleMake(local[0].manufacturer);
+          if(fullMake && fullMake===cropMake)makes.set(index,fullMake);
+        }
         // Match by geometry BEFORE looking at the number. Never choose another
         // car because it happens to carry the requested digits.
         const panel=validRegion(v.numberPanelRegion)?v.numberPanelRegion:r.panelRegion;
@@ -145,10 +169,12 @@ Preserve every printed leading zero. Never infer numbers from team/model/event k
     }
   }
   return vehicles.map((v,index)=>{
-    const {numberEvidence:_untrusted,visibleBrands:_untrustedBrands,brandEvidence:_untrustedBrandEvidence,...clean}=v,accepted=confirmed.has(index);
+    const {numberEvidence:_untrusted,visibleBrands:_untrustedBrands,brandEvidence:_untrustedBrandEvidence,
+      manufacturerEvidence:_untrustedMake,referenceVehicle:_referenceCar,referenceManufacturer:_referenceMake,...clean}=v,accepted=confirmed.has(index);
     const checked:Identification={...clean,number:accepted?v.number:"",drivers:"",
       ...(v.number&&!accepted?{team:""}:{}),
       ...(accepted?{numberEvidence:PHOTO_NUMBER_POLICY}:{}),
+      ...(makes.has(index)?{manufacturer:makes.get(index)!,manufacturerEvidence:VEHICLE_MAKE_POLICY}:{}),
       ...(brands.has(index)?{visibleBrands:brands.get(index),brandEvidence:BRAND_EVIDENCE_POLICY}:{})};
     const hints=accepted?commercial.get(index):undefined;
     if(hints?.length) options?.onCommercialBranding?.(index,hints);

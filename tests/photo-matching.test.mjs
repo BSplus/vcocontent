@@ -19,7 +19,7 @@ import {brandOnlineResponse} from "./helpers/brand-online-fixture.mjs";
 
 const realFetch=globalThis.fetch;
 const eventIds=[],userIds=[],seriesIds=[];
-let server,base,admin,owner,other,calls=0,auditCalls=0,gate,entered,providerFailure=false,invalidOutput=false,visionVehicle="",visionNumber="007",auditNumber="007",visionTeam="",brandMode=false,brandLabel="MOZA Racing",onlineUnavailable=false;
+let server,base,admin,owner,other,calls=0,auditCalls=0,gate,entered,providerFailure=false,invalidOutput=false,visionVehicle="",visionNumber="007",auditNumber="007",visionTeam="",brandMode=false,brandLabel="MOZA Racing",onlineUnavailable=false,makeMode=false;
 const image="data:image/webp;base64,"+(await sharp({create:{width:32,height:32,channels:3,background:"green"}}).webp().toBuffer()).toString("base64");
 const visible={number:"007",vehicleRegion:[0,0,1000,1000],team:"",drivers:"",vehicle:"",manufacturer:"",racingClass:"",discipline:"",source:"visual"};
 const entry={number:"7",team:"Apex",car:"Prototype",drivers:"Registered One; Registered Two",manufacturer:"",racingClass:"",discipline:""};
@@ -70,9 +70,11 @@ test.before(async()=>{
     if(body.messages[0].content.includes("Independently inspect the full image")) {
       auditCalls++;
       return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify({
-        fullImageReadings:auditNumber||brandMode?[{number:auditNumber,vehicleRegion:[0,0,1000,1000],
-          ...(auditNumber?{panelRegion:[250,250,300,300]}:{})}]:[],
-        vehicleReadings:auditNumber||brandMode?[{vehicleIndex:0,number:auditNumber}]:[],
+        fullImageReadings:auditNumber||brandMode||makeMode?[{number:auditNumber,vehicleRegion:[0,0,1000,1000],
+          ...(auditNumber?{panelRegion:[250,250,300,300]}:{}),
+          ...(makeMode?{manufacturer:"Porsche",manufacturerConfident:true}:{})}]:[],
+        vehicleReadings:auditNumber||brandMode||makeMode?[{vehicleIndex:0,number:auditNumber,
+          ...(makeMode?{manufacturer:"Porsche",manufacturerConfident:true}:{})}]:[],
         ...(brandMode?{branding:{
           fullImageReadings:[{readingIndex:0,complete:true,markings:[{text:brandLabel,kind:"commercial"}]}],
           vehicleReadings:[{vehicleIndex:0,complete:true,markings:[{text:brandLabel.toUpperCase(),kind:"commercial"}]}],
@@ -151,6 +153,34 @@ test("failed online brand verification omits only brand tags and ordinary analys
     assert.equal(saved.caption,"Protected editorial text");
     assert.equal((await analysisStatus(p.id)).status,"completed");
   }finally{brandMode=false;brandLabel="MOZA Racing";visionTeam="";visionVehicle="";onlineUnavailable=false;}
+});
+test("no-list photos receive a checked make without a model, number or team; editorial captions remain protected",async()=>{
+  const e=await album();await db.delete(eventEntries).where(eq(eventEntries.eventId,e.id));
+  const p=await photo(e);scope([p]);makeMode=true;visionVehicle="Race Car";visionNumber="";auditNumber="";
+  try{
+    const before=auditCalls;await enqueueAnalysis(p,{recognition:false,reanalyse:true});
+    const saved=await settled(p.id);
+    assert.ok(saved.caption.includes("Vehicle make: Porsche"));
+    assert.ok(!saved.caption.includes("#")&&!saved.caption.includes(entry.team));
+    assert.ok(!saved.identification.length);assert.equal(auditCalls,before+1);
+    const protectedPhoto=await photo(e,{caption:"My own text"});scope([protectedPhoto]);
+    await enqueueAnalysis(protectedPhoto,{recognition:false,reanalyse:true});
+    assert.equal((await settled(protectedPhoto.id)).caption,"My own text");
+  }finally{makeMode=false;visionVehicle="";visionNumber="007";auditNumber="007";}
+});
+test("event vehicle saves, trims, clears and participates in caption context without overriding entry facts",async()=>{
+  const e=await album();
+  const reply=await api(`/api/events/${e.id}`,{vehicle:"  Mazda MX-5 Cup  "},"admin","PUT");
+  assert.equal(reply.status,200);
+  assert.equal((await storage.getEvent(e.id)).vehicle,"Mazda MX-5 Cup");
+  assert.equal((await api(`/api/events/${e.id}`,{vehicle:"x".repeat(161)},"admin","PUT")).status,400);
+  await db.update(eventEntries).set({car:"",manufacturer:"Porsche"}).where(and(eq(eventEntries.eventId,e.id),eq(eventEntries.number,"7")));
+  const p=await photo(e);scope([p]);await enqueueAnalysis(p,{recognition:true,photoWorkflow:true});
+  const saved=await settled(p.id);
+  assert.ok(saved.caption.includes("Porsche")&&!saved.caption.includes("Mazda"));
+  assert.equal(saved.identification[0].referenceVehicle,"");assert.equal(saved.identification[0].referenceManufacturer,"Porsche");
+  assert.equal((await api(`/api/events/${e.id}`,{vehicle:"  "},"admin","PUT")).status,200);
+  assert.equal((await storage.getEvent(e.id)).vehicle,null);
 });
 
 test("legacy off flag does not block automatic history; authorization and obsolete switch rejection",async()=>{

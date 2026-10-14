@@ -73,6 +73,7 @@ export const events = pgTable("events", {
   photoMatchingEnabled: boolean("photo_matching_enabled").notNull().default(false),
   photoMatchingRevision: integer("photo_matching_revision").notNull().default(0),
   platform: text("platform"),
+  vehicle: text("vehicle"),
   visibility: text("visibility").notNull().default("published"),
   adminHidden: boolean("admin_hidden").notNull().default(false),
   contentVersion: integer("content_version").notNull().default(0),
@@ -126,6 +127,9 @@ export const identificationSchema = z.object({
   drivers: z.string().trim().max(500),
   vehicle: z.string().trim().max(160),
   manufacturer: z.string().trim().max(160),
+  manufacturerEvidence:z.literal("same-car-make-v1").optional(),
+  referenceVehicle:z.string().max(160).optional(),
+  referenceManufacturer:z.string().max(160).optional(),
   racingClass: z.string().trim().max(160),
   discipline: z.string().trim().max(160),
   source: z.enum(["reference", "visual", "manual"]).default("manual"),
@@ -411,6 +415,8 @@ export const insertEventSchema = createInsertSchema(events).extend({
   track: z.string().trim().max(160).nullable().optional(),
   platform: z.string().trim().max(120, "Sim-racing platform cannot exceed 120 characters").nullable().optional()
     .transform(value => value === "" ? null : value),
+  vehicle:z.string().trim().max(160,"Vehicle or make cannot exceed 160 characters").nullable().optional()
+    .transform(value=>value===""?null:value),
   coverImage: z.string().nullable().optional(),
   customThumbnail: z.string().nullable().optional(),
   date: z.coerce.date(),

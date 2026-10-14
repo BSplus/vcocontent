@@ -212,7 +212,7 @@ class DatabaseStorage implements IStorage {
       if (!photo || galleryThumbnailReference(photo, { ...before, ...event }) !== value)
         throw new EventImageError("The selected photo is no longer eligible. Choose another gallery photo.");
     }
-    const contextKeys=["title","date","seriesId","creatorId","referenceSeasonYear","round","track","platform"] as const;
+    const contextKeys=["title","date","seriesId","creatorId","referenceSeasonYear","round","track","platform","vehicle"] as const;
     let changed=false;
     if (contextKeys.some(key=>event[key]!==undefined)) {
       if (before) {
@@ -220,13 +220,13 @@ class DatabaseStorage implements IStorage {
         const year=(e:typeof after)=>e.referenceSeasonYear ?? new Date(e.date).getUTCFullYear();
         changed=before.title!==after.title || before.seriesId!==after.seriesId ||
            before.creatorId!==after.creatorId || +new Date(before.date)!==+new Date(after.date) ||
-           before.round!==after.round || before.track!==after.track || before.platform!==after.platform || year(before)!==year(after);
+           before.round!==after.round || before.track!==after.track || before.platform!==after.platform || before.vehicle!==after.vehicle || year(before)!==year(after);
       }
     }
     const result = await tx
       .update(events)
       .set({...event,...(changed?{referenceRevision:sql`${events.referenceRevision}+1`}:{}),
-         ...(["title","description","round","track","platform"].some(key=>key in event) ? {
+         ...(["title","description","round","track","platform","vehicle"].some(key=>key in event) ? {
           contentVersion:sql`${events.contentVersion}+1`,safetyStatus:sql`case when ${events.creatorId} is not null then 'error' else ${events.safetyStatus} end`,
           safetyReason:sql`case when ${events.creatorId} is not null then 'Safety check pending.' else ${events.safetyReason} end`,
         } : {})})

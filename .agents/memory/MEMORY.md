@@ -40,7 +40,7 @@
 - [Beta mail setup](beta-launch-setup.md) — sender domain is vco-esports.com; workspace settings do not prove live readiness, and provider acceptance differs from inbox delivery.
 - [Transactional email boundaries](transactional-email-boundaries.md) — reuse approved branding; community/payment notifications require separate activation, and missing workflows remain dependencies.
 - [Legal release boundaries](legal-release-boundaries.md) — free downloads do not determine reuse licences; creator terms and rights require explicit operator approval.
-- [Eventbezogene Caption-Ausnahme](community-caption-boundary.md) — Matching nur nach Event-Opt-in; registrierte Lineups sind kein Beweis abgebildeter Personen, geschützte Texte bleiben geschützt.
+- [Automatische Captions](community-caption-boundary.md) — Entry Lists, Fahrzeugmodelle und visuelle Hersteller; registrierte Lineups sind keine Personenidentifikation, geschützte Texte bleiben geschützt.
 - [Optimistische Browseraktionen](optimistic-browser-actions.md) — neuer sichtbarer Zustand beweist keine abgeschlossene Mutation; vor Folgeaktionen auf aktive Buttons warten.
 - [Creator-Eventzuordnung](creator-event-association.md) — Betreiber wählt lose Zuordnung eigener Galerien statt Modelltrennung; nur separate Umsetzungsplanung freigegeben.
 - [Event image boundaries](event-image-boundaries.md) — metadata limits stay separate; checked draft photos may be selected without publishing; the built-in fallback is trusted.

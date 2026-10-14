@@ -42,3 +42,19 @@ Ergänzung zum nummernbezogenen Captionteil genannt.
 **How to apply:** Den zugeordneten registrierten Fahrzeugnamen verwenden;
 ist nur der Hersteller registriert, diesen als mögliche Ersatzangabe behandeln.
 Eine visuelle Modellschätzung nicht als gesicherte Entry-List-Angabe darstellen.
+
+Der Betreiber hat zusätzlich Hersteller in automatischen Foto- und
+Videocaptions ohne Entry List freigegeben, wenn sie sicher visuell erkannt
+werden. Dafür können Herstellerlogos oder eine erkennbare Fahrzeugform dienen;
+ohne Entry List keine spezifischen Modelle, Teams oder Nummern erraten.
+Für Events mit nur einem Autotyp möchte er bei Erstellung optional den
+Fahrzeugtyp bzw. die Marke angeben können, ähnlich der Plattform.
+
+**Why:** Der Betreiber hat die gemeinsame Caption-Option ausdrücklich gewählt
+und die optionale Ein-Fahrzeug-Eventangabe ergänzend verlangt.
+
+**How to apply:** Registrierte Fahrzeug-/Herstellerangaben nicht durch
+Eventvorgaben überschreiben. Die Eventangabe ist Kontext für ein ausdrücklich
+einheitliches Starterfeld, kein zusätzlicher Matchingbeweis. Visuelle Hersteller
+von Sponsoren trennen; unklare Erkennung lässt den Standardkontext stehen.
+Geschützte Captions und unabhängige Safety-/Publikationsregeln bleiben erhalten.

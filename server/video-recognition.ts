@@ -120,7 +120,7 @@ export async function checkVideoNumbers(frames: VideoFrame[], evidence: VideoEvi
       }
       const commercialVehicles:{vehicleIndex:number;hints:string[]}[]=[];
       const verified = await verifyPhotoObservations(frame.image, done.numberCheck.vehicles, transport, {
-        videoBranding:true,visibleBrands:true,
+        videoBranding:true,visibleBrands:true,visualMakes:true,
         onCommercialBranding:(vehicleIndex,hints)=>commercialVehicles.push({vehicleIndex,hints}),
       });
       done.numberCheck = { ...done.numberCheck, status: "verified", vehicles: verified,
@@ -142,7 +142,7 @@ export function supportedVideoFrame(frame: FrameEvidence): Identification[] {
     return supportedPhotoObservations(check.vehicles);
   // Historical/raw evidence remains visible as unknown, never retro-certified.
   return supportedPhotoObservations(frame.vehicles.map(v => ({ ...v, numberEvidence: undefined,
-    visibleBrands:undefined,brandEvidence:undefined })));
+    visibleBrands:undefined,brandEvidence:undefined,manufacturerEvidence:undefined })));
 }
 
 /** Global conflicting labels require a clear majority. Vehicle fields require consensus. */

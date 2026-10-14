@@ -238,6 +238,7 @@ function EventUploadModal({
       round: "",
       track: "",
        platform: "",
+        vehicle: "",
     } as any,
   });
 
@@ -255,6 +256,7 @@ function EventUploadModal({
         round: eventWithRaceDetails.round ?? "",
         track: eventWithRaceDetails.track ?? "",
          platform: eventData.platform ?? "",
+          vehicle: (eventData as Event & { vehicle?: string | null }).vehicle ?? "",
       } as any);
 
        setThumbnailPreview(eventData.customThumbnail ? `/api/events/${eventData.id}/thumbnail?field=customThumbnail` : null);
@@ -358,6 +360,9 @@ function EventUploadModal({
       }
       const platform = formData.platform?.trim() || null;
       if (platform !== (previous.platform?.trim() || null)) details.platform = platform;
+       const vehicle = String((formData as typeof formData & { vehicle?: string | null }).vehicle ?? "").trim() || null;
+       const previousVehicle = String((previous as Event & { vehicle?: string | null }).vehicle ?? "").trim() || null;
+       if (vehicle !== previousVehicle) details.vehicle = vehicle;
       if (new Date(formData.date).toISOString().slice(0, 10) !== new Date(previous.date).toISOString().slice(0, 10))
         details.date = new Date(formData.date);
       setSaveProblem(null);
@@ -418,6 +423,15 @@ function EventUploadModal({
 
   const onSubmit = async (data: InsertEvent) => {
     if (thumbnailBusy || unknownSave) return;
+    const vehicle = String(form.getValues("vehicle" as any) ?? "").trim();
+    if (vehicle.length > 160) {
+      const message = "Vehicle or make cannot exceed 160 characters.";
+      form.setError("vehicle" as any, { type: "maxLength", message });
+      setValidationSummary([message]);
+      return;
+    }
+    form.clearErrors("vehicle" as any);
+    const normalizedData = { ...data, vehicle: vehicle || null } as InsertEvent;
     if (creationBlocked.length) {
       setValidationSummary(creationBlocked);
       return;
@@ -440,7 +454,7 @@ function EventUploadModal({
          await nextcloudPost(importEventId ? `/api/admin/events/${importEventId}/nextcloud/preview` : "/api/admin/nextcloud/preview", { sources: sources() });
          setCreationStage(savedId ? "Preparing the saved event…" : "Creating event…");
         const id = importEventId || createdEventId || (isEditing ? eventId : null);
-        const event = id ? null : await createMutation.mutateAsync(data);
+         const event = id ? null : await createMutation.mutateAsync(normalizedData);
         const targetId = id ?? event!.id;
          savedId = targetId;
         setImportEventId(targetId);
@@ -460,7 +474,7 @@ function EventUploadModal({
       if (isEditing && eventId) {
         await updateMutation.mutateAsync(eventId);
       } else {
-        await createMutation.mutateAsync(data);
+         await createMutation.mutateAsync(normalizedData);
       }
     } catch (error) {
       // Edit errors are displayed once, inline, by the mutation handler.
@@ -500,6 +514,7 @@ function EventUploadModal({
       baseline.current = null;
       setSaveProblem(null);
       setCreationStage(null);
+      setValidationSummary([]);
       setImportStarted(false);
       setUnknownSave(false);
       setSaveCheck(null);
@@ -627,6 +642,27 @@ function EventUploadModal({
               aria-describedby={form.formState.errors.platform ? "platform-error" : undefined} />
             {form.formState.errors.platform && (
               <p id="platform-error" role="alert" className="text-sm text-destructive">{form.formState.errors.platform.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="vehicle">Single vehicle or make (optional)</Label>
+            <Input
+              id="vehicle"
+              maxLength={160}
+              {...form.register("vehicle" as any)}
+              placeholder="e.g. Porsche 911 GT3 R"
+              className="touch-auto"
+              aria-invalid={!!(form.formState.errors as any).vehicle}
+              aria-describedby={(form.formState.errors as any).vehicle ? "vehicle-error vehicle-help" : "vehicle-help"}
+            />
+            <p id="vehicle-help" className="text-sm text-muted-foreground">
+              Leave empty for mixed-vehicle events. This is event-wide caption context, not evidence of a vehicle’s identity.
+            </p>
+            {(form.formState.errors as any).vehicle && (
+              <p id="vehicle-error" role="alert" className="text-sm text-destructive">
+                {(form.formState.errors as any).vehicle.message}
+              </p>
             )}
           </div>
 

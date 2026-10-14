@@ -48,7 +48,9 @@ Return JSON {tags:string[],vehicles:[{number:string,numberReadable:boolean,team:
 Allowed tags: ${vocabulary.join(", ")}. Choose a few supported tags, no contradictions or synonyms.
 For EACH visible vehicle record a complete race number ONLY if clearly readable; never complete an obscured number or use sponsor numbers.
 Leave unknown fields empty. Team requires readable team branding, not a guessed sponsor. No drivers, faces, helmet identity or guesses.
-Do not call a Stock Car GT Car. Use Race Car when type/class cannot be determined; don't guess manufacturer/model or GT3/GT4 from appearance alone.
+Do not call a Stock Car GT Car. Use Race Car when type/class cannot be determined.
+A clear factory badge/logo or unmistakable manufacturer-specific body shape can suggest a make. Generic silhouettes, sponsor logos and equipment brands cannot.
+Leave uncertain manufacturer empty; never guess the exact model or GT3/GT4 from appearance alone.
 Include classReadable for each vehicle: true ONLY when a specific racing-class marking is readable, never based on body shape. Otherwise leave racingClass empty; do not emit GT3/GT4 tags without this evidence.
 Multiple cars can have different entries. Don't assign one vehicle's identity to the whole photo.
 Include an optional vehicleRegion:[left,top,width,height], the tight whole-car rectangle normalized 0..1000 in full-image coordinates, to locate which car a description concerns. An uncertain location must be omitted.` },
@@ -62,7 +64,7 @@ export async function recognizeMotorsportImage(image:string,options?:{tagsOnly?:
   try {
     const parsed=await extractMotorsportImage(image);
     const anchored=!options?.tagsOnly && parsed.vehicles.some(v=>v.number) ? (await localizePhotoNumbers(image,parsed.vehicles)).vehicles : parsed.vehicles;
-    const vehicles=await verifyPhotoObservations(image,anchored,undefined,{visibleBrands:true});
+    const vehicles=await verifyPhotoObservations(image,anchored,undefined,{visibleBrands:true,visualMakes:true});
     return {...parsed,tags:[...parsed.tags,...checkedBrandTags(vehicles)],vehicles};
   } catch {throw new Error("AI recognition could not be completed");}
 }

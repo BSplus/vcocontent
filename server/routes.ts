@@ -206,7 +206,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       committed = true;
       const saveStatus = updatedEvent.saveStatus || "saved";
       let responseEvent: typeof event = updatedEvent;
-      if (saveStatus === "saved" && event.creatorId && ["title","description","round","track","platform"].some(field=>field in changes)) {
+      if (saveStatus === "saved" && event.creatorId && ["title","description","round","track","platform","vehicle"].some(field=>field in changes)) {
         await reviewEventSafety(eventId,event.creatorId);
         const reviewed = await storage.getEvent(eventId);
         if (!reviewed) throw new Error("Saved event status unavailable");

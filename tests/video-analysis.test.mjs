@@ -48,7 +48,7 @@ async function clip(duration, kind = "testsrc2", extension = "mp4") {
     "-pix_fmt", "yuv420p", "-y", filename], { timeout: 20000 });
   return readFile(filename);
 }
-function mockProvider(work = async () => {}) {
+function mockProvider(work = async () => {},withMakes=false) {
   process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = "https://video-test.invalid/v1";
   process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "test-only";
   globalThis.fetch = async (input, options) => {
@@ -62,9 +62,11 @@ function mockProvider(work = async () => {}) {
       const localization = request.messages[0].content.startsWith("Localize");
       const content = localization ? {scene:null,vehicles:numbers.map((number,index)=>({number,vehicleRegion:regions[index]}))}
         : {fullImageReadings:numbers.map((number,index)=>({number,vehicleRegion:regions[index],
+          ...(withMakes?{manufacturer:"Porsche",manufacturerConfident:true}:{}),
           panelRegion:[regions[index][0]+100,200,100,100]})),
           vehicleReadings:request.messages[1].content.filter(c=>c.type==="text"&&c.text.startsWith("Vehicle crop"))
-            .map(c=>({vehicleIndex:Number(c.text.split(" ").at(-1)),number:numbers[Number(c.text.split(" ").at(-1))]}))};
+            .map(c=>({vehicleIndex:Number(c.text.split(" ").at(-1)),number:numbers[Number(c.text.split(" ").at(-1))],
+              ...(withMakes?{manufacturer:"Porsche",manufacturerConfident:true}:{})}))};
       return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify(content)}}],
         usage:{prompt_tokens:200,completion_tokens:100}}),{headers:{"content-type":"application/json"}});
     }
@@ -264,6 +266,19 @@ test("provider batches preserve timestamps, token usage and readability gates", 
     assert.ok(result.frames.every(f => f.vehicles.every(v => v.number !== "8?" && v.racingClass === "" && v.drivers === "")));
     assert.ok(result.frames.every(f => !f.tags.includes("Real Motorsport") && f.tags.includes("Sim Racing") && f.tags.includes("Esports")));
   });
+});
+test("a no-list video saves a checked-make caption without inventing a model or entry", {timeout:60000},async()=>{
+  videoBytes=await clip(1);const item=await media();
+  await db.update(mediaItems).set({caption:"",captionSource:"auto_pending"}).where(eq(mediaItems.id,item.id));
+  mockProvider(async()=>{},true);
+  try{
+    await enqueueAnalysis(item);
+    await until(async()=>(await analysisStatus(item.id)).status==="completed");
+    const saved=await storage.getMediaItem(item.id);
+    assert.ok(saved.caption.includes("Vehicle make: Porsche"));
+    assert.ok(!saved.caption.includes("#")&&!saved.caption.includes("911"));
+    assert.ok(saved.identification.every(v=>v.source==="visual"&&!v.drivers&&!v.team));
+  }finally{mockProvider();}
 });
 test("malformed frame batches preserve originals and previews, then complete safely on retry", { timeout: 90000 }, async () => {
   videoBytes=await clip(20);
