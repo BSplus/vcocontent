@@ -1,0 +1,44 @@
+Please consolidate the findings from:
+
+* Task #223 — Marketplace decisions and specification
+* Task #224 — Professional image metadata workflows
+
+into ONE coherent implementation specification for the VCO Content Marketplace.
+
+This is a PLANNING-ONLY task. Do not implement, migrate, deploy or change Production.
+
+Approved product principles:
+
+1. Extend the existing VCO Content Database rather than replacing it.
+2. Creator plans (Free, Pro, Studio, Archive) are separate from application roles.
+3. Creators manage one unified storage quota across original photos, RAW, videos, previews, persistent variants and Creator-managed sidecars.
+4. RAW files do not require a special subscription or pricing model.
+5. IPTC/XMP metadata is optional for all Creators and must never be a general upload requirement.
+6. Existing Creator metadata takes precedence. Missing eligible fields can be filled using event data, AI tagging, matching and captioning.
+7. Never infer authorship, copyright ownership or licensing rights from AI or uploader identity.
+8. Preserve all uploaded originals byte-for-byte, including official VCO uploads.
+9. Use non-destructive JPEG metadata exports and XMP sidecars for RAW.
+10. Offer privacy-filtered standard downloads. Exact-original downloads require explicit Creator availability settings and warnings about sensitive embedded metadata.
+11. Use a bounded, automatically cleaned platform-managed cache for generated downloads. Temporary cache objects must not unexpectedly consume Creator storage allowances. Persistent Creator-managed variants and sidecars do count.
+12. Buyer credits and Creator monetary earnings require separate auditable ledgers.
+13. Purchases must create durable licence entitlements independent of download counts.
+14. Stripe subscriptions, payments and Connect payouts must be implemented securely, with reconciliation and idempotent webhook handling.
+15. No VCO-financed Creator assignments or VCO-funded RAW storage exceptions.
+
+Please produce:
+
+A. Unified target architecture and data model.
+B. Exact reuse versus required changes in existing components.
+C. Phased implementation plan with dependencies and acceptance criteria.
+D. Migration and backwards-compatibility strategy.
+E. Storage quota and export-cache accounting rules.
+F. Asset variants, RAW handling and metadata provenance design.
+G. Licensing, financial ledger, subscriptions and payout architecture.
+H. Security, privacy, operational and legal review requirements.
+I. Open commercial decisions that must be approved before implementation.
+
+Keep the implementation plan incremental, Production-safe and compatible with existing users, galleries and media.
+
+Do not treat proposed commercial prices, licence terms or payout rules as final approvals.
+
+Return the specification for review before any development starts.
