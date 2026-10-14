@@ -42,3 +42,15 @@ are distinct outcomes.
 **How to apply:** Report completion, checked numbers and accepted references
 separately. Preserve intended conservative refusals and protected captions;
 investigate weak-hint false negatives as a separate recognition-quality question.
+
+Evaluate visible sponsor/brand lettering separately from registered team identity;
+do not assume every branding mismatch is a proven competing team or an overlay.
+
+**Why:** Frozen original video frames showed checked car numbers and readable
+bodywork branding different from their registered team names. Weak hints vetoed
+matches, but the pixels alone established neither a competing team nor a safe
+global sponsor exemption.
+
+**How to apply:** Inspect exact source-bound frames, distinguish on-car markings
+from broadcast graphics, and evaluate any conflict-resolution change with
+positive and negative controls rather than forcing known fixtures to match.
