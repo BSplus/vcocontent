@@ -71,6 +71,8 @@ test("video commercial-brand resolution shares the numeric request and saves sou
   assert.equal(match(result.vehicles)[0].source,"reference");
   assert.equal(result.vehicles[0].team,"");
   assert.equal(result.vehicles[0].referenceConstraints[0].team,"");
+  assert.deepEqual(result.vehicles[0].visibleBrands,["MOZA RACING"]);
+  assert.ok(result.tags.includes("Brand: MOZA RACING"));
   assert.equal(e.frames[0].vehicles[0].team,"MOZA RACING","Raw first-pass evidence stays intact");
   assert.equal(e.frames[0].numberCheck.commercialBranding.policy,"video-commercial-brand-v1");
   assert.deepEqual(e.frames[0].numberCheck.commercialBranding.vehicles,[{vehicleIndex:0,hints:["MOZA RACING"]}]);
@@ -119,6 +121,18 @@ test("dense frames cap optional branding assessments without adding requests",as
   assert.equal(calls.length,1);
   assert.match(calls[0].messages[0].content,/labelled vehicle crops 0, 1, 2\./);
   assert.ok(!calls[0].messages[0].content.includes("labelled vehicle crops 0, 1, 2, 3"));
+});
+test("verified brands do not require readable race numbers and are bound to the frame checkpoint",async()=>{
+  brandingMode="commercial";mode="unreadable";
+  const e=evidence();e.frames[0].vehicles[0].number="";
+  await checkVideoNumbers([frame],e,async()=>{});
+  const result=aggregateVideo(e.frames);
+  assert.ok(result.vehicles.every(v=>!v.number&&!v.drivers));
+  assert.ok(result.tags.includes("Brand: MOZA RACING"));
+  assert.ok(match(result.vehicles).every(v=>v.source!=="reference"));
+  const stale=structuredClone(e.frames);stale[0].numberCheck.timestamp++;
+  assert.ok(!aggregateVideo(stale).tags.includes("Brand: MOZA RACING"));
+  assert.equal(calls.length,2,"Localization and the shared crop/branding check only");
 });
 test("actual frozen frame pixels, printed leading zeros and separate unknown cars",async()=>{
   const e=evidence();let saves=0;

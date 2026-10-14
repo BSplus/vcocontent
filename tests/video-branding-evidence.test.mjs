@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { confirmedCommercialHints, withoutCommercialTeamHints } from "../server/utils/video-branding-evidence.ts";
+import { confirmedCommercialHints, confirmedVisibleBrands, withoutCommercialTeamHints } from "../server/utils/video-branding-evidence.ts";
+import { brandNameFromTag, visibleBrandTags } from "../shared/brand-tags.ts";
 
 const vehicle = {
   number:"96", numberEvidence:"vehicle-crop-v2", vehicleRegion:[0,0,1000,1000],
@@ -27,6 +28,20 @@ test("only literal commercial text assessed in both same-car views can be cleare
   for(const field of ["number","numberEvidence","vehicleRegion","vehicle","manufacturer","racingClass","discipline"])
     assert.deepEqual(resolved[field],vehicle[field]);
   assert.equal(vehicle.team,"MOZA RACING","Original weak evidence is not mutated");
+});
+test("visible brands are canonical searchable tags, not team identities",()=>{
+  assert.deepEqual(confirmedVisibleBrands(proof(),0,0),["MOZA RACING"]);
+  assert.deepEqual(visibleBrandTags(["MOZA Racing","moza racing","", "<script>"]),["Brand: MOZA RACING"]);
+  assert.equal(brandNameFromTag("Brand: Moza Racing"),"MOZA RACING");
+  assert.equal(brandNameFromTag("Race Car"),undefined);
+});
+test("a checked sponsor can be tagged beside a competing team without excusing that conflict",()=>{
+  const p=proof();
+  for(const assessment of [...p.fullImageReadings,...p.vehicleReadings])
+    assessment.markings.push(mark("Different Racing","team"));
+  assert.deepEqual(confirmedVisibleBrands(p,0,0),["MOZA RACING"]);
+  assert.deepEqual(confirmedCommercialHints(p,vehicle,0,0),[]);
+  assert.equal(withoutCommercialTeamHints(vehicle,[]).team,"MOZA RACING");
 });
 
 for(const [name, mutate] of [

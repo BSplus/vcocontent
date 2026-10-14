@@ -4,7 +4,8 @@ import {getOpenAIClient} from "./ai-tagger";
 import sharp from "sharp";
 import {mediaPolicy} from "../media-policy";
 import {hasOpaqueNeutralPatch} from "./photo-redaction";
-import {confirmedCommercialHints, VIDEO_BRANDING_LIMITS, videoBrandingPrompt, withoutCommercialTeamHints} from "./video-branding-evidence";
+import {confirmedCommercialHints, confirmedVisibleBrands, VIDEO_BRANDING_LIMITS, videoBrandingPrompt, withoutCommercialTeamHints} from "./video-branding-evidence";
+import { BRAND_EVIDENCE_POLICY, visibleBrandTags } from "@shared/brand-tags";
 
 export const PHOTO_NUMBER_POLICY="vehicle-crop-v2";
 export const NUMBER_AUDIT_MODEL="gpt-5.6-terra";
@@ -19,6 +20,11 @@ export function supportedPhotoObservations(vehicles:Identification[]):Identifica
       ...(v.number&&!supported?{team:""}:{}),
       ...(v.source==="reference"?{team:"",vehicle:"",manufacturer:"",racingClass:"",discipline:""}:{})};
   });
+}
+export function checkedBrandTags(vehicles:Identification[]):string[] {
+  return visibleBrandTags(vehicles.filter(v=>v.source==="visual" &&
+    v.brandEvidence===BRAND_EVIDENCE_POLICY && validRegion(v.vehicleRegion))
+    .flatMap(v=>v.visibleBrands || []));
 }
 const readNumber=z.union([z.string().regex(/^\d{1,4}$/),z.literal("")]);
 const readings=z.object({
@@ -48,13 +54,17 @@ export async function photoVehicleCrop(bytes:Buffer,region:Region):Promise<Buffe
 // Whole-car geometry is a first-pass ANCHOR, not proof. Only an independent
 // whole-image car/panel reading AND its actual source-pixel crop can certify it.
 export async function verifyPhotoObservations(image:string,vehicles:Identification[], suppliedClient?:NonNullable<ReturnType<typeof getOpenAIClient>>,
-  options?:{videoBranding?:boolean;onCommercialBranding?:(vehicleIndex:number,hints:string[])=>void}):Promise<Identification[]> {
+  options?:{videoBranding?:boolean;visibleBrands?:boolean;onCommercialBranding?:(vehicleIndex:number,hints:string[])=>void}):Promise<Identification[]> {
   const confirmed=new Set<number>();
   const commercial=new Map<number,string[]>();
-  const candidates=vehicles.flatMap((v,index)=>v.number&&validRegion(v.vehicleRegion)?[{v,index}]:[]);
-  const brandingIndices=options?.videoBranding ? candidates.filter(({v})=>
-    v.team.trim() || v.referenceConstraints?.some(c=>c.team.trim()))
-    .slice(0,VIDEO_BRANDING_LIMITS.vehicles).map(c=>c.index) : [];
+  const brands=new Map<number,string[]>();
+  const numeric=vehicles.flatMap((v,index)=>v.number&&validRegion(v.vehicleRegion)?[{v,index}]:[]);
+  const brandingCandidates=options?.visibleBrands ? vehicles.flatMap((v,index)=>
+    validRegion(v.vehicleRegion)?[{v,index}]:[]).slice(0,VIDEO_BRANDING_LIMITS.vehicles)
+    : options?.videoBranding ? numeric.filter(({v})=>v.team.trim() || v.referenceConstraints?.some(c=>c.team.trim()))
+      .slice(0,VIDEO_BRANDING_LIMITS.vehicles) : [];
+  const brandingIndices=brandingCandidates.map(c=>c.index);
+  const candidates=Array.from(new Map([...numeric,...brandingCandidates].map(c=>[c.index,c])).values());
   if(candidates.length && /^data:image\/(?:webp|jpeg|png);base64,/.test(image)) {
     const bytes=Buffer.from(image.split(",")[1],"base64");
     const dimensions=await sharp(bytes).metadata();
@@ -103,15 +113,23 @@ Preserve every printed leading zero. Never infer numbers from team/model/event k
         const best=ranked[0];
         if(!best||best.score<.5||(ranked[1]&&best.score-ranked[1].score<.2))continue;
         const r=best.r;
+        const local=evidence.vehicleReadings.filter(row=>row.vehicleIndex===index);
+        const sharedAnchor=vehicles.some((other,j)=>j!==index&&validRegion(other.vehicleRegion)&&
+          overlap(other.vehicleRegion!,r.vehicleRegion)>=best.score-.2);
+        // Brand evidence is independent of digits but still requires a unique
+        // same-car association and one consistent source-crop reading.
+        if(options?.visibleBrands && brandingIndices.includes(index) && !sharedAnchor &&
+          local.length===1 && local[0].number===r.number){
+          const visible=confirmedVisibleBrands(raw.branding,evidence.fullImageReadings.indexOf(r),index);
+          if(visible.length) brands.set(index,visible);
+        }
         // Match by geometry BEFORE looking at the number. Never choose another
         // car because it happens to carry the requested digits.
         const panel=validRegion(v.numberPanelRegion)?v.numberPanelRegion:r.panelRegion;
         if(r.number!==v.number||!panel||!contains(v.vehicleRegion!,panel)||
           !contains(r.vehicleRegion,panel))continue;
-        if(vehicles.some((other,j)=>j!==index&&validRegion(other.vehicleRegion)&&
-          overlap(other.vehicleRegion!,r.vehicleRegion)>=best.score-.2))continue;
+        if(sharedAnchor)continue;
         if(vehicles.filter(other=>other.number===v.number).length!==1)continue;
-        const local=evidence.vehicleReadings.filter(row=>row.vehicleIndex===index);
         if(v.numberPanelRegion){
           const reads=evidence.panelReadings?.filter(row=>row.vehicleIndex===index);
           if(reads?.length!==1||reads[0].number!==v.number)continue;
@@ -127,10 +145,11 @@ Preserve every printed leading zero. Never infer numbers from team/model/event k
     }
   }
   return vehicles.map((v,index)=>{
-    const {numberEvidence:_untrusted,...clean}=v,accepted=confirmed.has(index);
+    const {numberEvidence:_untrusted,visibleBrands:_untrustedBrands,brandEvidence:_untrustedBrandEvidence,...clean}=v,accepted=confirmed.has(index);
     const checked:Identification={...clean,number:accepted?v.number:"",drivers:"",
       ...(v.number&&!accepted?{team:""}:{}),
-      ...(accepted?{numberEvidence:PHOTO_NUMBER_POLICY}:{})};
+      ...(accepted?{numberEvidence:PHOTO_NUMBER_POLICY}:{}),
+      ...(brands.has(index)?{visibleBrands:brands.get(index),brandEvidence:BRAND_EVIDENCE_POLICY}:{})};
     const hints=accepted?commercial.get(index):undefined;
     if(hints?.length) options?.onCommercialBranding?.(index,hints);
     return hints?.length?withoutCommercialTeamHints(checked,hints):checked;

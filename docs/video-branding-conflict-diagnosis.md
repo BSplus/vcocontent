@@ -73,6 +73,10 @@ and negative controls before claiming better matching accuracy.
 
 ## Subsequently approved Development preparation
 
+This section describes the first, video-only correction. The subsequently
+approved searchable-brand extension for photos and videos is documented in
+`docs/visible-brand-tags.md`; its photo workflows opt into brand assessment too.
+
 The operator approved preparing the focused correction, without publishing or
 Production reanalysis.
 

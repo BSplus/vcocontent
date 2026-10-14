@@ -134,6 +134,9 @@ export const identificationSchema = z.object({
   numberEvidence: z.enum(["vehicle-crop-v2"]).optional(),
   numberPanelRegion:photoVehicleRegionSchema.optional(),
   vehicleRegion:photoVehicleRegionSchema.optional(),
+  // Independently checked on-car commercial lettering, not entry/team identity.
+  visibleBrands:z.array(z.string().max(75)).max(3).optional(),
+  brandEvidence:z.literal("on-car-commercial-v1").optional(),
   // Unverified weak-reader hints: veto-only, never identity evidence or search
   // fields, never copied into a newly localized car's displayed metadata.
   referenceConstraints:z.array(z.object({

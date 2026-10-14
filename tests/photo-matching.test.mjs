@@ -14,10 +14,12 @@ import {analysisStatus,enqueueAnalysis,drainAnalysisQueue,reconcileAutomaticPhot
 import {matchedPhotoCaption} from "../server/caption-proposal.ts";
 import {matchReferences} from "../server/reference-matching.ts";
 import {automaticPhotoMatching} from "../server/automatic-photo-matching.ts";
+import {SAFETY_POLICY} from "../server/beta-policy.ts";
+import {brandOnlineResponse} from "./helpers/brand-online-fixture.mjs";
 
 const realFetch=globalThis.fetch;
 const eventIds=[],userIds=[],seriesIds=[];
-let server,base,admin,owner,other,calls=0,auditCalls=0,gate,entered,providerFailure=false,invalidOutput=false,visionVehicle="",visionNumber="007",auditNumber="007";
+let server,base,admin,owner,other,calls=0,auditCalls=0,gate,entered,providerFailure=false,invalidOutput=false,visionVehicle="",visionNumber="007",auditNumber="007",visionTeam="",brandMode=false,brandLabel="MOZA Racing",onlineUnavailable=false;
 const image="data:image/webp;base64,"+(await sharp({create:{width:32,height:32,channels:3,background:"green"}}).webp().toBuffer()).toString("base64");
 const visible={number:"007",vehicleRegion:[0,0,1000,1000],team:"",drivers:"",vehicle:"",manufacturer:"",racingClass:"",discipline:"",source:"visual"};
 const entry={number:"7",team:"Apex",car:"Prototype",drivers:"Registered One; Registered Two",manufacturer:"",racingClass:"",discipline:""};
@@ -58,13 +60,23 @@ test.before(async()=>{
   globalThis.fetch=async(url,options)=>{
     if(!String(url).startsWith("https://photo-fixture.example.invalid/"))return realFetch(url,options);
     const body=JSON.parse(options.body);
+    if(body.tools?.some(tool=>tool.type==="web_search_preview")){
+      if(onlineUnavailable)throw new Error("Fixture online search unavailable");
+      return new Response(JSON.stringify(brandOnlineResponse(JSON.parse(body.input.split("UNTRUSTED_BRAND_JSON: ")[1]).brand)),
+        {headers:{"Content-Type":"application/json"}});
+    }
     if(body.messages[0].content.includes("publication safety reviewer"))return new Response(JSON.stringify({choices:[{finish_reason:"stop",
       message:{content:JSON.stringify({sexualized:"clear",pornography:"clear",racistOrDehumanizing:"clear",hateSymbolsOrGlorification:"clear",visibleTextAndSymbolsReviewed:true})}}]}));
     if(body.messages[0].content.includes("Independently inspect the full image")) {
       auditCalls++;
       return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify({
-        fullImageReadings:auditNumber?[{number:auditNumber,vehicleRegion:[0,0,1000,1000],panelRegion:[250,250,300,300]}]:[],
-        vehicleReadings:auditNumber?[{vehicleIndex:0,number:auditNumber}]:[],
+        fullImageReadings:auditNumber||brandMode?[{number:auditNumber,vehicleRegion:[0,0,1000,1000],
+          ...(auditNumber?{panelRegion:[250,250,300,300]}:{})}]:[],
+        vehicleReadings:auditNumber||brandMode?[{vehicleIndex:0,number:auditNumber}]:[],
+        ...(brandMode?{branding:{
+          fullImageReadings:[{readingIndex:0,complete:true,markings:[{text:brandLabel,kind:"commercial"}]}],
+          vehicleReadings:[{vehicleIndex:0,complete:true,markings:[{text:brandLabel.toUpperCase(),kind:"commercial"}]}],
+        }}:{}),
       })}}]}),{headers:{"Content-Type":"application/json"}});
     }
     if(body.messages[0].content.includes("Localize complete"))return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify({
@@ -76,7 +88,7 @@ test.before(async()=>{
     if(invalidOutput)return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:"{invalid"}}]}),
       {headers:{"Content-Type":"application/json"}});
     return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:structured
-      ?JSON.stringify({tags:["Race Car","Day"],vehicles:[{...visible,number:visionNumber,vehicle:visionVehicle,numberReadable:true}]})
+      ?JSON.stringify({tags:["Race Car","Day"],vehicles:[{...visible,team:visionTeam,number:visionNumber,vehicle:visionVehicle,numberReadable:true}]})
       :"Race Car, Day"}}]}),{headers:{"Content-Type":"application/json"}});
   };
   const app=express();app.use(express.json());app.use((req,_res,next)=>{
@@ -95,6 +107,51 @@ test.after(async()=>{
   globalThis.fetch=realFetch;await pool.end();
 });
 function scope(photos){setAnalysisQueueTestScope([owner.username,other.username],photos.map(p=>p.id));}
+
+test("confirmed photo branding creates searchable tags without changing the entry identity or editorial caption",async()=>{
+  const e=await album(),p=await photo(e,{caption:"Editorial caption",tags:["Helmet"],manualTags:["Helmet"]});
+  scope([p]);brandMode=true;visionTeam="MOZA Racing";visionVehicle="Race Car";
+  try {
+    await enqueueAnalysis(p,{recognition:true,photoWorkflow:true});const saved=await settled(p.id);
+    assert.ok(saved.tags.includes("Brand: MOZA RACING"));assert.ok(saved.tags.includes("Helmet"));
+    assert.equal(saved.identification[0].team,"Apex");assert.equal(saved.identification[0].source,"reference");
+    assert.equal(saved.caption,"Editorial caption");
+    await db.update(events).set({visibility:"public",safetyStatus:"approved",safetyPolicy:SAFETY_POLICY,safetyVersion:e.contentVersion}).where(eq(events.id,e.id));
+    await db.update(mediaItems).set({safetyStatus:"approved",safetyPolicy:SAFETY_POLICY,safetyVersion:saved.contentVersion}).where(eq(mediaItems.id,p.id));
+    const results=await storage.listPublicMedia(1,48,"MOZA",undefined,["tags"]);
+    assert.ok(results.some(item=>item.id===p.id),"Existing public tag search finds the brand");
+  } finally {brandMode=false;visionTeam="";visionVehicle="";}
+});
+
+test("photos without entry lists or readable numbers can have brands and removed brand tags stay suppressed",async()=>{
+  const e=await album();await db.delete(eventEntries).where(eq(eventEntries.eventId,e.id));
+  const p=await photo(e,{caption:"Protected text"});scope([p]);
+  brandMode=true;visionNumber="";auditNumber="";visionVehicle="Race Car";
+  try {
+    await enqueueAnalysis(p);const saved=await settled(p.id);
+    assert.ok(saved.tags.includes("Brand: MOZA RACING"));
+    assert.deepEqual(saved.identification,[]);assert.equal(saved.caption,"Protected text");
+    const response=await api(`/api/media/${p.id}`,{tags:["Day"]},"admin","PUT");
+    assert.equal(response.status,200);
+    await enqueueAnalysis(await storage.getMediaItem(p.id),{reanalyse:true});
+    const again=await settled(p.id);
+    assert.ok(!again.tags.includes("Brand: MOZA RACING"));
+    assert.ok(again.suppressedAITags.includes("Brand: MOZA RACING"));
+  } finally {brandMode=false;visionNumber="007";auditNumber="007";visionVehicle="";}
+});
+test("failed online brand verification omits only brand tags and ordinary analysis still completes",async()=>{
+  const e=await album(),p=await photo(e,{caption:"Protected editorial text"});scope([p]);
+  brandMode=true;brandLabel="PHANTOM VERIFY";visionTeam=brandLabel;visionVehicle="Race Car";onlineUnavailable=true;
+  try{
+    await enqueueAnalysis(p,{recognition:true,photoWorkflow:true});
+    const saved=await settled(p.id);
+    assert.ok(saved.tags.includes("Race Car"));assert.ok(saved.tags.includes("Day"));
+    assert.ok(saved.tags.every(tag=>!tag.startsWith("Brand: ")));
+    assert.equal(saved.identification[0].source,"reference");
+    assert.equal(saved.caption,"Protected editorial text");
+    assert.equal((await analysisStatus(p.id)).status,"completed");
+  }finally{brandMode=false;brandLabel="MOZA Racing";visionTeam="";visionVehicle="";onlineUnavailable=false;}
+});
 
 test("legacy off flag does not block automatic history; authorization and obsolete switch rejection",async()=>{
   const e=await album(false);const p=await photo(e,{caption:"587.jpg"});

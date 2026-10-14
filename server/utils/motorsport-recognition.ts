@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { identificationSchema,photoVehicleRegionSchema, type Identification } from "@shared/schema";
 import { getOpenAIClient, parseTagResponse, TAG_MODEL, controlledTags } from "./ai-tagger";
-import {verifyPhotoObservations} from "./photo-number-evidence";
+import {checkedBrandTags,verifyPhotoObservations} from "./photo-number-evidence";
 import {localizePhotoNumbers} from "./photo-number-localizer";
 
 const vehicle = z.object({
@@ -58,10 +58,11 @@ Include an optional vehicleRegion:[left,top,width,height], the tight whole-car r
   } catch { throw new Error("AI recognition could not be completed"); }
 }
 
-export async function recognizeMotorsportImage(image:string) {
+export async function recognizeMotorsportImage(image:string,options?:{tagsOnly?:boolean}) {
   try {
     const parsed=await extractMotorsportImage(image);
-    const anchored=parsed.vehicles.some(v=>v.number) ? (await localizePhotoNumbers(image,parsed.vehicles)).vehicles : parsed.vehicles;
-    return {...parsed,vehicles:await verifyPhotoObservations(image,anchored)};
+    const anchored=!options?.tagsOnly && parsed.vehicles.some(v=>v.number) ? (await localizePhotoNumbers(image,parsed.vehicles)).vehicles : parsed.vehicles;
+    const vehicles=await verifyPhotoObservations(image,anchored,undefined,{visibleBrands:true});
+    return {...parsed,tags:[...parsed.tags,...checkedBrandTags(vehicles)],vehicles};
   } catch {throw new Error("AI recognition could not be completed");}
 }

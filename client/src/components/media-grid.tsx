@@ -38,6 +38,7 @@ import VideoPreview from "@/components/video-preview";
 import { usePhotoSwipe } from "@/hooks/use-photo-swipe";
 import "./media-preview-mobile.css";
 import { creditLabel, creditByline } from "@shared/media-credit";
+import { brandNameFromTag } from "@shared/brand-tags";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -396,18 +397,52 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
               </div>
             </div>
 
-            {selectedItem?.tags && selectedItem.tags.length > 0 && (
-              <div className="flex gap-2 flex-wrap">
-                {selectedItem.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-2 py-1 bg-secondary text-secondary-foreground text-sm rounded-full"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
+            {selectedItem?.tags && selectedItem.tags.length > 0 && (() => {
+              const brands = selectedItem.tags
+                .map(tag => ({ tag, name: brandNameFromTag(tag) }))
+                .filter((brand): brand is { tag: string; name: string } => !!brand.name);
+              const brandTags = new Set(brands.map(brand => brand.tag));
+              const sceneTags = selectedItem.tags.filter(tag => !brandTags.has(tag));
+              return (
+                <div className="space-y-3">
+                  {brands.length > 0 && (
+                    <section aria-labelledby="visible-brands-heading">
+                      <h3 id="visible-brands-heading" className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Visible brands
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {brands.map(({ tag, name }) => (
+                          <Link
+                            key={tag}
+                            href={`/search?${new URLSearchParams({ q: name, fields: "tags" }).toString()}`}
+                            aria-label={`Search media tagged with ${name}`}
+                            onClick={() => {
+                              setSelectedItem(null);
+                              setSelectedItemIndex(-1);
+                            }}
+                            className="inline-flex min-h-9 items-center rounded-full border border-border bg-secondary px-3 py-1 text-sm text-secondary-foreground underline-offset-4 transition-colors hover:bg-secondary/75 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                          >
+                            {name}
+                          </Link>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  {sceneTags.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {sceneTags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full bg-secondary px-2 py-1 text-sm text-secondary-foreground"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <MediaRightsNotice />
           </div>
         </DialogContent>

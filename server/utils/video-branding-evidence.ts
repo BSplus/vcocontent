@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Identification } from "@shared/schema";
+import { canonicalBrand } from "@shared/brand-tags";
 
 export const VIDEO_BRANDING_POLICY = "video-commercial-brand-v1";
 // Leave room for the numeric contract within its existing 4096-token ceiling.
@@ -31,11 +32,25 @@ Do not identify any team, driver, manufacturer or car model from this lettering.
 Add branding:{fullImageReadings:[{readingIndex:number,complete:boolean,markings:[{text:string,kind:"commercial"|"team"|"unknown"}]}],vehicleReadings:[{vehicleIndex:number,complete:boolean,markings:[{text:string,kind:"commercial"|"team"|"unknown"}]}]}.
 readingIndex is the zero-based index of the SAME car in your numeric fullImageReadings array, not a guessed vehicle number.
 Inspect full-frame car lettering and each labelled source crop independently. Copy complete literal text only. Never copy classification from one view to the other.
-Commercial means clearly identifiable commercial product/sponsor branding, NOT a team identity. An explicit team identifier is team; unfamiliar emblems, ambiguous abbreviations, mixed/partial/blurred lettering or uncertain purpose are unknown.
+Commercial means clearly identifiable commercial product/sponsor branding, NOT a team identity or proof of a sponsorship contract. An explicit team identifier is team; unfamiliar emblems, ambiguous abbreviations, mixed/partial/blurred lettering or uncertain purpose are unknown.
+Branding does not require a readable race number. A car with an unknown number still has its own fullImageReadings record with number:"" and a whole-car rectangle; assess only that car's lettering.
 Use complete:false when the visible branding cannot be assessed unambiguously. Do not guess a commercial classification merely because text resembles a known sponsor.
 Ignore broadcast banners, trackside signs, other cars and background branding. Never use them to assess the cropped car.
 Include any readable explicit team identifiers or uncertain identity-like lettering on that car, not just commercial logos. At most ${VIDEO_BRANDING_LIMITS.markings} markings per assessment and ${VIDEO_BRANDING_LIMITS.vehicles} requested cars; if more markings are needed use complete:false.
 Missing or uncertain branding leaves the existing conflict unresolved.`;
+}
+
+/** Commercial tags may coexist with a team marking, but never certify a team. */
+export function confirmedVisibleBrands(raw: unknown, readingIndex: number, vehicleIndex: number): string[] {
+  const parsed = branding.safeParse(raw);
+  if (!parsed.success) return [];
+  const full = parsed.data.fullImageReadings.filter(r => r.readingIndex === readingIndex);
+  const crop = parsed.data.vehicleReadings.filter(r => r.vehicleIndex === vehicleIndex);
+  if (full.length !== 1 || crop.length !== 1 || !full[0].complete || !crop[0].complete) return [];
+  const commercial = (rows: typeof full[0]["markings"]) =>
+    rows.filter(m => m.kind === "commercial").map(m => canonicalBrand(m.text)).filter((b): b is string => !!b);
+  const fullText = commercial(full[0].markings), cropText = new Set(commercial(crop[0].markings));
+  return Array.from(new Set(fullText.filter(b => cropText.has(b))));
 }
 
 /** Number/geometry acceptance happens first. This cannot certify a number. */

@@ -5,7 +5,7 @@ import { takeBetaRate } from "./beta-policy";
 import { reviewMediaSafety } from "./content-safety";
 import { mediaAnalysisJobs, mediaItems, events, series } from "@shared/schema";
 import { analysisImageInput, recognitionImageInput } from "./image-analysis";
-import { categorizeContent, generateTagsForImage, isAITaggingConfigured } from "./utils/ai-tagger";
+import { categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
 import { recognizeMotorsportImage } from "./utils/motorsport-recognition";
 import {supportedPhotoObservations} from "./utils/photo-number-evidence";
 import { identifyEntries } from "./reference-matching";
@@ -18,6 +18,7 @@ import { storage } from "./storage";
 import { videoFrameThumbnail } from "./video-preview";
 import { withoutRetiredMediaTags } from "@shared/media-tag-policy";
 import { automaticEntrySql, automaticPhotoMatching, automaticAnalysisStatusSql } from "./automatic-photo-matching";
+import { onlineBrandVerifier } from "./brand-online-verification";
 
 // Database-wide budget, including multiple server processes. SDK retries are
 // disabled: only this queue owns retry/backoff and the persisted attempt count.
@@ -321,9 +322,11 @@ export async function drainAnalysisQueue() {
             : supportedPhotoObservations(claimed.recognition.map(v=>({...v,numberEvidence:undefined}))) }
       : videoResult ? videoResult
       : tagOnly
-        ? { tags: await withVisionBudget(async () => generateTagsForImage(await analysisImageInput(item.thumbnail))), vehicles: null }
+        ? { tags: (await withVisionBudget(async () => recognizeMotorsportImage(await analysisImageInput(item.thumbnail),{tagsOnly:true}))).tags, vehicles: null }
         : await withVisionBudget(async () => recognizeMotorsportImage(await recognitionImageInput(item)));
-     const tags = withoutRetiredMediaTags(result.tags);
+     // Online lookup is optional, bounded, outside transactions and separate
+     // from numeric Vision slots. Unconfirmed brand tags alone are discarded.
+     const tags = withoutRetiredMediaTags(await onlineBrandVerifier.filter(result.tags));
     videoStage="database_persistence";
     await db.transaction(async tx => {
       // Event lock fences opt-out and context/reference corrections against late writes.

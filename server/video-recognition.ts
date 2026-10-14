@@ -2,7 +2,8 @@ import type { Identification } from "@shared/schema";
 import { getOpenAIClient, TAG_MODEL, controlledTags, parseTagResponse } from "./utils/ai-tagger";
 import type { VideoFrame } from "./video-sampling";
 import { VideoAnalysisFailure, classifyVideoFailure } from "./video-failures";
-import { PHOTO_NUMBER_POLICY, supportedPhotoObservations, verifyPhotoObservations } from "./utils/photo-number-evidence";
+import { PHOTO_NUMBER_POLICY, checkedBrandTags, supportedPhotoObservations, verifyPhotoObservations } from "./utils/photo-number-evidence";
+import { photoVehicleRegionSchema } from "@shared/schema";
 import { localizePhotoNumbers } from "./utils/photo-number-localizer";
 import { createHash } from "node:crypto";
 import { withVisionBudget } from "./ai-budget";
@@ -101,7 +102,7 @@ export async function checkVideoNumbers(frames: VideoFrame[], evidence: VideoEvi
     });
   } } } } as typeof client;
   const selected = frames.filter(f => evidence.frames.some(done => done.hash === f.hash && done.timestamp === f.timestamp &&
-    done.vehicles.some(v => v.number))).slice(0, VIDEO_NUMBER_LIMITS.frames);
+    done.vehicles.some(v => v.number || photoVehicleRegionSchema.safeParse(v.vehicleRegion).success))).slice(0, VIDEO_NUMBER_LIMITS.frames);
   for (const frame of selected) {
     const done = evidence.frames.find(f => f.hash === frame.hash && f.timestamp === frame.timestamp)!;
     const bytes = Buffer.from(frame.image.split(",")[1] || "", "base64");
@@ -119,7 +120,7 @@ export async function checkVideoNumbers(frames: VideoFrame[], evidence: VideoEvi
       }
       const commercialVehicles:{vehicleIndex:number;hints:string[]}[]=[];
       const verified = await verifyPhotoObservations(frame.image, done.numberCheck.vehicles, transport, {
-        videoBranding:true,
+        videoBranding:true,visibleBrands:true,
         onCommercialBranding:(vehicleIndex,hints)=>commercialVehicles.push({vehicleIndex,hints}),
       });
       done.numberCheck = { ...done.numberCheck, status: "verified", vehicles: verified,
@@ -140,7 +141,8 @@ export function supportedVideoFrame(frame: FrameEvidence): Identification[] {
     check.hash === frame.hash && check.timestamp === frame.timestamp)
     return supportedPhotoObservations(check.vehicles);
   // Historical/raw evidence remains visible as unknown, never retro-certified.
-  return supportedPhotoObservations(frame.vehicles.map(v => ({ ...v, numberEvidence: undefined })));
+  return supportedPhotoObservations(frame.vehicles.map(v => ({ ...v, numberEvidence: undefined,
+    visibleBrands:undefined,brandEvidence:undefined })));
 }
 
 /** Global conflicting labels require a clear majority. Vehicle fields require consensus. */
@@ -168,5 +170,5 @@ export function aggregateVideo(frames: FrameEvidence[]) {
   // No number-based merging or descriptor transfer across cars/frames. Keep
   // independently proved entries first, so unknowns cannot consume their slots.
   vehicles.sort((a,b) => Number(!!b.number) - Number(!!a.number));
-  return { tags: Array.from(tags).slice(0, 40), vehicles: vehicles.slice(0, 12) };
+  return { tags: [...Array.from(tags).slice(0, 40),...checkedBrandTags(observations)], vehicles: vehicles.slice(0, 12) };
 }
