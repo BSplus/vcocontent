@@ -19,6 +19,7 @@ import { assertNewMediaUploadsEnabled } from "./media-object-routing";
 import { assertMediaTagsAllowed, withoutRetiredMediaTags } from "@shared/media-tag-policy";
 import { activeMediaTagsSql } from "./media-tag-sql";
 import { automaticPhotoMatching } from "./automatic-photo-matching";
+import { matchedPhotoCaption } from "./caption-proposal";
 
 type SafeUser = Omit<User, "password">;
 type EventUpdateResult = Event & { saveStatus: "saved" | "unchanged" };
@@ -589,9 +590,16 @@ class DatabaseStorage implements IStorage {
       const community = !!reservation.creatorId;
       const [event] = await tx.select().from(events).where(eq(events.id,reservation.eventId)).for("update");
       const photoWorkflow = mediaItem.type==="image" && !!event && await automaticPhotoMatching(event.id,tx);
+      // Persist a useful caption with the file, before any optional recognition.
+      // Nextcloud filenames are placeholders, not user-written captions.
+      const automaticCaption = !!nextcloudFileId || !mediaItem.caption?.trim();
+      const [eventSeries] = automaticCaption && event?.seriesId
+        ? await tx.select({name:seriesTable.name}).from(seriesTable).where(eq(seriesTable.id,event.seriesId)) : [];
+      const fallbackCaption = automaticCaption && event
+        ? matchedPhotoCaption(event,eventSeries?.name || null,[]).caption : mediaItem.caption;
       const [item] = await tx.insert(mediaItems).values({...mediaItem,archivedAt:null,
-        captionSource:nextcloudFileId && mediaItem.type==="image" ? "nextcloud_placeholder" :
-          (community || photoWorkflow) && mediaItem.type==="image" && !mediaItem.caption ? "auto_pending" : "preserved",
+        caption:fallbackCaption,
+        captionSource:nextcloudFileId ? "nextcloud_placeholder" : automaticCaption ? "auto_pending" : "preserved",
         manualTags:mediaItem.tags || [],
         ...(community ? {safetyStatus:"error",safetyReason:"Safety check pending."} : {})}).returning();
       if (requestAnalysis || photoWorkflow) {

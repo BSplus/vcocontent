@@ -17,7 +17,7 @@ import {automaticPhotoMatching} from "../server/automatic-photo-matching.ts";
 
 const realFetch=globalThis.fetch;
 const eventIds=[],userIds=[],seriesIds=[];
-let server,base,admin,owner,other,calls=0,auditCalls=0,gate,entered,providerFailure=false,visionVehicle="",visionNumber="007",auditNumber="007";
+let server,base,admin,owner,other,calls=0,auditCalls=0,gate,entered,providerFailure=false,invalidOutput=false,visionVehicle="",visionNumber="007",auditNumber="007";
 const image="data:image/webp;base64,"+(await sharp({create:{width:32,height:32,channels:3,background:"green"}}).webp().toBuffer()).toString("base64");
 const visible={number:"007",vehicleRegion:[0,0,1000,1000],team:"",drivers:"",vehicle:"",manufacturer:"",racingClass:"",discipline:"",source:"visual"};
 const entry={number:"7",team:"Apex",car:"Prototype",drivers:"Registered One; Registered Two",manufacturer:"",racingClass:"",discipline:""};
@@ -73,6 +73,8 @@ test.before(async()=>{
     calls++;entered?.();if(gate)await gate;
     if(providerFailure)throw new Error("fixture-private-provider-payload");
     const structured=body.messages[0].content.includes("vehicles:");
+    if(invalidOutput)return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:"{invalid"}}]}),
+      {headers:{"Content-Type":"application/json"}});
     return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:structured
       ?JSON.stringify({tags:["Race Car","Day"],vehicles:[{...visible,number:visionNumber,vehicle:visionVehicle,numberReadable:true}]})
       :"Race Car, Day"}}]}),{headers:{"Content-Type":"application/json"}});
@@ -259,6 +261,61 @@ test("event creation with confirmed rows and a real direct upload with tagging o
   assert.equal((await (await api(`/api/events/${e.id}/photo-matching`)).json()).enabled,true);
   const done=await settled(p.id);
   assert.match(done.caption,/Apex/);assert.ok(done.tags.includes("Helmet"));
+});
+
+test("invalid AI output never prevents an upload and leaves the standard event caption intact",async()=>{
+  const e=await album();
+  const expected=matchedPhotoCaption(e,"IMSA Esports Global Championship 2026",[]).caption;
+  const uploadPhoto=async caption=>{
+    const form=new FormData();
+    form.append("file",new Blob([await sharp({create:{width:32,height:32,channels:3,background:"green"}}).jpeg().toBuffer()],{type:"image/jpeg"}),"photo.jpg");
+    form.append("type","image");form.append("autoTag","true");form.append("caption",caption);
+    const response=await realFetch(base+`/api/events/${e.id}/media/upload`,{
+      method:"POST",headers:{"x-fixture-role":"admin"},body:form});
+    assert.equal(response.status,201,"Recognition output is not an upload prerequisite");
+    return response.json();
+  };
+  invalidOutput=true;
+  try {
+    const p=await uploadPhoto("");
+    scope([p]);
+    assert.equal(p.caption,expected);
+    assert.equal(p.captionSource,"auto_pending");
+    await drainAnalysisQueue();
+    assert.equal((await analysisStatus(p.id)).status,"queued","Invalid results remain retryable");
+    const [job]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id));
+    assert.equal(job.attempts,1);
+    // Make the next isolated attempt terminal, without waiting through backoff.
+    await db.update(mediaAnalysisJobs).set({attempts:2,availableAt:new Date(0)}).where(eq(mediaAnalysisJobs.mediaId,p.id));
+    await drainAnalysisQueue();
+    assert.equal((await analysisStatus(p.id)).status,"failed");
+    const saved=await storage.getMediaItem(p.id);
+    assert.equal(saved.caption,expected);assert.equal(saved.url,p.url);assert.deepEqual(saved.identification,[]);
+    const editorial=await uploadPhoto("My own caption");
+    scope([editorial]);await drainAnalysisQueue();
+    assert.equal((await storage.getMediaItem(editorial.id)).caption,"My own caption");
+    assert.equal((await storage.getMediaItem(editorial.id)).captionSource,"preserved");
+  } finally {invalidOutput=false;}
+});
+
+test("file commit saves standard captions for Nextcloud photos, videos and an unavailable provider",async()=>{
+  const e=await album(false);
+  await storage.replaceEventEntries(e.id,[]);
+  const expected=matchedPhotoCaption(e,"IMSA Esports Global Championship 2026",[]).caption;
+  const [job]=await db.insert(nextcloudJobs).values({eventId:e.id,status:"running",workerToken:"fallback-fixture"}).returning();
+  const key=process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  try {
+    delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    for(const type of ["image","video"]) {
+      const [file]=await db.insert(nextcloudFiles).values({eventId:e.id,sourceKey:randomUUID(),name:"camera-file.jpg"}).returning();
+      const rid=randomUUID();
+      await db.insert(mediaReservations).values({id:rid,eventId:e.id,reservedBytes:1,storageKey:`fixture-${rid}`,thumbnailKey:`fixture-${rid}`});
+      const p=await storage.finishMedia(rid,{eventId:e.id,type,url:image,thumbnail:image,caption:"camera-file.jpg",tags:[]},file.id,job.workerToken,true);
+      assert.equal(p.caption,expected);assert.equal(p.captionSource,"nextcloud_placeholder");
+      assert.equal((await analysisStatus(p.id)).status,"failed");
+      assert.equal((await storage.getMediaItem(p.id)).caption,expected);
+    }
+  } finally {process.env.AI_INTEGRATIONS_OPENAI_API_KEY=key;}
 });
 
 test("list deletion during provider response fences late results; restoring list reuses recognition safely",async()=>{

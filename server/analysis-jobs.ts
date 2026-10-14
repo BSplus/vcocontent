@@ -368,10 +368,10 @@ export async function drainAnalysisQueue() {
       const proposal = owned.photoWorkflow && event && !current.identificationManual
         ? matchedPhotoCaption(event,eventSeries?.name || null,identification) : undefined;
       const replaceable = current.captionSource==="photo_automatic" || current.captionSource==="nextcloud_placeholder" ||
-        (!current.caption && current.captionSource==="auto_pending") ||
+        current.captionSource==="auto_pending" ||
         (owned.replaceCaption!==null && current.captionSource==="preserved" && current.caption===owned.replaceCaption);
       const caption = proposal && replaceable ? proposal.caption :
-        !owned.photoWorkflow && event?.creatorId && current.type==="image" && current.captionSource==="auto_pending" && !current.caption
+        !owned.photoWorkflow && event?.creatorId && current.type==="image" && current.captionSource==="auto_pending"
         ? communityCaption(event,eventSeries?.name || null) : undefined;
       const publicChanged = JSON.stringify([current.tags,current.identification,current.category]) !==
         JSON.stringify([merged,identification,category]) || caption!==undefined;

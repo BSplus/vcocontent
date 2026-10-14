@@ -66,3 +66,4 @@
 - [Safety outage fixtures](safety-outage-fixtures.md) — scope safety failure injection separately from ordinary creation quotas or the wrong request fails.
 - [Video number evidence](video-number-evidence-boundary.md) — rejecting historical weak readings proves a safety-policy change, not live recognition improvement; reviewed frozen pixels remain necessary.
 - [Media test isolation](media-test-isolation.md) — isolate temporary storage as well as database rows; initial queued state does not prove an attempt finished.
+- [AI upload independence](ai-upload-independence.md) — invalid recognition output must not block uploads; automatic captions fall back to event context, while safety stays separate.
