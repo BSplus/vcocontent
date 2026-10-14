@@ -55,7 +55,7 @@ This isolates the team-hint veto as the cause for this frozen fixture.
 Hypothetical hint removal is not measured improvement, an approved policy change
 or proof that ignoring branding is safe across other media.
 
-## Recommended next implementation, not performed
+## Recommendation at the end of the read-only diagnosis
 
 Distinguish sponsor/brand text and uncertain lettering from an independently
 supported contradictory team identity. For a number-backed match blocked only
@@ -70,3 +70,51 @@ reanalyse the archive automatically.
 
 Any such correction requires separate implementation and evaluated positive
 and negative controls before claiming better matching accuracy.
+
+## Subsequently approved Development preparation
+
+The operator approved preparing the focused correction, without publishing or
+Production reanalysis.
+
+Video number audits now request an optional, bounded branding assessment inside
+the existing independent full-frame/source-crop request. No additional provider
+round trip, new model, migration, credentials or Production configuration.
+Ordinary photo audits retain their previous behaviour.
+
+A weak hint is cleared only after:
+
+1. The existing independent numeric full-frame, car geometry, crop and any
+   original panel checks accept that exact printed number.
+2. Exactly one full-frame assessment for that accepted car and one labelled
+   crop assessment both report complete, unambiguous commercial-only markings.
+3. Both assessments contain the same literal weak hint, allowing only existing
+   punctuation/case/accent normalization, not partial/fuzzy names.
+4. Neither assessment includes explicit team text or uncertain identity-like
+   lettering. Those cases retain the old veto.
+
+Only the confirmed commercial team-hint strings are cleared. Other team hints,
+manufacturer/model constraints and reference uniqueness/session/owner gates stay
+intact. Raw first-pass hints remain in their original frame records; the verified
+frame checkpoint records the exact commercial hints resolved.
+
+Optional branding is limited to three candidate cars and three markings per
+view, within the existing numeric token/deadline/request/image budgets. Missing,
+oversized or malformed branding assessments do not fail otherwise valid number
+checks or uploads; they simply leave the matching conflict unresolved.
+
+### Verification and release boundary
+
+- The five-suite disposable local database regression run passed all 90 checks,
+  including real video extraction, checkpoint reuse, upload fallback, caption/
+  manual metadata preservation, and event/session/season/owner boundaries.
+- After tightening optional branding caps, both affected suites passed all 38
+  checks, including three new excessive-output/dense-frame cases.
+- TypeScript, production build and whitespace checks passed.
+- Provider responses were mocked. These checks establish contract/guard behaviour,
+  not real-provider sponsor classification accuracy or recovered live matches.
+- No numeric evidence policy/fingerprint was bumped and no existing archive was
+  requeued or recertified. An approved publish and separately authorized targeted
+  full reanalysis would be needed to obtain fresh branding assessments for the
+  two already-completed clips. A reference-only rematch cannot invent them.
+- Protected captions are still not overwritten by video identification.
+- No Production mutations, paid live AI calls or publishing were performed.

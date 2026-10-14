@@ -7,12 +7,14 @@ import { localizePhotoNumbers } from "./utils/photo-number-localizer";
 import { createHash } from "node:crypto";
 import { withVisionBudget } from "./ai-budget";
 import { parseVideoOutput, videoOutputSchema } from "./video-output";
+import { VIDEO_BRANDING_POLICY } from "./utils/video-branding-evidence";
 
 export const VIDEO_NUMBER_PIPELINE = `video-number-v1:${PHOTO_NUMBER_POLICY}`;
 export const VIDEO_NUMBER_LIMITS = { requests: 8, frames: 4, elapsedMs: 240000, images: 25, payloadBytes: 4000000 };
 export type FrameEvidence = { hash: string; timestamp: number; tags: string[]; vehicles: Identification[];
   numberCheck?: { policy: string; hash: string; timestamp: number; status: "localized" | "verified" | "skipped";
-    vehicles: Identification[] } };
+    vehicles: Identification[];
+    commercialBranding?: { policy: typeof VIDEO_BRANDING_POLICY; vehicles: {vehicleIndex:number;hints:string[]}[] } } };
 export type VideoEvidence = {
   numberPipeline?: string;
   numberRequests?: number;
@@ -115,8 +117,13 @@ export async function checkVideoNumbers(frames: VideoFrame[], evidence: VideoEvi
           status: "localized", vehicles: localized.vehicles };
         await persist();
       }
-      const verified = await verifyPhotoObservations(frame.image, done.numberCheck.vehicles, transport);
-      done.numberCheck = { ...done.numberCheck, status: "verified", vehicles: verified };
+      const commercialVehicles:{vehicleIndex:number;hints:string[]}[]=[];
+      const verified = await verifyPhotoObservations(frame.image, done.numberCheck.vehicles, transport, {
+        videoBranding:true,
+        onCommercialBranding:(vehicleIndex,hints)=>commercialVehicles.push({vehicleIndex,hints}),
+      });
+      done.numberCheck = { ...done.numberCheck, status: "verified", vehicles: verified,
+        ...(commercialVehicles.length?{commercialBranding:{policy:VIDEO_BRANDING_POLICY,vehicles:commercialVehicles}}:{}) };
       await persist();
     } catch (error) {
       if (!(error instanceof Limit)) throw error;

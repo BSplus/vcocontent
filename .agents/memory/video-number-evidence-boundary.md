@@ -54,3 +54,16 @@ global sponsor exemption.
 **How to apply:** Inspect exact source-bound frames, distinguish on-car markings
 from broadcast graphics, and evaluate any conflict-resolution change with
 positive and negative controls rather than forcing known fixtures to match.
+
+Prefer adding a bounded optional video branding assessment to the already-paid
+independent number audit rather than introducing another provider round trip.
+Do not retrofit its conclusions into historical checked frames.
+
+**Why:** Four checked video frames can already consume the full eight-request
+number budget. An extra audit per frame would exhaust that budget or require
+loosening its cost/deadline limits; old number checks never assessed branding.
+
+**How to apply:** Preserve numeric proof and fail unresolved branding closed.
+Bound optional output within the existing token ceiling and distinguish mocked
+contract tests from real-provider classification quality. Obtain new evidence
+only through explicitly approved targeted full reanalysis, not local rematching.

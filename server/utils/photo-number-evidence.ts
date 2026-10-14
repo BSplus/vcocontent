@@ -4,6 +4,7 @@ import {getOpenAIClient} from "./ai-tagger";
 import sharp from "sharp";
 import {mediaPolicy} from "../media-policy";
 import {hasOpaqueNeutralPatch} from "./photo-redaction";
+import {confirmedCommercialHints, VIDEO_BRANDING_LIMITS, videoBrandingPrompt, withoutCommercialTeamHints} from "./video-branding-evidence";
 
 export const PHOTO_NUMBER_POLICY="vehicle-crop-v2";
 export const NUMBER_AUDIT_MODEL="gpt-5.6-terra";
@@ -46,9 +47,14 @@ export async function photoVehicleCrop(bytes:Buffer,region:Region):Promise<Buffe
 }
 // Whole-car geometry is a first-pass ANCHOR, not proof. Only an independent
 // whole-image car/panel reading AND its actual source-pixel crop can certify it.
-export async function verifyPhotoObservations(image:string,vehicles:Identification[], suppliedClient?:NonNullable<ReturnType<typeof getOpenAIClient>>):Promise<Identification[]> {
+export async function verifyPhotoObservations(image:string,vehicles:Identification[], suppliedClient?:NonNullable<ReturnType<typeof getOpenAIClient>>,
+  options?:{videoBranding?:boolean;onCommercialBranding?:(vehicleIndex:number,hints:string[])=>void}):Promise<Identification[]> {
   const confirmed=new Set<number>();
+  const commercial=new Map<number,string[]>();
   const candidates=vehicles.flatMap((v,index)=>v.number&&validRegion(v.vehicleRegion)?[{v,index}]:[]);
+  const brandingIndices=options?.videoBranding ? candidates.filter(({v})=>
+    v.team.trim() || v.referenceConstraints?.some(c=>c.team.trim()))
+    .slice(0,VIDEO_BRANDING_LIMITS.vehicles).map(c=>c.index) : [];
   if(candidates.length && /^data:image\/(?:webp|jpeg|png);base64,/.test(image)) {
     const bytes=Buffer.from(image.split(",")[1],"base64");
     const dimensions=await sharp(bytes).metadata();
@@ -71,7 +77,7 @@ All digits and BOTH ends of the entire number panel must be visible. Masked, cli
 Dashboard gear/speed/timing/position displays, headlamp stripes, sponsor/logo lettering, BMW i / FLIVERIES i are not race numbers even inside a frame.
 Where a labelled ORIGINAL panel crop is supplied, inspect it separately and record panelReadings for that index. Frame edges and paper/background outlines are not printed zeros. Verify the complete printed number from these actual pixels and the car context, not another vehicle. No guessed or hidden digits.
 ${crops.some(c=>c.panel)?"Only list panelReadings for explicitly labelled Original panel crop inputs.":"NO original panel crops are supplied in this request. panelReadings MUST be empty or omitted; a panel seen inside a vehicle crop is NOT a supplied panel crop. Do not invent additional inputs."}
-Preserve every printed leading zero. Never infer numbers from team/model/event knowledge. No model, class, team, driver or person claims. When uncertain leave empty.`},
+Preserve every printed leading zero. Never infer numbers from team/model/event knowledge. No model, class, team, driver or person claims. When uncertain leave empty.${brandingIndices.length?videoBrandingPrompt(brandingIndices):""}`},
           {role:"user",content:[
             {type:"text",text:"Full image"},{type:"image_url",image_url:{url:image,detail:"high"}},
             ...crops.flatMap(({index,bytes,panel})=>[
@@ -85,7 +91,8 @@ Preserve every printed leading zero. Never infer numbers from team/model/event k
           ]}],
       },{timeout:35000,maxRetries:0});
       if(response.choices[0]?.finish_reason!=="stop")throw new Error("Incomplete number audit");
-      const evidence=readings.parse(JSON.parse(response.choices[0]?.message?.content||""));
+      const raw=JSON.parse(response.choices[0]?.message?.content||"");
+      const evidence=readings.parse(raw);
       if(evidence.vehicleReadings.some(r=>!candidates.some(c=>c.index===r.vehicleIndex)))
         throw new Error("Unexpected vehicle crop");
       if(evidence.panelReadings?.some(r=>!crops.some(c=>c.index===r.vehicleIndex&&c.panel)))
@@ -109,14 +116,23 @@ Preserve every printed leading zero. Never infer numbers from team/model/event k
           const reads=evidence.panelReadings?.filter(row=>row.vehicleIndex===index);
           if(reads?.length!==1||reads[0].number!==v.number)continue;
         }
-        if(local.length===1&&local[0].number===v.number)confirmed.add(index);
+        if(local.length===1&&local[0].number===v.number){
+          confirmed.add(index);
+          if(brandingIndices.includes(index)){
+            const hints=confirmedCommercialHints(raw.branding,v,evidence.fullImageReadings.indexOf(r),index);
+            if(hints.length) commercial.set(index,hints);
+          }
+        }
       }
     }
   }
   return vehicles.map((v,index)=>{
     const {numberEvidence:_untrusted,...clean}=v,accepted=confirmed.has(index);
-    return {...clean,number:accepted?v.number:"",drivers:"",
+    const checked:Identification={...clean,number:accepted?v.number:"",drivers:"",
       ...(v.number&&!accepted?{team:""}:{}),
       ...(accepted?{numberEvidence:PHOTO_NUMBER_POLICY}:{})};
+    const hints=accepted?commercial.get(index):undefined;
+    if(hints?.length) options?.onCommercialBranding?.(index,hints);
+    return hints?.length?withoutCommercialTeamHints(checked,hints):checked;
   });
 }

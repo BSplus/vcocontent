@@ -4,7 +4,7 @@ import sharp from "sharp";
 import {createHash} from "node:crypto";
 import {readFile} from "node:fs/promises";
 import {pool} from "../server/db.ts";
-import {PHOTO_NUMBER_POLICY} from "../server/utils/photo-number-evidence.ts";
+import {PHOTO_NUMBER_POLICY,verifyPhotoObservations} from "../server/utils/photo-number-evidence.ts";
 import {aggregateVideo,checkVideoNumbers,recognizeVideoBatch,VIDEO_NUMBER_PIPELINE,VIDEO_NUMBER_LIMITS} from "../server/video-recognition.ts";
 import {matchReferences} from "../server/reference-matching.ts";
 
@@ -21,13 +21,13 @@ const evidence=()=>({sourceHash:"source",duration:2,samplingMs:1,timestamps:[fra
   providerRequests:0,analyzedFrames:1,usageUnavailableRequests:0,promptTokens:null,completionTokens:null,cost:null});
 const reply=content=>new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify(content)}}],
   usage:{prompt_tokens:111,completion_tokens:22}}),{headers:{"content-type":"application/json"}});
-let calls,mode,failAudit;
+let calls,mode,failAudit,brandingMode;
 test.before(()=>{
   process.env.AI_INTEGRATIONS_OPENAI_BASE_URL="https://video-number.invalid/v1";
   process.env.AI_INTEGRATIONS_OPENAI_API_KEY="fixture";
 });
 test.beforeEach(()=>{
-  calls=[];mode="valid";failAudit=false;
+  calls=[];mode="valid";failAudit=false;brandingMode=undefined;
   // Instantiate only after assigning the mock transport, as in the photo tests.
   globalThis.fetch=async(_url,options)=>{
     const request=JSON.parse(options.body);calls.push(request);
@@ -35,9 +35,23 @@ test.beforeEach(()=>{
     if(localization)return reply({scene:null,vehicles:[{number:"007",vehicleRegion:left},{number:"",vehicleRegion:right}]});
     if(failAudit){failAudit=false;throw new Error("transient audit transport");}
     const number=mode==="clipped"?"7":mode==="unreadable"?"":"007";
+    const assessment={complete:true,markings:[{text:"MOZA RACING",kind:"commercial"}]};
+    const branding={
+      fullImageReadings:[{readingIndex:0,...assessment}],
+      vehicleReadings:[{vehicleIndex:0,...assessment}],
+    };
+    if(brandingMode==="unknown")branding.vehicleReadings[0]={...assessment,
+      vehicleIndex:0,markings:[{text:"MOZA RACING",kind:"unknown"}]};
+    if(brandingMode==="team")branding.vehicleReadings[0]={...assessment,
+      vehicleIndex:0,markings:[{text:"MOZA RACING",kind:"team"}]};
+    if(brandingMode==="other-team")branding.fullImageReadings[0]={...assessment,readingIndex:0,
+      markings:[...assessment.markings,{text:"Other Racing",kind:"team"}]};
+    if(brandingMode==="bad-index")branding.vehicleReadings[0].vehicleIndex=1;
+    if(brandingMode==="malformed")branding.vehicleReadings="bad";
     return reply({fullImageReadings:[{number,vehicleRegion:mode==="borrowed"?right:left,
       panelRegion:mode==="borrowed"?[600,200,100,100]:[100,200,100,100]}],
-      vehicleReadings:[{vehicleIndex:0,number}]});
+       vehicleReadings:[{vehicleIndex:0,number}],
+       ...(brandingMode?{branding}:{})});
   };
 });
 test.after(async()=>{
@@ -49,6 +63,63 @@ test.after(async()=>{
 const refs=[{scope:"event",kind:"entry",session:"Race",updatedAt:new Date(),
   rows:[{number:"7",team:"Registered",car:"Race Car",drivers:"Registered lineup"}]}];
 const match=vehicles=>matchReferences(vehicles,refs,"Race","Event",true,true);
+test("video commercial-brand resolution shares the numeric request and saves source-bound evidence",async()=>{
+  brandingMode="commercial";
+  const e=evidence();e.frames[0].vehicles[0].team="MOZA RACING";
+  await checkVideoNumbers([frame],e,async()=>{});
+  const result=aggregateVideo(e.frames);
+  assert.equal(match(result.vehicles)[0].source,"reference");
+  assert.equal(result.vehicles[0].team,"");
+  assert.equal(result.vehicles[0].referenceConstraints[0].team,"");
+  assert.equal(e.frames[0].vehicles[0].team,"MOZA RACING","Raw first-pass evidence stays intact");
+  assert.equal(e.frames[0].numberCheck.commercialBranding.policy,"video-commercial-brand-v1");
+  assert.deepEqual(e.frames[0].numberCheck.commercialBranding.vehicles,[{vehicleIndex:0,hints:["MOZA RACING"]}]);
+  assert.equal(calls.length,2,"No extra provider request");
+  assert.equal(e.numberRequests,2);assert.equal(e.promptTokens,222);assert.equal(e.completionTokens,44);
+  assert.match(calls[1].messages[0].content,/BODYWORK branding/);
+  assert.ok(!JSON.stringify(calls).includes("Registered lineup"),"No reference identities supplied to AI");
+  await checkVideoNumbers([frame],e,async()=>{});
+  assert.equal(calls.length,2,"Validated checkpoints are reused");
+  const changed=structuredClone(e.frames);changed[0].numberCheck.hash="different";
+  assert.ok(match(aggregateVideo(changed).vehicles).every(v=>v.source!=="reference"));
+});
+for(const negative of ["unknown","team","other-team","bad-index","malformed",undefined])
+  test(`unresolved branding (${negative || "missing"}) does not excuse a team conflict or fail valid numbers`,async()=>{
+    brandingMode=negative;
+    const e=evidence();e.frames[0].vehicles[0].team="MOZA RACING";
+    await checkVideoNumbers([frame],e,async()=>{});
+    const checked=aggregateVideo(e.frames).vehicles[0];
+    assert.equal(checked.number,"007");assert.equal(checked.numberEvidence,PHOTO_NUMBER_POLICY);
+    assert.equal(match([checked])[0].source,"visual");
+    assert.equal(checked.referenceConstraints[0].team,"MOZA RACING");
+    assert.equal(e.frames[0].numberCheck.commercialBranding,undefined);
+  });
+test("commercial assessment cannot rescue unreadable digits or a borrowed car",async()=>{
+  brandingMode="commercial";
+  for(const failure of ["clipped","borrowed","unreadable"]){
+    mode=failure;const e=evidence();e.frames[0].vehicles[0].team="MOZA RACING";
+    await checkVideoNumbers([frame],e,async()=>{});
+    assert.ok(aggregateVideo(e.frames).vehicles.every(v=>!v.number));
+    assert.equal(e.frames[0].numberCheck.commercialBranding,undefined);
+  }
+});
+test("ordinary photo numeric audits do not enable video branding exceptions",async()=>{
+  brandingMode="commercial";
+  const v=observation("007",left,{team:"MOZA RACING",
+    referenceConstraints:[{team:"MOZA RACING",vehicle:"Race Car",manufacturer:""}]});
+  const checked=await verifyPhotoObservations(frame.image,[v]);
+  assert.equal(checked[0].number,"007");
+  assert.equal(checked[0].referenceConstraints[0].team,"MOZA RACING");
+  assert.equal(match(checked)[0].source,"visual");
+  assert.ok(!calls[0].messages[0].content.includes("BODYWORK branding"));
+});
+test("dense frames cap optional branding assessments without adding requests",async()=>{
+  const vehicles=Array.from({length:4},()=>observation("007",left,{team:"MOZA RACING"}));
+  await verifyPhotoObservations(frame.image,vehicles,undefined,{videoBranding:true});
+  assert.equal(calls.length,1);
+  assert.match(calls[0].messages[0].content,/labelled vehicle crops 0, 1, 2\./);
+  assert.ok(!calls[0].messages[0].content.includes("labelled vehicle crops 0, 1, 2, 3"));
+});
 test("actual frozen frame pixels, printed leading zeros and separate unknown cars",async()=>{
   const e=evidence();let saves=0;
   await checkVideoNumbers([frame],e,async()=>{saves++;});
