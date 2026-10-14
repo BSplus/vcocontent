@@ -400,7 +400,7 @@ export async function drainAnalysisQueue() {
     await db.update(mediaAnalysisJobs).set({
       status: terminal ? "failed" : "queued", workerToken: null,
       attempts: busy ? claimed.attempts - 1 : claimed.attempts,
-      error: failure ? `Video analysis ${terminal?"failed":"will retry"} at ${failure.stage} (${failure.code}). Your original and manual tags are safe.`
+      error: failure ? `Video analysis ${terminal?"failed":"will retry"} at ${failure.stage} (${failure.code}${failure.details.outputReason ? `: ${failure.details.outputReason}` : ""}). Your original and manual tags are safe.`
         : terminal ? "AI analysis failed. Your media and manual tags are safe; retry is available."
         : "AI temporarily unavailable. Retrying in the background.",
       availableAt: new Date(Date.now() + (busy ? 5000 : 15000 * claimed.attempts)),

@@ -265,6 +265,48 @@ test("provider batches preserve timestamps, token usage and readability gates", 
     assert.ok(result.frames.every(f => !f.tags.includes("Real Motorsport") && f.tags.includes("Sim Racing") && f.tags.includes("Esports")));
   });
 });
+test("malformed frame batches preserve originals and previews, then complete safely on retry", { timeout: 90000 }, async () => {
+  videoBytes=await clip(20);
+  const item=await media();
+  const originalUrl=item.url;
+  mockProvider();
+  const validProvider=globalThis.fetch;
+  let malformed=true;
+  globalThis.fetch=async(input,options)=>{
+    if(String(input).startsWith("https://video-test.invalid/") &&
+      JSON.parse(options.body).model==="gpt-4.1-mini" && malformed) {
+      malformed=false;
+      // Valid JSON but only one returned frame for the four-frame request.
+      return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:
+        JSON.stringify({frames:[{index:0,tags:[],vehicles:[]}]})}}],
+        usage:{prompt_tokens:200,completion_tokens:100}}),{headers:{"content-type":"application/json"}});
+    }
+    return validProvider(input,options);
+  };
+  await enqueueAnalysis(item);
+  await until(async()=>{
+    const status=await analysisStatus(item.id);
+    return status.status==="queued" && status.attempts===1;
+  });
+  const [partial]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,item.id));
+  assert.match(partial.error,/AI_OUTPUT_INVALID: frame_count/);
+  assert.equal(partial.videoEvidence.frames.length,0,"Incomplete batches cannot fabricate missing frame evidence");
+  assert.equal(partial.videoEvidence.promptTokens,200);
+  assert.equal(partial.videoEvidence.completionTokens,100);
+  const saved=await storage.getMediaItem(item.id);
+  assert.equal(saved.url,originalUrl);
+  assert.equal(saved.caption,"Approved caption");
+  assert.notEqual(saved.thumbnail,"generic-poster","Real preview must survive failed optional recognition");
+  await db.update(mediaAnalysisJobs).set({availableAt:new Date(0)}).where(eq(mediaAnalysisJobs.mediaId,item.id));
+  await drainAnalysisQueue();
+  await until(async()=>(await analysisStatus(item.id)).status==="completed");
+  const complete=await storage.getMediaItem(item.id);
+  assert.equal(complete.url,originalUrl);
+  assert.equal(complete.caption,"Approved caption");
+  assert.ok(complete.tags.includes("Day"));
+  assert.ok(complete.identification.every(row=>!row.number || row.numberEvidence));
+});
+
 test("durable batches survive retries, edits, reference revisions and failed new generations", { timeout: 90000 }, async () => {
   videoBytes = await clip(60);
   const item = await media();
@@ -315,7 +357,11 @@ test("durable batches survive retries, edits, reference revisions and failed new
     scope: "event", kind: "result", session: "Race 2", title: "Synthetic lineup", fingerprint: randomUUID(), identityKey: randomUUID(),
     rows: [{ number: "89", team: "Matched", car: "Stock Car", drivers: "Registered lineup" }] });
   await db.update(events).set({ referenceRevision: 1 }).where(eq(events.id, item.eventId));
-  await drainAnalysisQueue();
+  await until(async()=>{
+    await drainAnalysisQueue();
+    const [rematched]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,item.id));
+    return rematched.status==="completed" && rematched.referenceRevision===1;
+  });
   assert.equal(requests, reused);
   saved = await storage.getMediaItem(item.id);
   assert.ok(saved.identification.some(v => v.team === "Matched" && v.drivers === "Registered lineup"));

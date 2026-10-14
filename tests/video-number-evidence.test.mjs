@@ -131,6 +131,26 @@ test("available batch tokens survive malformed recognition output",async()=>{
   await assert.rejects(recognizeVideoBatch([frame],async value=>{usage=value;}),/Invalid video recognition/);
   assert.deepEqual(usage,{prompt:111,completion:22});
 });
+
+test("video request enforces strict indexed frame output and records usage before structural rejection",async()=>{
+  const captured=[];
+  const usage=[];
+  globalThis.fetch=async(_url,options)=>{
+    const body=JSON.parse(options.body);captured.push(body);
+    return reply({frames:[{index:0,tags:[],vehicles:[]}]});
+  };
+  const second={...frame,hash:"other-hash",timestamp:2.5};
+  await assert.rejects(recognizeVideoBatch([frame,second],async u=>usage.push(u)),
+    error=>error.details.outputReason==="frame_count" && error.details.receivedFrames===1);
+  assert.equal(captured.length,1,"Structural failure does not silently resend paid requests");
+  const format=captured[0].response_format;
+  assert.equal(format.type,"json_schema");
+  assert.equal(format.json_schema.strict,true);
+  assert.equal(format.json_schema.schema.properties.frames.minItems,2);
+  assert.deepEqual(format.json_schema.schema.properties.frames.items.properties.index.enum,[0,1]);
+  assert.match(captured[0].messages[0].content,/zero-based indices 0, 1/);
+  assert.deepEqual(usage,[{prompt:111,completion:22}]);
+});
 test("existing pilot evidence comparison rejects unverified 99/9 and retains omissions as unknown, not measured AI improvement",async()=>{
   const pilot=JSON.parse(await readFile(new URL("../docs/video-analysis-live-results.json",import.meta.url),"utf8"));
   const clips=pilot.clips||pilot.results;

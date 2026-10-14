@@ -18,3 +18,16 @@ negative and positive controls for any separately authorized paid comparison.
 Keep request/token overhead, missed true numbers and unsafe identities separate.
 Do not convert old observations into checked provenance or globally reanalyse
 the archive merely because a checking policy changes.
+
+Treat provider output structure and pixel evidence as separate boundaries.
+Constrain video response shape without accepting incomplete frames or replacing
+independent number checks. Changing this transport contract alone is not a reason
+to upgrade historical number evidence or requeue completed live jobs.
+
+**Why:** Generic JSON was insufficient to guarantee the indexed frame contract,
+and historical invalid-output errors did not retain enough information to identify
+their exact structural cause. Logging raw responses would expose unnecessary data.
+
+**How to apply:** Keep bounded, static structural diagnostics and exact frame
+binding. Report locally tested hardening separately from confirmed live recovery;
+only an explicitly approved targeted retry can establish the latter.

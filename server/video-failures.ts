@@ -30,7 +30,11 @@ const messages = {
   DATABASE_FAILED: "Video analysis database operation failed",
 };
 export type VideoFailureCode = keyof typeof messages;
-type Details = { exitCode?: number | null; signal?: string | null; httpStatus?: number };
+const outputReasons = ["truncated","non_stop","empty","oversized","json_syntax","frame_shape",
+  "frame_count","frame_indices","vehicle_shape"] as const;
+export type VideoOutputReason = typeof outputReasons[number];
+type Details = { exitCode?: number | null; signal?: string | null; httpStatus?: number;
+  outputReason?: VideoOutputReason; finishReason?: string; expectedFrames?: number; receivedFrames?: number };
 
 /** Only static labels and bounded scalar diagnostics; never provider bodies, URLs or stderr. */
 export class VideoAnalysisFailure extends Error {
@@ -45,6 +49,13 @@ export class VideoAnalysisFailure extends Error {
         ? {signal: details.signal} : {}),
       ...(Number.isInteger(details.httpStatus) && details.httpStatus! >= 400 && details.httpStatus! <= 599
         ? {httpStatus: details.httpStatus} : {}),
+      ...(outputReasons.includes(details.outputReason!) ? {outputReason:details.outputReason} : {}),
+      ...(details.finishReason ? {finishReason:["stop","length","content_filter","tool_calls","function_call"].includes(details.finishReason)
+        ? details.finishReason : "other"} : {}),
+      ...(Number.isInteger(details.expectedFrames) && details.expectedFrames! >= 1 && details.expectedFrames! <= 4
+        ? {expectedFrames:details.expectedFrames} : {}),
+      ...(Number.isInteger(details.receivedFrames) && details.receivedFrames! >= 0 && details.receivedFrames! <= 4
+        ? {receivedFrames:details.receivedFrames} : {}),
     };
   }
 }
