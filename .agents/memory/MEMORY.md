@@ -31,7 +31,7 @@
 - [Media worker hosting](media-worker-hosting.md) — prefer one combined VM; cost and compatibility confirmation must precede explicit hosting-change approval.
 - [Storage cost boundaries](storage-cost-boundaries.md) — keep Replit, PostgreSQL and Nextcloud; external-provider advice is not migration approval, and direct downloads must preserve rights/statistics.
 - [Minimal R2 launch](r2-launch-scope.md) — keep Production PostgreSQL and protected resources; hide dummy content, skip cleanup/migration, and gate Production uploads on a controlled smoke.
-- [Creator launch preference](creator-launch-intent.md) — prefer open, free self-service photo galleries with limits; paid expansion later, not yet implemented.
+- [Creator launch and marketplace](creator-launch-intent.md) — free beta; planned hybrid tiers, unified storage quota and separate Buyer credits/Creator earnings; planning is not activation.
 - [Public creator profiles](public-creator-profiles.md) — preserve profile links and login identity; optional contact is explicit, and each new image needs independent approval.
 - [Database publishing](database-publishing.md) — verify the publishing diff; the Neon driver or a Neon secret alone does not imply an unmanaged production database.
 - [Öffentliche Ziel-Domain](public-domain.md) — Betreiber plant https://content.vco-esports.com; Domainzuordnung vor Konfiguration und Veröffentlichung verifizieren.
