@@ -61,8 +61,17 @@ logo appears on the car. A logo does not establish a sponsorship contract.
 - Those probes did **not** produce an accepted MOZA RACING receipt in the code
   version tested live. Local investigation identified overly strict single-line
   JSON handling; the corrected complete-object parser passes local tests.
-  A final positive live check after that parser correction is **not yet done**.
-  Do not describe real-provider positive brand verification as confirmed.
+  One operator-authorized final Development check after that correction was
+  performed on 2026-10-14. It made exactly one web request and one structured
+  classification request (both HTTP 200), completing in approximately 3.5 seconds.
+  The web response contained a completed search record and one actual source
+  citation whose title named MOZA RACING. The classifier returned the exact name,
+  confirmed=true, ambiguous=false and the official site `https://mozaracing.com/`.
+  Nevertheless, the application's stricter source-evidence acceptance did
+  **not** produce a receipt: the brand tag was omitted and the ordinary `Day`
+  tag remained. The bounded probe did not identify which exact source guard
+  rejected the evidence. Do not claim a proven quote/URL mismatch, or describe
+  positive real-provider brand verification as passed.
 - Repeated live probes were stopped rather than relaxing source/name safeguards.
   Unknown brands remain omitted, and ordinary tags are preserved.
 
