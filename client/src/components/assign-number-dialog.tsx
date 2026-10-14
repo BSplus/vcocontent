@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { normalizedRaceNumber, vehicleLimit } from "@shared/manual-number-assignment";
 
 type Identification = {
   number?: string | null;
@@ -59,7 +60,9 @@ export default function AssignNumberAction({
 }: AssignNumberActionProps) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<NumberOptions | null>(null);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [preview, setPreview] = useState<{ key: string; caption: string } | null>(null);
+  const [previewError, setPreviewError] = useState("");
   const [replaceIndex, setReplaceIndex] = useState<number | undefined>(undefined);
   const [search, setSearch] = useState("");
   const [replaceCaption, setReplaceCaption] = useState(false);
@@ -91,7 +94,9 @@ export default function AssignNumberAction({
       setNoReferences(false);
     }
     setReplaceIndex(target);
-    setSelectedId("");
+    setSearch("");
+    setSelectedIds([]);
+    setPreview(null);
     setData(null);
     setReplaceCaption(false);
     try {
@@ -128,7 +133,7 @@ export default function AssignNumberAction({
   useEffect(() => {
     setOpen(false);
     setData(null);
-    setSelectedId("");
+    setSelectedIds([]);
     setReplaceIndex(undefined);
     setSearch("");
     setSaveError("");
@@ -150,7 +155,54 @@ export default function AssignNumberAction({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mediaItem.id]);
 
-  const selected = data?.options.find(option => option.id === selectedId);
+  const selected = (data?.options || []).filter(option => selectedIds.includes(option.id));
+  const selectionKey = JSON.stringify([mediaItem.id, data?.snapshot, replaceIndex, selectedIds]);
+  const total = (data?.identification.length || 0) + (replaceIndex === undefined ? selected.length : 0);
+  const capacityExceeded = total > vehicleLimit;
+  const readyPreview = preview?.key === selectionKey ? preview : null;
+  const choose = (option: NumberOption) => {
+    setReplaceCaption(false);
+    setSelectedIds(current => replaceIndex !== undefined ? [option.id] :
+      current.includes(option.id) ? current.filter(id => id !== option.id) : [...current, option.id]);
+  };
+  const unavailable = (option: NumberOption) => {
+    const number = normalizedRaceNumber(option.number);
+    return !selectedIds.includes(option.id) && (
+      (data?.identification || []).some((entry, index) => index !== replaceIndex && entry.number &&
+        normalizedRaceNumber(entry.number) === number) ||
+      (replaceIndex === undefined && (total >= vehicleLimit || selected.some(entry =>
+        normalizedRaceNumber(entry.number) === number))));
+  };
+  useEffect(() => {
+    setPreview(null);
+    setPreviewError("");
+    if (!open || !data || !selectedIds.length || capacityExceeded) return;
+    const controller = new AbortController();
+    let current = true;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/media/${mediaItem.id}/number-assignment-preview`, {
+          method: "POST", credentials: "include", signal: controller.signal,
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ snapshot: data.snapshot, selectionIds: selectedIds,
+            ...(replaceIndex === undefined ? {} : { replaceIndex }) }),
+        });
+        const result = await response.json();
+        if (!current) return;
+        if (!response.ok) {
+          if (response.status === 409) setStale(true);
+          throw new Error(result.error || "The assignment preview could not be loaded.");
+        }
+        if (typeof result.caption !== "string" || !Array.isArray(result.identification))
+          throw new Error("The assignment preview returned an invalid response.");
+        setPreview({ key: selectionKey, caption: result.caption });
+      } catch (cause) {
+        if (current && !controller.signal.aborted)
+          setPreviewError(cause instanceof Error ? cause.message : "The assignment preview could not be loaded.");
+      }
+    })();
+    return () => { current = false; controller.abort(); };
+  }, [open, selectionKey]);
   const filteredOptions = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
     return (data?.options || []).filter(option => !needle || candidateSearchText(option).includes(needle) ||
@@ -158,11 +210,12 @@ export default function AssignNumberAction({
   }, [data, search]);
   const needsCaptionReplacement = !!data?.replaceCaptionRequired;
   const targetLabel = replaceIndex === undefined
-    ? "Add a vehicle"
+    ? "Add vehicles"
     : `Replace vehicle ${replaceIndex + 1}${data?.identification[replaceIndex]?.number ? ` · #${data.identification[replaceIndex].number}` : ""}`;
 
   const save = async () => {
-    if (!data || !selected || (needsCaptionReplacement && !replaceCaption)) return;
+    if (!data || !selected.length || !readyPreview || capacityExceeded || (needsCaptionReplacement && !replaceCaption)) return;
+    const requestNumber = requestSequence.current;
     setSaving(true);
     setSaveError("");
     setStale(false);
@@ -173,12 +226,13 @@ export default function AssignNumberAction({
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           snapshot: data.snapshot,
-          selectionId: selected.id,
+          selectionIds: selectedIds,
           ...(replaceIndex === undefined ? {} : { replaceIndex }),
           replaceCaption,
         }),
       });
       const result = await response.json().catch(() => ({}));
+      if (requestNumber !== requestSequence.current) return;
       if (!response.ok) {
         if (response.status === 409) {
           setStale(true);
@@ -187,6 +241,11 @@ export default function AssignNumberAction({
         throw new Error(result.error || "The number could not be assigned.");
       }
       const saved = result as MediaItem;
+      if (saved.id !== mediaItem.id || !Array.isArray(saved.identification) || typeof saved.caption !== "string") {
+        setStale(true);
+        throw new Error("The save response could not be confirmed. Reload the media before assigning again.");
+      }
+      onSaved?.(saved);
       await queryClient.cancelQueries({ queryKey: [`/api/media/${mediaItem.id}/analysis`], exact: true });
       queryClient.setQueryData([`/api/media/${mediaItem.id}/analysis`], (old: any) =>
         old ? { ...old, caption: saved.caption, captionSource: "manual",
@@ -200,7 +259,6 @@ export default function AssignNumberAction({
             key.includes("/search") || key.startsWith("/api/search");
         } }),
       ]);
-      onSaved?.(saved);
       setOpen(false);
     } catch (cause) {
       setSaveError(cause instanceof Error ? cause.message : "The number could not be assigned.");
@@ -222,7 +280,7 @@ export default function AssignNumberAction({
   return <>
     <Button type="button" variant="outline" disabled={disabled || noReferences || availabilityLoading} title={(disabled || noReferences || availabilityLoading) ? effectiveDisabledReason : undefined}
       aria-label={`Assign number to ${mediaItem.caption || `media ${mediaItem.id}`}`} onClick={() => {
-        setSelectedId("");
+        setSelectedIds([]);
         setSaveError("");
         setStale(false);
         setOpen(true);
@@ -267,7 +325,7 @@ export default function AssignNumberAction({
                     disabled={loading || saving || !data?.identification.length}
                     onChange={event => changeTarget(event.target.value)}
                     className="h-11 w-full appearance-none rounded-md border border-input bg-background px-3 pr-9 text-foreground">
-                    <option value="add">Add a vehicle</option>
+                    <option value="add">Add vehicles</option>
                     {(data?.identification || []).map((entry, index) => <option key={index} value={index}>
                       Replace vehicle {index + 1}{entry.number ? ` · #${entry.number}` : ""}
                     </option>)}
@@ -294,31 +352,44 @@ export default function AssignNumberAction({
               <Input type="search" value={search} onChange={event => setSearch(event.target.value)} className="pl-9" disabled={saving}
                 placeholder="Search number, team, car, class, lineup…" />
             </label>
-            <div role="radiogroup" aria-label="Available number entries" className="max-h-56 space-y-2 overflow-y-auto pr-1">
+            <p role="status" className="text-sm">{total} / {vehicleLimit} vehicles · {Math.max(0, vehicleLimit - total)} remaining</p>
+            {capacityExceeded && <p role="alert" className="text-sm text-destructive">At most 12 vehicles can be assigned. Remove a selection or replace an existing vehicle.</p>}
+            {!!selected.length && <section aria-label="Selected vehicles" className="space-y-2 rounded border border-border p-3">
+              <h3 className="text-sm font-semibold">Selected vehicles ({selected.length})</h3>
+              {selected.map(option => <div key={option.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="min-w-0 break-words">#{option.number} · {option.identification.team || option.identification.vehicle}</span>
+                <Button type="button" size="sm" variant="outline" disabled={saving}
+                  aria-label={`Remove selected #${option.number} ${option.identification.team || ""}`}
+                  onClick={() => { setSelectedIds(ids => ids.filter(id => id !== option.id)); setReplaceCaption(false); }}>Remove</Button>
+              </div>)}
+            </section>}
+            <p className="text-xs text-muted-foreground">Already assigned numbers and alternatives to a selected number cannot be added together. Use single replacement to correct an existing vehicle.</p>
+            <div role={replaceIndex === undefined ? "group" : "radiogroup"} aria-label="Available number entries" className="max-h-56 space-y-2 overflow-y-auto pr-1">
               {filteredOptions.map((option, index) => {
                 const entry = option.identification;
-                const active = selectedId === option.id;
-                return <button key={option.id} type="button" role="radio" aria-checked={active}
-                  tabIndex={active || (index === 0 && !filteredOptions.some(entry => entry.id === selectedId)) ? 0 : -1}
+                const active = selectedIds.includes(option.id);
+                return <button key={option.id} type="button" role={replaceIndex === undefined ? "checkbox" : "radio"} aria-checked={active}
+                  tabIndex={replaceIndex === undefined || active || (index === 0 && !filteredOptions.some(entry => selectedIds.includes(entry.id))) ? 0 : -1}
                   onKeyDown={event => {
                     if (saving) return;
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      setSelectedId(option.id);
+                       choose(option);
                       return;
                     }
-                    const offset = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 :
+                     if (replaceIndex === undefined) return;
+                     const offset = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 :
                       event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 0;
                     if (!offset && event.key !== "Home" && event.key !== "End") return;
                     event.preventDefault();
                     const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? filteredOptions.length - 1 :
                       (index + offset + filteredOptions.length) % filteredOptions.length;
-                    setSelectedId(filteredOptions[nextIndex].id);
+                     if (!unavailable(filteredOptions[nextIndex])) choose(filteredOptions[nextIndex]);
                     const radios = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
                     radios?.[nextIndex]?.focus();
                   }}
-                  disabled={saving}
-                  onClick={() => { setSelectedId(option.id); setReplaceCaption(false); }}
+                  disabled={saving || unavailable(option)}
+                  onClick={() => choose(option)}
                   className={`w-full rounded border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${active ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}`}>
                   <span className="flex items-start justify-between gap-3">
                     <span className="min-w-0">
@@ -341,9 +412,10 @@ export default function AssignNumberAction({
               })}
               {!filteredOptions.length && <p className="py-4 text-center text-sm text-muted-foreground">No entries match this search.</p>}
             </div>
-            {selected && <section aria-label="Caption preview" className="space-y-2 rounded border border-primary/30 bg-primary/[0.04] p-3">
+            {!!selected.length && <section aria-label="Caption preview" className="space-y-2 rounded border border-primary/30 bg-primary/[0.04] p-3">
               <h3 className="text-sm font-semibold">Caption after assignment · {targetLabel}</h3>
-              <p className="whitespace-pre-wrap break-words text-sm">{selected.caption ?? "The updated caption will be provided when available."}</p>
+               <p className="whitespace-pre-wrap break-words text-sm">{readyPreview?.caption || (previewError ? "" : "Loading combined caption preview…")}</p>
+               {previewError && <p role="alert" className="text-sm text-destructive">{previewError}</p>}
             </section>}
             {needsCaptionReplacement && <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded border border-amber-500/35 bg-amber-500/5 p-3 text-sm">
               <Checkbox checked={replaceCaption} onCheckedChange={value => setReplaceCaption(value === true)} disabled={saving} />
@@ -351,14 +423,14 @@ export default function AssignNumberAction({
                 <span className="mt-1 block text-xs text-muted-foreground">Required to keep the saved caption consistent with this number assignment.</span></span>
             </label>}
           </>}
-          {saveError && <div role="alert" className="space-y-2 rounded border border-destructive/40 p-3 text-sm text-destructive">
+          {(saveError || stale) && <div role="alert" className="space-y-2 rounded border border-destructive/40 p-3 text-sm text-destructive">
             <p>{saveError}</p>
             {stale && <Button type="button" variant="outline" disabled={loading || saving}
               onClick={() => void loadOptions(replaceIndex)}><RefreshCw className="mr-2 h-4 w-4" />Reload references and choose again</Button>}
           </div>}
           <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" disabled={saving} onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="button" disabled={!selected || loading || !!error || stale || saving || (needsCaptionReplacement && !replaceCaption)}
+            <Button type="button" disabled={!selected.length || !readyPreview || capacityExceeded || loading || !!error || stale || saving || (needsCaptionReplacement && !replaceCaption)}
               onClick={() => void save()}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {saving ? "Saving…" : "Save assignment"}
             </Button>

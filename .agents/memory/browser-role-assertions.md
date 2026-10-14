@@ -36,6 +36,16 @@ Both produce misleading missing-control failures in otherwise working flows.
 the control, and select a visible control rather than testing visibility only
 after choosing the first DOM match.
 
+For reference-search tests, identify the intended candidate explicitly rather
+than assuming a numeric query returns only that race number.
+
+**Why:** The search also covers car names, lineups and context. A query such as
+“9” can legitimately include a different car whose model contains “R9”; clicking
+the first result then tests the wrong selection.
+
+**How to apply:** Wait for the expected candidate identity after changing the
+filter, and assert the selected summary independently of filtered results.
+
 Mock all background endpoints with their real response shapes, including
 features not directly under test. A valid element can disappear between a wait
 and an interaction if an unrelated query subsequently crashes its parent.

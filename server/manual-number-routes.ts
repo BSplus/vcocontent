@@ -8,15 +8,11 @@ import { canManage } from "./beta-access";
 import { applicableDocuments } from "./reference-matching";
 import { matchedPhotoCaption } from "./caption-proposal";
 import { assignedIdentifications, assignmentHash, manualNumberOptions } from "./manual-number-options";
+import { assignmentReplaceIndexSchema as replaceIndexSchema, manualNumberAssignmentSchema as saveSchema } from "@shared/manual-number-assignment";
 
 class AssignmentError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
-const replaceIndexSchema = z.coerce.number().int().min(0).max(11);
-const saveSchema = z.object({
-  snapshot:z.string().regex(/^[a-f0-9]{64}$/),selectionId:z.string().max(100),
-  replaceIndex:replaceIndexSchema.optional(),replaceCaption:z.boolean().default(false),
-}).strict();
 const automaticSources = new Set(["auto_pending","automatic","photo_automatic","nextcloud_placeholder"]);
 
 export function registerManualNumberRoutes(app: Express) {
@@ -47,16 +43,29 @@ export function registerManualNumberRoutes(app: Express) {
       event:[event.id,event.creatorId,event.referenceRevision,event.title,event.date,event.round,event.track,event.platform,
         event.seriesId,event.referenceSeasonYear,eventSeries?.name],documents,legacy,replaceIndex});
     const replaceCaptionRequired = !automaticSources.has(item.captionSource);
-    return {item,event,snapshot,context,replaceCaptionRequired,options:options.map(option => ({
-      ...option,caption:matchedPhotoCaption(event,eventSeries?.name || null,
-        // At the capacity limit, keep the list available for a targeted correction.
-        replaceIndex === undefined && item.identification.length >= 12 ? [option.identification] :
-          assignedIdentifications(item.identification,option.identification,replaceIndex),true).caption,
-    }))};
+    return {item,event,eventSeries,snapshot,context,replaceCaptionRequired,options:options.map(option => {
+      let identification;
+      try { identification = assignedIdentifications(item.identification,option.identification,replaceIndex); }
+      catch { identification = item.identification; }
+      return {...option,caption:matchedPhotoCaption(event,eventSeries?.name || null,identification,true).caption};
+    })};
+  };
+  const proposal = (current: Awaited<ReturnType<typeof resolve>>, body: z.infer<typeof saveSchema>) => {
+    if (current.snapshot !== body.snapshot)
+      throw new AssignmentError(409,"References or media changed. Reload and select again.");
+    const selected = Array.from(new Set(body.selectionIds || [body.selectionId!])).map(id => {
+      const option = current.options.find(option => option.id === id);
+      if (!option) throw new AssignmentError(409,"This reference is no longer applicable. Reload and select again.");
+      return option.identification;
+    });
+    let identification;
+    try { identification = assignedIdentifications(current.item.identification,selected,body.replaceIndex); }
+    catch (error) { throw new AssignmentError(409,(error as Error).message); }
+    return {identification,caption:matchedPhotoCaption(current.event,current.eventSeries?.name || null,identification,true).caption};
   };
   const handleError = (error: unknown, res: any) => {
     if (error instanceof AssignmentError) return res.status(error.status).json({error:error.message});
-    if (error instanceof z.ZodError) return res.status(400).json({error:"Invalid number assignment."});
+    if (error instanceof z.ZodError) return res.status(400).json({error:"Invalid number assignment. Choose 1–12 references; replacement requires one vehicle."});
     if ((error as any)?.code === "40001" || (error as any)?.code === "40P01")
       return res.status(409).json({error:"References or media changed. Reload and select again."});
     return res.status(503).json({error:"Number assignment could not be loaded or saved. Please retry."});
@@ -70,23 +79,26 @@ export function registerManualNumberRoutes(app: Express) {
         identification:result.item.identification,caption:result.item.caption,session:result.item.recognitionSession,options:result.options});
     } catch (error) { handleError(error,res); }
   });
+  app.post("/api/media/:id/number-assignment-preview",requireCreator,async(req,res) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const body = saveSchema.parse(req.body);
+      const result = await db.transaction(async tx => proposal(await resolve(tx,id,req.user,body.replaceIndex),body),
+        {isolationLevel:"repeatable read"});
+      res.json(result);
+    } catch (error) { handleError(error,res); }
+  });
   app.post("/api/media/:id/assign-number",requireCreator,async(req,res) => {
     try {
       const id = z.coerce.number().int().positive().parse(req.params.id);
       const body = saveSchema.parse(req.body);
       const result = await db.transaction(async tx => {
         const current = await resolve(tx,id,req.user,body.replaceIndex,true);
-        if (current.snapshot !== body.snapshot)
-          throw new AssignmentError(409,"References or media changed. Reload and select again.");
-        const selected = current.options.find(option => option.id === body.selectionId);
-        if (!selected) throw new AssignmentError(409,"This reference is no longer applicable. Reload and select again.");
+        const proposed = proposal(current,body);
         if (current.replaceCaptionRequired && !body.replaceCaption)
           throw new AssignmentError(409,"Confirm replacement of the protected caption before saving.");
-        let identification;
-        try { identification = assignedIdentifications(current.item.identification,selected.identification,body.replaceIndex); }
-        catch (error) { throw new AssignmentError(409,(error as Error).message); }
-        const [saved] = await tx.update(mediaItems).set({identification,identificationManual:true,
-          caption:selected.caption,captionSource:"manual",contentVersion:sql`${mediaItems.contentVersion}+1`,
+        const [saved] = await tx.update(mediaItems).set({...proposed,identificationManual:true,
+          captionSource:"manual",contentVersion:sql`${mediaItems.contentVersion}+1`,
           ...(current.event.creatorId ? {safetyStatus:"error",safetyReason:"Safety check pending. Content stays private; retry the safety check."} : {}),
         }).where(eq(mediaItems.id,id)).returning();
         // No recognition or safety-provider request is part of this explicit

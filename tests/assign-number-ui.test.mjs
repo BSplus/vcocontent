@@ -28,6 +28,9 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
   let failFirstOptions = false;
   let failedTargetOptions = false;
   let analysisRunning = false;
+  let lateAnalysis = false;
+  let lateAnalysisResponses = 0;
+  let delayPreview = false;
   const failures = [];
   const respond = (requestId, value, responseCode = 200) => browser.command("Fetch.fulfillRequest", {
     requestId, responseCode,
@@ -59,9 +62,11 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
       analysisRunning = true;
       body = { status: "queued", generation: 2 };
     } else if (path.endsWith("/analysis")) {
+      if (lateAnalysis) lateAnalysisResponses++;
       const item = media.find(entry => path.includes(`/${entry.id}/`));
       body = { status: analysisRunning ? "running" : "not_requested", generation: analysisRunning ? 2 : 1,
-        caption: item?.caption || "", tags: item?.tags || [], identification: item?.identification || [],
+        caption: lateAnalysis ? "Late analysis caption" : item?.caption || "", tags: item?.tags || [],
+        identification: lateAnalysis ? [] : item?.identification || [],
         recognitionSession: item?.recognitionSession || "" };
     }
     else if (path.endsWith("/number-options") && request.method === "GET") {
@@ -77,7 +82,7 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
         body = {
           snapshot: replacement ? "snapshot-replace" : "snapshot-add",
           replaceCaptionRequired: true,
-          identification: [{ number: "12", team: "Old team", drivers: "Prior lineup", vehicle: "Old car", manufacturer: "Old Works", racingClass: "GT", source: "manual" }],
+          identification: media[0].identification.length ? media[0].identification : [{ number: "12", team: "Old team", drivers: "Prior lineup", vehicle: "Old car", manufacturer: "Old Works", racingClass: "GT", source: "manual" }],
           caption: "Fixture original caption", session: "Race 2",
           context: "Race 2 · Fixture event · Practice",
           options: [
@@ -87,8 +92,21 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
             { id: "entry-8", number: "8", identification: { number: "8", team: "Paddock Works", drivers: "L. Chen",
               vehicle: "R9", manufacturer: "Rennsport", racingClass: "GT3", source: "reference" },
               contexts: ["Qualifying", "Class GT3"], conflict: false, caption: "Caption for #8 Paddock Works" },
+            { id: "entry-9", number: "9", identification: { number: "9", team: "Third team", drivers: "Third lineup", vehicle: "Third car", source: "manual" },
+              contexts: ["Race 2"], conflict: false, caption: "Third caption" },
+            { id: "entry-alt77", number: "077", identification: { number: "077", team: "Alternative", drivers: "Alt lineup", vehicle: "Alt car", source: "manual" },
+              contexts: ["Race 2"], conflict: true, caption: "Alternative caption" },
           ],
         };
+      }
+    } else if (path.endsWith("/number-assignment-preview")) {
+      const payload=JSON.parse(request.postData);
+      body={caption:payload.replaceIndex===undefined ? `${addedCaption} | ${payload.selectionIds.join(" | ")}` : correctedCaption,
+        identification:payload.selectionIds.map(id=>({number:id.replace("entry-","")}))};
+      if(delayPreview && payload.selectionIds.length===1 && payload.selectionIds[0]==="entry-8") {
+        delayPreview=false;
+        setTimeout(()=>respond(requestId,{...body,caption:"Obsolete single-car preview"}),700);
+        return;
       }
     } else if (path.endsWith("/assign-number") && request.method === "POST") {
       const payload = JSON.parse(request.postData);
@@ -98,8 +116,10 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
         body = { error: "Reference snapshot changed. Reload and choose a number again." };
       } else {
         media = media.map(item => item.id === Number(path.split("/")[3]) ? {
-          ...item, caption: payload.replaceIndex === undefined ? addedCaption : correctedCaption,
-          identification: [{ number: "77", team: "Northstar Motorsport", drivers: "M. Vale / J. Ibarra", source: "reference" }],
+          ...item, caption: payload.replaceIndex === undefined ? `${addedCaption} | ${payload.selectionIds.join(" | ")}` : correctedCaption,
+          identification: payload.replaceIndex === undefined ? [...item.identification,...payload.selectionIds.map(id=>({
+            number:id.replace("entry-",""),team:id==="entry-8"?"Paddock Works":"Third team",drivers:"Fixture lineup",source:"manual",
+          }))] : [{ number: "77", team: "Northstar Motorsport", drivers: "M. Vale / J. Ibarra", source: "manual" }],
         } : item);
         body = media.find(item => item.id === Number(path.split("/")[3]));
       }
@@ -137,6 +157,7 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
 
   try {
     for (const role of ["creator", "admin"]) {
+      user.isAdmin=role==="admin";
       for (const width of [1280, 390]) {
         media = [
           { id: 64903, eventId: event.id, type: "image", thumbnail: image, url: image, caption: "Fixture target",
@@ -149,6 +170,8 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
         failFirstOptions = true;
         failedTargetOptions = false;
         analysisRunning = false;
+        lateAnalysis = false;
+        lateAnalysisResponses = 0;
         await openDashboard(role, width);
         await browser.wait(`document.querySelector('[role="alert"]')?.innerText.includes('temporarily unavailable')`);
 
@@ -193,10 +216,19 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
         if (role === "creator" && width === 390) {
           assert.equal(await browser.evaluate(`!!document.querySelector('[role="dialog"] video[aria-label="Video preview"]')`), true);
         }
-        await browser.evaluate(`document.querySelector('[role="dialog"] [role="radio"]').focus()`);
+        await browser.evaluate(`document.querySelector('[role="dialog"] button[role="checkbox"]').focus()`);
         await browser.command("Input.dispatchKeyEvent",{type:"keyDown",key:"Enter",code:"Enter",windowsVirtualKeyCode:13});
         await browser.command("Input.dispatchKeyEvent",{type:"keyUp",key:"Enter",code:"Enter",windowsVirtualKeyCode:13});
-        await browser.wait(`document.querySelector('[role="dialog"] [role="radio"]')?.getAttribute('aria-checked')==='true'`);
+        await browser.wait(`document.querySelector('[role="dialog"] button[role="checkbox"]')?.getAttribute('aria-checked')==='true'`);
+        await fillInput('[role="dialog"] input[type="search"]',"Alternative");
+        await browser.wait(`document.querySelector('[role="dialog"] button[role="checkbox"]')?.textContent.includes('Alternative')`);
+        assert.equal(await browser.evaluate(`document.querySelector('[role="dialog"] button[role="checkbox"]').disabled`),true);
+        await fillInput('[role="dialog"] input[type="search"]',"8");
+        await browser.wait(`document.querySelector('[aria-label="Selected vehicles"]')?.innerText.includes('#77')`);
+        await click('[role="dialog"] button[role="checkbox"]');
+        await browser.wait(`document.querySelector('[aria-label="Selected vehicles"]')?.innerText.includes('(2)')`);
+        await click('[aria-label="Remove selected #77 Northstar Motorsport"]');
+        await browser.wait(`!document.querySelector('[aria-label="Selected vehicles"]')?.innerText.includes('#77')`);
         await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.trim()==='Cancel').click()`);
         await browser.wait(`!document.querySelector('[role="dialog"]')`);
         assert.equal(writes.length, 0, "cancelling a selected candidate must not persist an assignment");
@@ -233,17 +265,79 @@ test("manual number assignment dialog works on creator and admin desktop/mobile"
         await browser.wait(`!!document.querySelector('[role="dialog"]')?.querySelector('[role="radio"]')`);
         await browser.evaluate(`document.querySelector('[role="dialog"] [role="radio"]').click()`);
         await browser.evaluate(`document.querySelector('[role="dialog"] [role="checkbox"]').click()`);
+        await browser.wait(`[...document.querySelectorAll('[role="dialog"] button')].some(b=>b.textContent.includes('Save assignment') && !b.disabled)`);
         await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.includes('Save assignment')).click()`);
         await browser.wait(`!document.querySelector('[role="dialog"]')`);
         await browser.wait(`document.body.innerText.includes('Corrected replacement caption')`);
         assert.equal(await browser.evaluate(`document.body.innerText.includes(${JSON.stringify(correctedCaption)})`), true);
         assert.equal(writes.length, 2);
         assert.equal(writes[0].snapshot, "snapshot-replace");
-        assert.equal(writes[0].selectionId, "entry-77");
+        assert.deepEqual(writes[0].selectionIds, ["entry-77"]);
         assert.equal(writes[0].replaceIndex, 0);
         assert.equal(writes[0].replaceCaption, true);
         assert.equal(writes[1].snapshot, "snapshot-replace");
         assert.equal(writes[1].replaceCaption, true);
+
+        // Add two cars from the parent editor, then deliver obsolete analysis.
+        analysisRunning=false;
+        await browser.evaluate(role === "creator"
+          ? `[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')?.startsWith('Edit media:')).click()`
+          : `[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Edit Media').click()`);
+        await browser.wait(`!!document.querySelector('[role="dialog"] #caption')`);
+        await browser.wait(`!document.querySelector('[role="dialog"] button[aria-label^="Assign number to"]').disabled`);
+        await browser.wait(`[...document.querySelectorAll('[role="dialog"] button')].some(b=>b.textContent.includes('Generate tags') || b.textContent.includes('Analyze video'))`);
+        await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.includes('Generate tags') || b.textContent.includes('Analyze video')).click()`);
+        await browser.wait(`document.querySelector('[role="dialog"]')?.textContent.includes('Adding tags') || document.querySelector('[role="dialog"]')?.textContent.includes('Analyzing video')`);
+        await browser.evaluate(`document.querySelector('[role="dialog"] button[aria-label^="Assign number to"]').click()`);
+        await browser.wait(`!!document.querySelector('button[role="checkbox"]')`);
+        delayPreview=true;
+        await fillInput('input[type="search"]',"8");
+        await browser.wait(`document.querySelector('button[role="checkbox"]')?.textContent.includes('Paddock Works')`);
+        await click('button[role="checkbox"]');
+        await browser.wait(`document.querySelector('[aria-label="Selected vehicles"]')?.textContent.includes('Paddock Works')`);
+        await fillInput('input[type="search"]',"Third team");
+        await browser.wait(`document.querySelector('button[role="checkbox"]')?.textContent.includes('Third team')`);
+        await click('button[role="checkbox"]');
+        await browser.wait(`document.querySelector('[aria-label="Caption preview"]')?.innerText.includes('entry-8 | entry-9')`);
+        await new Promise(resolve=>setTimeout(resolve,850));
+        assert.equal(await browser.evaluate(`document.querySelector('[aria-label="Caption preview"]')?.innerText.includes('Obsolete single-car preview')`),false);
+        await browser.evaluate(`document.querySelector('[role="dialog"] label [role="checkbox"]').click()`);
+        await browser.wait(`[...document.querySelectorAll('[role="dialog"] button')].some(b=>b.textContent.includes('Save assignment') && !b.disabled)`);
+        await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.includes('Save assignment')).click()`);
+        await browser.wait(`document.querySelectorAll('[role="dialog"]').length===1 && !!document.querySelector('#identification-2-number')`);
+        assert.deepEqual(writes[2].selectionIds,["entry-8","entry-9"]);
+        assert.deepEqual(media[0].identification.map(i=>i.number),["77","8","9"]);
+        assert.equal(await browser.evaluate(`document.querySelector('#caption').value`),media[0].caption);
+        // The polling response is deliberately an older state than the confirmed save.
+        lateAnalysis=true;
+        const deadline=Date.now()+10000;
+        while(!lateAnalysisResponses && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,100));
+        assert.ok(lateAnalysisResponses>0,"obsolete analysis actually reached the editor");
+        await new Promise(resolve=>setTimeout(resolve,150));
+        assert.equal(await browser.evaluate(`document.querySelector('#caption').value`),media[0].caption);
+        assert.equal(await browser.evaluate(`document.querySelector('#identification-2-number').value`),"9");
+        await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.trim()==='Close').click()`);
+        await browser.wait(`!document.querySelector('[role="dialog"]')`);
+        analysisRunning=false;lateAnalysis=false;
+        await browser.evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Assign number' && !b.disabled).click()`);
+        await browser.wait(`document.querySelector('[role="dialog"]')?.innerText.includes('3 / 12 vehicles')`);
+        assert.equal(await browser.evaluate(`document.querySelector('[role="dialog"] button[role="checkbox"]').disabled`),true);
+        await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.trim()==='Cancel').click()`);
+        await browser.wait(`!document.querySelector('[role="dialog"]')`);
+        media[0]={...media[0],caption:"Fixture target",identification:Array.from({length:11},(_,i)=>({
+          number:String(100+i),team:"Existing",vehicle:"Car",drivers:"Lineup",source:"manual",
+        }))};
+        await openDashboard(role,width);
+        await click('[aria-label="Assign number to Fixture target"]');
+        await browser.wait(`document.querySelector('[role="dialog"]')?.textContent.includes('11 / 12 vehicles')`);
+        await click('button[role="checkbox"]');
+        await browser.wait(`document.querySelector('[role="dialog"]')?.textContent.includes('12 / 12 vehicles')`);
+        assert.equal(await browser.evaluate(`[...document.querySelectorAll('button[role="checkbox"]')].find(b=>b.textContent.includes('Paddock Works')).disabled`),true);
+        await click('[aria-label="Remove selected #77 Northstar Motorsport"]');
+        await browser.wait(`document.querySelector('[role="dialog"]')?.textContent.includes('11 / 12 vehicles')`);
+        assert.equal(await browser.evaluate(`[...document.querySelectorAll('button[role="checkbox"]')].find(b=>b.textContent.includes('Paddock Works')).disabled`),false);
+        await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.trim()==='Cancel').click()`);
+        await browser.wait(`!document.querySelector('[role="dialog"]')`);
       }
     }
     assert.deepEqual(failures, []);

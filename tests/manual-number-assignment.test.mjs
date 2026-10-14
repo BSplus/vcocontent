@@ -251,7 +251,7 @@ test("manual assignment works without AI or opt-in, retains creator publication 
 });
 test("a provider result already in flight cannot overwrite a newly assigned number/caption",async()=>{
   const e=await album(null,{photoMatchingEnabled:true}),m=await photo(e,{thumbnail:image,url:image});
-  await doc(e,[row()]);setAnalysisQueueTestScope([],[m.id]);
+  await doc(e,[row(),row("8","Second car")]);setAnalysisQueueTestScope([],[m.id]);
   await db.insert(mediaAnalysisJobs).values({mediaId:m.id,fingerprint:itemAnalysisFingerprint(m,true),status:"queued",
     photoWorkflow:true,photoMatchingRevision:e.photoMatchingRevision});
   const entered=new Promise(resolve=>{providerEntered=resolve;});
@@ -260,8 +260,9 @@ test("a provider result already in flight cannot overwrite a newly assigned numb
   try {
     await Promise.race([entered,new Promise((_,reject)=>setTimeout(()=>reject(new Error("Mock provider not reached")),5000).unref())]);
     assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,m.id)))[0].status,"running");
-    const listed=await options(m);assert.equal((await assign(m,listed)).status,200);
+    const listed=await options(m);assert.equal((await request(m.id,{snapshot:listed.snapshot,selectionIds:listed.options.map(o=>o.id)})).status,200);
     const saved=await storage.getMediaItem(m.id);release();await worker;
+    assert.equal(saved.identification.length,2);
     const current=await storage.getMediaItem(m.id);
     assert.deepEqual(current.identification,saved.identification);assert.equal(current.caption,saved.caption);
     assert.equal(current.captionSource,"manual");assert.equal(current.identificationManual,true);
@@ -269,12 +270,12 @@ test("a provider result already in flight cannot overwrite a newly assigned numb
   } finally {release();await worker;providerEntered=undefined;releaseProvider=undefined;}
 });
 test("queued/stale photo worker and later reference rematching cannot overwrite manual caption/identification",async()=>{
-  const e=await album(null,{photoMatchingEnabled:true}),m=await photo(e);await doc(e,[row()]);
+  const e=await album(null,{photoMatchingEnabled:true}),m=await photo(e);await doc(e,[row(),row("8","Second car")]);
   setAnalysisQueueTestScope([], [m.id]);
   await db.insert(mediaAnalysisJobs).values({mediaId:m.id,fingerprint:itemAnalysisFingerprint(m,true),status:"queued",
     referenceOnly:true,recognition:[{...ident("007"),source:"visual"}],generatedTags:["Day"],photoWorkflow:true,
     photoMatchingRevision:e.photoMatchingRevision});
-  const listed=await options(m);assert.equal((await assign(m,listed)).status,200);
+  const listed=await options(m);assert.equal((await request(m.id,{snapshot:listed.snapshot,selectionIds:listed.options.map(o=>o.id)})).status,200);
   const assigned=await storage.getMediaItem(m.id);
   assert.equal(await drainAnalysisQueue(),true);
   let current=await storage.getMediaItem(m.id);
@@ -298,4 +299,89 @@ test("manual resolver ignores irrelevant rows and has stable explicit conflict i
   const first=manualNumberOptions(docs,null,"Race"),second=manualNumberOptions(docs,null,"Race");
   assert.deepEqual(first,second);assert.equal(first.length,2);
   assert.deepEqual(manualNumberOptions([{...docs[0],session:"Final"}],null,"Race"),[]);
+});
+
+test("multiple assignments share preview/save, preserve existing vehicles and reopen for photos/videos and both roles",async()=>{
+  for (const role of ["admin","owner"]) for (const type of ["image","video"]) {
+    const e=await album(role==="owner"?owner.id:null),keep=ident("99");
+    const m=await photo(e,{type,identification:[keep]});
+    await doc(e,[row("7","A"),row("8","B",{car:"GT",drivers:"B lineup",manufacturer:"B maker"})]);
+    const listed=await options(m,role);
+    const body={snapshot:listed.snapshot,selectionIds:listed.options.map(o=>o.id)};
+    const preview=await request(m.id,body,role,"number-assignment-preview");
+    assert.equal(preview.status,200);
+    const proposed=await preview.json();
+    assert.deepEqual((await storage.getMediaItem(m.id)).identification,[keep],"preview never mutates");
+    const response=await request(m.id,body,role);
+    assert.equal(response.status,200);
+    const saved=await response.json();
+    assert.equal(saved.caption,proposed.caption);
+    assert.deepEqual(saved.identification,proposed.identification);
+    assert.deepEqual(saved.identification[0],keep);
+    assert.equal(saved.identification[2].drivers,"B lineup");
+    assert.equal(saved.identification[2].manufacturer,"B maker");
+    assert.match(saved.caption,/#99 Keep team.*#7 A.*#8 B/);
+    const reopened=await options(m,role);
+    assert.deepEqual(reopened.identification,saved.identification);
+    assert.equal(reopened.caption,saved.caption);
+    assert.equal((await storage.getMediaItems(e.id))[0].caption,saved.caption);
+    assert.deepEqual(saved.tags,m.tags);assert.equal(saved.photographer,m.photographer);
+  }
+});
+test("duplicate explicit IDs are idempotent, conflicting normalized alternatives and existing numbers reject atomically",async()=>{
+  const e=await album(),m=await photo(e);
+  await doc(e,[row("7","A"),row("007","B"),row("8","C")]);
+  let listed=await options(m);
+  const conflict=listed.options.filter(o=>Number(o.number)===7).map(o=>o.id);
+  for (const suffix of ["number-assignment-preview","assign-number"]) {
+    assert.equal((await request(m.id,{snapshot:listed.snapshot,selectionIds:conflict}, "admin",suffix)).status,409);
+    assert.deepEqual(await storage.getMediaItem(m.id),m);
+  }
+  const response=await request(m.id,{snapshot:listed.snapshot,selectionIds:[conflict[0],conflict[0]]});
+  assert.equal(response.status,200);assert.equal((await response.json()).identification.length,1);
+  const before=await storage.getMediaItem(m.id);
+  listed=await options(m);
+  assert.equal((await request(m.id,{snapshot:listed.snapshot,selectionIds:[conflict[1],listed.options.find(o=>o.number==="8").id],replaceCaption:true})).status,409);
+  assert.deepEqual(await storage.getMediaItem(m.id),before);
+});
+test("twelve vehicles is valid, thirteen rejects without truncation; replacement is exactly one",async()=>{
+  const e=await album(),m=await photo(e,{identification:Array.from({length:10},(_,i)=>ident(String(100+i)))});
+  await doc(e,[row("7"),row("8"),row("9")]);let listed=await options(m);
+  const ids=listed.options.map(o=>o.id),before=await storage.getMediaItem(m.id);
+  assert.equal((await request(m.id,{snapshot:listed.snapshot,selectionIds:ids})).status,409);
+  assert.deepEqual(await storage.getMediaItem(m.id),before);
+  const response=await request(m.id,{snapshot:listed.snapshot,selectionIds:ids.slice(0,2)});
+  assert.equal(response.status,200);assert.equal((await response.json()).identification.length,12);
+  listed=await options(m);
+  assert.equal((await request(m.id,{snapshot:listed.snapshot,selectionIds:[ids[2]],replaceCaption:true})).status,409);
+  const full=await storage.getMediaItem(m.id);
+  listed=await options(m,"admin","number-options?replaceIndex=0");
+  assert.equal((await request(m.id,{snapshot:listed.snapshot,selectionIds:ids.slice(0,2),replaceIndex:0,replaceCaption:true})).status,400);
+  assert.deepEqual(await storage.getMediaItem(m.id),full);
+  const saved=await (await request(m.id,{snapshot:listed.snapshot,selectionIds:[ids[2]],replaceIndex:0,replaceCaption:true})).json();
+  assert.deepEqual(saved.identification.slice(1),full.identification.slice(1));
+  assert.equal(saved.identification[0].number,"9");
+});
+test("invalid/stale multi selections, caption protection and permissions cannot partially commit",async()=>{
+  const e=await album(owner.id),m=await photo(e,{caption:"Protected",captionSource:"manual"});
+  const d=await doc(e,[row("7"),row("8")]);
+  const listed=await options(m,"owner");
+  const body={snapshot:listed.snapshot,selectionIds:listed.options.map(o=>o.id),replaceCaption:true};
+  for (const [extra,role,status] of [
+    [{selectionIds:[body.selectionIds[0],"unknown"]},"owner",409],
+    [{selectionIds:Array(13).fill(body.selectionIds[0])},"owner",400],
+    [{replaceCaption:false},"owner",409],
+    [{},"other",403],[{},"anonymous",401],
+  ]) {
+    assert.equal((await request(m.id,{...body,...extra},role)).status,status);
+    assert.deepEqual(await storage.getMediaItem(m.id),m);
+  }
+  await db.update(referenceDocuments).set({rows:[row("7","Changed"),row("8")]}).where(eq(referenceDocuments.id,d.id));
+  assert.equal((await request(m.id,body,"owner")).status,409);
+  assert.deepEqual(await storage.getMediaItem(m.id),m);
+  const fresh=await options(m,"owner");
+  await db.update(mediaItems).set({caption:"Concurrent edit"}).where(eq(mediaItems.id,m.id));
+  const edited=await storage.getMediaItem(m.id);
+  assert.equal((await request(m.id,{...body,snapshot:fresh.snapshot,selectionIds:fresh.options.map(o=>o.id)},"owner")).status,409);
+  assert.deepEqual(await storage.getMediaItem(m.id),edited);
 });

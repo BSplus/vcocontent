@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import type { EntryRow, Identification } from "@shared/schema";
 import { normalizedNumber, referenceRowApplies, referenceRowPriority, type MatchDocument } from "./reference-matching";
+import { vehicleLimit } from "@shared/manual-number-assignment";
 
 export const assignmentHash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const fields = ["team", "car", "drivers", "manufacturer", "racingClass", "discipline"] as const;
@@ -58,11 +59,20 @@ export function manualNumberOptions(documents: NumberDocument[], session: string
   });
 }
 
-export function assignedIdentifications(current: Identification[], selected: Identification, replaceIndex?: number) {
+export function assignedIdentifications(current: Identification[], selection: Identification | Identification[], replaceIndex?: number) {
+  const selected = Array.isArray(selection) ? selection : [selection];
+  if (!selected.length) throw new Error("Choose at least one vehicle.");
+  const numbers = selected.map(row => normalizedNumber(row.number));
+  if (new Set(numbers).size !== numbers.length)
+    throw new Error("Choose only one reference for each race number.");
   if (replaceIndex !== undefined) {
+    if (selected.length !== 1) throw new Error("Replacement requires exactly one vehicle.");
     if (replaceIndex < 0 || replaceIndex >= current.length) throw new Error("The vehicle to correct no longer exists.");
-    return current.map((row,index) => index === replaceIndex ? selected : row);
   }
-  if (current.length >= 12) throw new Error("At most 12 vehicles can be assigned. Choose a vehicle to correct.");
-  return [...current,selected];
+  if (current.some((row,index) => index !== replaceIndex && row.number && numbers.includes(normalizedNumber(row.number))))
+    throw new Error("This race number is already assigned. Choose that vehicle to replace it.");
+  const result = replaceIndex === undefined ? [...current,...selected] :
+    current.map((row,index) => index === replaceIndex ? selected[0] : row);
+  if (result.length > vehicleLimit) throw new Error("At most 12 vehicles can be assigned. Remove a selection or choose a vehicle to replace.");
+  return result;
 }
