@@ -80,6 +80,33 @@ test("full-image and source-crop make agreement works without numbers",async()=>
   assert.equal(v.manufacturer,"Porsche");assert.equal(v.manufacturerEvidence,VEHICLE_MAKE_POLICY);
   assert.equal(v.number,"");
 });
+test("one clear Ferrari factory logo is sufficient in either view without a second positive verdict",async()=>{
+  for(const logoView of ["full","crop"]){
+    const data=audit("","",false);
+    const reading=logoView==="full"?data.fullImageReadings[0]:data.vehicleReadings[0];
+    Object.assign(reading,{manufacturer:"Ferrari",manufacturerConfident:true,manufacturerBasis:"factory_logo"});
+    const [v]=await verify(data);
+    assert.equal(v.manufacturer,"Ferrari");assert.equal(v.manufacturerEvidence,VEHICLE_MAKE_POLICY);
+    assert.ok(matchedPhotoCaption(event,null,[v]).caption.includes("Vehicle make: Ferrari"));
+  }
+});
+test("a clear factory logo outranks a shape suggestion, without certifying mismatching race numbers",async()=>{
+  const data=audit("Ferrari","Porsche");
+  Object.assign(data.fullImageReadings[0],{number:"107",manufacturerBasis:"factory_logo"});
+  Object.assign(data.vehicleReadings[0],{number:"07",manufacturerBasis:"shape"});
+  const [v]=await verify(data,[car({number:"107",numberReadable:true})]);
+  assert.equal(v.manufacturer,"Ferrari");assert.equal(v.manufacturerEvidence,VEHICLE_MAKE_POLICY);
+  assert.equal(v.number,"");assert.equal(v.numberEvidence,undefined);
+});
+test("incompatible factory logos, equipment names and explicitly uncertain/malformed bases do not certify a make",async()=>{
+  for(const [full,crop,basis] of [["Ferrari","Porsche","factory_logo"],["MOZA","MOZA","factory_logo"],
+    ["Ferrari","Ferrari","uncertain"],["Ferrari","Ferrari","sponsor_logo"]]){
+    const data=audit(full,crop);
+    data.fullImageReadings[0].manufacturerBasis=basis;data.vehicleReadings[0].manufacturerBasis=basis;
+    const [v]=await verify(data);
+    assert.equal(v.manufacturerEvidence,undefined);
+  }
+});
 test("missing/uncertain/disagreeing manufacturer fields do not certify makes",async()=>{
   for(const data of [audit("Porsche","Ferrari"),audit("Porsche","Porsche",false),audit("MOZA","MOZA"),
     {fullImageReadings:[{number:"",vehicleRegion:region}],vehicleReadings:[{vehicleIndex:0,number:""}]}]){

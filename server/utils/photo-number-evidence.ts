@@ -34,6 +34,7 @@ const readNumber=z.union([z.string().regex(/^\d{1,4}$/),z.literal("")]);
 const makeFields={
   manufacturer:z.string().max(160).optional().catch(undefined),
   manufacturerConfident:z.boolean().optional().catch(undefined),
+  manufacturerBasis:z.enum(["factory_logo","shape","uncertain"]).optional().catch("uncertain"),
 };
 const readings=z.object({
   // One reading per physical car, not a photo-global number set.
@@ -101,11 +102,12 @@ Dashboard gear/speed/timing/position displays, headlamp stripes, sponsor/logo le
 Where a labelled ORIGINAL panel crop is supplied, inspect it separately and record panelReadings for that index. Frame edges and paper/background outlines are not printed zeros. Verify the complete printed number from these actual pixels and the car context, not another vehicle. No guessed or hidden digits.
 ${crops.some(c=>c.panel)?"Only list panelReadings for explicitly labelled Original panel crop inputs.":"NO original panel crops are supplied in this request. panelReadings MUST be empty or omitted; a panel seen inside a vehicle crop is NOT a supplied panel crop. Do not invent additional inputs."}
 Preserve every printed leading zero. Never infer numbers from team/model/event knowledge. No model, class, team, driver or person claims. When uncertain leave empty.${brandingIndices.length?videoBrandingPrompt(brandingIndices):""}${makeIndices.length?`
-For manufacturer checking, additionally include manufacturer:string and manufacturerConfident:boolean in each fullImageReadings and vehicleReadings record.
+For manufacturer checking, additionally include manufacturer:string, manufacturerConfident:boolean and manufacturerBasis:"factory_logo"|"shape"|"uncertain" in each fullImageReadings and vehicleReadings record.
 Independently identify ONLY the car manufacturer/make in full image and the same-car source crop, not an exact model.
-A clear factory badge/logo OR a clearly distinctive recognizable vehicle shape is allowed. A generic silhouette or unreadable logo is insufficient.
+A clearly readable factory badge/logo on the car (for example the Ferrari shield) is sufficient by itself: report manufacturerConfident:true, manufacturerBasis:"factory_logo" for the view where it is clear. The other view does not need to confirm it.
+A clearly distinctive recognizable vehicle shape is also allowed; report manufacturerBasis:"shape". A generic silhouette or unreadable logo is insufficient.
 Never treat a sponsor, retailer or equipment brand (e.g. MOZA, NordVPN) as the car manufacturer. Do not copy a suggested make between views.
-Use manufacturer:"", manufacturerConfident:false when uncertain. This is independent of a readable race number.
+Use manufacturer:"", manufacturerConfident:false, manufacturerBasis:"uncertain" when uncertain. Do not require a readable race number or infer an exact model.
 Only manufacturer crop indices ${makeIndices.join(", ")} need these extra fields.`:""}`},
           {role:"user",content:[
             {type:"text",text:"Full image"},{type:"image_url",image_url:{url:image,detail:"high"}},
@@ -142,10 +144,21 @@ Only manufacturer crop indices ${makeIndices.join(", ")} need these extra fields
           const visible=confirmedVisibleBrands(raw.branding,evidence.fullImageReadings.indexOf(r),index);
           if(visible.length) brands.set(index,visible);
         }
-        if(makeIndices.includes(index) && !sharedAnchor && local.length===1 &&
-          local[0].number===r.number && r.manufacturerConfident && local[0].manufacturerConfident){
-          const fullMake=canonicalVehicleMake(r.manufacturer),cropMake=canonicalVehicleMake(local[0].manufacturer);
-          if(fullMake && fullMake===cropMake)makes.set(index,fullMake);
+        if(makeIndices.includes(index) && !sharedAnchor && local.length<=1){
+          const crop=local[0];
+          const fullMake=r.manufacturerConfident?canonicalVehicleMake(r.manufacturer):undefined;
+          const cropMake=crop?.manufacturerConfident?canonicalVehicleMake(crop.manufacturer):undefined;
+          const fullLogo=r.manufacturerBasis==="factory_logo"?fullMake:undefined;
+          const cropLogo=crop?.manufacturerBasis==="factory_logo"?cropMake:undefined;
+          // A readable factory badge is enough; no second positive verdict or
+          // number agreement is needed. Two incompatible factory badges remain
+          // ambiguous. Shape-only guesses must still agree.
+          if(fullLogo || cropLogo){
+            if(!fullLogo || !cropLogo || fullLogo===cropLogo)makes.set(index,(fullLogo || cropLogo)!);
+          }else if(fullMake && fullMake===cropMake &&
+            r.manufacturerBasis!=="uncertain" && crop?.manufacturerBasis!=="uncertain"){
+            makes.set(index,fullMake);
+          }
         }
         // Match by geometry BEFORE looking at the number. Never choose another
         // car because it happens to carry the requested digits.

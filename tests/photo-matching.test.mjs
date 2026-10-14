@@ -87,6 +87,11 @@ test.before(async()=>{
     calls++;entered?.();if(gate)await gate;
     if(providerFailure)throw new Error("fixture-private-provider-payload");
     const structured=body.messages[0].content.includes("vehicles:");
+    if(structured&&makeMode){
+      assert.ok(body.messages[0].content.includes("vehicleRegion:number[]|null"),
+        "photo JSON template includes the car location needed for make verification");
+      assert.ok(body.messages[0].content.includes("Localize the visible car even if its number is unreadable"));
+    }
     if(invalidOutput)return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:"{invalid"}}]}),
       {headers:{"Content-Type":"application/json"}});
     return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:structured

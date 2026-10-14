@@ -58,3 +58,15 @@ Eventvorgaben überschreiben. Die Eventangabe ist Kontext für ein ausdrücklich
 einheitliches Starterfeld, kein zusätzlicher Matchingbeweis. Visuelle Hersteller
 von Sponsoren trennen; unklare Erkennung lässt den Standardkontext stehen.
 Geschützte Captions und unabhängige Safety-/Publikationsregeln bleiben erhalten.
+
+Der Betreiber betont: „Setze die Hürden nicht zu hoch. Wir wollen ja, dass es
+funktioniert. Man wird nicht zusätzlich bestätigen können, ein Ferrari Logo
+sollte reichen.“
+
+**Why:** Der Betreiber hat diese Anforderung nochmals ausdrücklich wiederholt.
+
+**How to apply:** Ein klares Herstellerlogo am Fahrzeug genügt automatisch für
+die Herstellerangabe; keine zusätzliche Nutzerbestätigung und keine zweite
+positive Herstellererkennung verlangen. Unklare Angaben weglassen, nicht Upload
+oder Veröffentlichung blockieren. Herstellernamen aus Logos nicht mit Sponsor-
+oder Ausrüstungsmarken verwechseln; Nummern-/Entry-List-Sicherheiten bleiben getrennt.

@@ -44,6 +44,7 @@ Frames without visible evidence still have their own index, tags:[] and vehicles
 Allowed tags: ${controlledTags.join(", ")}. At most 12 vehicles and 12 tags per frame.
 Numbers must be completely legible 1-4 digit race numbers, not sponsors or partially obscured numbers. Preserve printed leading zeros; no # prefix. Unknown number is "", never null or a numeric JSON value.
 Include vehicleRegion:[left,top,width,height], a tight whole-car rectangle normalized 0..1000 in full-frame coordinates; use null for uncertain geometry.
+For partially visible cars, bound only the visible portion; do not invent off-image geometry.
 Team requires readable team branding. Class requires readable class marking; shape alone never supports GT3/GT4.
 Unknown fields are empty. No drivers, faces, helmet identities, inferred model/manufacturer, or guesses.
 Stock cars are not GT cars. Use Race Car if specific type is uncertain.

@@ -32,11 +32,19 @@ optionally assesses manufacturer information. Clear factory logos/badges or
 distinctive recognizable vehicle shapes are allowed; generic silhouettes,
 equipment brands, sponsor logos and model guesses are not.
 
-Full view and uniquely associated source crop must independently report a
-confident, agreeing known vehicle make. Missing/malformed optional fields,
-uncertain answers, ambiguous geometry and disagreements cannot mint make
-evidence. Number/entry matching keeps its separate checks. Source-bound video
-checkpoints retain this evidence; legacy/stale frames cannot claim it.
+A clear, readable factory logo on the car is sufficient in either the full view
+or its source crop. No second positive manufacturer reading, readable race
+number, external lookup or user confirmation is required. A clear factory badge
+takes priority over a different shape-only suggestion. The optional audit field
+manufacturerBasis distinguishes factory_logo, shape and uncertain; it cannot
+turn a sponsor/equipment logo into a car manufacturer.
+
+Shape-only recognition still requires agreeing confident readings. Car
+association remains automatic; ambiguous geometry or two conflicting factory
+badges leave the make out rather than block the upload. Partial cars can supply
+manufacturer evidence from their visible portion. Number/entry matching keeps
+its separate checks. Source-bound video checkpoints retain this evidence;
+legacy/stale frames cannot claim it.
 
 This shares the existing audit request and numeric/video request budgets.
 There is no new model/provider verification service or make-specific web call.
@@ -82,9 +90,58 @@ use existing independent media safety review.
 - Isolated desktop and 390px mobile browser fixture passed for create payload,
   edit prefill, trimming, clear-to-null, max-length errors, cancel/reopen and no
   horizontal overflow. API requests were mocked; no real API mutations.
-- Recognition responses were mocked. Actual provider accuracy for logos/body
-  shapes has not been live-validated for this addition; tests do not guarantee
-  every car is recognized correctly.
+- Regression recognition responses were mocked. The later live check below adds
+  two positive real-provider examples, not broad manufacturer-accuracy evidence;
+  neither set of checks guarantees every car is recognized correctly.
 
-No paid live AI test calls, Production changes, automatic publishing or historical
-retagging were performed for this feature.
+The initial implementation used no paid live calls. A subsequent operator-approved
+live Development check is recorded below. Production, publishing and historical
+retagging remain unchanged.
+
+## Authorized live Development check — 14 October 2026
+
+Two frozen original sources were visually inspected before testing:
+
+- Photo: `generated-artifacts/number-diagnosis/1216.jpg`, with visible Ferrari
+  factory badging.
+- Video: `generated-artifacts/video-branding/1219-frame-0.jpg`, the side-view
+  Porsche race car from the existing Sebring “Kinetic Move” sample. The frozen
+  JPEG hash matched its saved source-sampling metadata. The car crop excludes
+  the broadcast advertising banner.
+
+The application’s real photo recognizer and video frame/bounded audit pipeline
+were called using the existing managed provider. No gallery was created, uploaded,
+changed or reanalysed. No database writes or Production access/settings changes.
+Caption context was explicitly synthetic, without an entry list or preset vehicle.
+
+Initial photo result: first pass identified Ferrari but omitted vehicle geometry,
+so the independent audit did not run and the make was correctly withheld. The
+photo prompt’s JSON template omitted vehicleRegion while its prose treated it
+as optional. The focused correction includes a nullable location in the template
+and explicitly requests localization even without a readable number. Parser and
+independent verification rules were not relaxed.
+
+Only the same photo was rerun. Final results:
+
+| Source | Independently checked make | Generated no-list caption ending |
+| --- | --- | --- |
+| Photo | Ferrari | `Vehicle make: Ferrari` |
+| Video frame | Porsche | `Vehicle make: Porsche` |
+
+Both have current `same-car-make-v1` evidence. Exact models, teams and driver
+names were not invented; checked number readings do not enter these no-list
+captions. The video result has a source-bound verified checkpoint.
+
+Across the initial check and photo-only recheck: **6 real provider requests**,
+all HTTP 200, approximately **28.9 seconds combined request time**. Reported
+usage total: **17,684 prompt tokens and 1,795 completion tokens**. Actual billing
+cost was not available; these are not dollar estimates.
+
+Sanitized source hashes, request status/usage, observations and generated
+captions are in `generated-artifacts/vehicle-live/results.json` and
+`generated-artifacts/vehicle-live/photo-recheck.json`. No credentials, request
+headers/URLs or raw provider responses were logged.
+
+These two positive live samples establish that both paths can work end to end
+through recognition/audit/caption generation. They do not measure overall
+manufacturer accuracy or constitute a live upload/persistence or Production test.
