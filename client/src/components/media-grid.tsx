@@ -313,7 +313,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="pointer-events-auto bg-black/80 hover:bg-black h-12 w-12"
+                    className="pointer-events-auto bg-black/80 text-foreground hover:bg-black hover:text-foreground h-12 w-12"
                     aria-label="Previous media item"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -329,7 +329,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="pointer-events-auto bg-black/80 hover:bg-black h-12 w-12"
+                    className="pointer-events-auto bg-black/80 text-foreground hover:bg-black hover:text-foreground h-12 w-12"
                     aria-label="Next media item"
                     onClick={(e) => {
                       e.stopPropagation();

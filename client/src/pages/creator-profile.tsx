@@ -62,7 +62,7 @@ export default function CreatorProfile() {
       <div className="relative -mx-5 h-[32vh] min-h-56 max-h-[30rem] overflow-hidden bg-card sm:-mx-7 lg:-mx-10">
         {creator.coverImage ? <img src={creator.coverImage} alt="" className="h-full w-full object-cover" /> : <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_78%_34%,hsl(var(--primary)/.28),transparent_42%),linear-gradient(110deg,hsl(var(--card)),hsl(var(--secondary)))]" />}
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/15 to-black/10" />
-        <div className="absolute left-5 top-5 sm:left-7 lg:left-10"><Button variant="outline" asChild className="border-white/30 bg-black/35 text-white backdrop-blur hover:bg-black/60"><Link href="/"><ArrowLeft className="mr-2 h-4 w-4" />Archive</Link></Button></div>
+        <div className="absolute left-5 top-5 sm:left-7 lg:left-10"><Button variant="outline" asChild className="border-white/30 bg-black/75 text-white backdrop-blur hover:bg-black/85 hover:text-white"><Link href="/"><ArrowLeft className="mr-2 h-4 w-4" />Archive</Link></Button></div>
         <div className="absolute bottom-5 right-5 sm:right-7 lg:right-10"><ShareMenu url={window.location.href} title={displayName} /></div>
       </div>
       <section className="relative -mt-12 flex flex-col gap-5 border-b border-border pb-8 sm:-mt-16 sm:flex-row sm:items-end sm:gap-7">

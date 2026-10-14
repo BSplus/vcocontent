@@ -142,7 +142,7 @@ export default function MainNavigation() {
             ) : (
               <>
                 {!user.isCreator && !user.isAdmin && user.creatorStatus !== "approved" && (
-                  <Button variant="outline" asChild className="h-10 border-accent/60 text-accent hover:bg-accent/10">
+                  <Button variant="outline" asChild className="h-10 border-accent/60 text-accent hover:bg-accent/10 hover:text-accent">
                     <Link href="/creator/apply">Become a creator</Link>
                   </Button>
                 )}

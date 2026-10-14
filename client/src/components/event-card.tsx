@@ -99,7 +99,7 @@ export default function EventCard({ event }: EventCardProps) {
             <Link href={galleryUrl}>View gallery <ArrowUpRight className="ml-2 h-4 w-4" /></Link>
           </Button>
           {canManageMedia && (
-            <Button asChild variant="outline" className="min-h-10 w-full border-accent/60 text-accent hover:bg-accent/10">
+            <Button asChild variant="outline" className="min-h-10 w-full border-accent/60 text-accent hover:bg-accent/10 hover:text-accent">
               <Link href={`${galleryUrl}?tab=media`}><ImagePlus className="mr-2 h-4 w-4" />Manage media</Link>
             </Button>
           )}

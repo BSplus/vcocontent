@@ -110,7 +110,7 @@ export default function HomePage() {
                 <Button asChild className="vco-button min-h-12 bg-primary px-5 text-primary-foreground hover:bg-primary/90">
                   <Link href="/search"><Search className="mr-2 h-4 w-4" />Search media<ArrowRight className="ml-3 h-4 w-4" /></Link>
                 </Button>
-                <Button asChild variant="outline" className="min-h-12 border-foreground/40 bg-background/60 px-5 hover:bg-background/90">
+                <Button asChild variant="outline" className="min-h-12 border-foreground/40 bg-background/60 px-5 text-foreground hover:bg-background/90 hover:text-foreground">
                   <Link href="/current-events">Browse recent events</Link>
                 </Button>
               </div>
@@ -127,7 +127,7 @@ export default function HomePage() {
                 <p className="mb-1 text-xs font-bold uppercase tracking-[0.2em] text-primary">Fresh from the track</p>
                 <h2 id="recent-heading" className="flex items-center gap-3 text-2xl font-bold tracking-wide sm:text-3xl"><Trophy className="h-6 w-6 text-primary" />Recent events</h2>
               </div>
-              <Button asChild variant="ghost" className="text-foreground/80 hover:text-primary"><Link href="/current-events">All recent events<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+              <Button asChild variant="ghost" className="text-foreground/80 hover:bg-primary/10 hover:text-primary"><Link href="/current-events">All recent events<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
             </div>
             {eventsLoading ? (
               <div role="status" aria-label="Loading Recent events" className="mobile-gallery-row grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 4 }, (_, i) => <div key={i} className="mobile-gallery-card overflow-hidden rounded-lg border border-foreground/10 bg-card/60"><div className="aspect-[16/10] animate-pulse bg-foreground/10" /><div className="space-y-3 p-5"><div className="h-5 w-3/4 animate-pulse rounded bg-foreground/10" /><div className="h-4 w-1/2 animate-pulse rounded bg-foreground/10" /></div></div>)}</div>
@@ -153,7 +153,7 @@ export default function HomePage() {
                   <p className="mb-1 text-xs font-bold uppercase tracking-[0.2em] text-accent">From the community</p>
                   <h2 id="creator-heading" className="flex items-center gap-3 text-2xl font-bold tracking-wide sm:text-3xl"><UserRound className="h-6 w-6 text-accent" />Creator events</h2>
                 </div>
-                <Button asChild variant="ghost" className="text-foreground/80 hover:text-accent"><Link href="/creator-events">All creator events<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+                <Button asChild variant="ghost" className="text-foreground/80 hover:bg-accent/10 hover:text-accent"><Link href="/creator-events">All creator events<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
               </div>
                <MobileGalleryRow label="Creator events" className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">{creatorRecent.map((event) => <EventCard key={event.id} event={event} />)}</MobileGalleryRow>
             </section>
