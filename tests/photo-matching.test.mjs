@@ -337,6 +337,27 @@ test("worker saves safe reference information beside unknown cars without new pr
   assert.equal(calls,before);assert.equal(auditCalls,audits);
 });
 
+test("automatic reconciliation rematches checked single-word team branding and refreshes saved captions",async()=>{
+  const e=await album(false);
+  await storage.replaceEventEntries(e.id,[{...entry,team:"MAHLE RACING TEAM",car:"BMW M4 GT3"}]);
+  const p=await photo(e,{caption:"fixture-photo.jpg",captionSource:"nextcloud_placeholder"});scope([p]);
+  const recognition=[{...visible,numberEvidence:"vehicle-crop-v2",
+    referenceConstraints:[{team:"MAHLE",vehicle:"BMW M4 GT3",manufacturer:"BMW"}]}];
+  await db.insert(mediaAnalysisJobs).values({mediaId:p.id,fingerprint:itemAnalysisFingerprint(p,true),
+    status:"completed",recognition,generatedTags:["Day"],referenceRevision:0,photoWorkflow:false});
+  const before=calls;
+  await reconcileAutomaticPhotos();
+  const saved=await settled(p.id);
+  assert.equal(calls,before,"Local reference rematching must not repeat paid recognition");
+  assert.equal(saved.photoMatchStatus,"matched");
+  assert.equal(saved.captionSource,"photo_automatic");
+  assert.match(saved.caption,/#007 MAHLE RACING TEAM — BMW M4 GT3 — Registered One; Registered Two/);
+  const status=await (await api(`/api/media/${p.id}/analysis`)).json();
+  assert.equal(status.status,"completed");assert.equal(status.caption,saved.caption);
+  const publicPhoto=await (await api(`/api/media/${p.id}`)).json();
+  assert.equal(publicPhoto.caption,saved.caption);
+});
+
 test("bounded requests and provider errors stay visible without revealing provider payloads",async()=>{
   const e=await album();const p=await photo(e,{caption:"Protected editorial text"});scope([p]);
   assert.equal((await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:Array(51).fill(p.id),confirmed:true})).status,400);

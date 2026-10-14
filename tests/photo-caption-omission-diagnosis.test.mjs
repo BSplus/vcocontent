@@ -121,3 +121,38 @@ test("session filtering can block matching without discarding the supported numb
   assert.equal(result[0].number, "91");
   assert.equal(result[0].source, "visual");
 });
+
+test("checked MAHLE and EMM numbers accept exact unique one-word team cores", () => {
+  const docs = [{ ...document, rows: [
+    row("110", "MAHLE RACING TEAM", "BMW M4 GT3"),
+    row("115", "EMM Esports", "Chevrolet Corvette Z06 GT3.R"),
+  ] }];
+  for (const [number, team, manufacturer] of [["110", "MAHLE", "BMW"], ["115", "EMM", ""]]) {
+    const input = observed(number, { referenceConstraints: [{ team, manufacturer, vehicle: "Race Car" }] });
+    const identified = matchReferences([input], docs, null, event.title, true, true);
+    assert.equal(identified[0].source, "reference");
+    assert.match(matchedPhotoCaption(event, null, identified).caption, new RegExp(`#${number} `));
+    assert.equal(identified[0].drivers, "Synthetic registered lineup");
+  }
+});
+
+test("one-word cores do not allow fragments, sponsors, conflicting spellings or unchecked numbers", () => {
+  const docs = [{ ...document, rows: [row("110", "MAHLE RACING TEAM", "BMW M4 GT3")] }];
+  const match = (team, extra = {}, documents = docs) => matchReferences([observed("110", {
+    referenceConstraints: [{ team, manufacturer: "BMW", vehicle: "" }], ...extra,
+  })], documents, null, event.title, true, true)[0];
+  for (const hint of ["MAH", "MA", "M", "Mobil 1", "MAHLE Junior", "Different Team"])
+    assert.equal(match(hint).source, "visual", hint);
+  assert.equal(match("MAHLE", { numberEvidence: undefined }).number, "");
+  assert.equal(match("MAHLE", { referenceConstraints: [{ team: "MAHLE", manufacturer: "Ferrari", vehicle: "" }] }).source, "visual");
+  assert.equal(match("MAHLE", {}, [{ ...docs[0], rows: [...docs[0].rows, row("111", "MAHLE Esports", "BMW M4 GT3")] }]).source, "visual");
+  assert.equal(match("MAHLE", {}, [{ ...docs[0], session: "Race" }]).source, "visual");
+});
+
+test("manufacturer badge AMG is not a competing team on a registered Mercedes-AMG", () => {
+  const docs = [{ ...document, rows: [row("121", "Registered Team", "Mercedes-AMG GT3 2020")] }];
+  const input = observed("121", { referenceConstraints: [{ team: "AMG", manufacturer: "Mercedes", vehicle: "GT race car" }] });
+  assert.equal(matchReferences([input], docs, null, event.title, true, true)[0].source, "reference");
+  const differentCar = [{ ...docs[0], rows: [row("121", "Registered Team", "BMW M4 GT3")] }];
+  assert.equal(matchReferences([input], differentCar, null, event.title, true, true)[0].source, "visual");
+});

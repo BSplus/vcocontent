@@ -74,3 +74,18 @@ reenqueuing the stock would exceed the agreed no-global-reanalysis boundary.
 
 **How to apply:** treat mismatched historical proof as unknown during selected
 rematching; acquire fresh proof through explicit selected-photo reanalysis.
+
+Distinguish a genuine identity contradiction from a literal registered team core
+or manufacturer badge. Do not respond to false vetoes by dropping all weak-reader
+constraints or accepting arbitrary sponsor aliases.
+
+**Why:** Reviewed complete numbers were correctly recognized but omitted from
+captions because MAHLE/EMM were compared to organisationally suffixed team names,
+and AMG branding was treated as a competing team. Other reviewed cases had
+genuinely incorrect weak model/team hints, so one global exemption would hide
+different failure causes.
+
+**How to apply:** validate bounded exact-name changes against checked source
+pixels and both positive and conflict controls. Report local rematching gains
+separately from recognition accuracy, and never silently requeue completed live
+photos solely because a matching rule changed.

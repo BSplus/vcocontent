@@ -18,12 +18,17 @@ export function photoTeamHintConflict(hint: string, entry: EntryRow, applicableT
   const car = normalize(entry.car), manufacturer = normalize(entry.manufacturer || "");
   if (brands.has(visible) && (manufacturer === visible || car === visible || car.startsWith(`${visible} `)))
     return false;
+  // AMG is a literal manufacturer's badge, but only a registered Mercedes-AMG
+  // supplies that context. It cannot excuse branding on another car model.
+  if (visible === "amg" && /^mercedes amg(?: |$)/.test(car)) return false;
 
   // Not substring/fuzzy matching: remove only terminal organisational suffixes.
-  // Require a complete >=2-word core and a single spelling in the applicable
-  // event/session reference set. Similar teams (e.g. Junior) remain conflicts.
+  // A complete distinctive one-word name (MAHLE, EMM) is sufficient; requiring
+  // two words rejects literal registered branding. Tiny fragments remain unknown.
+  // Require one spelling in the applicable event/session reference set.
+  // Similar teams (e.g. Junior), sponsor strings and fuzzy aliases stay conflicts.
   const core = teamCore(entry.team);
-  if (core.split(" ").length >= 2 && teamCore(hint) === core) {
+  if (core.replace(/\s/g, "").length >= 3 && /[a-z]/.test(core) && teamCore(hint) === core) {
     const candidates = new Set(applicableTeams.filter(team => teamCore(team) === core).map(normalize));
     if (candidates.size === 1 && candidates.has(registered)) return false;
   }
