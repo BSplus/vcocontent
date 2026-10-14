@@ -66,8 +66,9 @@ user-written captions.
 
 ## Release boundary
 
-No publish, Production setting change, schema change, manual retry or live data
-mutation was performed.
+During preparation, no publish, Production setting change, schema change, manual
+retry or live data mutation was performed. Subsequent approved verification is
+recorded below.
 
 After an approved publish, separately authorize a targeted retry of media 1215
 and 1219. Confirm provider acceptance of the structured request, completion,
@@ -75,3 +76,45 @@ persisted tags and actual number evidence. Successful tagging does not imply a
 legible race number exists; an uncertain number must remain unmatched. If either
 clip still fails, the new structural diagnostic provides a safe next cause to
 investigate without logging its raw response.
+
+## Approved live verification — 14 October 2026, 13:10 UTC
+
+The operator published the release and approved retries of only 1215 and 1219.
+The agent's existing test account is an approved Creator, not an admin, and
+received 403 for both management-status reads. No role changes, authentication
+bypass or retry mutations were attempted with that account. The operator queued
+both retries from the existing admin editing dialogs.
+
+Read-only Production queries subsequently confirmed:
+
+| Clip | Generation | Attempts in new generation | Result | Saved frames | Independently checked numbers | Accepted reference numbers |
+|---|---:|---:|---|---:|---|---|
+| 1215, 16:9 | 2 | 1 | Completed, no error | 8 | 69, 96, 132 | 69 |
+| 1219, 9:16 | 2 | 1 | Completed, no error | 8 | 96, 132 | None |
+
+Both clips now have persisted scene/content tags. The accepted #69 reference is
+Tatum Res-Tech MOZA Racing, Cadillac V-Series.R GTP, from entry document 52.
+The saved weak team hints for #132 include AIRC, while its reference team is Bleu
+Mercure Esport. The weak #96 hints include MOZA Racing, while the registered #96
+team is Tatum Res-Tech NordVPN. These observations were not granted blanket
+sponsor exemptions or manually relabelled. Completion of processing does not
+mean every detected number received a safe reference match.
+
+The provider accepted the new request sufficiently to return valid observations
+for all eight sampled frames of each clip. This confirms live workflow recovery,
+not measured recognition accuracy against independently reviewed ground truth.
+
+Existing filename captions and `preserved` provenance stayed unchanged.
+Reference matching results are stored in identification details; this video
+workflow did not overwrite those captions with team/driver text.
+
+Using the ordinary authorized Creator account for protected read-only delivery:
+
+- Both preview resources returned HTTP 200.
+- Both originals returned HTTP 206 for `Range: bytes=0-31`, with `video/mp4` content
+  type and correct ranges. Recorded sizes were 17,305,978 and 21,806,453 bytes.
+- Both media records remained associated with event 230.
+- No download-operation endpoint was called. No uploads, deletions, schema or
+  configuration changes were made by this verification.
+- Browser playback and the authenticated editing UI were not independently
+  re-tested after the retries; delivery results above are HTTP-level checks.

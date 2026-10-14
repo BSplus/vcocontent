@@ -31,3 +31,14 @@ their exact structural cause. Logging raw responses would expose unnecessary dat
 **How to apply:** Keep bounded, static structural diagnostics and exact frame
 binding. Report locally tested hardening separately from confirmed live recovery;
 only an explicitly approved targeted retry can establish the latter.
+
+Do not equate recovery from malformed output with universal reference matching.
+
+**Why:** An approved live retry completed frame processing and tagging but still
+left independently checked numbers unmatched where weak branding hints conflicted
+with the entry list. Transport recovery, pixel checking and identity acceptance
+are distinct outcomes.
+
+**How to apply:** Report completion, checked numbers and accepted references
+separately. Preserve intended conservative refusals and protected captions;
+investigate weak-hint false negatives as a separate recognition-quality question.
