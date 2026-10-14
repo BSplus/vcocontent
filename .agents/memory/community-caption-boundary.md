@@ -32,3 +32,13 @@ nur für das jeweils geprüfte Fahrzeug.
 als Grund verwenden, sichere Einzelinformationen wegzulassen. Vollständige
 fahrzeuggebundene Nummernevidenz und echte Referenz-/Fahrzeugkonflikte erhalten.
 Diese Regel beauftragt keine Veröffentlichung oder nachträgliche Live-Korrektur.
+
+Der Betreiber möchte im startnummerbezogenen Teil der Caption auch das
+Fahrzeugmodell auf Basis der Entry List nennen; gegebenenfalls reicht die Marke.
+
+**Why:** Der Betreiber hat die Fahrzeugangabe ausdrücklich als gewünschte
+Ergänzung zum nummernbezogenen Captionteil genannt.
+
+**How to apply:** Den zugeordneten registrierten Fahrzeugnamen verwenden;
+ist nur der Hersteller registriert, diesen als mögliche Ersatzangabe behandeln.
+Eine visuelle Modellschätzung nicht als gesicherte Entry-List-Angabe darstellen.
