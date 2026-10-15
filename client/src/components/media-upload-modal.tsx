@@ -686,7 +686,11 @@ export default function MediaUploadModal({
                   Uploading...
                 </>
               ) : (
-                uploads.some(upload => upload.status==="paused" || upload.status==="unknown" && upload.resumable) ? "Resume / check status" :
+                uploads.some(upload =>
+                  upload.status==="paused" ||
+                  upload.status==="unknown" && upload.resumable ||
+                  upload.status==="pending" && user && hasResumableUploadRecord(upload.file,user.id,eventId)
+                ) ? "Resume / check status" :
                 uploads.some(upload => upload.status === "pending")
                   ? `Upload ${uploads.filter(upload => upload.status === "pending").length} ${uploads.filter(upload => upload.status === "pending").length === 1 ? "file" : "files"}`
                   : uploads.some(upload => upload.status !== "success") ? "Close" : uploads.length ? "Done — all files saved" : "Select files above"

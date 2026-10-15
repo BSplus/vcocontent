@@ -127,7 +127,7 @@ async function fixture(role, width, resumable=false) {
     await browser.evaluate(`(()=>{
       const input=document.querySelector('[role="dialog"] input[type="file"]');
       const files=new DataTransfer();
-      for(const name of ${JSON.stringify(names)}) files.items.add(new File(['synthetic image',new Uint8Array(${padding})],name,{type:'image/png'}));
+      for(const name of ${JSON.stringify(names)}) files.items.add(new File(['synthetic image',new Uint8Array(${padding})],name,{type:'image/png',lastModified:1700000000000}));
       input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));
     })()`);
     await browser.wait(`document.querySelectorAll('[role="dialog"] img').length===${names.length}`);
@@ -273,6 +273,35 @@ for(const [role,width] of [["creator",390],["admin",1280]])
       assert.deepEqual(state.partAttempts,[0,1,1]);
       assert.equal(state.posts.length,0,"No legacy non-idempotent upload fallback");
       assert.deepEqual(state.mockErrors,[]);
+    }finally{await browser.close();}
+  });
+
+for(const [role,width] of [["creator",390],["admin",1280]])
+  test(`reselected paused ${role} file shows Resume / check status at ${width}px`,{timeout:90000},async()=>{
+    const {browser,state,open,select}=await fixture(role,width,true);
+    try{
+      state.mode="resume-delay";await open();await select(["reselected-fixture.png"],1048576);
+      assert.equal(await browser.evaluate(`!!(${button("Upload 1 file")})`),true,"Fresh selections keep the normal upload label");
+      assert.equal(state.sessionStarts,0,"Label detection must not initiate a session");
+      await click(browser,"Upload 1 file");
+      await browser.wait(`document.querySelector('[role="dialog"]').textContent.includes('99% transferred')`);
+      await click(browser,"Pause uploads");
+      await browser.wait(`!!(${button("Resume / check status")}) && !(${button("Resume / check status")}).matches(':disabled')`);
+      await click(browser,"Close");await browser.wait(`!document.querySelector('[role="dialog"]')`);
+      for(const requestId of state.held.splice(0))
+        await browser.command("Fetch.failRequest",{requestId,errorReason:"Aborted"}).catch(()=>{});
+      await open();await select(["reselected-fixture.png"],1048576);
+      await browser.wait(`!!(${button("Resume / check status")}) && !(${button("Resume / check status")}).matches(':disabled')`);
+      assert.equal(await browser.evaluate(`!!(${button("Upload 1 file")})`),false);
+      assert.equal(state.sessionStarts,1,"Reselection/label detection must not start another session");
+      assert.equal(state.photos.length,0);
+      assert.equal(await browser.evaluate(`document.querySelector('[role="dialog"]').scrollWidth<=document.querySelector('[role="dialog"]').clientWidth+1`),true);
+      state.mode="success";await click(browser,"Resume / check status");
+      await browser.wait(`!document.querySelector('[role="dialog"]')`);
+      assert.equal(state.sessionStarts,1);assert.equal(state.photos.length,1);
+      assert.deepEqual(state.partAttempts,[0,1,1]);
+      assert.equal(state.posts.length,0,"No legacy upload fallback");
+      assert.deepEqual(state.mockErrors,[]);assert.deepEqual(browser.errors,[]);
     }finally{await browser.close();}
   });
 

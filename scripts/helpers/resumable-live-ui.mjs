@@ -114,7 +114,7 @@ export async function runResumableLiveUi({base,cookie,role,width,title,fixturePa
     // A real page load discards component state, retaining only legitimate
     // browser storage/session and the same on-disk file's identity.
     await navigate();await select();
-    await click(button("Upload 1 file"));
+    await click(button("Resume / check status"));
     await browser.wait(`!document.querySelector('[role="dialog"]')`);
     await browser.wait(`document.body.textContent.includes('1 file saved')`);
     assert.equal(started.length,1,"Reopening must recover the original session, not initialize a duplicate");

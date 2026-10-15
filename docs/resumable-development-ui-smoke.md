@@ -57,12 +57,29 @@ No application change was needed.
 
 ## Usability observation
 
-After reopening and reselecting a paused file, the primary action initially
+At the time of the real R2 test, after reopening and reselecting a paused file,
+the primary action initially
 still says **Upload 1 file**, not **Resume / check status**. Activating it does
 correctly recover the existing upload and retain its original metadata, despite
 the fresh dialog's blank metadata fields. This is a wording/state-visibility
 improvement opportunity, not a failed transport check. No UI changes were made
 as part of this test.
+
+### Approved label refinement
+
+The operator subsequently approved showing **Resume / check status** immediately
+when a pending selection has an existing recovery record for the current user,
+gallery and file identity. Fresh selections still say **Upload 1 file**.
+This only changes the label: selection does not initiate a session, fetch status,
+change file state or bypass the normal upload gate. Existing server recovery,
+hash checks, expiry handling and original metadata behavior are unchanged.
+
+Verified with four focused browser cases (same-dialog pause/resume and
+close/reselect/resume for mobile Creator and desktop Admin) plus all six
+resumable-client tests. All passed. Browser API responses in these regression
+cases were intercepted; Development uploads stayed closed throughout this
+wording change. The earlier real R2 results above were not rerun or relabeled
+as post-change live-upload evidence.
 
 ## State and limits
 
