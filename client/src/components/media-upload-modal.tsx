@@ -663,7 +663,7 @@ export default function MediaUploadModal({
             {uploading && (limits?.resumableUploads || uploads.some(u=>u.resumable)) &&
               <Button type="button" variant="outline" onClick={()=>uploadAbort.current?.abort()}>Pause uploads</Button>}
             {!uploading && uploads.some(u=>u.resumable && u.status!=="success") &&
-              <p className="w-full text-xs text-muted-foreground">Paused uploads expire after one hour. Reselect the same file to resume after reopening. Resume keeps the saved caption, credit and tags.</p>}
+              <p className="w-full text-xs text-muted-foreground">Resume / check status uses the same upload and keeps its saved caption, credit and tags. Reselect the same file after reopening. Paused transfers expire after one hour; unconfirmed saves may keep space reserved until checked.</p>}
             <Button
               type="button"
               variant="outline"

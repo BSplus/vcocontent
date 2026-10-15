@@ -66,14 +66,15 @@ completed or uncertain outcomes, rather than claiming storage was released.
    `docs/native-asset-deletion.md`. Bounded reconciliation/diagnostics for
    uncertain uploads and other P2-8 operational acceptance still remain before
    enabling this path in a connected environment.
-2. Complete interactive native Studio acceptance on mobile/desktop and the
-   resource/restart/operational acceptance in P2-5/P2-9. Previous current-limit
-   browser checks are not evidence of interactive native acceptance.
+2. Mobile/desktop Studio controls now have interactive mocked-native-response
+   coverage; see `docs/native-upload-browser-acceptance.md`. This does not replace
+   connected native browser/provider acceptance or the resource/restart/
+   operational evidence in P2-5/P2-9.
 3. Optional native schema remains outside automatic discovery. Connected schema,
    settings, real provider smoke tests, limits and publishing require separate
    approval. Neither RAW nor Creator video is enabled by this work.
 
-## Evidence
+## Initial integration evidence (before deletion/browser extensions)
 
 ```sh
 node scripts/test-image-downloads.mjs --enable-uploads \
@@ -100,3 +101,6 @@ changes were performed. TypeScript and the production bundle passed.
 including deletion/recovery acceptance. It uses ordinary application deletion
 for inventory teardown rather than manually removing variants and objects.
 See `docs/native-asset-deletion.md` for the latest test-run boundaries.
+
+The subsequent interactive browser controls and conservative finalization-error
+handling are documented separately in `docs/native-upload-browser-acceptance.md`.

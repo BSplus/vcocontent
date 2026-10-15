@@ -16,11 +16,16 @@ function saved(file:File,userId:number,eventId:number):Receipt|null {
 export function hasResumableUploadRecord(file:File,userId:number,eventId:number) {return !!saved(file,userId,eventId);}
 const hex=(bytes:ArrayBuffer)=>Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,"0")).join("");
 const digest=async(blob:Blob)=>hex(await crypto.subtle.digest("SHA-256",await blob.arrayBuffer()));
-async function response(res:Response):Promise<Status>{
+async function response(res:Response,finalizing=false):Promise<Status>{
   const data=await res.json().catch(()=>null);
   if(!res.ok){
-    if(res.status>=400 && res.status<500) throw new ResumableRejected(data?.error||"Upload rejected.",res.status);
-    throw new Error("Upload not confirmed. Resume/check saved status before uploading this file again.");
+    // Once saving has started, even a 4xx does not prove the provider wrote
+    // nothing. Keep the receipt and check the same session, never offer a fresh
+    // upload as if this were a confirmed rejection. Conflicts are ambiguous too.
+    if(!finalizing&&res.status>=400&&res.status<500&&res.status!==409)
+      throw new ResumableRejected(data?.error||"Upload rejected.",res.status);
+    throw new Error(typeof data?.error==="string"?data.error:
+      "Upload not confirmed. Resume/check saved status before uploading this file again.");
   }
   if(!data || typeof data.id!=="string" || !Number.isSafeInteger(data.size) || data.size<1 ||
     !["receiving","finalizing","completed","failed","cancelled"].includes(data.state) ||
@@ -69,7 +74,7 @@ export async function resumableUpload(options:{file:File;userId:number;eventId:n
     }
     const confirm=async()=>{
       signal.throwIfAborted();phase="finalizing";
-      const complete=await response(await fetch(`/api/upload-sessions/${state!.id}/complete`,{method:"POST",credentials:"include",signal}));
+      const complete=await response(await fetch(`/api/upload-sessions/${state!.id}/complete`,{method:"POST",credentials:"include",signal}),true);
       if(complete.state!=="completed"||!complete.item||complete.item.eventId!==eventId||complete.item.id!==complete.mediaId)
         throw new Error("Save not confirmed yet. Resume / check status before uploading another copy.");
       localStorage.removeItem(storageKey);onProgress(100);return complete.item;

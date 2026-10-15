@@ -114,3 +114,14 @@ its cleanup can therefore enter the legacy adapter even in an R2-oriented test.
 
 **How to apply:** Cover every provider fallback in the disposable fixture, not
 just the selected upload provider. A synthetic R2 client alone is insufficient.
+
+After finalization starts, an HTTP error alone is not proof of a rejected upload,
+including 4xx replies. Conflicts are likewise not safe evidence of no write.
+
+**Why:** Provider work can outlive a request, or a gate can close after bytes were
+stored. Labelling that outcome rejected encourages duplicate copies and can
+discard the only browser recovery receipt.
+
+**How to apply:** Keep the same receipt, metadata and session; show an unconfirmed
+outcome with Resume / check status. Do not automatically cancel, initiate another
+upload or clear the receipt based solely on a failed finalization response.

@@ -15,7 +15,8 @@ async function fixture(role, width, resumable=false) {
   const browser = await uiBrowser();
   try {
   const state = { mode: "success", posts: [], reads: [], held: [], photos: [], mockErrors: [], analysis: "queued" };
-  state.session=null;state.sessionStarts=0;state.partAttempts=[];
+  state.session=null;state.sessionStarts=0;state.partAttempts=[];state.sessions=new Map();
+  state.completions=0;state.cancellations=0;state.cancelAllowed=false;state.metadata=[];
   const gallery = { id, title: "Upload fixture", description: "Isolated browser data",
     date: "2026-10-13T00:00:00Z", creatorId: role === "admin" ? null : 96700,
     visibility: "published", safetyStatus: "approved", coverImage: poster };
@@ -38,14 +39,16 @@ async function fixture(role, width, resumable=false) {
     const path = new URL(request.url).pathname;
     if(resumable && path.includes("upload-sessions")){
       if(path.includes("/by-request/")){
-        void fulfill(requestId,state.session || {error:"Not found"},state.session?200:404);return;
+        const saved=state.sessions.get(path.split("/").at(-1));
+        void fulfill(requestId,saved || {error:"Not found"},saved?200:404);return;
       }
       if(request.method==="POST" && path.endsWith("/upload-sessions")){
         const body=JSON.parse(request.postData);
         state.sessionStarts++;
-        state.session={id:"11111111-1111-4111-8111-111111111111",state:"receiving",size:body.size,
+        state.session={id:`11111111-1111-4111-8111-${String(state.sessionStarts).padStart(12,"0")}`,state:"receiving",size:body.size,
           sha256:body.sha256,partBytes:1048576,received:0,uploadedBytes:0,mediaId:null,
           expiresAt:new Date(Date.now()+3600000).toISOString()};
+        state.sessions.set(body.requestKey,state.session);state.metadata.push(body.metadata);
         void fulfill(requestId,state.session);return;
       }
       if(request.method==="PUT"){
@@ -56,11 +59,30 @@ async function fixture(role, width, resumable=false) {
         void fulfill(requestId,state.session);return;
       }
       if(request.method==="POST" && path.endsWith("/complete")){
-        const photo={id:96800,eventId:id,type:"image",caption:"Saved resumable fixture",
+        state.completions++;
+        if(["native-active","native-conflict","native-closed"].includes(state.mode)){
+          Object.assign(state.session,{state:"finalizing",canResumeFinalization:state.mode!=="native-active"});
+          if(state.mode==="native-active")void fulfill(requestId,state.session,202);
+          else void fulfill(requestId,{error:state.mode==="native-closed"?"New uploads are paused. Space remains reserved.":
+            "Upload could not be confirmed. Files and space remain reserved until checked."},state.mode==="native-closed"?403:409);
+          return;
+        }
+        const photo={id:96800+state.photos.length,eventId:id,type:"image",
+          caption:state.mode.startsWith("native-")?state.metadata.at(-1).caption:"Saved resumable fixture",
           tags:[],url:poster,thumbnail:poster,safetyStatus:"pending",analysis:{status:"queued"}};
         state.photos.push(photo);
-        state.session={...state.session,state:"completed",mediaId:photo.id,item:photo};
+        Object.assign(state.session,{state:"completed",mediaId:photo.id,item:photo});
+        if(state.mode==="native-lost"){
+          void browser.command("Fetch.failRequest",{requestId,errorReason:"ConnectionClosed"}).catch(error=>state.mockErrors.push(String(error)));
+          return;
+        }
         void fulfill(requestId,state.session);return;
+      }
+      if(request.method==="DELETE"){
+        state.cancellations++;
+        if(!state.cancelAllowed){void fulfill(requestId,{error:"Cancellation is not confirmed. Check saved status; space remains reserved."},409);return;}
+        Object.assign(state.session,{state:"cancelled",canResumeFinalization:false});
+        void fulfill(requestId,{success:true});return;
       }
     }
     if (request.method !== "GET") {
@@ -127,7 +149,7 @@ async function fixture(role, width, resumable=false) {
     await browser.evaluate(`(()=>{
       const input=document.querySelector('[role="dialog"] input[type="file"]');
       const files=new DataTransfer();
-      for(const name of ${JSON.stringify(names)}) files.items.add(new File(['synthetic image',new Uint8Array(${padding})],name,{type:'image/png',lastModified:1700000000000}));
+      for(const name of ${JSON.stringify(names)}) files.items.add(new File(['synthetic image',new Uint8Array(${padding})],name,{type:/\\.jpe?g$/i.test(name)?'image/jpeg':'image/png',lastModified:1700000000000}));
       input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));
     })()`);
     await browser.wait(`document.querySelectorAll('[role="dialog"] img').length===${names.length}`);
@@ -301,6 +323,93 @@ for(const [role,width] of [["creator",390],["admin",1280]])
       assert.equal(state.sessionStarts,1);assert.equal(state.photos.length,1);
       assert.deepEqual(state.partAttempts,[0,1,1]);
       assert.equal(state.posts.length,0,"No legacy upload fallback");
+      assert.deepEqual(state.mockErrors,[]);assert.deepEqual(browser.errors,[]);
+    }finally{await browser.close();}
+  });
+
+for(const role of ["creator","admin"])for(const width of [390,1280])
+  test(`native JPEG ${role} controls recover uncertain saves at ${width}px`,{timeout:120000},async()=>{
+    const {browser,state,open,select}=await fixture(role,width,true);
+    const receiptCount=()=>browser.evaluate(`Object.keys(localStorage).filter(k=>k.startsWith('vco-upload:')).length`);
+    const uncertain=()=>browser.wait(`document.querySelector('[role="dialog"] [role="alert"]')?.textContent.includes('0 saved · 0 rejected · 1 unconfirmed')`);
+    const caption=async value=>browser.evaluate(`(()=>{
+      const e=document.querySelector('[role="dialog"] #caption');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,${JSON.stringify(value)});
+      e.dispatchEvent(new Event('input',{bubbles:true}));
+    })()`);
+    // Use hit-tested mouse/touch input for the primary actions, not DOM click().
+    const activate=async label=>{
+      await browser.wait(`!!(${button(label)}) && !(${button(label)}).matches(':disabled')`);
+      await browser.evaluate(`(${button(label)}).scrollIntoView({block:'center'})`);
+      await browser.evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+      const r=await browser.evaluate(`(()=>{const r=(${button(label)}).getBoundingClientRect();return {
+        x:r.left+r.width/2,y:r.top+r.height/2,top:r.top,bottom:r.bottom,width:r.width,height:r.height,
+        viewport:innerHeight,cssWidth:innerWidth}})()`);
+      assert.equal(r.cssWidth,width);assert.ok(r.width>=24&&r.height>=24&&r.top>=0&&r.bottom<=r.viewport,"primary action is reachable");
+      if(width<600){
+        await browser.command("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[{x:r.x,y:r.y}]});
+        await browser.command("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});
+      }else{
+        await browser.command("Input.dispatchMouseEvent",{type:"mousePressed",button:"left",clickCount:1,x:r.x,y:r.y});
+        await browser.command("Input.dispatchMouseEvent",{type:"mouseReleased",button:"left",clickCount:1,x:r.x,y:r.y});
+      }
+    };
+    try{
+      if(width<600)await browser.command("Emulation.setTouchEmulationEnabled",{enabled:true,maxTouchPoints:1});
+      state.mode="native-active";await open();await select(["native-active.jpg"],1048576);
+      await caption("Original native caption");await activate("Upload 1 file");await uncertain();
+      assert.equal(state.completions,1);assert.equal(state.photos.length,0);
+      await activate("Resume / check status");
+      await browser.wait(`document.querySelector('[role="dialog"]').textContent.includes('Saving is still being checked')`);
+      assert.equal(state.completions,1,"An active finalizer must not be restarted");
+      await click(browser,"Close");await browser.wait(`!document.querySelector('[role="dialog"]')`);
+      assert.equal(await receiptCount(),1);
+      await open();await select(["native-active.jpg"],1048576);
+      await caption("Do not replace the original caption");
+      state.session.canResumeFinalization=true;state.mode="native-success";
+      await activate("Resume / check status");await browser.wait(`!document.querySelector('[role="dialog"]')`);
+      assert.equal(state.sessionStarts,1);assert.equal(state.completions,2);
+      assert.equal(state.photos.length,1);assert.equal(state.photos[0].caption,"Original native caption");
+      assert.deepEqual(state.partAttempts,[0,1]);assert.equal(await receiptCount(),0);
+
+      state.mode="native-lost";await open();await select(["native-lost.jpg"]);
+      const beforeLost=state.completions;
+      await activate("Upload 1 file");await uncertain();
+      assert.equal(state.photos.length,2,"Server committed despite the lost response");
+      await activate("Resume / check status");await browser.wait(`!document.querySelector('[role="dialog"]')`);
+      assert.equal(state.completions,beforeLost+1,"Recover completed receipt without another finalization");
+      assert.equal(state.photos.length,2);assert.equal(await receiptCount(),0);
+
+      state.mode="native-conflict";await open();await select(["native-uncertain.jpg"]);
+      await activate("Upload 1 file");await uncertain();
+      const beforeWait=state.completions;
+      await delay(3500);
+      assert.equal(state.completions,beforeWait,"No automatic retry after uncertain provider outcome");
+      assert.equal(await receiptCount(),1);
+      assert.doesNotMatch(await browser.evaluate(`document.querySelector('[role="dialog"]').innerText`),/Retry upload|Done — all files saved/);
+      await browser.evaluate(`document.querySelector('[aria-label="Remove native-uncertain.jpg"]').click()`);
+      await browser.wait(`document.body.textContent.includes('Upload not removed')`);
+      assert.equal(state.cancellations,1);assert.equal(await receiptCount(),1);
+      assert.equal(await browser.evaluate(`!!document.querySelector('[aria-label="Remove native-uncertain.jpg"]')`),true);
+      // Model later server proof that cancellation is safe; refusal alone never
+      // removes the selection, the receipt or its retained capacity.
+      state.cancelAllowed=true;
+      await browser.evaluate(`document.querySelector('[aria-label="Remove native-uncertain.jpg"]').click()`);
+      await browser.wait(`!document.querySelector('[aria-label="Remove native-uncertain.jpg"]')`);
+      assert.equal(state.cancellations,2);assert.equal(await receiptCount(),0);
+      await click(browser,"Close");await browser.wait(`!document.querySelector('[role="dialog"]')`);
+
+      state.mode="native-closed";await open();await select(["native-gate.jpg"]);
+      await activate("Upload 1 file");await uncertain();
+      assert.equal(state.photos.length,2);
+      assert.match(await browser.evaluate(`document.querySelector('[role="dialog"]').innerText`),/New uploads are paused/);
+      await activate("Resume / check status");await uncertain();
+      assert.equal(state.photos.length,2);assert.equal(state.sessionStarts,4);
+      assert.equal(state.posts.length,0,"No legacy non-idempotent fallback");
+      assert.equal(await receiptCount(),1,"Closed gate must not erase an uncertain session");
+      state.mode="native-success";await activate("Resume / check status");
+      await browser.wait(`!document.querySelector('[role="dialog"]')`);
+      assert.equal(state.photos.length,3);assert.equal(state.sessionStarts,4);assert.equal(await receiptCount(),0);
       assert.deepEqual(state.mockErrors,[]);assert.deepEqual(browser.errors,[]);
     }finally{await browser.close();}
   });

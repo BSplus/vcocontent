@@ -16,7 +16,7 @@ five chat turns. Prepared code and disposable tests do not imply activation.
 | P2-2 Asset/object mapping | Additive foundation and compatibility implemented; rollout approvals remain separate. |
 | P2-3 Capacity/reservations | Accounting, reservation and usage foundations implemented; existing beta policy retained. |
 | P2-4 Immutable JPEG | New-intake source preservation and bounded derivatives implemented. |
-| **P2-5 Upload sessions** | **In progress.** Native JPEG is now connected to authenticated sessions and the existing uploader behind disabled Development-only gates. Disposable HTTP/client recovery and regression tests pass; interactive native Studio and full operational acceptance remain. |
+| **P2-5 Upload sessions** | **In progress.** Native JPEG is connected to authenticated sessions and the existing uploader behind disabled Development-only gates. Disposable HTTP/client tests and mobile/desktop Studio controls with mocked native responses pass; connected native browser/provider and full operational acceptance remain. |
 | P2-6 RAW pairing | Remaining: approved formats, explicit safe pairing and original-delivery controls. |
 | P2-7 Creator video | Remaining: policy-gated Creator capability, bounded codec/preview support and end-to-end lifecycle. Existing official video remains unchanged. |
 | P2-8 Recovery/integrity | Native-aware deletion and durable cleanup/accounting handoff are prepared/tested. Remaining: bounded uncertain-upload reconciliation, operational diagnostics and integrated lifecycle acceptance. |
@@ -33,11 +33,14 @@ activation need their own approvals. They are not implemented by storage work.
 
 The gated JPEG finalizer, ordinary thumbnail persistence, independent safety,
 single analysis admission and inactive-finalizer resume/cancel/error behavior
-are now covered by 75 passing disposable tests. See `docs/native-jpeg-intake.md`.
+have isolated HTTP/DB/client evidence. See `docs/native-jpeg-intake.md`.
 
 Native deletion now has 22 passing native-flow checks, including a 515-object
-batched handoff; see `docs/native-asset-deletion.md`. Next complete interactive
-acceptance and remaining lifecycle recovery before connected Development
-approval. Native code uses existing
+batched handoff; see `docs/native-asset-deletion.md`. Interactive Creator/Admin
+controls now have mobile/desktop native-response coverage, including uncertain
+errors, lost commits and refused cancellation; see
+`docs/native-upload-browser-acceptance.md`. Next complete bounded lifecycle
+recovery and operational evidence before connected Development approval.
+Native code uses existing
 routes but is not enabled in this workspace or Production. No current limits
 were increased; RAW, Creator video, metadata exports and paid features remain off.

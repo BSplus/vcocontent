@@ -114,3 +114,22 @@ test("server-approved inactive native finalizer resumes without initiating or re
   assert.equal(item.id,53);assert.equal(model.starts,1);assert.equal(model.commits,1);
   assert.deepEqual(model.partWrites,[0]);assert.equal(hasResumableUploadRecord(f,4,7),false);
 });
+for(const status of [403,409,410,502])test(`finalization HTTP ${status} retains an uncertain receipt instead of claiming rejection`,async()=>{
+  const model=transport(),f=file(),normal=globalThis.fetch;let blocked=true,deletes=0;
+  globalThis.fetch=async(url,options={})=>{
+    if(options.method==="DELETE")deletes++;
+    if(blocked&&url.endsWith("/complete")){
+      const record=[...model.records.values()][0];record.state="finalizing";record.canResumeFinalization=true;
+      return new Response(JSON.stringify({error:"Saving is not confirmed. Space remains reserved."}),{status});
+    }
+    return normal(url,options);
+  };
+  await assert.rejects(resumableUpload(options(f)),error=>!(error instanceof ResumableRejected)&&/not confirmed/.test(error.message));
+  assert.equal(hasResumableUploadRecord(f,4,7),true);assert.equal(deletes,0);
+  blocked=false;
+  const item=await resumableUpload(options(f,{metadata:{...metadata,caption:"Do not replace the original",
+    photographer:"Do not replace the credit",tags:["Do not replace the tags"]}}));
+  assert.equal(item.caption,"Original caption");assert.equal(model.starts,1);assert.equal(model.commits,1);
+  assert.deepEqual([...model.records.values()][0].metadata,metadata);
+  assert.deepEqual(model.partWrites,[0,1]);assert.equal(hasResumableUploadRecord(f,4,7),false);
+});
