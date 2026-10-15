@@ -5,6 +5,7 @@ import { events, mediaItems, mediaObjectRoutes, mediaAssetRecords, mediaAssetObj
 import { assertGalleryOwnership, type GalleryOwnership } from "@shared/gallery-ownership";
 import { assetKind, assertAssetPurpose, assertAssetObjectFormat, assetTitle, legacyAssetVariants, type AssetPurpose } from "@shared/media-asset";
 import { ObjectStoreError } from "./object-store";
+import { lockedCreatorBudget } from "./beta-policy";
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Connection = typeof db | Transaction;
@@ -48,6 +49,8 @@ export async function linkAssetObject(input: {
   if (!Number.isSafeInteger(input.sourceVersion) || input.sourceVersion <= 0 ||
       input.sourceVersion > 2_147_483_647) throw new Error("Invalid source version");
   return db.transaction(async tx => {
+    // Same owner-before-gallery order as upload reservations.
+    if (input.ownership.ownerId !== null) await lockedCreatorBudget(tx,input.ownership.ownerId);
     const item = await lockedAsset(tx, input.mediaId, input.ownership);
     assertAssetPurpose(assetKind(item.type), input.purpose);
     const primary = ["original", "legacy_source"].includes(input.purpose);
@@ -95,8 +98,11 @@ export async function linkAssetObject(input: {
         throw new Error("Immutable asset revision conflict");
       return previous;
     }
-    return (await tx.insert(mediaAssetVariants).values({mediaId:item.id, objectKey:input.key,
-      purpose:input.purpose, sourceVersion:input.sourceVersion, sourceKey:input.sourceKey ?? null}).returning())[0];
+    const [variant] = await tx.insert(mediaAssetVariants).values({mediaId:item.id, objectKey:input.key,
+      purpose:input.purpose, sourceVersion:input.sourceVersion, sourceKey:input.sourceKey ?? null}).returning();
+    if (input.ownership.ownerId !== null)
+      await lockedCreatorBudget(tx,input.ownership.ownerId,0,0,0,0,true);
+    return variant;
   });
 }
 

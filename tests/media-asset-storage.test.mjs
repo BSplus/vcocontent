@@ -24,6 +24,7 @@ test("additive asset-object foundation uses only disposable PostgreSQL", {
   const items=await db.insert(mediaItems).values(galleries.flatMap(event=>["image","video"].map(type=>({
     eventId:event.id,type,url:`/api/media/files/media-${randomUUID()}.${type==="image"?"jpg":"mp4"}`,
     thumbnail:`/api/media/files/thumb-${randomUUID()}.webp`,caption:"Preserved authored caption",
+    highBytes:100,lowBytes:20,storedBytes:120,
     manualTags:["Kept"],identificationManual:true,
   })))).returning();
   const keys=[];

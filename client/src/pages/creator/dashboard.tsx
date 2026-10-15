@@ -68,6 +68,9 @@ export default function CreatorDashboard() {
   });
   const { data: usage, isLoading: usageLoading, error: usageError, refetch: retryUsage } = useQuery<{
     bytes: number; galleries: number; photos: number; unknown: number; pendingCleanup: number;
+    retainedBytes: number; reservedBytes: number; availableBytes: number | null; capacityWarning: boolean;
+    byType: {type:string;bytes:number;objects:number;unknown:number}[];
+    byGallery: {eventId:number;bytes:number;unknown:number}[];
     limits: { bytes: number; galleries: number; photos: number; imageBytes: number };
     exception: boolean; adminExempt:boolean;
     eventStats: {eventId:number;photos:number;videos:number;downloads:number}[];
@@ -249,6 +252,27 @@ export default function CreatorDashboard() {
             <p>Storage <strong>{usage ? `${usage.unknown ? "At least " : ""}${(usage.bytes / 1000000).toFixed(1)} MB${usage.adminExempt?" (admin-managed)":` / ${(usage.limits.bytes / 1000000).toFixed(0)} MB`}` : "—"}</strong></p>
             <p>Galleries <strong>{usage ? `${usage.galleries}${usage.adminExempt?"":` / ${usage.limits.galleries}`}` : "—"}</strong></p>
             <p>Photos <strong>{usage ? `${usage.photos}${usage.adminExempt?"":` / ${usage.limits.photos}`}` : "—"}</strong></p>
+            {usage && <div className="sm:col-span-3 space-y-2 border-t border-border pt-3 text-sm">
+              <p>Stored files: {(usage.retainedBytes / 1000000).toFixed(1)} MB · Reserved for uploads: {(usage.reservedBytes / 1000000).toFixed(1)} MB</p>
+              {usage.availableBytes !== null && <p>Available: {(usage.availableBytes / 1000000).toFixed(1)} MB</p>}
+              {usage.capacityWarning && !usage.unknown && <p role="status">Your storage is nearly full. Delete unwanted files to free space; pending deletions still count until cleanup finishes.</p>}
+              <ul aria-label="Storage by file type" className="space-y-1">
+                {usage.byType?.map(row => <li key={row.type} className="flex justify-between gap-4">
+                  <span>{({image:"Photos",video:"Videos",raw:"RAW files",derivative:"Previews and thumbnails",reference:"Reference documents",profile:"Profile images",cleanup:"Awaiting deletion"} as Record<string,string>)[row.type] || row.type}</span>
+                  <span>{row.unknown ? "At least " : ""}{(row.bytes / 1000000).toFixed(1)} MB</span>
+                </li>)}
+              </ul>
+              {!!usage.byGallery?.length && <details>
+                <summary className="cursor-pointer">Storage by gallery</summary>
+                <ul className="mt-2 space-y-1" aria-label="Storage by gallery">
+                  {usage.byGallery.map(row => <li key={row.eventId} className="flex justify-between gap-4">
+                    <span>{events.find(event => event.id===row.eventId)?.title || `Gallery ${row.eventId}`}</span>
+                    <span className="shrink-0">{row.unknown ? "At least " : ""}{(row.bytes / 1000000).toFixed(1)} MB</span>
+                  </li>)}
+                </ul>
+              </details>}
+              <p className="text-muted-foreground">Archived and hidden files still use storage. Shared physical files are counted once.</p>
+            </div>}
             {!!usage?.unknown && <p role="alert" className="sm:col-span-3">Some file sizes are not yet confirmed. Wait for pending cleanup or ask an administrator to measure historical files. Existing content remains available.</p>}
             {!!usage?.pendingCleanup && <p role="status" className="sm:col-span-3">Files awaiting cleanup remain included in storage until their removal is confirmed.</p>}
             <p className="sm:col-span-3 text-muted-foreground">Photos only · up to {(usage?.limits.imageBytes ?? 5000000) / 1000000} MB per photo. Video uploads are unavailable in the public beta.</p>

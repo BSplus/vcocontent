@@ -37,7 +37,11 @@ export function registerBetaRoutes(app: Express) {
         coalesce(sum(m.download_count),0) as downloads
         from events e left join media_items m on m.event_id=e.id
         where e.creator_id=${req.user!.id} group by e.id`);
-      res.json({...await creatorUsage(db,req.user!.id),limits:communityLimitsFor(req.user!.quotaException),
+      const usage = await creatorUsage(db,req.user!.id);
+      const limits = communityLimitsFor(req.user!.quotaException);
+      res.json({...usage,limits,
+        availableBytes:req.user!.isAdmin || usage.unknown ? null : Math.max(0,limits.bytes-usage.bytes),
+        capacityWarning:!req.user!.isAdmin && (usage.unknown>0 || usage.bytes>=limits.bytes*0.8),
         exception:req.user!.quotaException,adminExempt:req.user!.isAdmin,eventStats:stats.rows.map(row=>({
           eventId:Number(row.event_id),photos:Number(row.photos),videos:Number(row.videos),downloads:Number(row.downloads)}))});
     } catch { res.status(503).json({error:"Storage usage could not be loaded."}); }

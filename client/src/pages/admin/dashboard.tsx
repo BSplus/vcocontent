@@ -119,6 +119,7 @@ export default function AdminDashboard() {
     byEvent: { eventId: number; title: string; bytes: string; count: string; legacy: string }[];
     byCreator: { creatorId: number; bytes: string; count: string }[];
     cleanupCount: string;
+    officialStorage?: {bytes:number;retainedBytes:number;reservedBytes:number;unknown:number};
     policy: { eventBytes: number; creatorBytes: number; eventCount: number; creatorCount: number };
     warningFraction: number;
   }>({ queryKey: ["/api/admin/media-usage"] });
@@ -299,6 +300,13 @@ export default function AdminDashboard() {
               <Card className="mb-6">
                 <CardContent className="pt-5 space-y-3 break-words">
                   <h3 className="font-semibold">Storage usage</h3>
+                  {usage.officialStorage && <p>
+                    Official VCO storage: {(usage.officialStorage.bytes / 1000000).toFixed(1)} MB
+                    {usage.officialStorage.unknown ? " (some sizes unconfirmed)" : ""}
+                    {" "}· {(usage.officialStorage.reservedBytes / 1000000).toFixed(1)} MB reserved.
+                    {" "}Measured separately from Creator allowances.
+                  </p>}
+                  <p className="text-xs text-muted-foreground">The media-row summary below excludes separate asset variants, profile images and reference documents. Creator Studio shows the full Creator storage breakdown.</p>
                   <p>{(Number(usage.total.bytes) / 1048576).toFixed(1)} MiB across {usage.total.count} measured items;
                     {" "}{usage.cleanupCount} objects await cleanup.</p>
                   {Number(usage.total.legacy) > 0 && (

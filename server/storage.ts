@@ -21,6 +21,7 @@ import { activeMediaTagsSql } from "./media-tag-sql";
 import { automaticPhotoMatching } from "./automatic-photo-matching";
 import { matchedPhotoCaption } from "./caption-proposal";
 import { assertGalleryOwnership, resolveGalleryOwnership } from "@shared/gallery-ownership";
+import { retainedStorageUsage } from "./retained-storage";
 
 type SafeUser = Omit<User, "password">;
 type EventUpdateResult = Event & { saveStatus: "saved" | "unchanged" };
@@ -541,6 +542,7 @@ class DatabaseStorage implements IStorage {
   }
 
   async reserveMedia(id: string, eventId: number, creatorId: number | null, bytes: number, storageKey: string, thumbnailKey: string, adminUpload = false): Promise<void> {
+    if (!Number.isSafeInteger(bytes) || bytes <= 0) throw new MediaLimitError("Invalid upload reservation size.");
     assertNewMediaUploadsEnabled();
     const expected = resolveGalleryOwnership({id:eventId,creatorId});
     await db.transaction(async tx => {
@@ -559,9 +561,9 @@ class DatabaseStorage implements IStorage {
           select (select coalesce(sum(coalesce(m.stored_bytes,
               case when m.url like 'data:%' then length(m.url) * 3 / 4 else 0 end +
               case when m.thumbnail like 'data:%' then length(m.thumbnail) * 3 / 4 else 0 end)), 0) from media_items m
-            left join events e on e.id = m.event_id where m.archived_at is null and ${filter}) +
+            left join events e on e.id = m.event_id where ${filter}) +
             (select coalesce(sum(reserved_bytes), 0) from media_reservations where ${pending}) as bytes,
-          (select count(*) from media_items m left join events e on e.id = m.event_id where m.archived_at is null and ${filter}) +
+            (select count(*) from media_items m left join events e on e.id = m.event_id where ${filter}) +
             (select count(*) from media_reservations where ${pending}) as count`);
         return { bytes: Number(result.rows[0].bytes), count: Number(result.rows[0].count) };
       };
@@ -589,9 +591,28 @@ class DatabaseStorage implements IStorage {
       const [reservation] = await tx.select().from(mediaReservations).where(eq(mediaReservations.id, id));
       if (!reservation) throw new Error("Upload reservation has expired");
       if (mediaItem.eventId!==reservation.eventId) throw new Error("Upload event does not match its reservation");
+      const sizes = [mediaItem.storedBytes, mediaItem.highBytes, mediaItem.lowBytes].filter(value => value != null) as number[];
+      if (sizes.some(value => !Number.isSafeInteger(value) || value < 0))
+        throw new MediaLimitError("Invalid stored media size.");
+      const actualBytes = Math.max(mediaItem.storedBytes || 0,
+        (mediaItem.highBytes || 0) + (mediaItem.thumbnail===mediaItem.url ? 0 : mediaItem.lowBytes || 0));
+      if (!Number.isSafeInteger(actualBytes)) throw new MediaLimitError("Invalid stored media size.");
+      const extraBytes = Math.max(0, actualBytes - reservation.reservedBytes);
+      // Match reservation's owner-before-gallery lock order. Final capacity is
+      // checked transactionally after replacing this reservation with the file,
+      // avoiding a double charge for already measured in-progress objects.
+      if (reservation.creatorId)
+        await lockedCreatorBudget(tx,reservation.creatorId);
       const expected = resolveGalleryOwnership({id:reservation.eventId,creatorId:reservation.creatorId});
       const [event] = await tx.select().from(events).where(eq(events.id,reservation.eventId)).for("update");
       const accounting = assertGalleryOwnership(event, expected);
+      if (extraBytes) {
+        const usage = await tx.execute(sql`select
+          (select coalesce(sum(stored_bytes),0) from media_items where event_id=${reservation.eventId}) +
+          (select coalesce(sum(reserved_bytes),0) from media_reservations where event_id=${reservation.eventId}) as bytes`);
+        if (Number(usage.rows[0].bytes) + extraBytes > mediaPolicy.eventBytes)
+          throw new MediaLimitError("Event storage budget exceeded. Remove media or contact an administrator.");
+      }
       // A dangling owner must never become official accounting. This uses the
       // same transaction as commit, without changing existing beta allowances.
       if (accounting.category === "CREATOR") {
@@ -637,6 +658,8 @@ class DatabaseStorage implements IStorage {
         if (!file) throw new Error("Import file reservation is no longer pending");
       }
       await tx.delete(mediaReservations).where(eq(mediaReservations.id, id));
+      if (reservation.creatorId)
+        await lockedCreatorBudget(tx,reservation.creatorId,0,0,0,0,true);
       return item;
     });
   }
@@ -771,7 +794,8 @@ class DatabaseStorage implements IStorage {
       .from(events).leftJoin(mediaItems, eq(mediaItems.eventId, events.id))
       .where(sql`${events.creatorId} is not null`).groupBy(events.creatorId);
     const [{ count: cleanupCount }] = await db.select({ count: sql<number>`count(*)` }).from(mediaCleanup);
-    return { total, byEvent, byCreator, cleanupCount, policy: mediaPolicy, warningFraction: 0.8 };
+    const officialStorage = await retainedStorageUsage(db,null);
+    return { total, byEvent, byCreator, cleanupCount, officialStorage, policy: mediaPolicy, warningFraction: 0.8 };
   }
 
   async updateUserCreatorStatus(userId: number, status: 'pending' | 'approved' | 'rejected'): Promise<SafeUser> {

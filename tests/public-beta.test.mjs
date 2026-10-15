@@ -627,14 +627,16 @@ test("verified status is required for new files in grandfathered galleries, with
   assert.equal((await storage.getMediaItem(historical.id)).isPremium,true);
   assert.equal((await request(`/api/admin/events/${event.id}/nextcloud`,{cookie:admin.cookie,method:"POST",body:{sources:[]}})).status,404);
 });
-test("real reference uploads count once, duplicate reuse adds nothing and replacement charges only unique delta",async()=>{
+test("real reference uploads count once and replacements reserve both retained sources until cleanup",async()=>{
   const owner=await account({creator:true}),event=await gallery(owner);
-  async function importRef(text,replaceId) {
+  async function importRef(text,replaceId,actor=owner) {
     const form=new FormData();
     form.append("file",new Blob([text],{type:"text/csv"}),"lineup.csv");
     form.append("scope","event");form.append("kind","entry");form.append("title","Synthetic lineup");form.append("seasonYear","2026");
+    const {parseEntryFile}=await import("../server/entry-list.ts");
+    form.append("rows",JSON.stringify((await parseEntryFile(Buffer.from(text),"text/csv","lineup.csv")).rows));
     if (replaceId) form.append("replaceId",String(replaceId));
-    return request(`/api/events/${event.id}/references`,{cookie:owner.cookie,method:"POST",form});
+    return request(`/api/events/${event.id}/references`,{cookie:actor.cookie,method:"POST",form});
   }
   const csv="Number,Team,Car,Drivers\n7,Neutral,GT3,Driver One\n";
   const first=await importRef(csv);
@@ -644,19 +646,26 @@ test("real reference uploads count once, duplicate reuse adds nothing and replac
   const repeated=await importRef(csv);
   assert.equal(repeated.data.reused,true);assert.equal((await creatorUsage(db,owner.id)).bytes,initialBytes);
   const [doc]=await db.select().from(referenceDocuments).where(eq(referenceDocuments.id,first.data.id));
-  // At the cap a same-size replacement consumes no additional durable bytes.
+  // The old source is still retained while its replacement is uploaded.
   const fillerKey=`ref-${randomUUID()}.csv`;
-  await db.insert(referenceDocuments).values({...doc,id:undefined,title:"Synthetic filler",identityKey:randomUUID(),
-    fingerprint:randomUUID(),sourceKey:fillerKey,storedBytes:500_000_000-initialBytes});
+  const [filler]=await db.insert(referenceDocuments).values({...doc,id:undefined,title:"Synthetic filler",identityKey:randomUUID(),
+    fingerprint:randomUUID(),sourceKey:fillerKey,storedBytes:500_000_000-initialBytes}).returning();
+  assert.equal((await importRef(csv.replace("One","Two"),first.data.id)).status,413);
+  const administrator=await account();
+  await db.update(users).set({isAdmin:true}).where(eq(users.id,administrator.id));
+  assert.equal((await importRef(csv.replace("One","Two"),first.data.id,administrator)).status,413,
+    "An admin acting on another Creator's gallery cannot bypass its storage allowance");
+  await storage.cleanupObjects();
+  await db.delete(referenceDocuments).where(eq(referenceDocuments.id,filler.id));
   const replaced=await importRef(csv.replace("One","Two"),first.data.id);
   assert.equal(replaced.status,201,JSON.stringify(replaced.data));
   await storage.cleanupObjects();
-  assert.equal((await creatorUsage(db,owner.id)).bytes,500_000_000);
+  assert.equal((await creatorUsage(db,owner.id)).bytes,initialBytes);
   assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.creatorId,owner.id))).length,0);
   assert.equal((await request(`/api/events/${event.id}/references/${first.data.id}/source`)).status,401);
   assert.equal((await request(`/api/events/${event.id}/references/${first.data.id}`,{cookie:owner.cookie,method:"DELETE"})).status,200);
   await storage.cleanupObjects();
-  assert.equal((await creatorUsage(db,owner.id)).bytes,500_000_000-initialBytes);
+  assert.equal((await creatorUsage(db,owner.id)).bytes,0);
 });
 test("photo file boundaries, animation rejection and interrupted upload cleanup are server enforced",async()=>{
   const owner=await account({creator:true}),event=await gallery(owner);

@@ -7,6 +7,8 @@ const studio = "/creator/dashboard";
 const envelope = { items: [], page: 1, totalPages: 1, hasMore: false };
 const usage = {
   bytes: 0, galleries: 0, photos: 0, unknown: 0, pendingCleanup: 0,
+  retainedBytes: 0, reservedBytes: 0, availableBytes: 500000000, capacityWarning: false,
+  byType: [{type:"image",bytes:0,objects:0,unknown:0}], byGallery: [],
   limits: { bytes: 500000000, galleries: 5, photos: 1000, imageBytes: 5000000 },
   eventStats: [], exception: false, adminExempt: false,
 };
@@ -123,6 +125,11 @@ for (const role of ["creator", "admin"]) {
           ]) {
             await browser.evaluate(`[...document.querySelectorAll('nav[aria-label="Creator Studio sections"] button')].find(b=>b.textContent.trim()===${JSON.stringify(section)}).click()`);
             await browser.wait(`document.querySelector('main').textContent.includes(${JSON.stringify(expected)})`);
+            if (section === "My Galleries") {
+              await browser.wait(`document.querySelector('main').textContent.includes('Stored files: 0.0 MB')`);
+              assert.ok(await browser.evaluate(`!!document.querySelector('ul[aria-label="Storage by file type"]')`));
+              assert.equal(await browser.evaluate(`/NaN|undefined/.test(document.querySelector('main').textContent)`), false);
+            }
             assert.equal(await browser.evaluate(`document.querySelector('nav[aria-label="Creator Studio sections"] [aria-current="page"]').textContent.trim()`), section);
             await assertLayout();
           }

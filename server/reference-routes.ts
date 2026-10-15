@@ -68,7 +68,7 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
       if (failure || !req.file) return res.status(400).json({ error: "Choose one reference file, maximum 8 MiB" });
       let key: string | undefined;
       let reservation: string | undefined;
-      let replacementCredit=0, sourceWritten=false;
+      let sourceWritten=false;
       try {
         const options = z.object({ scope: z.enum(["event","season"]).default("event"),
           kind: z.enum(["entry","result"]).default("entry"),
@@ -111,6 +111,27 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
         const rows = rowsSchema.parse(parsed.rows.map(row=>({...row,
           number: /^\d{0,4}$/.test(row.number) ? row.number : "",
           team:row.team.slice(0,160),car:row.car.slice(0,160)})));
+        // Corrected rows for the same bytes update editorial data, not storage.
+        // Keep confirmation/CSV validation above; never upload a second source.
+        if (identical) {
+          const doc = await db.transaction(async tx => {
+            const [current] = await tx.select().from(referenceDocuments)
+              .where(eq(referenceDocuments.id,identical.id)).for("update");
+            if (!current || current.sourceKey!==identical.sourceKey || current.fingerprint!==fingerprint)
+              throw new Error("Reference changed during import");
+            if (JSON.stringify(current.rows)!==JSON.stringify(rows)) {
+              await tx.update(referenceDocuments).set({rows,updatedAt:new Date()})
+                .where(eq(referenceDocuments.id,current.id));
+              await bump(contextEvent,options.scope,options.seasonYear,tx);
+            }
+            if (seasonYear(event)!==options.seasonYear)
+              await tx.update(events).set({referenceSeasonYear:options.seasonYear,
+                referenceRevision:sql`${events.referenceRevision}+1`}).where(eq(events.id,event.id));
+            return {...current,rows};
+          });
+          void kickAnalysisWorker();
+          res.status(target ? 201 : 200).json({id:doc.id,reused:true,rows:doc.rows,issues:parsed.issues}); return;
+        }
         const identityKey = target?.identityKey || hash(JSON.stringify([options.scope, options.scope === "season" ? event.seriesId : event.id,
           event.creatorId,options.seasonYear,options.kind,session,title.toLowerCase()]));
         if (existing.length >= 100 && !existing.some(d=>d.identityKey===identityKey)) return res.status(409).json({ error: "Too many reference documents; remove an obsolete list first" });
@@ -119,22 +140,16 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
         // Reuse crash recovery: cleanup must not delete an in-flight source.
         await db.transaction(async tx=>{
           if (event.creatorId) await tx.execute(sql`select id from users where id=${event.creatorId} for update`);
-          let credit = 0;
           if (target) {
             const [current] = await tx.select().from(referenceDocuments).where(eq(referenceDocuments.id,target.id)).for("update");
             if (!current || current.sourceKey!==target.sourceKey) throw new Error("Reference changed during import");
             const pending = await tx.select().from(mediaReservations).where(eq(mediaReservations.replacesReferenceId,target.id));
             if (pending.length) throw new MediaLimitError("A replacement for this reference is already in progress.");
-            if (target.sourceKey && current.storedBytes!==null) {
-              const shared = await tx.execute(sql`select 1 from reference_documents where source_key=${target.sourceKey}
-                and id<>${target.id} union all select 1 from media_items
-                where url=${`/api/media/files/${target.sourceKey}`} or thumbnail=${`/api/media/files/${target.sourceKey}`} limit 1`);
-              if (!shared.rows.length) credit = current.storedBytes;
-            }
           }
-          const reservedBytes = Math.max(0,req.file!.size-credit);
-          replacementCredit=credit;
-          if (event.creatorId && !req.user!.isAdmin) await lockedCreatorBudget(tx,event.creatorId,reservedBytes,0,0,credit);
+          // The old source still exists until confirmed deletion. Reserve the
+          // entire replacement, including for admins acting on another owner.
+          const reservedBytes = req.file!.size;
+          if (event.creatorId) await lockedCreatorBudget(tx,event.creatorId,reservedBytes);
           await tx.insert(mediaReservations).values({id:reservation!,eventId:event.id,creatorId:event.creatorId,
             reservedBytes,replacesReferenceId:target?.id,storageKey:key!,thumbnailKey:key!});
           await tx.insert(mediaCleanup).values({key:key!,creatorId:event.creatorId}).onConflictDoNothing();
@@ -146,8 +161,7 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
         const result = await db.transaction(async tx => {
           if (event.creatorId) await tx.execute(sql`select id from users where id=${event.creatorId} for update`);
           await tx.execute(sql`select id from media_reservations where id=${reservation!} for update`);
-          if (event.creatorId && !req.user!.isAdmin && replacementCredit)
-            await lockedCreatorBudget(tx,event.creatorId,0,0,0,replacementCredit);
+          if (event.creatorId) await lockedCreatorBudget(tx,event.creatorId);
           const [previous] = await tx.select().from(referenceDocuments).where(eq(referenceDocuments.identityKey,identityKey)).for("update");
           if (target && (!previous || previous.id!==target.id || previous.sourceKey!==target.sourceKey))
             throw new Error("Reference changed during import");
@@ -162,6 +176,7 @@ export function registerReferenceRoutes(app: Express, requireCreator: RequestHan
           await bump(contextEvent,options.scope,options.seasonYear,tx);
           await tx.delete(mediaReservations).where(eq(mediaReservations.id,reservation!));
           await tx.delete(mediaCleanup).where(eq(mediaCleanup.key,sourceKey));
+          if (event.creatorId) await lockedCreatorBudget(tx,event.creatorId,0,0,0,0,true);
           return doc;
         });
         key = undefined; reservation=undefined; void kickAnalysisWorker(); void storage.cleanupObjects();

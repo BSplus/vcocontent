@@ -4,6 +4,7 @@ import { mediaPolicy, MediaLimitError } from "./media-policy";
 import { events, users, mediaItems } from "@shared/schema";
 import { verificationConfigured } from "./beta-config";
 import { SAFETY_POLICY } from "@shared/safety-policy";
+import { retainedStorageUsage } from "./retained-storage";
 
 // Invalidates results from before incomplete visual inspections became non-approvable.
 export { SAFETY_POLICY };
@@ -55,39 +56,12 @@ export async function takeBetaRate(key: string, limit: number, windowMs: number)
  * Inlined historical sources use decoded Base64 length (padding removed).
  */
 export async function creatorUsage(executor: any, creatorId: number) {
+  const usage = await retainedStorageUsage(executor, creatorId);
   const result = await executor.execute(sql`
-    with objects as (
-      select regexp_replace(m.url,'^/api/media/files/','') as key, max(coalesce(m.high_bytes,
-        case when m.url like 'data:%' then
-          octet_length(decode(split_part(m.url,',',2),'base64')) else null end))::bigint as bytes
-        from media_items m join events e on e.id=m.event_id where e.creator_id=${creatorId} and m.archived_at is null group by m.url
-      union all
-      select regexp_replace(m.thumbnail,'^/api/media/files/',''), max(coalesce(m.low_bytes,
-        case when m.thumbnail like 'data:%' then
-          octet_length(decode(split_part(m.thumbnail,',',2),'base64')) else null end))::bigint
-        from media_items m join events e on e.id=m.event_id where e.creator_id=${creatorId} and m.archived_at is null group by m.thumbnail
-      union all
-      select source_key,max(stored_bytes) from reference_documents
-        where owner_id=${creatorId} and source_key is not null group by source_key
-      union all
-      select profile_image,octet_length(decode(split_part(profile_image,',',2),'base64'))::bigint
-        from users where id=${creatorId} and profile_image like 'data:%;base64,%'
-      union all
-      select profile_cover_image,octet_length(decode(split_part(profile_cover_image,',',2),'base64'))::bigint
-        from users where id=${creatorId} and profile_cover_image like 'data:%;base64,%'
-      union all
-      select c.key,max(c.stored_bytes) from media_cleanup c where c.creator_id=${creatorId}
-        and not exists(select 1 from media_reservations r where r.storage_key=c.key or r.thumbnail_key=c.key)
-        group by c.key
-    ), unique_objects as (select key,max(bytes) as bytes from objects group by key)
-    select (select coalesce(sum(bytes),0) from unique_objects) +
-      (select coalesce(sum(reserved_bytes),0) from media_reservations where creator_id=${creatorId}) as bytes,
-      (select count(*) from unique_objects where bytes is null) as unknown,
-      (select count(*) from media_cleanup c where c.creator_id=${creatorId}
-        and not exists(select 1 from media_reservations r where r.storage_key=c.key or r.thumbnail_key=c.key)) as pending_cleanup,
+    select
       (select count(*) from events where creator_id=${creatorId}) as galleries,
       (select count(*) from media_items m join events e on e.id=m.event_id
-        where e.creator_id=${creatorId} and m.archived_at is null and m.type='image') +
+        where e.creator_id=${creatorId} and m.type='image') +
       (select count(distinct c.photo_token) from media_cleanup c where c.creator_id=${creatorId}
         and c.photo_token is not null
         and not exists(select 1 from media_items m where 'item:'||m.id=c.photo_token)
@@ -95,20 +69,21 @@ export async function creatorUsage(executor: any, creatorId: number) {
       (select count(*) from media_reservations where creator_id=${creatorId}
         and storage_key like 'media-%') as photos`);
   const row = result.rows[0];
-  return {bytes:Number(row.bytes), unknown:Number(row.unknown), pendingCleanup:Number(row.pending_cleanup),galleries:Number(row.galleries),photos:Number(row.photos)};
+  return {...usage,galleries:Number(row.galleries),photos:Number(row.photos)};
 }
-export async function lockedCreatorBudget(tx: any, creatorId: number, bytes = 0, photos = 0, galleries = 0, replacementCredit = 0) {
+export async function lockedCreatorBudget(tx: any, creatorId: number, bytes = 0, photos = 0, galleries = 0, replacementCredit = 0, checkCurrent = false) {
   const result = await tx.execute(sql`select is_admin,quota_exception,suspended,creator_status from users where id=${creatorId} for update`);
   const user = result.rows[0];
   if (!user || user.suspended || user.creator_status === "rejected") throw new MediaLimitError("Creator access is blocked.", "permission");
   if (user.is_admin) return;
+  if (!bytes && !photos && !galleries && !replacementCredit && !checkCurrent) return;
   const limits = communityLimitsFor(user.quota_exception);
   const used = await creatorUsage(tx,creatorId);
   // A replacement cannot keep accumulating undeleted previous objects.
   if (used.pendingCleanup && replacementCredit) bytes += replacementCredit;
   if (galleries && used.galleries+galleries>limits.galleries) throw new MediaLimitError(`You have reached the maximum of ${limits.galleries} galleries.`);
   if (photos && used.photos+photos>limits.photos) throw new MediaLimitError(`You have reached the maximum of ${limits.photos.toLocaleString("en-US")} photos.`);
-  if (bytes && (used.unknown || used.bytes+bytes>limits.bytes)) throw new MediaLimitError(used.unknown
+  if ((bytes !== 0 || checkCurrent) && (used.unknown || used.bytes+bytes>limits.bytes)) throw new MediaLimitError(used.unknown
     ? used.pendingCleanup ? "Storage cleanup is pending. Try again shortly or ask an administrator." : "Storage usage needs an administrator check before more files can be uploaded."
     : `Your storage is full (${limits.bytes/1_000_000} MB).`, used.unknown ? used.pendingCleanup ? "storage_cleanup" : "storage_unknown" : "storage_full");
 }
