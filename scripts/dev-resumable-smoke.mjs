@@ -20,7 +20,7 @@ import {users,events,mediaItems,mediaReservations,mediaCleanup,mediaObjectRoutes
 
 assertDevelopmentMediaTarget(); // Includes runtime database fingerprint + exact Development bucket.
 const [phase,root,requestedKind="photo"]=process.argv.slice(2);
-assert.ok(["photo","video"].includes(requestedKind));
+assert.ok(["photo","video","ui-creator","ui-admin"].includes(requestedKind));
 assert.match(root||"",/^\/tmp\/vco-resumable-smoke-[a-f0-9-]{36}$/);
 const base=new URL(`https://${process.env.REPLIT_DEV_DOMAIN}`);
 assert.ok(base.hostname.endsWith(".replit.dev"),"Development preview required");
@@ -34,7 +34,8 @@ function report(values){console.log(JSON.stringify({phase,...values}));}
 async function bytes(){
   if(state?.kind==="video")return readFile(path.join(root,"fixture.mp4"));
   const jpeg=await sharp({create:{width:64,height:32,channels:3,background:"#2676ab"}}).jpeg().toBuffer();
-  return Buffer.concat([jpeg,Buffer.alloc(1048576+256-jpeg.length,42)]);
+  const size=state?.kind?.startsWith("ui-")?3*1048576+256:1048576+256;
+  return Buffer.concat([jpeg,Buffer.alloc(size-jpeg.length,42)]);
 }
 async function request(route,{actor=0,method="GET",body,headers={},signal}={}){
   const response=await fetch(new URL(route,base),{method,headers:{
@@ -108,7 +109,7 @@ try{
       const salt=randomBytes(16).toString("hex");
       const hash=`${scryptSync(password,salt,64).toString("hex")}.${salt}`;
       const [actor]=await db.insert(users).values({username,email:`${username}@example.invalid`,password:hash,
-        isCreator:true,isAdmin:state.kind==="video" && i===0,creatorStatus:"approved",emailVerifiedAt:new Date()}).returning({id:users.id});
+        isCreator:true,isAdmin:["video","ui-admin"].includes(state.kind) && i===0,creatorStatus:"approved",emailVerifiedAt:new Date()}).returning({id:users.id});
       state.actors.push({id:actor.id,username});await save();
       const login=await request("/api/login",{actor:99,method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({username,password})});
@@ -137,7 +138,35 @@ try{
       state.additionalEventIds.push(ownGallery.id);await save();
     }
     await confirmGateClosed();
+    if(state.kind.startsWith("ui-"))await writeFile(path.join(root,"fixture.jpg"),await bytes(),{mode:0o600});
     report({developmentTargetVerified:true,isolatedAccounts:2,privateGallery:true,gateBlockedBefore:true});
+  }else if(phase==="ui"){
+    assert.ok(state.kind.startsWith("ui-"));
+    const {runResumableLiveUi}=await import("./helpers/resumable-live-ui.mjs");
+    const evidence=await runResumableLiveUi({base:base.href,cookie:state.actors[0].cookie,
+      role:state.kind==="ui-admin"?"admin":"creator",width:state.kind==="ui-admin"?1280:390,
+      title:`Resumable smoke ${state.nonce}`,fixturePath:path.join(root,"fixture.jpg"),caption,
+      onPaused:async expected=>{
+        const sessions=await db.select().from(mediaUploadSessions).where(and(
+          eq(mediaUploadSessions.actorId,state.actors[0].id),eq(mediaUploadSessions.eventId,state.eventId)));
+        assert.equal(sessions.length,1);
+        state.sessionId=sessions[0].id;await save();
+        const status=await json(sessionPath());
+        assert.equal(status.received,expected);assert.equal(status.uploadedBytes,expected*1048576);
+        assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.eventId,state.eventId))).length,0);
+        return {received:status.received,uploadedBytes:status.uploadedBytes,mediaCommitted:0};
+      }});
+    const status=await json(sessionPath());assert.equal(status.state,"completed");
+    state.mediaId=status.mediaId;await save();
+    const items=await db.select().from(mediaItems).where(eq(mediaItems.eventId,state.eventId));
+    assert.equal(items.length,1);assert.equal(items[0].id,state.mediaId);
+    assert.equal(items[0].caption,caption);
+    assert.equal(items[0].photographer,"Development smoke fixture");
+    assert.ok(items[0].tags.includes("Development fixture"));
+    state.mediaUrl=items[0].url;state.thumbnail=items[0].thumbnail;
+    rememberUrl(state.mediaUrl);rememberUrl(state.thumbnail);
+    state.uiEvidence=evidence;await save();
+    report({...evidence,singleCommittedMedia:true,originalMetadataPreserved:true});
   }else if(phase==="stage"){
     if(state.kind==="video"){
       for(const actor of [0,1]){

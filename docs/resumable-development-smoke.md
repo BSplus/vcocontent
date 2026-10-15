@@ -64,3 +64,6 @@ removed. The corrected five-phase run passed completely.
 A subsequent controlled live video smoke passed; see
 `docs/resumable-development-video-smoke.md`. The table above records this earlier
 JPEG-only run, not that later video check.
+
+Subsequent real mobile Creator / desktop Admin upload-dialog checks also passed;
+see `docs/resumable-development-ui-smoke.md`.

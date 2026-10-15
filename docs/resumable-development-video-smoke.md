@@ -78,9 +78,9 @@ remaining R2 files or live test media.
   Development source, not the application's complete video-preview dialog UI.
 - Analysis completion on a synthetic pattern does not prove racing-number,
   driver/team, manufacturer or sponsor recognition accuracy on real footage.
-- Real mobile/desktop upload-dialog testing without API interception remains a
-  separate check. Larger limits, RAW, multi-host failover and Production
-  acceptance are not claimed.
+- Subsequent real mobile Creator / desktop Admin upload-dialog checks passed;
+  see `docs/resumable-development-ui-smoke.md`. Larger limits, RAW, multi-host
+  failover and Production acceptance are not claimed.
 
 Reproduction uses explicit phases of `scripts/dev-resumable-smoke.mjs` with
 `video` as its third argument. It is never run by startup or Publishing.
