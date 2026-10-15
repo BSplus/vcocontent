@@ -9,7 +9,7 @@ const normalized = (value: string) => value.normalize("NFKD").replace(/[\u0300-\
   .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const markings = z.array(z.object({
   text: z.string().trim().min(1).max(160),
-  kind: z.enum(["commercial", "team", "unknown"]),
+  kind: z.enum(["commercial", "team", "team_and_commercial", "unknown"]),
 })).min(1).max(VIDEO_BRANDING_LIMITS.markings);
 const assessment = {
   complete: z.boolean(),
@@ -24,15 +24,15 @@ const branding = z.object({
   })).max(VIDEO_BRANDING_LIMITS.vehicles),
 });
 
-/** Optional video-only addition to the existing independent crop audit. */
+/** Optional photo/video addition to the existing independent crop audit. */
 export function videoBrandingPrompt(indices: number[]) {
   return `
 Additionally inspect readable BODYWORK branding only for labelled vehicle crops ${indices.join(", ")}.
 Do not identify any team, driver, manufacturer or car model from this lettering. No entry-list names or first-pass guesses are supplied.
-Add branding:{fullImageReadings:[{readingIndex:number,complete:boolean,markings:[{text:string,kind:"commercial"|"team"|"unknown"}]}],vehicleReadings:[{vehicleIndex:number,complete:boolean,markings:[{text:string,kind:"commercial"|"team"|"unknown"}]}]}.
+Add branding:{fullImageReadings:[{readingIndex:number,complete:boolean,markings:[{text:string,kind:"commercial"|"team"|"team_and_commercial"|"unknown"}]}],vehicleReadings:[{vehicleIndex:number,complete:boolean,markings:[{text:string,kind:"commercial"|"team"|"team_and_commercial"|"unknown"}]}]}.
 readingIndex is the zero-based index of the SAME car in your numeric fullImageReadings array, not a guessed vehicle number.
 Inspect full-frame car lettering and each labelled source crop independently. Copy complete literal text only. Never copy classification from one view to the other.
-Commercial means clearly identifiable commercial product/sponsor branding, NOT a team identity or proof of a sponsorship contract. An explicit team identifier is team; unfamiliar emblems, ambiguous abbreviations, mixed/partial/blurred lettering or uncertain purpose are unknown.
+Commercial means clearly identifiable commercial product/brand lettering, not proof of a sponsorship contract. An explicit team identifier is team. Use team_and_commercial ONLY when the same complete literal marking independently identifies BOTH a commercial brand and a team; this retains its team-identity meaning. A standalone readable commercial logo can be commercial even if that brand also names a racing team. Never derive a brand by removing words from a team name or from reference lists, captions or background knowledge about a team. Unfamiliar emblems, ambiguous abbreviations, partial/blurred lettering or uncertain purpose are unknown.
 Branding does not require a readable race number. A car with an unknown number still has its own fullImageReadings record with number:"" and a whole-car rectangle; assess only that car's lettering.
 Use complete:false when the visible branding cannot be assessed unambiguously. Do not guess a commercial classification merely because text resembles a known sponsor.
 Ignore broadcast banners, trackside signs, other cars and background branding. Never use them to assess the cropped car.
@@ -48,7 +48,8 @@ export function confirmedVisibleBrands(raw: unknown, readingIndex: number, vehic
   const crop = parsed.data.vehicleReadings.filter(r => r.vehicleIndex === vehicleIndex);
   if (full.length !== 1 || crop.length !== 1 || !full[0].complete || !crop[0].complete) return [];
   const commercial = (rows: typeof full[0]["markings"]) =>
-    rows.filter(m => m.kind === "commercial").map(m => canonicalBrand(m.text)).filter((b): b is string => !!b);
+    rows.filter(m => m.kind === "commercial" || m.kind === "team_and_commercial")
+      .map(m => canonicalBrand(m.text)).filter((b): b is string => !!b);
   const fullText = commercial(full[0].markings), cropText = new Set(commercial(crop[0].markings));
   return Array.from(new Set(fullText.filter(b => cropText.has(b))));
 }

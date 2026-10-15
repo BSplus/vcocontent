@@ -43,3 +43,18 @@ genügen. Keine zweite KI-Verifikationsrunde verlangen. Fehlende Ergebnisse oder
 fehlgeschlagene Checks lassen nur den Markentag weg. Bildbeleg, andere Tags,
 Captions, Matching-Grenzen und unabhängige Safety-Prüfungen bleiben erhalten.
 Der Web-Check belegt keine Sponsorenbeziehung und keine abgebildete Teamidentität.
+
+Ein allgemeiner Suchtreffer ist kein Nachweis erfolgreicher Logo-Erkennung:
+gleichlautende Teamnamen und Captions können ihn ebenfalls erklären. Auch ein
+gespeicherter schwacher Teamhinweis belegt nicht, wie eine unabhängige Markenlesung
+klassifiziert oder verworfen wurde. Ohne historische Zwischenergebnisse bleibt
+die konkrete Auslassungsursache unbekannt; kontrollierte Reproduktionen sind
+getrennt von einer echten Verbesserung an den betroffenen Pixeln zu berichten.
+
+**Why:** Beim überprüften MAHLE-Seitenbild war der Türschriftzug visuell lesbar,
+aber bereits der gespeicherte visuelle Analysebeleg enthielt keine Marke.
+Positive Nachbarbilder und der Caption-Suchtreffer rekonstruierten die verworfenen
+Zwischenergebnisse nicht.
+
+**How to apply:** Historische Befunde, gemockte Pipeline-Prüfungen, menschliche
+Pixelprüfung und echte Anbieter-Evaluation ausdrücklich getrennt halten.

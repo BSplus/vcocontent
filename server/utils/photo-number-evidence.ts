@@ -140,9 +140,10 @@ Only manufacturer crop indices ${makeIndices.join(", ")} need these extra fields
         const sharedAnchor=vehicles.some((other,j)=>j!==index&&validRegion(other.vehicleRegion)&&
           overlap(other.vehicleRegion!,r.vehicleRegion)>=best.score-.2);
         // Brand evidence is independent of digits but still requires a unique
-        // same-car association and one consistent source-crop reading.
+        // same-car association and one source-crop reading. Digit agreement is
+        // checked below for identity only; it cannot veto independently read logos.
         if(options?.visibleBrands && brandingIndices.includes(index) && !sharedAnchor &&
-          local.length===1 && local[0].number===r.number){
+          local.length===1){
           const visible=confirmedVisibleBrands(raw.branding,evidence.fullImageReadings.indexOf(r),index);
           if(visible.length) brands.set(index,visible);
         }

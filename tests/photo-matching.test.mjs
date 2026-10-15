@@ -19,6 +19,7 @@ import {brandOnlineResponse} from "./helpers/brand-online-fixture.mjs";
 
 const realFetch=globalThis.fetch;
 let manufacturerAudits=0;
+let brandKind="commercial";
 const eventIds=[],userIds=[],seriesIds=[];
 let server,base,admin,owner,other,calls=0,auditCalls=0,gate,entered,providerFailure=false,invalidOutput=false,visionVehicle="",visionNumber="007",auditNumber="007",visionTeam="",brandMode=false,brandLabel="MOZA Racing",onlineUnavailable=false,makeMode=false;
 const image="data:image/webp;base64,"+(await sharp({create:{width:32,height:32,channels:3,background:"green"}}).webp().toBuffer()).toString("base64");
@@ -78,7 +79,7 @@ test.before(async()=>{
         vehicleReadings:auditNumber||brandMode||makeMode?[{vehicleIndex:0,number:auditNumber,
           ...(makeMode?{manufacturer:"Porsche",manufacturerConfident:true}:{})}]:[],
         ...(brandMode?{branding:{
-          fullImageReadings:[{readingIndex:0,complete:true,markings:[{text:brandLabel,kind:"commercial"}]}],
+          fullImageReadings:[{readingIndex:0,complete:true,markings:[{text:brandLabel,kind:brandKind}]}],
           vehicleReadings:[{vehicleIndex:0,complete:true,markings:[{text:brandLabel.toUpperCase(),kind:"commercial"}]}],
         }}:{}),
       })}}]}),{headers:{"Content-Type":"application/json"}});
@@ -131,6 +132,33 @@ test("confirmed photo branding creates searchable tags without changing the entr
     assert.ok(results.some(item=>item.id===p.id),"Existing public tag search finds the brand");
   } finally {brandMode=false;visionTeam="";visionVehicle="";}
 });
+test("MAHLE dual-role logo survives persistence and matching; caption-only MAHLE is not brand evidence",async()=>{
+  const e=await album();
+  await db.insert(eventEntries).values({...entry,eventId:e.id,number:"110",team:"MAHLE RACING TEAM",car:"BMW M4 GT3"});
+  const p=await photo(e,{caption:"Protected MAHLE RACING TEAM caption",tags:["Helmet"],manualTags:["Helmet"]});
+  scope([p]);brandMode=true;brandLabel="MAHLE";brandKind="team_and_commercial";
+  visionNumber="110";auditNumber="110";visionTeam="MAHLE";visionVehicle="Race Car";
+  try {
+    await enqueueAnalysis(p,{recognition:true,photoWorkflow:true});const saved=await settled(p.id);
+    assert.ok(saved.tags.includes("Brand: MAHLE"));assert.ok(saved.tags.includes("Helmet"));
+    assert.deepEqual(saved.identification[0].visibleBrands,["MAHLE"]);
+    assert.equal(saved.identification[0].brandEvidence,"on-car-commercial-v1");
+    assert.equal(saved.identification[0].team,"MAHLE RACING TEAM");
+    assert.equal(saved.identification[0].number,"110");
+    assert.equal(saved.identification[0].numberEvidence,"vehicle-crop-v2");
+    assert.equal(saved.caption,p.caption);
+    brandMode=false;
+    const captionOnly=await photo(e,{caption:"MAHLE RACING TEAM"});scope([captionOnly]);
+    await enqueueAnalysis(captionOnly,{recognition:true,photoWorkflow:true});
+    const withoutLogo=await settled(captionOnly.id);
+    assert.ok(!withoutLogo.tags.includes("Brand: MAHLE"));
+    assert.equal(withoutLogo.identification[0].visibleBrands,undefined);
+    assert.equal(withoutLogo.caption,"MAHLE RACING TEAM");
+  } finally {
+    brandMode=false;brandLabel="MOZA Racing";brandKind="commercial";
+    visionNumber="007";auditNumber="007";visionTeam="";visionVehicle="";
+  }
+});
 
 test("photos without entry lists or readable numbers can have brands and removed brand tags stay suppressed",async()=>{
   const e=await album();await db.delete(eventEntries).where(eq(eventEntries.eventId,e.id));
@@ -156,6 +184,8 @@ test("failed online brand verification omits only brand tags and ordinary analys
     const saved=await settled(p.id);
     assert.ok(saved.tags.includes("Race Car"));assert.ok(saved.tags.includes("Day"));
     assert.ok(saved.tags.every(tag=>!tag.startsWith("Brand: ")));
+    assert.deepEqual(saved.identification[0].visibleBrands,["PHANTOM VERIFY"],
+      "web failures omit tags, not the separately retained visual evidence");
     assert.equal(saved.identification[0].source,"reference");
     assert.equal(saved.caption,"Protected editorial text");
     assert.equal((await analysisStatus(p.id)).status,"completed");

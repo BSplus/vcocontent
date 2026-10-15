@@ -15,6 +15,16 @@ entry-list matching; the commercial logo can independently be searchable.
 Only the existing narrow, checked commercial-hint correction releases a team
 hint. Vehicle/manufacturer/uniqueness/session/owner gates remain.
 
+A literal marking can now explicitly be `team_and_commercial` when both meanings
+are independently supported in that view. It may supply brand evidence (including
+agreement with a commercial-only reading of the exact same text), but remains a
+team veto for commercial-hint correction. Plain `team`/`unknown` text never supplies
+brand evidence; no brand is extracted from a longer team name. Number disagreement
+does not veto independently agreeing same-car logo readings. Geometry, unique
+full-frame/crop association, completeness and both literal logo readings remain
+mandatory. See [the MAHLE case diagnosis](mahle-brand-omission-diagnosis.md) for
+historical limits and Development-only verification.
+
 Brand names use bounded, case-normalized literal text, no sponsor aliases or
 global brand allowlist. AI tags remain subject to existing editorial suppression
 and manual-tag preservation. The metadata is displayed as **Visible brands**,

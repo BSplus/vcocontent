@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
 import {readFile} from "node:fs/promises";
-import {verifyPhotoObservations,supportedPhotoObservations,photoVehicleCrop,PHOTO_NUMBER_POLICY,NUMBER_AUDIT_MODEL} from "../server/utils/photo-number-evidence.ts";
+import {verifyPhotoObservations,supportedPhotoObservations,photoVehicleCrop,checkedBrandTags,PHOTO_NUMBER_POLICY,NUMBER_AUDIT_MODEL} from "../server/utils/photo-number-evidence.ts";
 import {parseRecognition} from "../server/utils/motorsport-recognition.ts";
 import {detectRaceNumbers} from "../server/utils/ai-tagger.ts";
 import {matchReferences} from "../server/reference-matching.ts";
@@ -142,6 +142,60 @@ test("full/crop disagreement, shorter leading-zero forms and new numbers never r
 test("duplicate original numbers cannot share car evidence",async()=>{
   evidence=proof("007");
   assert.ok((await verifyPhotoObservations(image,[observed("007"),observed("007")])).every(v=>!v.number));
+});
+test("MAHLE same-car pixel contracts remain independent of failed number readings and team hints",async()=>{
+  for(const [fullNumber,cropNumber] of [["110",""],["","110"],["11","110"],["",""]]) {
+    evidence=proof(fullNumber);
+    evidence.vehicleReadings[0].number=cropNumber;
+    evidence.branding={
+      fullImageReadings:[{readingIndex:0,complete:true,markings:[{text:"MAHLE",kind:"team_and_commercial"}]}],
+      vehicleReadings:[{vehicleIndex:0,complete:true,markings:[{text:"MAHLE",kind:"commercial"}]}],
+    };
+    const result=await verifyPhotoObservations(image,[observed("110",{team:"MAHLE"})],undefined,{visibleBrands:true});
+    assert.deepEqual(checkedBrandTags(result),["Brand: MAHLE"]);
+    assert.equal(result[0].number,"");assert.equal(result[0].numberEvidence,undefined);
+    assert.equal(result[0].team,"");assert.equal(result[0].drivers,"");
+  }
+  assert.ok(requests.every(r=>!r.messages[0].content.includes("MAHLE")),"no team/brand candidates prime the audit");
+});
+test("independent logo evidence still requires unique same-car full/crop binding, not team text or another car",async()=>{
+  const branding={
+    fullImageReadings:[{readingIndex:0,complete:true,markings:[{text:"MAHLE",kind:"commercial"}]}],
+    vehicleReadings:[{vehicleIndex:0,complete:true,markings:[{text:"MAHLE",kind:"commercial"}]}],
+  };
+  for(const mutate of [
+    e=>{delete e.branding;},
+    e=>{e.branding.vehicleReadings[0].markings[0].kind="unknown";},
+    e=>{e.branding.vehicleReadings[0].complete=false;},
+    e=>{e.branding.vehicleReadings[0].vehicleIndex=1;},
+    e=>{e.fullImageReadings[0].vehicleRegion=right;},
+    e=>{e.fullImageReadings.push(full("",left));},
+    e=>{e.vehicleReadings=[];},
+    e=>{e.vehicleReadings.push({vehicleIndex:0,number:""});},
+  ]) {
+    evidence={...proof("",left),branding:structuredClone(branding)};mutate(evidence);
+    const r=await verifyPhotoObservations(image,[observed("",{vehicleRegion:left,team:"MAHLE RACING TEAM"})],undefined,{visibleBrands:true});
+    assert.deepEqual(checkedBrandTags(r),[]);
+  }
+  evidence={...proof("",left),branding};
+  const shared=await verifyPhotoObservations(image,[observed("",{vehicleRegion:left}),observed("",{vehicleRegion:left})],undefined,{visibleBrands:true});
+  assert.deepEqual(checkedBrandTags(shared),[]);
+});
+test("invalid optional branding does not block certified numbers, and dual-role text cannot excuse a competing team",async()=>{
+  evidence={...proof("110"),branding:{vehicleReadings:"invalid"}};
+  let r=await verifyPhotoObservations(image,[observed("110")],undefined,{visibleBrands:true});
+  assert.equal(r[0].number,"110");assert.equal(r[0].numberEvidence,PHOTO_NUMBER_POLICY);
+  assert.deepEqual(checkedBrandTags(r),[]);
+  evidence.branding={
+    fullImageReadings:[{readingIndex:0,complete:true,markings:[{text:"Other Racing",kind:"team_and_commercial"}]}],
+    vehicleReadings:[{vehicleIndex:0,complete:true,markings:[{text:"Other Racing",kind:"team_and_commercial"}]}],
+  };
+  r=await verifyPhotoObservations(image,[observed("110",{team:"Other Racing"})],undefined,{visibleBrands:true,videoBranding:true});
+  assert.deepEqual(checkedBrandTags(r),["Brand: OTHER RACING"]);
+  assert.equal(r[0].team,"Other Racing");
+  const linked=matchReferences(r,[{scope:"event",kind:"entry",session:null,updatedAt:new Date(),
+    rows:[{number:"110",team:"MAHLE RACING TEAM",car:"BMW M4 GT3",drivers:"Registered lineup"}]}],null,"",true,true)[0];
+  assert.equal(linked.source,"visual");assert.equal(linked.drivers,"");
 });
 test("no image substitution, vehicle creation or evidence for unanchored historical numbers",async()=>{
   evidence=proof("107");

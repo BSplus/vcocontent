@@ -43,6 +43,24 @@ test("a checked sponsor can be tagged beside a competing team without excusing t
   assert.deepEqual(confirmedCommercialHints(p,vehicle,0,0),[]);
   assert.equal(withoutCommercialTeamHints(vehicle,[]).team,"MOZA RACING");
 });
+test("literal MAHLE can independently be a brand AND team identifier without clearing identity vetoes",()=>{
+  const p=proof();
+  p.fullImageReadings[0].markings=[mark("MAHLE","team_and_commercial")];
+  p.vehicleReadings[0].markings=[mark("Mahle","commercial")];
+  const v={...vehicle,team:"MAHLE",referenceConstraints:[{team:"MAHLE",vehicle:"",manufacturer:"BMW"}]};
+  assert.deepEqual(confirmedVisibleBrands(p,0,0),["MAHLE"]);
+  assert.deepEqual(confirmedCommercialHints(p,v,0,0),[]);
+  assert.deepEqual(withoutCommercialTeamHints(v,[]),v);
+  p.vehicleReadings[0].markings=[mark("MAHLE","team_and_commercial")];
+  assert.deepEqual(confirmedVisibleBrands(p,0,0),["MAHLE"]);
+  assert.deepEqual(confirmedCommercialHints(p,v,0,0),[]);
+  for(const kind of ["team","unknown"]) {
+    p.vehicleReadings[0].markings=[mark("MAHLE",kind)];
+    assert.deepEqual(confirmedVisibleBrands(p,0,0),[]);
+  }
+  p.vehicleReadings[0].markings=[mark("MAHLE RACING TEAM","team_and_commercial")];
+  assert.deepEqual(confirmedVisibleBrands(p,0,0),[],"never extract MAHLE from a longer team name");
+});
 
 for(const [name, mutate] of [
   ["missing evidence", ()=>undefined],
