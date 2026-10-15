@@ -83,3 +83,14 @@ prevent safe cancellation of invalid files.
 intent replaces it. Release only after checking destination absence, conflicting
 persistence routes and local cleanup. Reuse existing JPEG provenance conventions,
 since source keys also select established exact-original/privacy delivery rules.
+
+Successful intake and retrieval are not enough to approve a new storage path:
+ordinary media/gallery deletion must understand the physical inventory first.
+
+**Why:** The prepared native registration could pass source/preview tests while
+the existing bulk gallery deletion left physical inventory linked and therefore
+could not delete the gallery. This was isolated-test evidence, not live damage.
+
+**How to apply:** Keep native activation blocked until normal deletion and
+retained cleanup accounting have end-to-end acceptance. Removing fixture
+inventory manually is test teardown, never proof of working application deletion.

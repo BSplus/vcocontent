@@ -117,6 +117,8 @@ are required before claiming the full large-upload release.
 The separately prepared native R2 provider engine and isolated 250-MiB tests are
 documented in `docs/r2-multipart-preparation.md`. They do not activate large files
 in this HTTP transport or complete its remaining P2-5 integration/release gates.
+The newer disabled JPEG-only native adapter, recovery evidence and lifecycle
+activation blockers are described in `docs/native-jpeg-intake.md`.
 
 Disposable HTTP/DB tests and browser-client protocol tests cover permission,
 limits, reservation/slot accounting, replay/tamper/extra-part rejection,

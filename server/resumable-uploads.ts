@@ -24,8 +24,13 @@ import { reviewMediaSafety } from "./content-safety";
 import { analysisStatus, kickAnalysisWorker } from "./analysis-jobs";
 import {nativeUploadFenceAvailable,nativeUploadOwnsSession} from "./native-upload-fence";
 import {UPLOAD_SESSION_ROOT,uploadSessionDirectory} from "./upload-session-staging";
+import {assembleUploadSource,UPLOAD_PART_BYTES} from "./upload-session-assembly";
+import {NATIVE_JPEG_TRANSPORT,nativeJpegSession,nativeJpegReady,pinNativeJpeg,
+  saveNativeJpeg,cleanupNativeJpeg,cancelNativeJpeg} from "./native-jpeg-intake";
+import {MultipartUploadError} from "./r2-multipart-upload";
+import {MultipartJournalError} from "./r2-multipart-journal";
 
-export const UPLOAD_PART_BYTES = 1024 * 1024;
+export {UPLOAD_PART_BYTES};
 const ROOT = UPLOAD_SESSION_ROOT;
 const TTL = 60*60*1000;
 const activeFinalizers = new Set<string>();
@@ -60,7 +65,9 @@ function view(row:Session) {
   return {id:row.id,eventId:row.eventId,state:row.state,size:row.size,sha256:row.sha256,
     partBytes:UPLOAD_PART_BYTES,received:Object.keys(row.parts as Parts).length,
     uploadedBytes:Object.values(row.parts as Parts).reduce((n,p)=>n+p.size,0),
-    expiresAt:row.expiresAt,mediaId:row.mediaId};
+    expiresAt:row.expiresAt,mediaId:row.mediaId,
+    canResumeFinalization:nativeJpegSession(row)&&row.state==="finalizing"&&row.expiresAt>new Date()&&
+      !finalizerActive(row)};
 }
 async function owned(req:Request) {
   const id=z.string().uuid().parse(req.params.sessionId);
@@ -87,6 +94,8 @@ async function reserveBody(req:Request) {
         throw new SessionError(409,"This request key belongs to another upload.");
       return previous;
     }
+    const native=process.env.MEDIA_R2_MULTIPART_ENABLED==="true"&&body.mime==="image/jpeg";
+    if(native)await nativeJpegReady();
     const counts=await tx.execute(sql`select count(*)::int as total,
       count(*) filter(where actor_id=${req.user!.id})::int as owned,
       coalesce(sum(size),0)::bigint as bytes from media_upload_sessions s
@@ -104,7 +113,8 @@ async function reserveBody(req:Request) {
     await storage.reserveMedia(id,event.id,event.creatorId,body.size+100*1024,keys.storageKey,keys.thumbnailKey,req.user!.isAdmin);
     reserved=id;
     const [row]=await tx.insert(sessions).values({id,actorId:req.user!.id,requestKey:body.requestKey,requestFingerprint,eventId:event.id,
-      ownerId:event.creatorId,size:body.size,mime:body.mime,sha256:body.sha256,metadata:body.metadata,
+      ownerId:event.creatorId,size:body.size,mime:body.mime,sha256:body.sha256,
+      metadata:native?{...body.metadata,nativeTransport:NATIVE_JPEG_TRANSPORT}:body.metadata,
       expiresAt:new Date(Date.now()+TTL)}).returning();
     return row;
   }); } catch(error){
@@ -134,6 +144,7 @@ function alive(pid:number|null) {
   if(!pid) return false;
   try { process.kill(pid,0);return true; } catch(error:any){return error.code!=="ESRCH";}
 }
+const finalizerActive=(row:Session)=>row.workerPid===process.pid?activeFinalizers.has(row.id):alive(row.workerPid);
 /** Conservative reconciliation. Never race an active/uncertain finalizer. */
 export async function cleanupUploadSessions() {
   if(!(await db.execute(sql`select to_regclass('media_upload_sessions') as name`)).rows[0]?.name) return;
@@ -171,48 +182,49 @@ export async function cleanupUploadSessions() {
 async function finish(row:Session,req:Request) {
   if(row.state==="completed") return row;
   await gallery(row,req);writesAllowed();
-  if(row.state==="finalizing") return row;
-  if(row.expiresAt<new Date() || row.state!=="receiving") throw new SessionError(410,"Upload session expired or closed.");
+  const native=nativeJpegSession(row);
+  if(row.state==="finalizing"&&(!native||finalizerActive(row))) return row;
+  if(row.expiresAt<new Date() || !["receiving","finalizing"].includes(row.state))
+    throw new SessionError(410,"Upload session expired or closed.");
   if(Object.keys(row.parts as Parts).length!==Math.ceil(row.size/UPLOAD_PART_BYTES))
     throw new SessionError(409,"Upload is incomplete. Resume from the next missing part.");
   if(row.size>currentLimit(row.mime,row.ownerId)) throw new SessionError(413,"File exceeds the current gallery limit.");
-  const [claimed]=await db.update(sessions).set({state:"finalizing",workerPid:process.pid})
-    .where(and(eq(sessions.id,row.id),eq(sessions.state,"receiving"))).returning();
+  let claimed:Session|undefined,ours=false;
+  try{
+    claimed=await db.transaction(async tx=>{
+      await tx.select().from(mediaReservations).where(eq(mediaReservations.id,row.id)).for("update");
+      const [current]=await tx.select().from(sessions).where(eq(sessions.id,row.id)).for("update");
+      if(!current||current.state==="completed"||current.state==="finalizing"&&(!native||finalizerActive(current)))
+        return undefined;
+      if(!["receiving","finalizing"].includes(current.state))throw new SessionError(410,"Upload session closed.");
+      activeFinalizers.add(row.id);ours=true;
+      return (await tx.update(sessions).set({state:"finalizing",workerPid:process.pid})
+        .where(eq(sessions.id,row.id)).returning())[0];
+    });
+  }catch(error){if(ours)activeFinalizers.delete(row.id);throw error;}
   if(!claimed) return (await db.select().from(sessions).where(eq(sessions.id,row.id)))[0];
-  activeFinalizers.add(row.id);
   let assembly:string|undefined;
   let assembledDirectory:string|undefined;
   try {
-    assembly=await withMediaWorkBudget(async()=>{
-      const parts=claimed.parts as Parts;
-      if(Object.keys(parts).length!==Math.ceil(row.size/UPLOAD_PART_BYTES)) throw new SessionError(409,"Upload is incomplete.");
-      assembledDirectory=await mkdtemp(path.join(folder(row.id),"assembled-"));
-      const filename=path.join(assembledDirectory,"source");
-      const {open}=await import("node:fs/promises");
-      const output=await open(filename,"wx");
-      const digest=createHash("sha256");let size=0;
-      try {
-        for(let i=0;i<Math.ceil(row.size/UPLOAD_PART_BYTES);i++){
-          const part=parts[String(i)];
-          const input=createReadStream(path.join(folder(row.id),`${i}.part`));
-          const hash=createHash("sha256");let count=0;
-          for await(const chunk of input){
-            count+=chunk.length;size+=chunk.length;
-            if(count>part.size || size>row.size) throw new SessionError(409,"Upload integrity check failed.");
-            hash.update(chunk);digest.update(chunk);
-            let offset=0;
-            while(offset<chunk.length) offset+=(await output.write(chunk,offset,chunk.length-offset)).bytesWritten;
-          }
-          if(count!==part.size || hash.digest("hex")!==part.sha256) throw new SessionError(409,"Upload integrity check failed.");
-        }
-      } finally {await output.close();}
-      if(size!==row.size || digest.digest("hex")!==row.sha256) throw new SessionError(409,"Upload integrity check failed.");
-      return filename;
+    if(native)await pinNativeJpeg(claimed);
+    const assembled=await assembleUploadSource(claimed,native).catch(error=>{
+      if(!native&&error instanceof MultipartUploadError&&error.code==="integrity")
+        throw new SessionError(409,"Upload integrity check failed.");
+      throw error;
     });
+    assembly=assembled.filename;assembledDirectory=assembled.directory;
     const [reservation]=await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id));
     if(!reservation) throw new SessionError(410,"Upload reservation expired.");
     await gallery(row,req);writesAllowed();
-    const metadata=details.parse(row.metadata);
+    const {nativeTransport,...storedDetails}=row.metadata as Record<string,unknown>;
+    const metadata=details.parse(storedDetails);
+    if(native){
+      const item=await saveNativeJpeg(claimed,assembly,metadata,row.ownerId!==null||metadata.autoTag);
+      if(row.ownerId!==null)await reviewMediaSafety(item.id,row.ownerId).catch(()=>{});
+      void kickAnalysisWorker();
+      await cleanupNativeJpeg(claimed).catch(()=>{});
+      return (await db.select().from(sessions).where(eq(sessions.id,row.id)))[0];
+    }
     const saved=await uploadMedia({path:assembly,size:row.size,mimetype:row.mime} as Express.Multer.File,metadata.type,
       {storageKey:reservation.storageKey,thumbnailKey:reservation.thumbnailKey},
       async (bytes,keys)=>{
@@ -251,11 +263,21 @@ async function finish(row:Session,req:Request) {
       await tx.select().from(mediaReservations).where(eq(mediaReservations.id,row.id)).for("update");
       return (await tx.select().from(sessions).where(eq(sessions.id,row.id)).for("update"))[0];
     });
-    if(current?.state==="completed") return current;
-    if(current) await discard(current,"failed");
+    if(current?.state==="completed"){
+      if(native&&current.mediaId){
+        if(row.ownerId!==null)await reviewMediaSafety(current.mediaId,row.ownerId).catch(()=>{});
+        void kickAnalysisWorker();await cleanupNativeJpeg(claimed).catch(()=>{});
+      }
+      return current;
+    }
+    if(current&&native){
+      // Never turn an uncertain provider write into legacy abandonment/unlink.
+      await cleanupNativeJpeg(claimed).catch(()=>{});
+      await db.update(sessions).set({workerPid:null}).where(and(eq(sessions.id,row.id),eq(sessions.state,"finalizing")));
+    }else if(current) await discard(current,"failed");
     throw error;
   } finally {
-    if(assembledDirectory) await rm(assembledDirectory,{recursive:true,force:true}).catch(()=>{});
+    if(assembledDirectory&&!native) await rm(assembledDirectory,{recursive:true,force:true}).catch(()=>{});
     activeFinalizers.delete(row.id);
   }
 }
@@ -277,11 +299,17 @@ export function registerResumableUploadRoutes(app:Express) {
       if(!enabled) throw new SessionError(503,"Resumable uploads are not enabled.");
       await action(req,res);
     }catch(error){
-      const status=error instanceof SessionError?error.status:error instanceof z.ZodError?400:
+      const nativeError=error instanceof MultipartUploadError||error instanceof MultipartJournalError;
+      const nativeCode=nativeError?error.code:"";
+      const status=nativeError?nativeCode==="denied"?403:nativeCode==="integrity"?400:
+        nativeCode==="closed"||nativeCode==="expired"?410:nativeCode==="busy"?503:409:
+        error instanceof SessionError?error.status:error instanceof z.ZodError?400:
         error instanceof MediaLimitError?413:error instanceof MediaBusyError?503:502;
       if(!res.headersSent && !res.destroyed) res.status(status).json({error:
         error instanceof SessionError || error instanceof MediaLimitError || error instanceof MediaBusyError
-          ?error.message:status===400?"Invalid upload details.":"Upload not confirmed. Check its saved status before retrying."});
+          ?error.message:nativeError?nativeCode==="integrity"?"Upload integrity or photo validation failed.":
+            "Upload could not be confirmed. Check saved status; files and storage are retained until recovery is confirmed.":
+            status===400?"Invalid upload details.":"Upload not confirmed. Check its saved status before retrying."});
     }
   };
   app.post("/api/events/:eventId/upload-sessions",requireCreator,json({limit:"16kb"}),run(async(req,res)=>{
@@ -302,6 +330,12 @@ export function registerResumableUploadRoutes(app:Express) {
   app.delete("/api/upload-sessions/:sessionId",requireCreator,run(async(req,res)=>{
     const row=await owned(req);
     if(row.state==="completed") return res.status(409).json({error:"This file is already saved. Delete it through Manage Media."});
+    if(nativeJpegSession(row)&&row.state!=="receiving"){
+      await gallery(row,req);
+      if(finalizerActive(row))throw new SessionError(409,"Saving is in progress. Check saved status before cancelling.");
+      if(!["cancelled","failed"].includes(row.state))await cancelNativeJpeg(row);
+      res.json({success:true});return;
+    }
     if(row.state==="finalizing") return res.status(409).json({error:"Saving is in progress. Check saved status before cancelling."});
     await discard(row,"cancelled");res.json({success:true});
   }));

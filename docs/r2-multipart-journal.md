@@ -118,15 +118,16 @@ removing staging and atomically releasing the reservation. Missing rows or an
 initiating checkpoint are **not** interchangeable with this positive no-write
 proof. Any conflicting route or uncertain provider result retains capacity.
 
-**Still not an HTTP/Studio integration:** the private bridge returns prepared
-source/thumbnail descriptors. The authenticated finalizer must still wire mode
-selection, bounded assembly, ordinary small-thumbnail persistence, provider
-transport, registration, existing safety/AI dispatch and native status/recovery
-into the current controls. No public route uses this module.
+**Current integration update:** the bridge's source/thumbnail descriptors now
+feed the existing authenticated finalizer behind disabled Development-only
+gates. Mode selection, assembly, ordinary thumbnail persistence, registration,
+safety/AI dispatch and native status/recovery are covered by disposable HTTP
+tests. See `docs/native-jpeg-intake.md`; interactive acceptance and ordinary
+physical-inventory deletion remain activation blockers.
 
 These helpers neither implement content parsing nor dispatch paid AI/safety
 calls independently; JPEG preparation reuses the existing photo parser.
-The future intake adapter must reuse those existing workflows, validated
+The intake adapter reuses those existing workflows, validated
 derivatives and policy decisions, and must not run a legacy and native finalizer
 for the same session.
 
@@ -200,7 +201,10 @@ node scripts/test-image-downloads.mjs --enable-uploads \
 `--enable-uploads` opens uploads only in that disposable runner's child process,
 with its loopback database and test storage. It changes no workspace settings.
 
-## Remaining before any activation
+## Earlier integration checklist
+
+The list below predates the gated HTTP adapter. Current activation blockers,
+including native-aware deletion, are in `docs/native-jpeg-intake.md`.
 
 1. Integrate validated, original-preserving intake and derivatives, independent
    safety and existing AI dispatch with the prepared private registration

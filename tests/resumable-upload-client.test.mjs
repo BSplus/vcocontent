@@ -106,3 +106,11 @@ test("expired receiving session is cancelled before a new explicit attempt is al
   assert.equal([...model.records.values()][0].state,"cancelled");
   assert.equal(model.commits,0);assert.equal(hasResumableUploadRecord(f,4,7),false);
 });
+test("server-approved inactive native finalizer resumes without initiating or resending parts",async()=>{
+  const model=transport(),f=file();model.dropPart=true;
+  await assert.rejects(resumableUpload(options(f)));
+  const status=[...model.records.values()][0];status.state="finalizing";status.canResumeFinalization=true;
+  const item=await resumableUpload(options(f));
+  assert.equal(item.id,53);assert.equal(model.starts,1);assert.equal(model.commits,1);
+  assert.deepEqual(model.partWrites,[0]);assert.equal(hasResumableUploadRecord(f,4,7),false);
+});

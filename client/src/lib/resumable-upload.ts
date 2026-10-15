@@ -3,7 +3,7 @@ import type { MediaItem } from "@shared/schema";
 type Metadata={type:"image"|"video";caption:string;photographer:string;tags:string[];autoTag:boolean};
 type Receipt={requestKey:string;sha256:string;metadata:Metadata;sessionId?:string};
 type Status={id:string;state:string;received:number;partBytes:number;size:number;uploadedBytes:number;
-  sha256:string;item?:MediaItem;mediaId:number|null;expiresAt:string};
+  sha256:string;item?:MediaItem;mediaId:number|null;expiresAt:string;canResumeFinalization?:boolean};
 export class ResumableRejected extends Error {constructor(message:string,public status?:number){super(message);} }
 export class UploadPaused extends Error {}
 const key=(file:File,userId:number,eventId:number)=>
@@ -67,7 +67,17 @@ export async function resumableUpload(options:{file:File;userId:number;eventId:n
         throw new ResumableRejected("This file was saved but is no longer available. Check Manage Media.");
       localStorage.removeItem(storageKey);onProgress(100);return state.item;
     }
-    if(state.state==="finalizing")throw new Error("Saving is still being checked. Use Resume / check status; do not upload another copy.");
+    const confirm=async()=>{
+      signal.throwIfAborted();phase="finalizing";
+      const complete=await response(await fetch(`/api/upload-sessions/${state!.id}/complete`,{method:"POST",credentials:"include",signal}));
+      if(complete.state!=="completed"||!complete.item||complete.item.eventId!==eventId||complete.item.id!==complete.mediaId)
+        throw new Error("Save not confirmed yet. Resume / check status before uploading another copy.");
+      localStorage.removeItem(storageKey);onProgress(100);return complete.item;
+    };
+    if(state.state==="finalizing"){
+      if(state.canResumeFinalization===true)return await confirm();
+      throw new Error("Saving is still being checked. Use Resume / check status; do not upload another copy.");
+    }
     if(state.state!=="receiving") {
       await cancelResumableUpload(file,userId,eventId);
       throw new ResumableRejected("This upload expired or failed. Retry explicitly to start a new upload.");
@@ -89,11 +99,7 @@ export async function resumableUpload(options:{file:File;userId:number;eventId:n
         headers:{"Content-Type":"application/octet-stream","X-Part-SHA256":sha},body:part}));
       onProgress(Math.min(99,Math.floor(next.uploadedBytes/file.size*100)));
     }
-    signal.throwIfAborted();phase="finalizing";
-    const complete=await response(await fetch(`/api/upload-sessions/${sessionId}/complete`,{method:"POST",credentials:"include",signal}));
-    if(complete.state!=="completed" || !complete.item || complete.item.eventId!==eventId || complete.item.id!==complete.mediaId)
-      throw new Error("Save not confirmed yet. Resume / check status before uploading another copy.");
-    localStorage.removeItem(storageKey);onProgress(100);return complete.item;
+    return await confirm();
   }catch(error){
     if(signal.aborted && phase!=="finalizing")
       throw new UploadPaused("Paused. Reselect the same file after reopening, then Resume. Saved caption and tags stay unchanged.");

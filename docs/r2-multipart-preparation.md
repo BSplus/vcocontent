@@ -11,7 +11,9 @@ apply schema changes, change hosting/bucket configuration or publish.
 The private provider transport, PostgreSQL journal and atomic lifecycle repository
 are prepared; see `docs/r2-multipart-journal.md` for the newer handoff/cleanup
 evidence. **P2-5 is not feature-complete**:
-normal HTTP/Studio intake still uses the existing transport and limits.
+normal HTTP/Studio intake still uses the existing transport and limits by
+default. A disabled, Development-only JPEG adapter now uses existing session
+routes; see `docs/native-jpeg-intake.md` for current evidence and release blockers.
 No connected database, live bucket, paid AI service or Production endpoint was
 used by these tests. The generated large payload is an opaque transport fixture,
 not evidence of accepted 250-MiB JPEG/RAW/video content or codec validation.
@@ -47,7 +49,9 @@ not evidence of accepted 250-MiB JPEG/RAW/video content or codec validation.
 
 ## Disabled runtime boundary
 
-`R2Store.preparedMultipart()` is not called by existing upload routes.
+`R2Store.preparedMultipart()` is called by the existing upload-session flow only
+for an explicitly selected native JPEG session. The flag is unset, and optional
+schema and lifecycle/deletion acceptance still prevent activation.
 Its new writes require explicit `MEDIA_R2_MULTIPART_ENABLED=true`, the normal
 new-upload gate, R2 routing/provider selection, the matching database fingerprint
 and the strict Development R2 configuration. **Production is rejected even if
@@ -98,7 +102,11 @@ The preview workflow restarted and the homepage renders. The previously
 documented existing-media upstream 502 remains outside this package; no
 historical file or Production data was repaired.
 
-## Remaining integration/release gates
+## Earlier integration/release checklist
+
+Some preparation items below have since been implemented. Current integration
+evidence and the remaining activation blockers are in
+`docs/native-jpeg-intake.md` and `docs/specification-implementation-status.md`.
 
 1. A real database-backed journal, key lease and reservation binding are now
    prepared and tested: see `docs/r2-multipart-journal.md`. Its optional schema
