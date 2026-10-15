@@ -4,8 +4,10 @@ import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, Delete
 import { Readable, PassThrough } from "node:stream";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { createR2MultipartDriver } from "./r2-multipart-driver";
 import type { ByteRange } from "./video-delivery";
-import { ObjectStoreError, mediaStorageEnvironment, PRODUCTION_MEDIA_BUCKET } from "./media-storage-config";
+import { ObjectStoreError, mediaStorageEnvironment, PRODUCTION_MEDIA_BUCKET, assertMediaDatabaseTarget } from "./media-storage-config";
 export { ObjectStoreError } from "./media-storage-config";
 
 export type Provider = "replit" | "r2";
@@ -81,6 +83,7 @@ abstract class BaseStore implements ObjectStore {
 }
 export class R2Store extends BaseStore {
   private client: S3Client;
+  private multipartClient?: S3Client;
   private bucket: string;
   private environment: "development" | "production";
   private endpoint: string;
@@ -92,6 +95,28 @@ export class R2Store extends BaseStore {
     this.endpoint = config.endpoint;
     this.client = client || new S3Client({endpoint:config.endpoint,credentials:config.credentials,
       region:"auto",forcePathStyle:true,maxAttempts:2});
+    this.multipartClient=client;
+  }
+  /** Preparation only. Not called by normal intake; never usable in Production. */
+  preparedMultipart() {
+    const guard=(write:boolean)=>{
+      this.guard();
+      assertMediaDatabaseTarget(this.env);
+      if(this.environment!=="development"||
+        write&&(this.env.MEDIA_R2_MULTIPART_ENABLED!=="true"||this.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED!=="true"||
+          this.env.MEDIA_STORAGE_PROVIDER!=="r2"||this.env.MEDIA_STORAGE_ROUTING!=="enabled"))
+        throw new ObjectStoreError("configuration");
+    };
+    guard(false);
+    const config=r2Config(this.env);
+    // Initiation/completion must never be invisibly retried by the SDK.
+    this.multipartClient??=new S3Client({endpoint:config.endpoint,credentials:config.credentials,
+      region:"auto",forcePathStyle:true,maxAttempts:1,
+      requestChecksumCalculation:"WHEN_REQUIRED",responseChecksumValidation:"WHEN_REQUIRED"});
+    return createR2MultipartDriver({client:this.multipartClient,bucket:this.bucket,guard,
+      scope:createHash("sha256").update(JSON.stringify([this.environment,this.endpoint,this.bucket,
+        this.env.MEDIA_STORAGE_DATABASE_FINGERPRINT])).digest("hex"),
+      validate:(key,mime)=>{assertMediaKey(key);if(mime&&mime!==objectMime(key))throw new ObjectStoreError("integrity");}});
   }
   private guard(write = false) {
     const current = r2Config(this.env);

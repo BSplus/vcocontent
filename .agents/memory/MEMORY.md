@@ -70,3 +70,4 @@
 - [AI upload independence](ai-upload-independence.md) — invalid recognition output must not block uploads; automatic captions fall back to event context, while safety stays separate.
 - [Visible brand search](visible-brand-search.md) — operator wants securely recognized on-car brands as searchable tags, separate from entry-list identity.
 - [Professional image metadata](professional-image-metadata.md) — immutable originals, Creator-over-AI precedence and private EXIF; enriched downloads/RAW sidecars require separate approval.
+- [Large-upload boundaries](large-upload-boundaries.md) — 250 MiB is isolated-test approval, not activation; native R2 retries require conservative reconciliation.
