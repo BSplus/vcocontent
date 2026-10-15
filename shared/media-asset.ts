@@ -1,4 +1,4 @@
-import { isCreatorOriginal } from "./image-provenance";
+import { isCreatorOriginal, isPreservedPhoto } from "./image-provenance";
 
 export type AssetKind = "PHOTO" | "VIDEO";
 export type AssetPurpose = "original" | "legacy_source" | "preview" | "thumbnail" | "raw" | "poster";
@@ -41,9 +41,9 @@ export function assetTitle(value: string | null): string | null {
 export function legacyAssetVariants(item: {type:string;url:string;thumbnail:string}) {
   const kind = assetKind(item.type);
   return [
-    {purpose: kind === "PHOTO" && isCreatorOriginal(item.url) ? "original" : "legacy_source",
-      url:item.url, provenance:kind === "PHOTO" && isCreatorOriginal(item.url)
-        ? "creator_original" : "legacy_available_source"},
+    {purpose: kind === "PHOTO" && isPreservedPhoto(item.url) ? "original" : "legacy_source",
+      url:item.url, provenance:kind === "PHOTO" && isPreservedPhoto(item.url)
+        ? isCreatorOriginal(item.url) ? "creator_original" : "uploaded_original" : "legacy_available_source"},
     {purpose:kind === "VIDEO" ? "poster" : "thumbnail", url:item.thumbnail, provenance:"legacy_derivative"},
   ] as const;
 }

@@ -3,6 +3,8 @@ import { Readable } from "stream";
 import { lowResolutionDownload } from "./low-resolution-download";
 import { getMediaContentType, readMediaStream } from "./media-storage";
 import { downloadFilename } from "./download-filename";
+import { isPreservedPhoto } from "@shared/image-provenance";
+import { standardPhotoDownload } from "./standard-photo-download";
 
 function legacyImage(value: string) {
   if (!value || value.length > 140 * 1048576 + 100) throw new Error("Invalid legacy media");
@@ -13,7 +15,7 @@ function legacyImage(value: string) {
   return { data, contentType: match[1] };
 }
 
-export async function downloadStream(item: MediaItem, event: Pick<Event, "id" | "title" | "date">, quality: "high" | "low", signal?: AbortSignal) {
+export async function downloadStream(item: MediaItem, event: Pick<Event, "id" | "title" | "date"> & Partial<Pick<Event,"creatorId">>, quality: "high" | "low", signal?: AbortSignal) {
   const source = item.url;
   const key = /^\/api\/media\/files\/((?:media|thumb)-[0-9a-f-]{36}\.(?:jpg|png|webp|gif|mp4|mov|webm))$/.exec(source)?.[1];
   let contentType: string;
@@ -32,7 +34,9 @@ export async function downloadStream(item: MediaItem, event: Pick<Event, "id" | 
   }
   if (key) {
     contentType = getMediaContentType(key);
-    stream = await readMediaStream(key);
+    stream = event.creatorId == null && contentType === "image/jpeg" && isPreservedPhoto(source)
+      ? Readable.from(await standardPhotoDownload(() => readMediaStream(key), signal))
+      : readMediaStream(key);
   } else {
     // Historical database base64 needs server-side decoding; modern uploads
     // stream from object storage and never allocate a full-file buffer.

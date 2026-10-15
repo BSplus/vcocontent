@@ -3,7 +3,7 @@ name: Professional image metadata boundaries
 description: Operator requirements for non-destructive EXIF, IPTC and XMP planning and downloads.
 ---
 
-Preserve uploaded originals byte-for-byte, including official VCO uploads. IPTC/XMP metadata is optional for all Creators and must never be a general upload requirement. Professional metadata workflows must not modify Production data or existing media; the operator requested planning, not implementation, deployment or migrations.
+Preserve uploaded originals byte-for-byte, including official VCO uploads. IPTC/XMP metadata is optional for all Creators and must never be a general upload requirement. Professional metadata workflows must not modify Production data or existing media. The operator approved immutable JPEG intake separately; this does not approve professional metadata enrichment, RAW sidecars, historical rewrites, deployment or migrations.
 
 **Why:** The operator explicitly requires immutable originals and a read-only first step.
 

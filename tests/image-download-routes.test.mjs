@@ -15,7 +15,7 @@ import { users, events, mediaItems, mediaCleanup, mediaReservations, betaRateLim
 import { registerRoutes } from "../server/routes.ts";
 import { creatorUsage } from "../server/beta-policy.ts";
 import { createMediaKeys } from "../server/media-storage.ts";
-import { isCreatorOriginal } from "../shared/image-provenance.ts";
+import { isCreatorOriginal, isOfficialJpegOriginal } from "../shared/image-provenance.ts";
 import { recognitionImageInput } from "../server/image-analysis.ts";
 import { startImport, importStatus, stopImportWorker } from "../server/nextcloud.ts";
 import { mockMediaStorage } from "./helpers/memory-media-storage.mjs";
@@ -202,6 +202,59 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
     assert.equal((await storage.getMediaItem(historical.id)).url,originalUrl);
     assert.deepEqual((await storage.getMediaItem(historical.id)).tags,["unchanged"]);
     assert.equal((await storage.getMediaItem(historical.id)).caption,"Unchanged");
+
+    // New official JPEG: private immutable bytes, standard metadata-stripped
+    // high/low exports, unchanged quota/AI semantics and no extra stored export.
+    const jpeg=await tiny().jpeg().withMetadata({orientation:6,exif:{
+      IFD0:{Artist:"Synthetic photographer",Copyright:"Synthetic fixture only"},
+      IFD3:{GPSLatitudeRef:"N",GPSLatitude:"50/1 0/1 0/1",GPSLongitudeRef:"E",GPSLongitude:"4/1 0/1 0/1"},
+    }}).toBuffer();
+    const jpegBefore=store.writes.length;
+    const original=await upload(jpeg,"image/jpeg","admin",201,official.id);
+    assert.ok(isOfficialJpegOriginal(original.url),"Preserved JPEG provenance, not ownership inferred from uploader");
+    assert.equal(original.highBytes,jpeg.length);
+    assert.equal(original.objectCount,2);
+    assert.equal(store.writes.length-jpegBefore,2);
+    assert.equal(hash(store.objects.get(original.url.split("/").at(-1))),hash(jpeg));
+    assert.equal((await request(original.url)).status,401);
+    assert.equal(hash(Buffer.from(await (await request(original.url,"admin")).arrayBuffer())),hash(jpeg),
+      "Only the official gallery manager/admin can retrieve the exact original");
+    for(const path of [original.url,`/api/media/${original.id}/download?quality=high`]){
+      const response=await request(path,"owner");
+      assert.equal(response.status,200);
+      const exported=Buffer.from(await response.arrayBuffer());
+      const metadata=await sharp(exported).metadata();
+      assert.equal(metadata.exif,undefined);
+      assert.equal(metadata.iptc,undefined);
+      assert.equal(metadata.xmp,undefined);
+      assert.equal(metadata.orientation,undefined);
+      assert.deepEqual([metadata.width,metadata.height],[32,48],"Auto-orientation belongs only to the derivative");
+      assert.ok(exported.length<=5_000_000);
+      assert.notEqual(hash(exported),hash(jpeg));
+    }
+    const officialLow=await request(`/api/media/${original.id}/download?quality=low`);
+    assert.equal(officialLow.status,200,"Anonymous official Low-Res remains available");
+    assert.equal((await sharp(Buffer.from(await officialLow.arrayBuffer())).metadata()).exif,undefined);
+    assert.equal((await request(`/api/media/${original.id}/download?quality=high`)).status,401);
+    const officialAI=await recognitionImageInput(original);
+    assert.equal((await sharp(Buffer.from(officialAI.split(",")[1],"base64")).metadata()).exif,undefined);
+    assert.equal(store.writes.length-jpegBefore,2,"Delivery and AI never create duplicate permanent variants");
+    assert.equal(hash(store.objects.get(original.url.split("/").at(-1))),hash(jpeg));
+
+    // The actual multipart route, strategy and store agree at the unchanged
+    // official 32-MiB boundary; preview bytes are accounted in addition.
+    const exactJpeg=Buffer.concat([jpeg,Buffer.alloc(32*1048576-jpeg.length)]);
+    const boundaryJpeg=await upload(exactJpeg,"image/jpeg","admin",201,official.id);
+    assert.equal(boundaryJpeg.highBytes,exactJpeg.length);
+    assert.equal(hash(store.objects.get(boundaryJpeg.url.split("/").at(-1))),hash(exactJpeg));
+    await upload(Buffer.concat([exactJpeg,Buffer.from([0])]),"image/jpeg","admin",413,official.id);
+    await upload(jpeg,"image/jpeg","owner",403,official.id);
+    await db.update(mediaItems).set({archivedAt:new Date()}).where(eq(mediaItems.id,original.id));
+    assert.equal((await request(original.url,"owner")).status,404);
+    assert.equal((await request(`/api/media/${original.id}/download?quality=high`,"owner")).status,404);
+    // Archived media deliberately blocks destructive gallery deletion. Restore
+    // this fixture only so its final cleanup cannot leak official rows.
+    await db.update(mediaItems).set({archivedAt:null}).where(eq(mediaItems.id,original.id));
 
     // Genuine >5-MB authorized source, mocked DAV only. Sources remain remote;
     // downloads read App Storage after the cloud becomes unreachable.

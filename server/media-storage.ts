@@ -23,7 +23,7 @@ export interface StoredMedia {
   url: string;
   /** App route URL for a generated image thumbnail or video poster. */
   thumbnail: string;
-  /** Private App Storage object key for the original file. */
+  /** Private object key for the preserved JPEG/source (legacy non-JPEG may be optimized). */
   storageKey: string;
   /** Private App Storage object key for its thumbnail. */
   thumbnailKey: string;
@@ -244,8 +244,15 @@ export function createMediaKeys(mime: string, strategy: ImageStrategy = "officia
   };
   if (!extension[mime]) throw new Error("Unsupported media type");
   const uuid = randomUUID();
+  // Distinct from historical v4 files and existing Creator UUIDv8 sources.
+  // UUIDv7's 48-bit time + random tail identifies new official JPEG intake;
+  // it is not an ownership, publication or download authorization decision.
+  const timestamp = Date.now().toString(16).padStart(12,"0");
   const id = strategy === "creator-original" && mime.startsWith("image/")
-    ? uuid.slice(0,14) + "8" + uuid.slice(15) : uuid;
+    ? uuid.slice(0,14) + "8" + uuid.slice(15)
+    : mime === "image/jpeg"
+      ? `${timestamp.slice(0,8)}-${timestamp.slice(8)}-7${uuid.slice(15)}`
+      : uuid;
   return { storageKey: `media-${id}.${extension[mime]}`, thumbnailKey: `thumb-${id}.webp` };
 }
 

@@ -39,8 +39,9 @@ export async function validatePhoto(filename: string, mime: string, strategy: Im
 
 export async function preparePhoto(filename: string, mime: string, size: number, strategy: ImageStrategy) {
   if ((await stat(filename)).size !== size) throw new Error("Image size does not match its upload");
-  if (strategy === "creator-original" && size > DOWNLOAD_BYTES)
-    throw new MediaLimitError("Images must be no larger than 5 MB (5,000,000 bytes).");
+  const limit = strategy === "creator-original" ? DOWNLOAD_BYTES : mediaPolicy.imageBytes;
+  if (!Number.isSafeInteger(size) || size < 1 || size > limit)
+    throw new MediaLimitError(`Images must be between 1 and ${limit.toLocaleString("en-US")} bytes.`);
   let metadata: Awaited<ReturnType<typeof validatePhoto>>;
   try {
     metadata = await validatePhoto(filename, mime, strategy);
@@ -52,12 +53,12 @@ export async function preparePhoto(filename: string, mime: string, size: number,
   let download = source;
   let outputMime = mime;
   // Suitable JPEG/WebP files already within budget need no second lossy encode.
-  // Creator originals are never re-encoded, re-oriented or metadata-stripped.
+  // JPEG originals in both operating models are immutable. Official standard
+  // downloads are separate, temporary exports; previews never replace sources.
   const staticPhoto = (metadata.pages || 1) === 1 && !source.includes(Buffer.from("acTL")) &&
     !(metadata.format === "webp" && source.includes(Buffer.from("ANIM")));
-  if (strategy === "official" && !(staticPhoto && size <= DOWNLOAD_BYTES && ["jpeg", "webp"].includes(metadata.format!))) {
+  if (strategy === "official" && metadata.format !== "jpeg" && !(staticPhoto && size <= DOWNLOAD_BYTES && ["webp"].includes(metadata.format!))) {
     const started = Date.now();
-    const jpeg = metadata.format === "jpeg";
     const candidate = await fitOfficialDownload(async (scale, quality) => {
       const remaining = 60_000 - (Date.now() - started);
       if (remaining < 1000)
@@ -70,12 +71,12 @@ export async function preparePhoto(filename: string, mime: string, size: number,
         height: Math.max(1, Math.floor((metadata.autoOrient?.height ?? metadata.height!) * scale)),
         fit: "inside", withoutEnlargement: true,
         });
-      return (jpeg ? image.jpeg({quality, chromaSubsampling:"4:4:4"}) : image.webp({quality, effort:4})).toBuffer();
+      return image.webp({quality, effort:4}).toBuffer();
     });
     // Do not inflate a small static PNG/GIF merely to change its format.
     if (!(staticPhoto && source.length <= DOWNLOAD_BYTES && source.length <= candidate.length)) {
       download = candidate;
-      outputMime = jpeg ? "image/jpeg" : "image/webp";
+      outputMime = "image/webp";
     }
   }
   let preview = Buffer.alloc(0);

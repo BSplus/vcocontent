@@ -52,15 +52,29 @@ test("new photo/video R2 routing, private Range, AI input, counters and owned cl
   const v=await storage.createMediaItem({eventId:event.id,type:"video",url:video.url,thumbnail:video.thumbnail,
     highBytes:video.highBytes,lowBytes:video.lowBytes,storedBytes:video.highBytes+video.lowBytes,tags:[]});
   const keys=[photo.storageKey,photo.thumbnailKey,video.storageKey,video.thumbnailKey];
+  const official=await storage.createEvent({title:"Immutable JPEG fixture",description:"Synthetic",date:new Date()});
+  const jpeg=await sharp({create:{width:100,height:70,channels:3,background:"blue"}})
+    .jpeg().withMetadata({exif:{IFD0:{Artist:"Synthetic R2 fixture"}}}).toBuffer();
+  const jpegFile=path.join(fixtureRoots.replit,`input-${randomUUID()}.jpg`);
+  await writeFile(jpegFile,jpeg);
+  const savedJpeg=await uploadMedia({path:jpegFile,mimetype:"image/jpeg",size:jpeg.length},"image");
+  const j=await storage.createMediaItem({eventId:official.id,type:"image",url:savedJpeg.url,thumbnail:savedJpeg.thumbnail,
+    highBytes:savedJpeg.highBytes,lowBytes:savedJpeg.lowBytes,storedBytes:savedJpeg.storedBytes,tags:[]});
+  keys.push(savedJpeg.storageKey,savedJpeg.thumbnailKey);
   let server,anonymous;
   try {
     for(const key of keys){
       const [route]=await db.select().from(mediaObjectRoutes).where(eq(mediaObjectRoutes.key,key));
       assert.equal(route.provider,"r2");assert.equal(route.state,"verified");
       assert.deepEqual(await bytes(openMediaObject(key)),await readFile(path.join(fixtureRoots.r2,key)));
+      const stored=await readFile(path.join(fixtureRoots.r2,key));
+      assert.equal(route.sha256,createHash("sha256").update(stored).digest("hex"));
+      assert.equal(route.size,stored.length);
+      await assert.rejects(readFile(path.join(fixtureRoots.replit,key)),/ENOENT/);
     }
     assert.deepEqual(await bytes(openMediaObject(photo.storageKey)),png);
     assert.deepEqual(await bytes(openMediaObject(video.storageKey)),clip);
+    assert.deepEqual(await bytes(openMediaObject(savedJpeg.storageKey)),jpeg);
     assert.ok(photo.lowBytes<100000);
     assert.match(await recognitionImageInput(p),/^data:image\/webp;base64,/);
     assert.ok((await creatorUsage(db,actor.id)).bytes>0);
@@ -68,6 +82,12 @@ test("new photo/video R2 routing, private Range, AI input, counters and owned cl
     app.use((req,_res,next)=>{req.user=actor;req.isAuthenticated=()=>true;next();});
     server=await registerRoutes(app,{workers:false});server.listen(0,"127.0.0.1");await once(server,"listening");
     const base=`http://127.0.0.1:${server.address().port}`;
+    const standard=await fetch(base+`/api/media/${j.id}/download?quality=high`);
+    assert.equal(standard.status,200);
+    assert.equal((await sharp(Buffer.from(await standard.arrayBuffer())).metadata()).exif,undefined);
+    const original=await fetch(base+j.url);
+    assert.equal(original.status,200);
+    assert.deepEqual(Buffer.from(await original.arrayBuffer()),jpeg);
     const range=await fetch(base+v.url,{headers:{Range:"bytes=0-511"}});
     assert.equal(range.status,206);assert.deepEqual(Buffer.from(await range.arrayBuffer()),clip.subarray(0,512));
     assert.equal((await fetch(base+p.thumbnail)).status,200);
@@ -100,10 +120,11 @@ test("new photo/video R2 routing, private Range, AI input, counters and owned cl
     process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="true";
   } finally {
     if(server)await new Promise(r=>server.close(r));if(anonymous)await new Promise(r=>anonymous.close(r));
-    for(const id of [p.id,v.id])await storage.deleteMediaItem(id);
+    for(const id of [p.id,v.id,j.id])await storage.deleteMediaItem(id);
     await storage.cleanupObjects();
     for(const key of keys)await assert.rejects(readFile(path.join(fixtureRoots.r2,key)),/ENOENT/);
     await db.delete(events).where(eq(events.id,event.id));await db.delete(users).where(eq(users.id,actor.id));
+    await db.delete(events).where(eq(events.id,official.id));
   }
 });
 

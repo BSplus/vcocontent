@@ -1,10 +1,12 @@
 import type { MediaItem } from "@shared/schema";
-import { isCreatorOriginal } from "@shared/image-provenance";
+import { isCreatorOriginal, isOfficialJpegOriginal } from "@shared/image-provenance";
 
 export type DownloadQuality = "high" | "low";
 
 export function downloadOptionLabel(item: MediaItem, quality: DownloadQuality): string {
   if (quality === "low") return "Low-Res · JPEG · up to 0.50 MB";
+  if (item.type === "image" && isOfficialJpegOriginal(item.url))
+    return "High-Res · JPEG · up to 5.00 MB";
   const bytes = item.highBytes;
   const size = typeof bytes === "number" && bytes > 0
     ? `${(bytes / 1_000_000).toFixed(2)} MB`

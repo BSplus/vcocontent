@@ -10,6 +10,8 @@ import { mediaPolicy, MediaLimitError } from "../server/media-policy.ts";
 import { preparePhoto, fitOfficialDownload } from "../server/image-downloads.ts";
 import { isCreatorOriginal } from "../shared/image-provenance.ts";
 import { mockMediaStorage } from "./helpers/memory-media-storage.mjs";
+import { Readable } from "node:stream";
+import { standardPhotoDownload } from "../server/standard-photo-download.ts";
 
 const store = mockMediaStorage();
 test.after(()=>store.restore());
@@ -140,11 +142,17 @@ test("quality adjustment before bounded resolution adjustment; no extreme silent
     const result=await preparePhoto(file.path,file.mimetype,file.size,"official");
     const m=await sharp(result.download).metadata();
     assert.equal(m.width,3200);
-    assert.ok(result.download.length<=5_000_000);
+    assert.deepEqual(result.download,modest,"Official JPEG intake must not optimize the original");
+    const exported=await standardPhotoDownload(()=>Readable.from(modest));
+    assert.ok(exported.length<=5_000_000);
+    assert.equal((await sharp(exported).metadata()).width,3200);
   });
   const huge=await noise(6000,5000).jpeg({quality:85}).toBuffer();
-  await withFile(huge,"image/jpeg",file=>assert.rejects(
-    preparePhoto(file.path,file.mimetype,file.size,"official"),/quality 80.*70%/));
+  await withFile(huge,"image/jpeg",async file=>{
+    const prepared=await preparePhoto(file.path,file.mimetype,file.size,"official");
+    assert.deepEqual(prepared.download,huge,"A standard-export size failure must not destroy a valid original");
+    await assert.rejects(standardPhotoDownload(()=>Readable.from(huge)),/quality 80.*70%/);
+  });
 });
 
 test("failure after first object removes both keys and does not reserve twice",async()=>{

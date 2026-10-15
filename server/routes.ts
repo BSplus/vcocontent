@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { isPreservedPhoto } from "@shared/image-provenance";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
@@ -719,6 +720,22 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       if (isOriginal && req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
       if (isOriginal && (!req.isAuthenticated() || record.isPremium || event?.isPremium)) {
         return res.status(req.isAuthenticated() ? 403 : 401).json({ error: "Download file not available" });
+      }
+      // New official JPEGs retain private metadata. Non-managers may view the
+      // standard export, never the newly preserved exact-original bytes.
+      if (isOriginal && event.creatorId === null && key.endsWith(".jpg") &&
+          isPreservedPhoto(record.url) && !canManage(req.user,event)) {
+        const controller = new AbortController();
+        const abort = () => { if (!res.writableFinished) controller.abort(); };
+        res.once("close", abort);
+        try {
+          const { stream, contentType } = await downloadStream(record,event,"high",controller.signal);
+          res.setHeader("Content-Type", contentType);
+          res.setHeader("Cache-Control", "private, no-store");
+          res.setHeader("X-Content-Type-Options", "nosniff");
+          await pipeline(stream,res);
+        } finally { res.off("close",abort); }
+        return;
       }
       const edge = !isOriginal && edgeOrigin();
       if (edge) {
