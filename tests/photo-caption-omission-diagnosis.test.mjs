@@ -101,16 +101,18 @@ test("unmatched-only photos remain context-only and manual identities remain unt
   assert.equal(matchedPhotoCaption(event, null, [manual]).matchStatus, "no_unique_match");
 });
 
-test("missing number evidence remains unknown; incompatible cars and conflicting entries still veto", () => {
+test("missing number evidence and conflicting entries veto; registered cars override weak appearance", () => {
   const unsupported = observed("132", { numberEvidence: undefined });
   assert.equal(supportedPhotoObservations([unsupported])[0].number, "");
   assert.equal(identify([unsupported])[0].source, "visual");
-  assert.equal(identify([observed("91", {
+  const authoritative=identify([observed("91", {
     referenceConstraints: [{ team: "", vehicle: "BMW M Hybrid V8", manufacturer: "BMW" }],
-  })])[0].source, "visual");
+  })])[0];
+  assert.equal(authoritative.source, "reference");
+  assert.equal(authoritative.vehicle,"Porsche 963 GTP");
   assert.equal(identify([observed("91", {
     referenceConstraints: [{ team: "Porsche", vehicle: "", manufacturer: "BMW" }],
-  })])[0].source, "visual", "compatible branding cannot hide a contradictory explicit manufacturer");
+  })])[0].source, "reference", "number-backed entry vehicle remains authoritative over weak make guesses");
   const conflict = { ...document, rows: [...entries, row("91", "Different team", "Porsche 963 GTP")] };
   assert.equal(matchReferences([observed("91")], [conflict], null, event.title, true, true)[0].source, "visual");
 });
@@ -144,7 +146,7 @@ test("one-word cores do not allow fragments, sponsors, conflicting spellings or 
   for (const hint of ["MAH", "MA", "M", "Mobil 1", "MAHLE Junior", "Different Team"])
     assert.equal(match(hint).source, "visual", hint);
   assert.equal(match("MAHLE", { numberEvidence: undefined }).number, "");
-  assert.equal(match("MAHLE", { referenceConstraints: [{ team: "MAHLE", manufacturer: "Ferrari", vehicle: "" }] }).source, "visual");
+  assert.equal(match("MAHLE", { referenceConstraints: [{ team: "MAHLE", manufacturer: "Ferrari", vehicle: "" }] }).vehicle, "BMW M4 GT3");
   assert.equal(match("MAHLE", {}, [{ ...docs[0], rows: [...docs[0].rows, row("111", "MAHLE Esports", "BMW M4 GT3")] }]).source, "visual");
   assert.equal(match("MAHLE", {}, [{ ...docs[0], session: "Race" }]).source, "visual");
 });

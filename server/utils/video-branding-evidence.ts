@@ -3,6 +3,7 @@ import type { Identification } from "@shared/schema";
 import { canonicalBrand } from "@shared/brand-tags";
 
 export const VIDEO_BRANDING_POLICY = "video-commercial-brand-v1";
+export const TEAM_MARKING_POLICY = "same-car-team-markings-v1";
 // Leave room for the numeric contract within its existing 4096-token ceiling.
 export const VIDEO_BRANDING_LIMITS = { vehicles: 3, markings: 3 };
 const normalized = (value: string) => value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
@@ -28,7 +29,7 @@ const branding = z.object({
 export function videoBrandingPrompt(indices: number[]) {
   return `
 Additionally inspect readable BODYWORK branding only for labelled vehicle crops ${indices.join(", ")}.
-Do not identify any team, driver, manufacturer or car model from this lettering. No entry-list names or first-pass guesses are supplied.
+Do not infer an official team identity, driver, manufacturer or car model from this lettering. Read literal markings and their purpose only; do not invent aliases or expand abbreviations. No entry-list names or first-pass guesses are supplied.
 Add branding:{fullImageReadings:[{readingIndex:number,complete:boolean,markings:[{text:string,kind:"commercial"|"team"|"team_and_commercial"|"unknown"}]}],vehicleReadings:[{vehicleIndex:number,complete:boolean,markings:[{text:string,kind:"commercial"|"team"|"team_and_commercial"|"unknown"}]}]}.
 readingIndex is the zero-based index of the SAME car in your numeric fullImageReadings array, not a guessed vehicle number.
 Inspect full-frame car lettering and each labelled source crop independently. Copy complete literal text only. Never copy classification from one view to the other.
@@ -69,6 +70,22 @@ export function confirmedCommercialHints(raw: unknown, v: Identification,
   const cropText = new Set(crop[0].markings.map(m => normalized(m.text)));
   return Array.from(new Set([v.team, ...(v.referenceConstraints || []).map(c => c.team)]
     .filter(hint => normalized(hint) && fullText.has(normalized(hint)) && cropText.has(normalized(hint)))));
+}
+
+/** Complete, agreeing assessments only. Unknown lettering cannot certify an
+ * abbreviated team hint; retain every explicit team marking as a conflict gate. */
+export function confirmedTeamMarkings(raw: unknown, readingIndex: number, vehicleIndex: number): string[] {
+  const parsed = branding.safeParse(raw);
+  if (!parsed.success) return [];
+  const full = parsed.data.fullImageReadings.filter(r => r.readingIndex === readingIndex);
+  const crop = parsed.data.vehicleReadings.filter(r => r.vehicleIndex === vehicleIndex);
+  if (full.length !== 1 || crop.length !== 1 || !full[0].complete || !crop[0].complete) return [];
+  const signature = (rows: typeof full[0]["markings"]) =>
+    Array.from(new Set(rows.map(m => `${m.kind}:${normalized(m.text)}`))).sort().join("|");
+  if (signature(full[0].markings) !== signature(crop[0].markings) ||
+    full[0].markings.some(m => m.kind === "unknown")) return [];
+  return Array.from(new Set(full[0].markings
+    .filter(m => m.kind === "team" || m.kind === "team_and_commercial").map(m => m.text)));
 }
 
 /** Clear only exact independently assessed commercial hints, never other fields. */

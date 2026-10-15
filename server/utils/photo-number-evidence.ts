@@ -4,7 +4,7 @@ import {getOpenAIClient} from "./ai-tagger";
 import sharp from "sharp";
 import {mediaPolicy} from "../media-policy";
 import {hasOpaqueNeutralPatch} from "./photo-redaction";
-import {confirmedCommercialHints, confirmedVisibleBrands, VIDEO_BRANDING_LIMITS, videoBrandingPrompt, withoutCommercialTeamHints} from "./video-branding-evidence";
+import {confirmedCommercialHints, confirmedVisibleBrands, confirmedTeamMarkings, TEAM_MARKING_POLICY, VIDEO_BRANDING_LIMITS, videoBrandingPrompt, withoutCommercialTeamHints} from "./video-branding-evidence";
 import { BRAND_EVIDENCE_POLICY, visibleBrandTags } from "@shared/brand-tags";
 import {canonicalVehicleMake,VEHICLE_MAKE_POLICY} from "@shared/vehicle-makes";
 
@@ -17,6 +17,8 @@ export function supportedPhotoObservations(vehicles:Identification[]):Identifica
     const supported=v.source==="visual"&&/^\d{1,4}$/.test(v.number)&&v.numberEvidence===PHOTO_NUMBER_POLICY&&validRegion(v.vehicleRegion)&&
       (!v.numberPanelRegion||validRegion(v.numberPanelRegion));
     return {...v,number:supported?v.number:"",numberEvidence:supported?v.numberEvidence:undefined,
+      teamMarkingEvidence:supported && v.teamMarkingEvidence?.policy===TEAM_MARKING_POLICY
+        ? v.teamMarkingEvidence : undefined,
       manufacturerEvidence:v.source==="visual"&&validRegion(v.vehicleRegion)&&canonicalVehicleMake(v.manufacturer)
         ? v.manufacturerEvidence : undefined,
       referenceVehicle:undefined,referenceManufacturer:undefined,
@@ -69,6 +71,7 @@ export async function verifyPhotoObservations(image:string,vehicles:Identificati
     onCommercialBranding?:(vehicleIndex:number,hints:string[])=>void}):Promise<Identification[]> {
   const confirmed=new Set<number>();
   const commercial=new Map<number,string[]>();
+  const teamMarkings=new Map<number,string[]>();
   const brands=new Map<number,string[]>();
   const makes=new Map<number,string>();
   const numeric=vehicles.flatMap((v,index)=>v.number&&validRegion(v.vehicleRegion)?[{v,index}]:[]);
@@ -179,6 +182,8 @@ Only manufacturer crop indices ${makeIndices.join(", ")} need these extra fields
           if(brandingIndices.includes(index)){
             const hints=confirmedCommercialHints(raw.branding,v,evidence.fullImageReadings.indexOf(r),index);
             if(hints.length) commercial.set(index,hints);
+            const markings=confirmedTeamMarkings(raw.branding,evidence.fullImageReadings.indexOf(r),index);
+            if(markings.length) teamMarkings.set(index,markings);
           }
         }
       }
@@ -186,10 +191,13 @@ Only manufacturer crop indices ${makeIndices.join(", ")} need these extra fields
   }
   const checkedVehicles=vehicles.map((v,index)=>{
     const {numberEvidence:_untrusted,visibleBrands:_untrustedBrands,brandEvidence:_untrustedBrandEvidence,
-      manufacturerEvidence:_untrustedMake,referenceVehicle:_referenceCar,referenceManufacturer:_referenceMake,...clean}=v,accepted=confirmed.has(index);
+      manufacturerEvidence:_untrustedMake,teamMarkingEvidence:_untrustedTeam,
+      referenceVehicle:_referenceCar,referenceManufacturer:_referenceMake,...clean}=v,accepted=confirmed.has(index);
     const checked:Identification={...clean,number:accepted?v.number:"",drivers:"",
       ...(v.number&&!accepted?{team:""}:{}),
       ...(accepted?{numberEvidence:PHOTO_NUMBER_POLICY}:{}),
+      ...(teamMarkings.has(index)?{teamMarkingEvidence:{
+        policy:TEAM_MARKING_POLICY,markings:teamMarkings.get(index)!}}:{}),
       ...(makes.has(index)?{manufacturer:makes.get(index)!,manufacturerEvidence:VEHICLE_MAKE_POLICY}:{}),
       ...(brands.has(index)?{visibleBrands:brands.get(index),brandEvidence:BRAND_EVIDENCE_POLICY}:{})};
     const hints=accepted?commercial.get(index):undefined;

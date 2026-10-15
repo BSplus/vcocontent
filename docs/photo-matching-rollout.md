@@ -86,8 +86,9 @@ reference vehicles; unknown vehicles neither inherit their information nor
 suppress other valid matches. Without a safe match, the caption stays context-only.
 Compatible literal manufacturer branding and a unique complete team core with
 terminal organisational suffixes (e.g. Bleu Mercure / Bleu Mercure Esport) do not
-veto a number-backed match. Arbitrary sponsor strings, differing teams, ambiguous
-short names and incompatible models still veto. Driver names are the registered lineup for the number, never a claim
+veto a number-backed match. Arbitrary unverified sponsor strings, differing teams
+and ambiguous short names still veto. Number-backed reference vehicle data takes
+precedence over weak model/manufacturer guesses. Driver names are the registered lineup for the number, never a claim
 about a pictured/physically driving person. Captions place names directly after
 the vehicle, without a lineup prefix: `#007 North Racing — Porsche 911 — A. One / B. Two`.
 The same formatting applies to manual number-assignment previews and saves and
@@ -101,3 +102,27 @@ results. Re-enabling does not scan history; explicit selection can reuse stored
 recognition. Editor edits made while a worker is processing are read again under
 locks before saving, so confirmed historical replacement cannot win over a later
 manual caption edit.
+
+## Checked short team lettering (15 October 2026)
+
+See [the concrete 196 diagnosis](sebring-196-reference-matching.md) for the
+read-only production evidence, exact development reproduction and live boundary.
+A complete literal team marking independently read on the same numbered car in
+both full image and source crop may omit a 2–3 uppercase-letter prefix from the
+official team name. This is restricted to the entire remaining name/core, unique
+in the applicable reference team set; no arbitrary token/substrings or fuzzy
+aliases. A partial first-pass name alone is insufficient.
+
+The separate `same-car-team-markings-v1` marker stores only complete agreeing
+team/dual-role assessments, after successful car-local number verification.
+Unknown/incomplete/mismatched assessments do not earn it. All checked explicit
+team markings also participate in conflict checking, including ones missing from
+the first-pass hints. Commercial-only lettering still uses the separate existing
+commercial assessment path; team lettering is not automatically a brand tag.
+
+Only explicit selected-photo processing can now request a same-revision local
+rematch of completed cached recognition. It does not obtain fresh pixel evidence,
+does not upgrade legacy proof, does not call Vision and does not enqueue other
+completed photos. Fresh selected image reanalysis remains separate and requires
+the usual operator approval for paid calls. No global fingerprint, queue sweep,
+database migration, activation switch or human confirmation step was added.

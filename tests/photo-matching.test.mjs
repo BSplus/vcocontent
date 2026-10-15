@@ -12,7 +12,8 @@ import {registerRoutes} from "../server/routes.ts";
 import {stopImportWorker} from "../server/nextcloud.ts";
 import {analysisStatus,enqueueAnalysis,drainAnalysisQueue,reconcileAutomaticPhotos,setAnalysisQueueTestScope,stopAnalysisWorker,itemAnalysisFingerprint} from "../server/analysis-jobs.ts";
 import {matchedPhotoCaption} from "../server/caption-proposal.ts";
-import {matchReferences} from "../server/reference-matching.ts";
+import {matchReferences,identifyEntries} from "../server/reference-matching.ts";
+import {sebringEntry,sebringObservations} from "./fixtures/sebring-196.mjs";
 import {automaticPhotoMatching} from "../server/automatic-photo-matching.ts";
 import {SAFETY_POLICY} from "../server/beta-policy.ts";
 import {brandOnlineResponse} from "./helpers/brand-online-fixture.mjs";
@@ -20,6 +21,7 @@ import {brandOnlineResponse} from "./helpers/brand-online-fixture.mjs";
 const realFetch=globalThis.fetch;
 let manufacturerAudits=0;
 let brandKind="commercial";
+let brandCropKind="commercial";
 const eventIds=[],userIds=[],seriesIds=[];
 let server,base,admin,owner,other,calls=0,auditCalls=0,gate,entered,providerFailure=false,invalidOutput=false,visionVehicle="",visionNumber="007",auditNumber="007",visionTeam="",brandMode=false,brandLabel="MOZA Racing",onlineUnavailable=false,makeMode=false;
 const image="data:image/webp;base64,"+(await sharp({create:{width:32,height:32,channels:3,background:"green"}}).webp().toBuffer()).toString("base64");
@@ -80,7 +82,7 @@ test.before(async()=>{
           ...(makeMode?{manufacturer:"Porsche",manufacturerConfident:true}:{})}]:[],
         ...(brandMode?{branding:{
           fullImageReadings:[{readingIndex:0,complete:true,markings:[{text:brandLabel,kind:brandKind}]}],
-          vehicleReadings:[{vehicleIndex:0,complete:true,markings:[{text:brandLabel.toUpperCase(),kind:"commercial"}]}],
+          vehicleReadings:[{vehicleIndex:0,complete:true,markings:[{text:brandLabel.toUpperCase(),kind:brandCropKind}]}],
         }}:{}),
       })}}]}),{headers:{"Content-Type":"application/json"}});
     }
@@ -117,6 +119,75 @@ test.after(async()=>{
   globalThis.fetch=realFetch;await pool.end();
 });
 function scope(photos){setAnalysisQueueTestScope([owner.username,other.username],photos.map(p=>p.id));}
+
+test("196 team-lettering evidence persists through the worker, automatic caption and selected cache-only rematch",async()=>{
+  const e=await album();
+  await storage.replaceEventEntries(e.id,[sebringEntry]);
+  const p=await photo(e,{tags:["Helmet"],manualTags:["Helmet"]});scope([p]);
+  brandMode=true;brandLabel="Turner";brandKind="team";brandCropKind="team";
+  visionNumber="196";auditNumber="196";visionTeam="Turner";visionVehicle="Race Car";
+  try {
+    await enqueueAnalysis(p,{recognition:true,photoWorkflow:true});
+    const saved=await settled(p.id);
+    assert.equal(saved.identification[0].source,"reference");
+    assert.equal(saved.identification[0].team,"BS TURNER");
+    assert.equal(saved.identification[0].vehicle,sebringEntry.car);
+    assert.equal(saved.identification[0].drivers,sebringEntry.drivers);
+    assert.equal(saved.photoMatchStatus,"matched");
+    assert.match(saved.caption,/#196 BS TURNER — BMW M4 GT3 — Daniel Lafuente, Oskari Rinne$/);
+    assert.ok(saved.tags.includes("Helmet"));assert.ok(!saved.tags.some(t=>t.startsWith("Brand: ")));
+    const [cached]=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,p.id));
+    assert.deepEqual(cached.recognition[0].teamMarkingEvidence,{
+      policy:"same-car-team-markings-v1",markings:["Turner"]});
+    // Same references/fingerprint: an explicit selected retry still runs the
+    // corrected matcher, but must not repeat a paid image or brand check.
+    await db.update(mediaItems).set({caption:"Old automatic context",photoMatchStatus:"no_unique_match"})
+      .where(eq(mediaItems.id,p.id));
+    const before=calls,audits=auditCalls;
+    const response=await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:[p.id]});
+    assert.equal(response.status,202);
+    const rematched=await settled(p.id);
+    assert.equal(rematched.caption,saved.caption);assert.equal(rematched.photoMatchStatus,"matched");
+    assert.deepEqual(rematched.tags,saved.tags);assert.deepEqual(rematched.manualTags,saved.manualTags);
+    assert.equal(calls,before);assert.equal(auditCalls,audits);
+    // Legacy number proof has no team-lettering certification; selection must
+    // neither invent the new marker nor silently turn into paid reanalysis.
+    const old=await photo(e);scope([old]);
+    await db.insert(mediaAnalysisJobs).values({mediaId:old.id,fingerprint:itemAnalysisFingerprint(old,true),
+      status:"completed",recognition:[sebringObservations[1]],generatedTags:[],
+      referenceRevision:e.referenceRevision,photoWorkflow:true});
+    await api(`/api/events/${e.id}/photo-matching/process`,{mediaIds:[old.id]});
+    const unchanged=await settled(old.id);
+    assert.equal(unchanged.identification[0].number,"196");
+    assert.equal(unchanged.identification[0].source,"visual");
+    assert.equal(unchanged.photoMatchStatus,"no_unique_match");
+    assert.equal(unchanged.identification[0].teamMarkingEvidence,undefined);
+    assert.equal(calls,before);assert.equal(auditCalls,audits);
+  } finally {
+    brandMode=false;brandLabel="MOZA Racing";brandKind="commercial";brandCropKind="commercial";
+    visionNumber="007";auditNumber="007";visionTeam="";visionVehicle="";
+  }
+});
+
+test("checked 196 lettering cannot cross owner, event, series, season or session reference boundaries",async()=>{
+  const e=await album(true,owner.id),foreign=await album(true,owner.id);
+  await db.delete(eventEntries).where(eq(eventEntries.eventId,e.id));
+  const checked={...sebringObservations[1],teamMarkingEvidence:{
+    policy:"same-car-team-markings-v1",markings:["Turner"]}};
+  const baseDoc={seriesId:e.seriesId,ownerId:owner.id,seasonYear:2026,scope:"event",kind:"entry",
+    title:"Isolated 196 context check",rows:[sebringEntry]};
+  for(const context of [
+    {eventId:e.id,ownerId:other.id},
+    {eventId:foreign.id},
+    {eventId:null,scope:"season",ownerId:other.id},
+    {eventId:null,scope:"season",seriesId:foreign.seriesId},
+    {eventId:null,scope:"season",seasonYear:2025},
+    {eventId:e.id,session:"Different session"},
+  ]) await db.insert(referenceDocuments).values({...baseDoc,...context,fingerprint:randomUUID(),identityKey:randomUUID()});
+  assert.equal((await identifyEntries(e,[checked],null,db,true,true))[0].source,"visual");
+  await db.insert(referenceDocuments).values({...baseDoc,eventId:e.id,fingerprint:randomUUID(),identityKey:randomUUID()});
+  assert.equal((await identifyEntries(e,[checked],null,db,true,true))[0].source,"reference");
+});
 
 test("confirmed photo branding creates searchable tags without changing the entry identity or editorial caption",async()=>{
   const e=await album(),p=await photo(e,{caption:"Editorial caption",tags:["Helmet"],manualTags:["Helmet"]});

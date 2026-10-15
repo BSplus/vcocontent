@@ -125,7 +125,7 @@ export function registerPhotoMatchingRoutes(app: Express, requireCreator: Reques
           if (item.identificationManual) {
             results.push({id,status:"skipped",error:"Manual identification is protected."}); continue;
           }
-          await enqueueAnalysis(item,{photoWorkflow:true,recognition:true,retry:true,
+           await enqueueAnalysis(item,{photoWorkflow:true,recognition:true,retry:true,rematch:true,
             replacePreserved:values.replacePreservedIds.includes(id)});
           results.push({id,...await analysisStatus(id)});
         } catch (error) {

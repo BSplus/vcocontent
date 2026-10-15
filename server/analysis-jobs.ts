@@ -52,7 +52,7 @@ export async function analysisStatus(mediaId: number) {
      : { status: "not_requested", attempts: 0, error: null, generatedTags: null };
 }
 
-export async function enqueueAnalysis(item: Item, options: boolean | { retry?: boolean; reanalyse?: boolean; recognition?: boolean; photoWorkflow?: boolean; replacePreserved?: boolean; automatic?: boolean } = false, legacyReanalyse = false) {
+export async function enqueueAnalysis(item: Item, options: boolean | { retry?: boolean; reanalyse?: boolean; rematch?: boolean; recognition?: boolean; photoWorkflow?: boolean; replacePreserved?: boolean; automatic?: boolean } = false, legacyReanalyse = false) {
   const settings = typeof options === "boolean" ? { retry: options, reanalyse: legacyReanalyse } : options;
   if (!["image", "video"].includes(item.type)) throw new AnalysisUnavailable("Unsupported media type");
   if (!isAITaggingConfigured()) throw new AnalysisUnavailable("AI tagging is not configured");
@@ -88,6 +88,7 @@ export async function enqueueAnalysis(item: Item, options: boolean | { retry?: b
       existing?.fingerprint === itemAnalysisFingerprint(current,true) && !settings.reanalyse) return;
     if (existing?.fingerprint === fingerprint && !settings.reanalyse &&
         (!settings.retry || existing.status !== "failed") &&
+         !(settings.rematch && existing.status==="completed" && existing.recognition) &&
          !(photoWorkflow && (!existing.photoWorkflow || existing.referenceRevision!==event!.referenceRevision ||
           (settings.replacePreserved && current.captionSource==="preserved" && existing.replaceCaption!==current.caption)))) return;
     const creator = await tx.execute(sql`select e.creator_id,u.is_admin from media_items m join events e on e.id=m.event_id

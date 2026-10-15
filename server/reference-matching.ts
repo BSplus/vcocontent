@@ -61,8 +61,9 @@ export function matchReferences(visible: Identification[], documents: MatchDocum
     // Vehicle/model appearance is not authority over a number-backed entry.
     // Keep independent team conflicts, number evidence and reference ambiguity.
     if (strictPhoto && entry && [{team:observed.team},
-      ...(observed.referenceConstraints || [])].some(hint=>
-      photoTeamHintConflict(hint.team,entry!,applicableTeams))) {
+       ...(observed.referenceConstraints || []),
+       ...(observed.teamMarkingEvidence?.markings || []).map(team=>({team}))].some(hint=>
+       photoTeamHintConflict(hint.team,entry!,applicableTeams,observed.teamMarkingEvidence))) {
       entry=undefined;
     }
     if (entry && (!strictPhoto || !ambiguous) && (!strictPhoto || !!entry.team)) return { ...observed, team: entry.team || observed.team, drivers: entry.drivers,

@@ -1,4 +1,5 @@
-import type { EntryRow } from "@shared/schema";
+import type { EntryRow, Identification } from "@shared/schema";
+import { TEAM_MARKING_POLICY } from "./utils/video-branding-evidence";
 
 const normalize = (value: string) => value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
   .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -12,7 +13,8 @@ const brands = new Set(["acura", "alpine", "aston martin", "audi", "bentley", "b
   "nissan", "peugeot", "porsche", "renault", "toyota", "volkswagen"]);
 
 /** A hint can only veto; the number-backed reference supplies every identity. */
-export function photoTeamHintConflict(hint: string, entry: EntryRow, applicableTeams: string[]) {
+export function photoTeamHintConflict(hint: string, entry: EntryRow, applicableTeams: string[],
+  evidence?:Identification["teamMarkingEvidence"]) {
   const visible = normalize(hint), registered = normalize(entry.team);
   if (!visible || !registered || visible === registered) return false;
   const car = normalize(entry.car), manufacturer = normalize(entry.manufacturer || "");
@@ -30,6 +32,21 @@ export function photoTeamHintConflict(hint: string, entry: EntryRow, applicableT
   const core = teamCore(entry.team);
   if (core.replace(/\s/g, "").length >= 3 && /[a-z]/.test(core) && teamCore(hint) === core) {
     const candidates = new Set(applicableTeams.filter(team => teamCore(team) === core).map(normalize));
+    if (candidates.size === 1 && candidates.has(registered)) return false;
+  }
+  // A separately read COMPLETE team marking may omit an organisational
+  // initialism prefix (e.g. "AB Example" / "Example"). No arbitrary substrings,
+  // fuzzy spelling, unverified first-pass names or sponsor aliases.
+  const literal = teamCore(hint);
+  const prefixed = entry.team.trim().match(/^[A-Z]{2,3}\s+(.+)$/);
+  if (evidence?.policy === TEAM_MARKING_POLICY &&
+    evidence.markings.some(text => normalize(text) === visible) &&
+    literal.replace(/\s/g,"").length >= 3 && /[a-z]/.test(literal) &&
+    prefixed && teamCore(prefixed[1]) === literal) {
+    const candidates = new Set(applicableTeams.filter(team => {
+      const candidate = teamCore(team);
+      return candidate === literal || candidate.endsWith(` ${literal}`);
+    }).map(normalize));
     if (candidates.size === 1 && candidates.has(registered)) return false;
   }
   return true;

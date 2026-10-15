@@ -89,3 +89,15 @@ different failure causes.
 pixels and both positive and conflict controls. Report local rematching gains
 separately from recognition accuracy, and never silently requeue completed live
 photos solely because a matching rule changed.
+
+A shortened vehicle inscription is not proof of a competing registered team,
+nor proof of a commercial sponsor. Keep its purpose unknown unless independently
+assessed on the same car; old number proof alone cannot certify new lettering.
+
+**Why:** A real unique entry was blocked by its shortened on-car name. Calling
+that name a sponsor would have invented a different explanation rather than
+resolving the actual ambiguity.
+
+**How to apply:** Compare literal independently checked lettering with applicable
+official names conservatively, retain genuine and uncertain conflicts, and
+separate mocked successful rematching from a real-pixel evaluation.
