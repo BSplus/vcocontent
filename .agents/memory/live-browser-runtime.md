@@ -16,3 +16,14 @@ startup/evaluation waits and runtime-only session cookies; remove the temporary
 profile afterwards. Never bypass application authentication or print secrets.
 For read-only Production checks, verify native playback without clicking
 Download, which can mutate counters/history.
+
+Use an independent cookie jar for each synthetic test actor, including during
+sign-in. Do not send one actor's session cookie when logging in as another.
+
+**Why:** Passport regenerates the session on sign-in. Sharing a cookie jar can
+invalidate the first actor after its initial authentication check already
+passed, making later permission checks appear to fail unpredictably.
+
+**How to apply:** Sign in without another actor's cookies, retain only the
+application session cookie privately, and verify all actors' identities after
+multi-account setup. Do not change authentication to accommodate the fixture.

@@ -22,8 +22,12 @@ Applying the table alone does not activate resumable uploads.
 Development's separate `MEDIA_STORAGE_NEW_UPLOADS_ENABLED=false` was already set
 and has intentionally been preserved. The running application advertises
 `resumableUploads:true`, while its normal upload guard still rejects writes.
-No real media was uploaded as part of activation; end-to-end Development R2
-upload/restart testing requires separate approval to open that write gate.
+After separate operator approval, a real Development JPEG upload/restart/resume
+smoke passed on 15 October 2026. The write gate was temporarily opened only for
+the upload phase, restored to `false` before delivery verification, and verified
+to block writes again. All isolated fixtures and their R2 objects were removed.
+See `docs/resumable-development-smoke.md`. This does not authorize further
+Development uploads or Production activation.
 
 ## Architecture and limits
 
@@ -96,10 +100,11 @@ are required before claiming the full large-upload release.
 1. Development schema applied with approval; application database target verified.
 2. Development-only feature flag enabled; workflow restarted and running API
    confirmed the flag. The separate normal-upload gate remains closed.
-3. Obtain separate approval before allowing new Development uploads. Do not
-   change Production or copy the Development database.
-4. Once authorized, verify actual single-VM pause/reselect/restart behavior and capacity before
-   requesting a separate Production schema/configuration/publication approval.
+3. Controlled Development upload test completed under separate approval; new
+   uploads are closed again. Obtain approval before opening them again.
+4. The real single-VM JPEG interruption/restart/resume and quota/delivery smoke
+   passed. Video and larger-file live acceptance remain separate checks before
+   requesting any Production schema/configuration/publication approval.
 5. Do not raise existing byte limits or enable Creator video as part of this
    activation.
 
