@@ -27,3 +27,14 @@ after cleanup; isolated reproduction confirms the stale-poster failure mechanism
 **How to apply:** Keep historical facts separate from reproducible hypotheses.
 Do not weaken authorization or add legacy-provider fallback to make a retired
 key work, and do not claim an untraced historical error conclusively fixed.
+
+Verify persisted public eligibility before putting private test media in an
+official event; do not assume Creator draft behavior applies to official events
+or that submitted visibility fields were accepted.
+
+**Why:** Official and Creator creation have different visibility defaults, and
+public creation validation deliberately excludes internal moderation fields.
+A successful creation response therefore does not establish fixture privacy.
+
+**How to apply:** Establish and verify the isolated event's actual privacy before
+any upload. Never weaken application input validation to make a fixture pass.

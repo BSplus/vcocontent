@@ -102,8 +102,10 @@ are required before claiming the full large-upload release.
    confirmed the flag. The separate normal-upload gate remains closed.
 3. Controlled Development upload test completed under separate approval; new
    uploads are closed again. Obtain approval before opening them again.
-4. The real single-VM JPEG interruption/restart/resume and quota/delivery smoke
-   passed. Video and larger-file live acceptance remain separate checks before
+4. Real single-VM JPEG and video interruption/restart/resume checks passed,
+   including private R2 integrity, native video playback, seeking and Range.
+   See `docs/resumable-development-video-smoke.md`. Real upload-dialog UI and
+   larger-file acceptance remain separate checks before
    requesting any Production schema/configuration/publication approval.
 5. Do not raise existing byte limits or enable Creator video as part of this
    activation.

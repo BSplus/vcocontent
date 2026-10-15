@@ -60,3 +60,7 @@ removed. The corrected five-phase run passed completely.
 - No live video upload/playback, RAW intake, >100-MiB acceptance, multi-host
   failover, filesystem replacement or Production behavior was tested here.
   Existing disposable video/Range tests do not substitute for those live checks.
+
+A subsequent controlled live video smoke passed; see
+`docs/resumable-development-video-smoke.md`. The table above records this earlier
+JPEG-only run, not that later video check.
