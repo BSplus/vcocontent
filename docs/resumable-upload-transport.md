@@ -1,4 +1,4 @@
-# Bounded resumable transport — prepared, not activated
+# Bounded resumable transport — Development feature enabled, uploads gated
 
 ## Scope
 
@@ -8,14 +8,22 @@ Creator video remains disabled. No >100-MiB acceptance, RAW intake, direct
 browser-to-R2 multipart transport or multi-instance support is claimed.
 
 One additive table is declared in `shared/schema.ts`. The reference DDL is
-`docs/resumable-upload-schema-PREPARED-ONLY.sql`. Neither Development nor
-Production schema changes were executed; only disposable test databases
-received the schema. No deployment or production configuration was changed.
+`docs/resumable-upload-schema-PREPARED-ONLY.sql`. With explicit operator approval,
+the table and its indexes/checks were applied transactionally to the verified
+runtime-managed Development database on 15 October 2026. Production schema and
+configuration remain unchanged; nothing was published.
 
-`MEDIA_RESUMABLE_UPLOADS_ENABLED` defaults to disabled. `/api/media/policy`
+`MEDIA_RESUMABLE_UPLOADS_ENABLED` defaults to disabled in code and is now explicitly
+`true` in Development only. `/api/media/policy`
 advertises the feature only when explicitly enabled and its table exists.
 Ordinary multipart uploads remain available under their existing policy.
 Applying the table alone does not activate resumable uploads.
+
+Development's separate `MEDIA_STORAGE_NEW_UPLOADS_ENABLED=false` was already set
+and has intentionally been preserved. The running application advertises
+`resumableUploads:true`, while its normal upload guard still rejects writes.
+No real media was uploaded as part of activation; end-to-end Development R2
+upload/restart testing requires separate approval to open that write gate.
 
 ## Architecture and limits
 
@@ -83,14 +91,14 @@ Autoscale/multiple hosts. Native R2 multipart, shared leases, stronger
 cross-host reconciliation, approved larger limits and hosting/resource evidence
 are required before claiming the full large-upload release.
 
-## Review/activation steps — manual, not performed
+## Activation status and remaining approval
 
-1. Review the additive table and resource/retention limitations.
-2. Approve/apply that schema in Development only; keep database-copy-to-
-   Production and production schema changes out of this step.
-3. Explicitly enable `MEDIA_RESUMABLE_UPLOADS_ENABLED=true` for Development
-   using normal environment management, with normal uploads already permitted.
-4. Verify actual single-VM pause/reselect/restart behavior and capacity before
+1. Development schema applied with approval; application database target verified.
+2. Development-only feature flag enabled; workflow restarted and running API
+   confirmed the flag. The separate normal-upload gate remains closed.
+3. Obtain separate approval before allowing new Development uploads. Do not
+   change Production or copy the Development database.
+4. Once authorized, verify actual single-VM pause/reselect/restart behavior and capacity before
    requesting a separate Production schema/configuration/publication approval.
 5. Do not raise existing byte limits or enable Creator video as part of this
    activation.
