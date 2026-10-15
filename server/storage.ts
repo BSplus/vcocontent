@@ -20,6 +20,7 @@ import { assertMediaTagsAllowed, withoutRetiredMediaTags } from "@shared/media-t
 import { activeMediaTagsSql } from "./media-tag-sql";
 import { automaticPhotoMatching } from "./automatic-photo-matching";
 import { matchedPhotoCaption } from "./caption-proposal";
+import { assertGalleryOwnership, resolveGalleryOwnership } from "@shared/gallery-ownership";
 
 type SafeUser = Omit<User, "password">;
 type EventUpdateResult = Event & { saveStatus: "saved" | "unchanged" };
@@ -541,6 +542,7 @@ class DatabaseStorage implements IStorage {
 
   async reserveMedia(id: string, eventId: number, creatorId: number | null, bytes: number, storageKey: string, thumbnailKey: string, adminUpload = false): Promise<void> {
     assertNewMediaUploadsEnabled();
+    const expected = resolveGalleryOwnership({id:eventId,creatorId});
     await db.transaction(async tx => {
       // Lock the creator first, then the event. Serializes budgets across events
       // and across app instances; the reservation remains until commit/failure.
@@ -548,8 +550,8 @@ class DatabaseStorage implements IStorage {
        // The target owner's Free quota applies even when an admin uploads.
        if (creatorId) await lockedCreatorBudget(tx,creatorId,bytes,1);
       const event = await tx.execute(sql`select id,creator_id from events where id = ${eventId} for update`);
-      if (!event.rows.length) throw new Error("Event no longer exists");
-      if ((event.rows[0].creator_id ?? null)!==creatorId) throw new Error("Event owner changed before upload");
+      const persisted = event.rows[0];
+      assertGalleryOwnership(persisted ? {id:Number(persisted.id),creatorId:persisted.creator_id as number | null} : undefined, expected);
       const usage = async (scope: "event" | "creator") => {
         const filter = scope === "event" ? sql`m.event_id = ${eventId}` : sql`e.creator_id = ${creatorId}`;
         const pending = scope === "event" ? sql`event_id = ${eventId}` : sql`creator_id = ${creatorId}`;
@@ -587,8 +589,16 @@ class DatabaseStorage implements IStorage {
       const [reservation] = await tx.select().from(mediaReservations).where(eq(mediaReservations.id, id));
       if (!reservation) throw new Error("Upload reservation has expired");
       if (mediaItem.eventId!==reservation.eventId) throw new Error("Upload event does not match its reservation");
-      const community = !!reservation.creatorId;
+      const expected = resolveGalleryOwnership({id:reservation.eventId,creatorId:reservation.creatorId});
       const [event] = await tx.select().from(events).where(eq(events.id,reservation.eventId)).for("update");
+      const accounting = assertGalleryOwnership(event, expected);
+      // A dangling owner must never become official accounting. This uses the
+      // same transaction as commit, without changing existing beta allowances.
+      if (accounting.category === "CREATOR") {
+        const [owner] = await tx.select({id:users.id}).from(users).where(eq(users.id,accounting.ownerId));
+        if (!owner) throw new Error("Gallery owner no longer exists");
+      }
+      const community = accounting.category === "CREATOR";
       const photoWorkflow = mediaItem.type==="image" && !!event && await automaticPhotoMatching(event.id,tx);
       // Persist a useful caption with the file, before any optional recognition.
       // Nextcloud filenames are placeholders, not user-written captions.

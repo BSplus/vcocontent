@@ -56,6 +56,7 @@ import { sendPrivateThumbnail, thumbnailDigest } from "./thumbnail-cache";
 import { sendPreparedThumbnail } from "./prepared-thumbnail";
 import { registerSupportRoutes } from "./support-routes";
 import { automaticAnalysisStatusSql } from "./automatic-photo-matching";
+import { resolveGalleryOwnership } from "@shared/gallery-ownership";
 
 const BETA_NOTICE = "Paid downloads are not available during the public beta";
 
@@ -771,7 +772,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
           const uploadTags = metadata.tags
             ? z.array(mediaTagSchema.pipe(z.string().max(100))).parse(JSON.parse(metadata.tags)).slice(0,30)
             : [];
-          const community = !!event.creatorId;
+          const community = resolveGalleryOwnership(event).category === "CREATOR";
           if (community) {
             if (metadata.type!=="image" || !req.file.mimetype.startsWith("image/")) throw new MediaLimitError("Video uploads are not available for Community Creators.");
             if (req.file.size>communityLimits.imageBytes) throw new MediaLimitError("Images must be no larger than 5 MB.");

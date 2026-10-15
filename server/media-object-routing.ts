@@ -112,12 +112,24 @@ export async function mediaVideoSource(key: string) {
     meta.size !== Number(route.size) || meta.mime !== route.mime)) throw new ObjectStoreError("integrity");
   return {size:meta.size,open:(range: {start:number;end:number}) => store.open(key,range,meta.version)};
 }
-export async function deleteRoutedMediaObject(key: string, registered = false, transactionQuery?: RouteQuery) {
+export async function deleteRoutedMediaObject(key: string, registered = false, transactionQuery?: RouteQuery): Promise<void> {
   assertMediaKey(key);
-  const execute = transactionQuery || query;
-  const route = registered && transactionQuery
+  if (!transactionQuery) {
+    const {db} = await import("./db");
+    return db.transaction(tx => deleteRoutedMediaObject(key,registered,statement => tx.execute(statement)));
+  }
+  const execute = transactionQuery;
+  // Match registration's route-key lock even when legacy routing is disabled.
+  // Missing additive schema is supported; no DDL or data repair is attempted.
+  const table = registered ? true :
+    !!(await execute(sql`select to_regclass('media_object_routes') as name`)).rows[0]?.name;
+  const route = table
     ? (await execute(sql`select * from media_object_routes where key=${key} for update`)).rows[0] as Awaited<ReturnType<typeof routeFor>>
-    : await routeFor(key,registered);
+    : undefined;
+  // Foundation objects are not part of the legacy cleanup lifecycle. Retain
+  // them until the separately approved reference-aware deletion package.
+  const {assertAssetObjectDeletable} = await import("./media-asset-store");
+  await assertAssetObjectDeletable(key,execute);
   if (route?.provider === "r2" && !routingEnabled()) throw new ObjectStoreError("configuration");
   if (route?.retained_source && route.provider === "replit") throw new ObjectStoreError("retained");
   await getObjectStore(route?.provider || "replit").delete(key);

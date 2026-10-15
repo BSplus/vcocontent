@@ -336,3 +336,17 @@ mtime_ms = 1791882482211
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/ce28ed34-9b81-462e-adfb-7a2844809454/915f5073-6fe1-4a44-851e-9cf5121bcdc2"
 storage_version_token = "1791882616327364"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "nnkBFRUjUBKCFliTZWIZg"
+uri = "file://.local/tasks/vco-marketplace-unified-specification.md"
+type = "text"
+title = "Unified VCO Marketplace Specification — reviewed planning document"
+description = "Complete specification: shared official/Creator architecture, reuse matrix, technical inventory, detailed Phase 2 packages, storage/AI/metadata/commerce design, acceptance tests and separate approval gates. Planning only; no implementation authorized."
+logical_id = "869a3a62-50cc-4c68-b149-84a7d9c42c46"
+content_hash = "sha256:7a04d1ae9d29113530037cb28e5c2e59d7c9e8a32e41bfd507276ba165193daf"
+size = 86304
+mtime_ms = 1792059355607
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:55205bd8-4957-43fc-9866-b9ea92e97716/869a3a62-50cc-4c68-b149-84a7d9c42c46/c9337494-6252-49bc-870f-c60b244a78f3"
+storage_version_token = "1792059407022854"
+content_type = "text/markdown"

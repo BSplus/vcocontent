@@ -257,6 +257,45 @@ export const mediaObjectRoutes = pgTable("media_object_routes", {
   updatedAt: timestamp("updated_at", {withTimezone:true}).notNull().defaultNow(),
 });
 
+/** Additive marketplace foundation; existing media readers do not depend on it. */
+export const mediaAssetRecords = pgTable("media_asset_records", {
+  mediaId: integer("media_id").primaryKey().references(() => mediaItems.id, {onDelete:"restrict"}),
+  title: text("title"),
+}, t => [check("asset_title_length", sql`${t.title} is null or length(${t.title}) <= 200`)]);
+
+/** One accountable physical key. Provider/hash/size/version live ONLY in routes. */
+export const mediaAssetObjects = pgTable("media_asset_objects", {
+  key: text("key").primaryKey().references(() => mediaObjectRoutes.key, {onDelete:"restrict"}),
+  eventId: integer("event_id").notNull().references(() => events.id, {onDelete:"restrict"}),
+  category: text("category").notNull(),
+  ownerId: integer("owner_id").references(() => users.id, {onDelete:"restrict"}),
+  state: text("state").notNull().default("retained"),
+  retainedAt: timestamp("retained_at", {withTimezone:true}).notNull().defaultNow(),
+}, t => [
+  check("asset_object_owner", sql`(${t.category} = 'OFFICIAL_VCO' and ${t.ownerId} is null)
+    or (${t.category} = 'CREATOR' and ${t.ownerId} is not null)`),
+  check("asset_object_state", sql`${t.state} in ('retained','deletion_pending','deleted')`),
+  index("asset_objects_owner_idx").on(t.ownerId, t.state),
+  index("asset_objects_event_idx").on(t.eventId),
+]);
+
+export const mediaAssetVariants = pgTable("media_asset_variants", {
+  id: serial("id").primaryKey(),
+  mediaId: integer("media_id").notNull().references(() => mediaAssetRecords.mediaId, {onDelete:"restrict"}),
+  objectKey: text("object_key").notNull().references(() => mediaAssetObjects.key, {onDelete:"restrict"}),
+  purpose: text("purpose").notNull(),
+  sourceVersion: integer("source_version").notNull(),
+  sourceKey: text("source_key").references(() => mediaAssetObjects.key, {onDelete:"restrict"}),
+}, t => [
+  uniqueIndex("asset_variant_revision").on(t.mediaId, t.purpose, t.sourceVersion),
+  check("asset_variant_version", sql`${t.sourceVersion} > 0`),
+  check("asset_variant_purpose", sql`${t.purpose} in ('original','legacy_source','preview','thumbnail','raw','poster')`),
+  check("asset_variant_source", sql`(${t.purpose} in ('original','legacy_source') and ${t.sourceKey} is null)
+    or (${t.purpose} not in ('original','legacy_source') and ${t.sourceKey} is not null)`),
+  index("asset_variants_object_idx").on(t.objectKey),
+  index("asset_variants_source_idx").on(t.sourceKey),
+]);
+
 export const mediaReservations = pgTable("media_reservations", {
   id: text("id").primaryKey(),
   eventId: integer("event_id").notNull(),

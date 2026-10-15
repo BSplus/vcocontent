@@ -19,6 +19,20 @@ Buyers purchase credits to license assets. Creators receive earnings from sales 
 
 **How to apply:** Use these as marketplace planning requirements, not approval to implement, configure payments, modify data, migrate or publish. Prices, allowances, commission rates, eligible services, accounting policies and licence terms still require decisions.
 
+## Official VCO and external Creator models
+
+Ignore existing content initially when starting the marketplace work; the operator reports only one test gallery. Focus on new uploads rather than historical-media migration or backfill.
+
+**Why:** The operator explicitly said, “Bestehende Inhalte erstmal ignorierem. Es gibt nur 1 Testgalerie”.
+
+**How to apply:** Do not make historical-content investigation a prerequisite for isolated new-upload work. The reported gallery count is not independently verified and is not deletion/reset permission; preserve accounts/configuration and require separate approvals for Production changes.
+
+The operator requires one shared platform with two operating models: official VCO galleries retain full shared functionality without Creator subscriptions or subscription quotas; external Creator galleries use their purchased allowance and control their own prices. Official storage still has measured costs and technical safety limits. Uploading as an admin does not change the gallery's storage owner. Official VCO storage is not a VCO-funded exception for external Creators.
+
+**Why:** The unified master brief explicitly distinguishes official VCO operations from the external Creator subscription model while requiring shared technology and preservation of working AI.
+
+**How to apply:** Treat both models as planning requirements, not activation approval. Extend working systems by default; keep implementation, schema/data operations, Production deployment and feature activation separately approved. Do not let unresolved commercial decisions block independently approved isolated asset work, or let that independence bypass Production inventory and migration gates.
+
 Generated downloads use a bounded, automatically cleaned platform-managed cache. Temporary cache objects must not unexpectedly consume Creator storage allowances; persistent Creator-managed variants and sidecars do count.
 
 **Why:** The operator explicitly approved this distinction when consolidating the marketplace and metadata specifications.
