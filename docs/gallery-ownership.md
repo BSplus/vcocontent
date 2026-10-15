@@ -30,6 +30,23 @@ Approved Creator status remains sufficient without the older role flag. Admin
 status does not transfer ownership or turn a Creator gallery into official
 content. Existing official-event associations remain links only.
 
+### Endpoint and worker boundaries
+
+| Entry point | Required ownership behavior | Regression evidence |
+| --- | --- | --- |
+| Gallery upload endpoint | Authorize management of the persisted target gallery; an admin uploader does not change its category | Creator upload and ownership suites |
+| Reservation creation | Compare the supplied owner snapshot with the locked gallery; apply existing target-owner beta limits | Ownership storage suite, including over-capacity admin uploads |
+| Upload/import finalization | Recheck locked gallery and owner existence; reject gallery redirection, owner drift and consumed reservations | Ownership storage suite; image import/download suite |
+| Official-event association | Remain a link; retain the Creator gallery's owner | Association and ownership suites |
+| Analysis workers | Retain media/event identity, manual captions/tags and existing reference rules; introduce no subscription dependency | Photo matching and video analysis suites |
+| Protected delivery | Retain existing public/private authorization and Range behavior; ownership classification grants no new download rights | Image download and video delivery suites |
+
+The ownership contract is an accounting/consistency contract, not an authorization
+capability. Calling it alone does not authorize an upload or a worker operation.
+Missing referenced users must fail finalization, not be reclassified as official.
+These boundaries preserve existing access policy; they do not activate paid
+entitlements or claim complete retained-byte quota accounting.
+
 ## Intentional limits
 
 The existing beta policy remains in effect. In particular, the admin-owner
@@ -72,6 +89,22 @@ object restore/migration is introduced. Do not remove ownership fences in a
 rollback without considering in-flight uploads.
 
 ## Development verification result
+
+The post-merge ownership review added explicit regressions for suspended owners,
+cross-Creator management, admin-to-Creator beta capacity, redirected upload
+finalization and consumed-reservation replay. The combined isolated command
+below passed **72 tests, zero failures and zero skips**; `npm run check` and
+`git diff --check` also passed. This is fixture-based regression evidence, not a
+live AI, Production storage or commercial-quota certification.
+
+```sh
+node scripts/test-image-downloads.mjs --enable-uploads \
+  tests/gallery-ownership.test.mjs tests/gallery-ownership-storage.test.mjs \
+  tests/creator-upload.test.mjs tests/image-download-routes.test.mjs \
+  tests/photo-matching.test.mjs tests/video-analysis.test.mjs \
+  tests/video-delivery.test.mjs tests/download-access.test.mjs \
+  tests/analysis-tag-reconciliation.test.mjs
+```
 
 15 October 2026: `npm run check` and `npm run build` passed. Pure ownership,
 download-access and tag-reconciliation checks passed all nine tests; the broader

@@ -51,6 +51,9 @@ test("persisted ownership, permissions and upload commit boundaries", {
         assert.equal(canManage({...approved, creatorStatus: "rejected"}, gallery), false);
         assert.equal(canManage(admin, gallery), true);
         assert.equal(canManage(approved, gallery), gallery.id === creator.id);
+        assert.equal(canManage({...approved, suspended: true}, gallery), false);
+        assert.equal(canManage({id: owners[1].id, creatorStatus: "approved"}, gallery),
+          gallery.id === adminOwned.id);
       }
     });
     await t.test("official reservations have no Creator quota dependency", async () => {
@@ -78,6 +81,38 @@ test("persisted ownership, permissions and upload commit boundaries", {
       await assert.rejects(reserve(official, owners[0].id, true), GalleryOwnershipError);
       await assert.rejects(reserve(creator, owners[1].id, true), GalleryOwnershipError);
       await assert.rejects(reserve({id: 2_147_483_647, creatorId: null}), GalleryOwnershipError);
+    });
+    await t.test("an admin cannot bypass the target Creator's existing beta allowance", async () => {
+      await assert.rejects(reserve(creator, creator.creatorId, true, 500_000_001),
+        /storage|capacity|limit|budget/i);
+      const rows = await db.select().from(mediaReservations)
+        .where(eq(mediaReservations.id, reservations.at(-1)));
+      assert.equal(rows.length, 0, "Rejected capacity must not create a reservation");
+    });
+    await t.test("a valid reservation cannot be redirected to another gallery", async () => {
+      const id = await reserve(creator);
+      const [row] = await db.select().from(mediaReservations).where(eq(mediaReservations.id, id));
+      await assert.rejects(storage.finishMedia(id, {
+        eventId: official.id, type: "image", url: `/api/media/files/${row.storageKey}`,
+        caption: "Must not be committed", tags: [], storedBytes: 100,
+      }), /event does not match/);
+      const [retained] = await db.select().from(mediaReservations).where(eq(mediaReservations.id, id));
+      assert.ok(retained, "Failed redirection must preserve the original reservation");
+      const items = await db.select().from(mediaItems)
+        .where(eq(mediaItems.url, `/api/media/files/${row.storageKey}`));
+      assert.equal(items.length, 0);
+      await db.delete(mediaReservations).where(eq(mediaReservations.id, id));
+    });
+    await t.test("a consumed reservation cannot create duplicate assets", async () => {
+      const id = await reserve(official);
+      const item = await finish(id);
+      await assert.rejects(storage.finishMedia(id, {
+        eventId: official.id, type: "image", url: item.url, caption: "Replay",
+        tags: [], storedBytes: 100,
+      }), /reservation has expired/);
+      const items = await db.select().from(mediaItems).where(eq(mediaItems.url, item.url));
+      assert.equal(items.length, 1);
+      assert.equal(items[0].caption, "Authored caption");
     });
     await t.test("ownership changes fail commit without consuming the reservation", async () => {
       for (const [gallery, newOwner] of [
