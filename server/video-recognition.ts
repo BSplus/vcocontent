@@ -65,7 +65,8 @@ Multiple vehicles may appear. Never apply one vehicle's identity to another or t
 }
 
 /** Independent checkpoints survive retries; no weak reading certifies a number. */
-export async function checkVideoNumbers(frames: VideoFrame[], evidence: VideoEvidence, persist: () => Promise<void>) {
+export async function checkVideoNumbers(frames: VideoFrame[], evidence: VideoEvidence, persist: () => Promise<void>,
+  visualMakeNeeded?:(vehicle:Identification)=>boolean) {
   if (evidence.numberPipeline !== VIDEO_NUMBER_PIPELINE) {
     evidence.numberPipeline = VIDEO_NUMBER_PIPELINE;
     evidence.numberRequests = 0; evidence.numberElapsedMs = 0;
@@ -121,7 +122,7 @@ export async function checkVideoNumbers(frames: VideoFrame[], evidence: VideoEvi
       }
       const commercialVehicles:{vehicleIndex:number;hints:string[]}[]=[];
       const verified = await verifyPhotoObservations(frame.image, done.numberCheck.vehicles, transport, {
-        videoBranding:true,visibleBrands:true,visualMakes:true,
+        videoBranding:true,visibleBrands:true,visualMakes:true,visualMakeNeeded,
         onCommercialBranding:(vehicleIndex,hints)=>commercialVehicles.push({vehicleIndex,hints}),
       });
       done.numberCheck = { ...done.numberCheck, status: "verified", vehicles: verified,
@@ -164,7 +165,9 @@ export function aggregateVideo(frames: FrameEvidence[]) {
   const vehicles = observations.map(v => {
     const peers = observations.filter(other => other.number && v.number &&
       other.number.replace(/^0+(?=\d)/, "") === v.number.replace(/^0+(?=\d)/, ""));
-    const conflict = ["team", "vehicle", "manufacturer", "racingClass", "discipline"].some(key =>
+    // Visual model/make guesses cannot invalidate independently checked digits.
+    // Retain team/class/discipline conflicts; never transfer vehicle descriptors.
+    const conflict = ["team", "racingClass", "discipline"].some(key =>
       new Set(peers.map(p => p[key as keyof Identification]).filter(Boolean).map(value => String(value).trim().toLowerCase())).size > 1);
     return conflict ? { ...v, number: "", numberEvidence: undefined, team: "", drivers: "" } : v;
   });

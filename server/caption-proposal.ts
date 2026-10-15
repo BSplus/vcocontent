@@ -65,6 +65,13 @@ export function visuallyCheckedMakes(vehicles:Identification[]):string[] {
     .map(v=>canonicalVehicleMake(v.manufacturer)).filter((make):make is string=>!!make))).slice(0,6);
 }
 function vehicleName(row:Identification,event:CaptionEvent):string {
+  if(row.referenceVehicle!==undefined || row.referenceManufacturer!==undefined) {
+    return row.referenceVehicle?.trim() || row.referenceManufacturer?.trim() ||
+      event.vehicle?.trim() || (
+        row.manufacturerEvidence===VEHICLE_MAKE_POLICY &&
+        photoVehicleRegionSchema.safeParse(row.vehicleRegion).success
+          ? canonicalVehicleMake(row.manufacturer) || "" : "");
+  }
   // Newly matched records distinguish registered facts from inherited visual
   // hints. Legacy/manual records retain their established vehicle fields.
   return (row.referenceVehicle ?? row.vehicle)?.trim() ||

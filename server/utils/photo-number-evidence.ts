@@ -64,7 +64,9 @@ export async function photoVehicleCrop(bytes:Buffer,region:Region):Promise<Buffe
 // Whole-car geometry is a first-pass ANCHOR, not proof. Only an independent
 // whole-image car/panel reading AND its actual source-pixel crop can certify it.
 export async function verifyPhotoObservations(image:string,vehicles:Identification[], suppliedClient?:NonNullable<ReturnType<typeof getOpenAIClient>>,
-  options?:{videoBranding?:boolean;visibleBrands?:boolean;visualMakes?:boolean;onCommercialBranding?:(vehicleIndex:number,hints:string[])=>void}):Promise<Identification[]> {
+  options?:{videoBranding?:boolean;visibleBrands?:boolean;visualMakes?:boolean;
+    visualMakeNeeded?:(vehicle:Identification,index:number)=>boolean;
+    onCommercialBranding?:(vehicleIndex:number,hints:string[])=>void}):Promise<Identification[]> {
   const confirmed=new Set<number>();
   const commercial=new Map<number,string[]>();
   const brands=new Map<number,string[]>();
@@ -76,7 +78,7 @@ export async function verifyPhotoObservations(image:string,vehicles:Identificati
       .slice(0,VIDEO_BRANDING_LIMITS.vehicles) : [];
   const brandingIndices=brandingCandidates.map(c=>c.index);
   const makeCandidates=options?.visualMakes?vehicles.flatMap((v,index)=>
-    validRegion(v.vehicleRegion)?[{v,index}]:[]).slice(0,3):[];
+    validRegion(v.vehicleRegion) && (options.visualMakeNeeded?.(v,index) ?? true)?[{v,index}]:[]).slice(0,3):[];
   const makeIndices=makeCandidates.map(c=>c.index);
   const candidates=Array.from(new Map([...numeric,...brandingCandidates,...makeCandidates].map(c=>[c.index,c])).values());
   if(candidates.length && /^data:image\/(?:webp|jpeg|png);base64,/.test(image)) {
@@ -181,7 +183,7 @@ Only manufacturer crop indices ${makeIndices.join(", ")} need these extra fields
       }
     }
   }
-  return vehicles.map((v,index)=>{
+  const checkedVehicles=vehicles.map((v,index)=>{
     const {numberEvidence:_untrusted,visibleBrands:_untrustedBrands,brandEvidence:_untrustedBrandEvidence,
       manufacturerEvidence:_untrustedMake,referenceVehicle:_referenceCar,referenceManufacturer:_referenceMake,...clean}=v,accepted=confirmed.has(index);
     const checked:Identification={...clean,number:accepted?v.number:"",drivers:"",
@@ -193,4 +195,23 @@ Only manufacturer crop indices ${makeIndices.join(", ")} need these extra fields
     if(hints?.length) options?.onCommercialBranding?.(index,hints);
     return hints?.length?withoutCommercialTeamHints(checked,hints):checked;
   });
+  // A provisional reference can save manufacturer work, but a failed number
+  // check must not suppress the normal no-match visual fallback. Re-read only
+  // those cars' makes; never replace their number/brand evidence with this pass.
+  const fallback=new Set(checkedVehicles.flatMap((v,index)=>
+    options?.visualMakes && options.visualMakeNeeded &&
+    !options.visualMakeNeeded(vehicles[index],index) && options.visualMakeNeeded(v,index) &&
+    validRegion(v.vehicleRegion) ? [index] : []));
+  if(fallback.size) {
+    const makeOnly=await verifyPhotoObservations(image,checkedVehicles.map(v=>({...v,number:""})),suppliedClient,{
+      visualMakes:true,visualMakeNeeded:(_v,index)=>fallback.has(index),
+    });
+    for(const index of Array.from(fallback)) {
+      if(makeOnly[index].manufacturerEvidence===VEHICLE_MAKE_POLICY) {
+        checkedVehicles[index].manufacturer=makeOnly[index].manufacturer;
+        checkedVehicles[index].manufacturerEvidence=VEHICLE_MAKE_POLICY;
+      }
+    }
+  }
+  return checkedVehicles;
 }

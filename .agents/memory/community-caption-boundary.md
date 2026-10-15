@@ -87,5 +87,7 @@ ist, wird die visuelle Herstellererkennung als Ersatz genutzt.
 **Why:** Der Betreiber hat die Entry-List-Priorität ausdrücklich konkretisiert.
 
 **How to apply:** Dieselbe Priorität bei Foto und Video; visuelle Schätzungen
-dürfen die registrierte Fahrzeugangabe nicht ersetzen. Nummernbelege und
-eindeutige fahrzeugbezogene Zuordnung bleiben erforderlich.
+dürfen die registrierte Fahrzeugangabe nicht ersetzen oder eine ansonsten
+sichere Nummernzuordnung allein wegen abweichender Modell-/Markenschätzung
+verwerfen. Nummernbelege, eindeutige fahrzeugbezogene Zuordnung und separate
+Sponsorprüfung bleiben erforderlich.

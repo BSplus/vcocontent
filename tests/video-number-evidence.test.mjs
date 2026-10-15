@@ -185,12 +185,12 @@ test("policy, hash, timestamp, historical and budget boundaries fail closed",asy
   await assert.rejects(checkVideoNumbers([{...frame,hash:"wrong"}],
     {...evidence(),frames:[{...evidence().frames[0],hash:"wrong"}]},async()=>{}),/Invalid/);
 });
-test("same digits never merge different cars or borrow descriptors; contradictory vehicles veto references",()=>{
+test("same digits never merge different cars or borrow descriptors; contradictory teams veto references",()=>{
   const checked=(vehicles,hash)=>({hash,timestamp:0,tags:[],vehicles:[],
     numberCheck:{policy:VIDEO_NUMBER_PIPELINE,hash,timestamp:0,status:"verified",
       vehicles:vehicles.map(v=>({...v,numberEvidence:PHOTO_NUMBER_POLICY}))}});
-  const result=aggregateVideo([checked([observation("007",left,{vehicle:"BMW M4"}),
-    observation("",right)],"a"),checked([observation("7",right,{vehicle:"McLaren 720S"})],"b")]);
+  const result=aggregateVideo([checked([observation("007",left,{team:"Team A",vehicle:"BMW M4"}),
+    observation("",right)],"a"),checked([observation("7",right,{team:"Team B",vehicle:"McLaren 720S"})],"b")]);
   assert.equal(result.vehicles.length,3);
   assert.ok(result.vehicles.every(v=>!v.number));
   assert.ok(match(result.vehicles).every(v=>!v.drivers));

@@ -18,6 +18,7 @@ import {SAFETY_POLICY} from "../server/beta-policy.ts";
 import {brandOnlineResponse} from "./helpers/brand-online-fixture.mjs";
 
 const realFetch=globalThis.fetch;
+let manufacturerAudits=0;
 const eventIds=[],userIds=[],seriesIds=[];
 let server,base,admin,owner,other,calls=0,auditCalls=0,gate,entered,providerFailure=false,invalidOutput=false,visionVehicle="",visionNumber="007",auditNumber="007",visionTeam="",brandMode=false,brandLabel="MOZA Racing",onlineUnavailable=false,makeMode=false;
 const image="data:image/webp;base64,"+(await sharp({create:{width:32,height:32,channels:3,background:"green"}}).webp().toBuffer()).toString("base64");
@@ -69,6 +70,7 @@ test.before(async()=>{
       message:{content:JSON.stringify({sexualized:"clear",pornography:"clear",racistOrDehumanizing:"clear",hateSymbolsOrGlorification:"clear",visibleTextAndSymbolsReviewed:true})}}]}));
     if(body.messages[0].content.includes("Independently inspect the full image")) {
       auditCalls++;
+      if(body.messages[0].content.includes("For manufacturer checking"))manufacturerAudits++;
       return new Response(JSON.stringify({choices:[{finish_reason:"stop",message:{content:JSON.stringify({
         fullImageReadings:auditNumber||brandMode||makeMode?[{number:auditNumber,vehicleRegion:[0,0,1000,1000],
           ...(auditNumber?{panelRegion:[250,250,300,300]}:{}),
@@ -186,6 +188,27 @@ test("event vehicle saves, trims, clears and participates in caption context wit
   assert.equal(saved.identification[0].referenceVehicle,"");assert.equal(saved.identification[0].referenceManufacturer,"Porsche");
   assert.equal((await api(`/api/events/${e.id}`,{vehicle:"  "},"admin","PUT")).status,200);
   assert.equal((await storage.getEvent(e.id)).vehicle,null);
+});
+test("photo worker prioritizes reference vehicle and only requests manufacturer checks for missing fields",async()=>{
+  makeMode=true;visionVehicle="Ferrari 296";
+  try {
+    for(const [registeredCar,registeredMake,expected,extraAudits] of [
+      ["BMW M4 GT3","","BMW M4 GT3",0],
+      ["","BMW","BMW",0],
+      ["","","Porsche",1],
+    ]) {
+      const e=await album();
+      await storage.replaceEventEntries(e.id,[{...entry,car:registeredCar,manufacturer:registeredMake}]);
+      const p=await photo(e);scope([p]);const before=manufacturerAudits;
+      await enqueueAnalysis(p,{recognition:true,photoWorkflow:true});
+      const saved=await settled(p.id);
+      assert.equal(saved.identification[0].source,"reference");
+      assert.equal(saved.identification[0].numberEvidence,"vehicle-crop-v2");
+      assert.ok(saved.caption.includes(`#007 Apex — ${expected}`));
+      assert.doesNotMatch(saved.caption,/Ferrari|Vehicle makes?:/);
+      assert.equal(manufacturerAudits-before,extraAudits);
+    }
+  } finally {makeMode=false;visionVehicle="";}
 });
 
 test("legacy off flag does not block automatic history; authorization and obsolete switch rejection",async()=>{
@@ -530,17 +553,18 @@ test("bounded requests and provider errors stay visible without revealing provid
   assert.equal((await storage.getMediaItem(p.id)).caption,"Protected editorial text");
 });
 
-test("readable numbers with contradictory vehicles save context only, while generic/subset descriptions remain compatible",async()=>{
+test("verified numbers use registered vehicle even when visual model descriptions disagree",async()=>{
   const e=await album();const p=await photo(e);scope([p]);
   await db.update(eventEntries).set({car:"BMW M4 GT3"}).where(eq(eventEntries.eventId,e.id));
   visionVehicle="Porsche 911 GT3 R";
   try {
     await enqueueAnalysis(p);const saved=await settled(p.id);
-    assert.equal(saved.photoMatchStatus,"no_unique_match");
-    assert.equal(saved.identification[0].source,"visual");
-    assert.equal(saved.identification[0].vehicle,visionVehicle);
-    assert.equal(saved.identification[0].drivers,"");
-    assert.doesNotMatch(saved.caption,/BMW|Porsche|Apex|Registered lineup/);
+    assert.equal(saved.photoMatchStatus,"matched");
+    assert.equal(saved.identification[0].source,"reference");
+    assert.equal(saved.identification[0].vehicle,"BMW M4 GT3");
+    assert.equal(saved.identification[0].drivers,entry.drivers);
+    assert.match(saved.caption,/#007 Apex — BMW M4 GT3/);
+    assert.doesNotMatch(saved.caption,/Porsche/);
     assert.match(saved.caption,/Sebring/);
   } finally {visionVehicle="";}
   const doc={scope:"event",kind:"entry",session:null,updatedAt:new Date(),rows:[{...entry,car:"BMW M4 GT3"}]};
@@ -549,7 +573,7 @@ test("readable numbers with contradictory vehicles save context only, while gene
   }
   for(const vehicle of ["Porsche 911 GT3 R","BMW M6 GT3"]){
     const result=matchReferences([{...visible,vehicle}],[doc],null,e.title,true);
-    assert.equal(matchedPhotoCaption(e,null,result).matchStatus,"no_unique_match",vehicle);
+    assert.equal(matchedPhotoCaption(e,null,result).matchStatus,"matched",vehicle);
   }
 });
 
@@ -747,7 +771,7 @@ test("both photo paths and legacy reuse suppress the Verstap false match",async(
       assert.equal(saved.identification[0].source,"visual");
       assert.equal(saved.caption,p.caption);assert.ok(saved.tags.includes("Helmet"));
       assert.equal((await search()).length,0);
-      assert.equal(auditCalls-beforeAudits,1,"empty independent reading does not need a crop request");
+      assert.equal(auditCalls-beforeAudits,2,"rejected provisional number gets one make-only fallback, never a reference match");
       // Historical readable=true did not retain audit provenance. Reuse only
       // local data during a reference correction, without silently reanalysing.
       await db.update(mediaAnalysisJobs).set({recognition:[{...visible,number:"01"}]})

@@ -61,11 +61,12 @@ Localize the visible car even if its number is unreadable: this rectangle is nee
   } catch { throw new Error("AI recognition could not be completed"); }
 }
 
-export async function recognizeMotorsportImage(image:string,options?:{tagsOnly?:boolean}) {
+export async function recognizeMotorsportImage(image:string,options?:{tagsOnly?:boolean;visualMakeNeeded?:(vehicle:Identification)=>boolean}) {
   try {
     const parsed=await extractMotorsportImage(image);
     const anchored=!options?.tagsOnly && parsed.vehicles.some(v=>v.number) ? (await localizePhotoNumbers(image,parsed.vehicles)).vehicles : parsed.vehicles;
-    const vehicles=await verifyPhotoObservations(image,anchored,undefined,{visibleBrands:true,visualMakes:true});
+    const vehicles=await verifyPhotoObservations(image,anchored,undefined,{
+      visibleBrands:true,visualMakes:true,visualMakeNeeded:options?.visualMakeNeeded});
     return {...parsed,tags:[...parsed.tags,...checkedBrandTags(vehicles)],vehicles};
   } catch {throw new Error("AI recognition could not be completed");}
 }

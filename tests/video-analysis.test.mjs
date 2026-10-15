@@ -18,6 +18,7 @@ import { aggregateVideo, recognizeVideoBatch, VIDEO_NUMBER_PIPELINE } from "../s
 import { enqueueAnalysis, analysisStatus, drainAnalysisQueue, stopAnalysisWorker, itemAnalysisFingerprint, setAnalysisQueueTestScope } from "../server/analysis-jobs.ts";
 import sharp from "sharp";
 
+let manufacturerAudits=0;
 const execute = promisify(execFile);
 const directory = await mkdtemp(path.join(tmpdir(), "video-test-"));
 const albums = [];
@@ -48,13 +49,14 @@ async function clip(duration, kind = "testsrc2", extension = "mp4") {
     "-pix_fmt", "yuv420p", "-y", filename], { timeout: 20000 });
   return readFile(filename);
 }
-function mockProvider(work = async () => {},withMakes=false) {
+function mockProvider(work = async () => {},withMakes=false,completeNumbers=false) {
   process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = "https://video-test.invalid/v1";
   process.env.AI_INTEGRATIONS_OPENAI_API_KEY = "test-only";
   globalThis.fetch = async (input, options) => {
     if (!String(input).startsWith("https://video-test.invalid/")) return realFetch(input, options);
     requests++;
     const request = JSON.parse(options.body);
+    if(request.messages[0].content.includes("For manufacturer checking"))manufacturerAudits++;
     const frames = request.messages[1].content.filter(c => c.type === "image_url");
     if (request.model !== "gpt-4.1-mini") {
       const regions = [[0,0,500,1000],[500,0,500,1000]];
@@ -78,7 +80,7 @@ function mockProvider(work = async () => {},withMakes=false) {
     return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({
       frames: frames.map((_, index) => ({ index, tags: ["Real Motorsport", "Day", "Race Car", "Front View", "Sim Racing", "Esports"], vehicles: [
         { number: index % 2 ? "90" : "089", numberReadable: true, classReadable: false, racingClass: "GT3" },
-        { number: "8?", numberReadable: false },
+        { number: completeNumbers ? "90" : "8?", numberReadable: completeNumbers },
       ] })),
     }) } }], usage: { prompt_tokens: 200, completion_tokens: 100 } }),
     { headers: { "content-type": "application/json" } });
@@ -279,6 +281,30 @@ test("a no-list video saves a checked-make caption without inventing a model or 
     assert.ok(!saved.caption.includes("#")&&!saved.caption.includes("911"));
     assert.ok(saved.identification.every(v=>v.source==="visual"&&!v.drivers&&!v.team));
   }finally{mockProvider();}
+});
+test("video worker uses reference vehicle first and verifies makes only for missing vehicle fields", {timeout:90000},async()=>{
+  videoBytes=await clip(1);
+  mockProvider(async()=>{},true,true);
+  try {
+    for(const [car,manufacturer,expected,extraAudits] of [
+      ["BMW M4 GT3","","BMW M4 GT3",0],["","BMW","BMW",0],["","","Porsche",1],
+    ]) {
+      const item=await media();
+      await storage.replaceEventEntries(item.eventId,["89","90"].map(number=>({
+        number,team:"Reference Team",drivers:"Registered Lineup",car,manufacturer,racingClass:"",discipline:"",
+      })));
+      await db.update(mediaItems).set({caption:"",captionSource:"auto_pending"}).where(eq(mediaItems.id,item.id));
+      const before=manufacturerAudits;
+      await enqueueAnalysis(item);
+      await until(async()=>(await analysisStatus(item.id)).status==="completed");
+      const saved=await storage.getMediaItem(item.id);
+      assert.ok(saved.identification.every(v=>v.source==="reference" && v.numberEvidence==="vehicle-crop-v2"),
+        JSON.stringify({car,manufacturer,identification:saved.identification}));
+      assert.ok(saved.caption.includes(`#089 Reference Team — ${expected}`));
+      assert.doesNotMatch(saved.caption,/Vehicle makes?:/);
+      assert.equal(manufacturerAudits-before,extraAudits);
+    }
+  } finally {mockProvider();}
 });
 test("malformed frame batches preserve originals and previews, then complete safely on retry", { timeout: 90000 }, async () => {
   videoBytes=await clip(20);

@@ -8,7 +8,7 @@ import { analysisImageInput, recognitionImageInput } from "./image-analysis";
 import { categorizeContent, isAITaggingConfigured } from "./utils/ai-tagger";
 import { recognizeMotorsportImage } from "./utils/motorsport-recognition";
 import {supportedPhotoObservations} from "./utils/photo-number-evidence";
-import { identifyEntries } from "./reference-matching";
+import { identifyEntries, loadMatchDocuments, visualMakeNeeded } from "./reference-matching";
 import { withVisionBudget, VisionBusy } from "./ai-budget";
 import { sampleVideo, SAMPLING_VERSION, cleanupVideoTemps } from "./video-sampling";
 import { aggregateVideo, recognizeVideoBatch, checkVideoNumbers, VIDEO_NUMBER_PIPELINE, type VideoEvidence } from "./video-recognition";
@@ -261,6 +261,10 @@ export async function drainAnalysisQueue() {
         .where(and(eq(mediaAnalysisJobs.mediaId,item.id),eq(mediaAnalysisJobs.workerToken,claimed.token)));
       videoStage="database_read";
     }
+    const [analysisEvent]=item.eventId ? await db.select().from(events).where(eq(events.id,item.eventId)) : [];
+    const needsVisualMake=!claimed.referenceOnly && analysisEvent ? visualMakeNeeded(
+      await loadMatchDocuments(analysisEvent), item.recognitionSession, analysisEvent.title, analysisEvent.vehicle)
+      : undefined;
     let videoResult: ReturnType<typeof aggregateVideo> | undefined;
     if (item.type === "video" && !claimed.referenceOnly) {
       videoStage="file_access";
@@ -310,7 +314,7 @@ export async function drainAnalysisQueue() {
           });
         }
         videoStage="ai_request";
-        await checkVideoNumbers(sample.frames, evidence, persist);
+        await checkVideoNumbers(sample.frames, evidence, persist, needsVisualMake);
         videoStage="result_parsing";
         videoResult = aggregateVideo(evidence.frames);
       });
@@ -324,12 +328,14 @@ export async function drainAnalysisQueue() {
       : videoResult ? videoResult
       : tagOnly
         ? await withVisionBudget(async () => {
-          const recognized=await recognizeMotorsportImage(await analysisImageInput(item.thumbnail),{tagsOnly:true});
+          const recognized=await recognizeMotorsportImage(await analysisImageInput(item.thumbnail),{
+            tagsOnly:true,visualMakeNeeded:needsVisualMake});
           visualCaptionObservations=recognized.vehicles;
           // Do not turn a tags-only job into cached number/entry recognition.
           return {tags:recognized.tags,vehicles:null};
         })
-        : await withVisionBudget(async () => recognizeMotorsportImage(await recognitionImageInput(item)));
+        : await withVisionBudget(async () => recognizeMotorsportImage(await recognitionImageInput(item),{
+          visualMakeNeeded:needsVisualMake}));
      // Online lookup is optional, bounded, outside transactions and separate
      // from numeric Vision slots. Unconfirmed brand tags alone are discarded.
      const tags = withoutRetiredMediaTags(await onlineBrandVerifier.filter(result.tags));

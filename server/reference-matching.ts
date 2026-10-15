@@ -2,7 +2,7 @@ import { and, eq, or, isNull } from "drizzle-orm";
 import { db } from "./db";
 import { referenceDocuments, eventEntries, type Event, type EntryRow, type Identification } from "@shared/schema";
 import { supportedPhotoObservations } from "./utils/photo-number-evidence";
-import { photoTeamHintConflict, photoManufacturerHintConflict } from "./photo-team-hints";
+import { photoTeamHintConflict } from "./photo-team-hints";
 // Video callers supply frame-bound checked observations and use the same strict
 // uniqueness/conflict gates as photos; manual assignments remain protected.
 
@@ -24,22 +24,6 @@ export const referenceRowPriority = (d: MatchDocument, row: EntryRow) =>
 export const referenceRowApplies = (d: MatchDocument, row: EntryRow, session: string | null, eventTitle: string) =>
   (!d.session || d.session === session) && (!row.session || row.session === session) &&
   (d.scope === "event" || !row.eventName || row.eventName.toLowerCase().trim() === eventTitle.toLowerCase().trim());
-// Broad descriptors do not contradict a model. Specific names must agree after
-// punctuation/case normalization or be a less-specific subset of the other name.
-// Do not infer model aliases: uncertain differences must not produce identity.
-function vehicleConflict(visible: string, registered: string) {
-  const words=(text:string)=>text.normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
-    .toLowerCase().replace(/[^a-z0-9]+/g," ").trim().split(/\s+/).filter(Boolean);
-  const generic=new Set(["race","racing","car","cars","vehicle","vehicles","racecar","sports","sport","sim",
-    "prototype","prototypes","formula","touring","stock","single","seater","hypercar","gt","gt1","gt2","gt3","gt4",
-    "lmp1","lmp2","lmp3","unknown"]);
-  const a=words(visible),b=words(registered);
-  if (!a.length || !b.length || a.every(word=>generic.has(word)) || b.every(word=>generic.has(word))) return false;
-  const noise=new Set(["race","racing","car","cars","vehicle","vehicles","sports","sport","sim",
-    "prototype","formula","touring","stock","single","seater","hypercar"]);
-  const specificA=a.filter(word=>!noise.has(word)),specificB=b.filter(word=>!noise.has(word));
-  return !specificA.every(word=>specificB.includes(word)) && !specificB.every(word=>specificA.includes(word));
-}
 /** Result/event/session overrides merge available fields, not guesses. */
 export function matchReferences(visible: Identification[], documents: MatchDocument[], session: string | null, eventTitle = "", strictPhoto = false, requirePhotoEvidence = false): Identification[] {
   const applicable = documents.filter(d => !d.session || d.session === session);
@@ -74,14 +58,18 @@ export function matchReferences(visible: Identification[], documents: MatchDocum
         if (strictPhoto && ambiguous) entry=undefined;
       }
     }
-    if (strictPhoto && entry && [{vehicle:observed.vehicle,team:observed.team,manufacturer:observed.manufacturer},
-      ...(observed.referenceConstraints || [])].some(hint=>vehicleConflict(hint.vehicle,entry!.car) ||
-      photoTeamHintConflict(hint.team,entry!,applicableTeams) ||
-      photoManufacturerHintConflict(hint.manufacturer,entry!))) {
+    // Vehicle/model appearance is not authority over a number-backed entry.
+    // Keep independent team conflicts, number evidence and reference ambiguity.
+    if (strictPhoto && entry && [{team:observed.team},
+      ...(observed.referenceConstraints || [])].some(hint=>
+      photoTeamHintConflict(hint.team,entry!,applicableTeams))) {
       entry=undefined;
     }
     if (entry && (!strictPhoto || !ambiguous) && (!strictPhoto || !!entry.team)) return { ...observed, team: entry.team || observed.team, drivers: entry.drivers,
-      vehicle: entry.car || observed.vehicle, manufacturer: entry.manufacturer || observed.manufacturer,
+      vehicle: entry.car || observed.vehicle,
+      // A model-only reference must not inherit a contradictory guessed make.
+      manufacturer: entry.manufacturer || (entry.car?.trim() ? "" : observed.manufacturer),
+      manufacturerEvidence:entry.car?.trim() || entry.manufacturer?.trim() ? undefined : observed.manufacturerEvidence,
       referenceVehicle:entry.car,referenceManufacturer:entry.manufacturer || "",
       racingClass: entry.racingClass || observed.racingClass, discipline: entry.discipline || observed.discipline, source: "reference" };
     // Team-only branding can match a team, never infer an individual driver.
@@ -94,8 +82,23 @@ export function matchReferences(visible: Identification[], documents: MatchDocum
     return { ...observed, drivers: "", source: "visual" };
   });
 }
-export async function identifyEntries(event: Event, visible: Identification[], session: string | null, executor: Pick<typeof db, "select"> = db, strictPhoto = false, requirePhotoEvidence = false) {
+export async function loadMatchDocuments(event: Event, executor: Pick<typeof db, "select"> = db):Promise<MatchDocument[]> {
   const documents = await executor.select().from(referenceDocuments).where(applicableDocuments(event));
   const legacy = await executor.select().from(eventEntries).where(eq(eventEntries.eventId, event.id));
-  return matchReferences(visible, [...documents, ...(legacy.length ? [{ scope: "event", kind: "entry", session: null, rows: legacy, updatedAt: new Date(0) }] : [])], session,event.title,strictPhoto,requirePhotoEvidence);
+  return [...documents, ...(legacy.length ? [{ scope: "event", kind: "entry", session: null, rows: legacy, updatedAt: new Date(0) }] : [])];
+}
+
+/** Scheduling hint only: provisional numbers NEVER authorize an entry match.
+ * The verifier rechecks this decision after independently validating digits. */
+export function visualMakeNeeded(documents:MatchDocument[], session:string|null, eventTitle:string, eventVehicle?:string|null) {
+  return (vehicle:Identification):boolean => {
+    if(eventVehicle?.trim()) return false;
+    const [matched]=matchReferences([vehicle],documents,session,eventTitle,true,false);
+    return matched.source!=="reference" || !(
+      matched.referenceVehicle?.trim() || matched.referenceManufacturer?.trim());
+  };
+}
+
+export async function identifyEntries(event: Event, visible: Identification[], session: string | null, executor: Pick<typeof db, "select"> = db, strictPhoto = false, requirePhotoEvidence = false) {
+  return matchReferences(visible, await loadMatchDocuments(event,executor), session,event.title,strictPhoto,requirePhotoEvidence);
 }
