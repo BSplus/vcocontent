@@ -79,3 +79,13 @@ steht ohne dieses Präfix.
 **How to apply:** Für automatische Foto- und Videocaptions gleichermaßen,
 auch bei mehreren Marken. Keine nachträgliche Änderung gespeicherter Captions
 ohne entsprechenden Auftrag.
+
+Für Fahrzeugmodell/Automarke ist der Entry-List-Eintrag der sicher zugeordneten
+Startnummer maßgeblich. Nur wenn dort keine nutzbare Fahrzeugangabe vorhanden
+ist, wird die visuelle Herstellererkennung als Ersatz genutzt.
+
+**Why:** Der Betreiber hat die Entry-List-Priorität ausdrücklich konkretisiert.
+
+**How to apply:** Dieselbe Priorität bei Foto und Video; visuelle Schätzungen
+dürfen die registrierte Fahrzeugangabe nicht ersetzen. Nummernbelege und
+eindeutige fahrzeugbezogene Zuordnung bleiben erforderlich.
