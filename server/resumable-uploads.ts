@@ -22,9 +22,11 @@ import { createMediaKeys, uploadMedia } from "./media-storage";
 import { assertNewMediaUploadsEnabled } from "./media-object-routing";
 import { reviewMediaSafety } from "./content-safety";
 import { analysisStatus, kickAnalysisWorker } from "./analysis-jobs";
+import {nativeUploadFenceAvailable,nativeUploadOwnsSession} from "./native-upload-fence";
+import {UPLOAD_SESSION_ROOT,uploadSessionDirectory} from "./upload-session-staging";
 
 export const UPLOAD_PART_BYTES = 1024 * 1024;
-const ROOT = path.join(tmpdir(),"vco-upload-sessions");
+const ROOT = UPLOAD_SESSION_ROOT;
 const TTL = 60*60*1000;
 const activeFinalizers = new Set<string>();
 const mimes = ["image/jpeg","image/png","image/gif","image/webp","video/mp4","video/quicktime","video/webm"] as const;
@@ -35,7 +37,7 @@ const input = z.object({requestKey:z.string().uuid(),size:z.number().int().posit
 type Session = typeof sessions.$inferSelect;
 type Parts = Record<string,{size:number;sha256:string}>;
 class SessionError extends Error { constructor(public status:number,message:string){super(message);} }
-const folder = (id:string) => path.join(ROOT,z.string().uuid().parse(id));
+const folder = (id:string) => uploadSessionDirectory(z.string().uuid().parse(id));
 
 export async function resumableUploadsAvailable() {
   if (process.env.MEDIA_RESUMABLE_UPLOADS_ENABLED !== "true") return false;
@@ -116,7 +118,10 @@ async function reserveBody(req:Request) {
 }
 async function discard(row:Session,state:"failed"|"cancelled") {
   await db.transaction(async tx=>{
+    await tx.select().from(mediaReservations).where(eq(mediaReservations.id,row.id)).for("update");
     const [current]=await tx.select().from(sessions).where(eq(sessions.id,row.id)).for("update");
+    if(await nativeUploadOwnsSession(row.id,tx))
+      throw new SessionError(409,"Upload reconciliation is pending. Its files and storage reservation have been retained.");
     if(current.state==="completed" || current.state==="finalizing" && state==="cancelled")
       throw new SessionError(409,"Saving has started. Check saved status before cancelling.");
     await tx.update(sessions).set({state,metadata:{}}).where(eq(sessions.id,row.id));
@@ -132,7 +137,10 @@ function alive(pid:number|null) {
 /** Conservative reconciliation. Never race an active/uncertain finalizer. */
 export async function cleanupUploadSessions() {
   if(!(await db.execute(sql`select to_regclass('media_upload_sessions') as name`)).rows[0]?.name) return;
-  const expired=await db.select().from(sessions).where(sql`${sessions.expiresAt}<now() and ${sessions.cleanedAt} is null`).limit(20);
+  const native=await nativeUploadFenceAvailable();
+  const fence=native?sql`and not exists(select 1 from media_r2_multipart_journals n where n.session_id=${sessions.id})`:sql``;
+  const expired=await db.select().from(sessions).where(sql`${sessions.expiresAt}<now() and ${sessions.cleanedAt} is null
+    and not (${sessions.metadata} ? 'nativeReceipt') ${fence}`).limit(20);
   for(const row of expired) {
     const active=(current:Session)=>current.workerPid===process.pid?activeFinalizers.has(current.id):alive(current.workerPid);
     if(row.state==="finalizing" && active(row)) continue;
@@ -146,6 +154,7 @@ export async function cleanupUploadSessions() {
       const [current]=await tx.select().from(sessions).where(eq(sessions.id,row.id)).for("update");
       if(!current || current.state==="completed" || current.expiresAt>new Date() ||
          current.state==="finalizing" && active(current)) return;
+      if(await nativeUploadOwnsSession(row.id,tx))return;
       await rm(folder(row.id),{recursive:true,force:true});
       // Release durable reservation only after temporary deletion is confirmed.
       await tx.update(sessions).set({state:"failed",metadata:{}}).where(eq(sessions.id,row.id));

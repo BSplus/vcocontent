@@ -145,6 +145,8 @@ export async function uploadR2MultipartFile(plan:MultipartPlan,filename:string,c
         await absent(context.driver,plan,signal);
         await context.authorize(plan,"upload");context.driver.writable();
         state={binding:expected,phase:"initiating",parts:[]};await save(state);
+        signal.throwIfAborted();
+        if(plan.expiresAt<=Date.now())fail("expired");
         state.uploadId=await context.driver.create(plan.key,plan.mime,plan.sessionId,plan.sha256,signal);
         state.phase="uploading";await save(state);
       }

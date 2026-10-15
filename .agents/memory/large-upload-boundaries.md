@@ -58,3 +58,16 @@ cover a lost network response and can leave worker slots waiting indefinitely.
 lease, captured verified connection settings and bounded client query/connect
 deadlines. Capacity must survive uncertain results until provider and staging
 cleanup or atomic asset registration are confirmed.
+
+Native cleanup fencing must survive both the first-intent insertion gap and
+the atomic replacement of a journal by a terminal receipt.
+
+**Why:** A reservation FK alone protects accounting, not local source files.
+Legacy cleanup can select a session before an uncommitted intent is visible,
+or after successful registration removes its journal.
+
+**How to apply:** Hold the same reservation/session locks through initial intent
+insertion; recheck fences under those locks before unlinking. Respect terminal
+receipts too. Unpin reservations and register physical usage in one transaction;
+perform final quota checks after reservation removal so bytes are not charged
+twice. Keep every native part/assembled source inside its owned staging boundary.

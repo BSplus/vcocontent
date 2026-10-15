@@ -2,7 +2,7 @@ import {createHash} from "node:crypto";
 import type {Pool,PoolClient} from "@neondatabase/serverless";
 import {drizzle} from "drizzle-orm/neon-serverless";
 import {and,eq,sql} from "drizzle-orm";
-import {createMediaLeasePool} from "./db";
+import {createMediaLeasePool,type db as applicationDb} from "./db";
 import * as schema from "@shared/schema";
 import {r2MultipartJournals as journals} from "@shared/r2-multipart-schema";
 import {creatorAllowed,communityLimits,lockedCreatorBudget} from "./beta-policy";
@@ -23,6 +23,7 @@ let leasePool:Pool|undefined;
 // request whose response is lost in a network partition. Same connection
 // configuration as the verified application pool, never a second database.
 const connections=()=>leasePool??=createMediaLeasePool();
+type Transaction=Parameters<Parameters<typeof applicationDb.transaction>[0]>[0];
 const lockId=(name:string)=>{
   const bytes=createHash("sha256").update(name).digest();
   return [bytes.readInt32BE(0),bytes.readInt32BE(4)] as [number,number];
@@ -53,16 +54,18 @@ export class PostgresMultipartJournal implements MultipartJournal {
     if(this.signal.aborted||!this.client)fail("lease_lost");
     return this.client!;
   }
+  assertLease(){this.held();}
   async authorize(plan:MultipartPlan,stage:"upload"|"verify"|"cancel"){
+    await this.authorized(plan,stage,async()=>{});
+  }
+  private async authorized<T>(plan:MultipartPlan,stage:"upload"|"verify"|"cancel",
+    work:(tx:Transaction)=>Promise<T>){
     if(multipartPlanBinding(plan,this.driver)!==this.binding)fail("conflict");
     const db=drizzle({client:this.held(),schema});
-    await db.transaction(async tx=>{
+    const result=await db.transaction(async tx=>{
       // Match finish/cleanup: reservation before owner, gallery and session.
       const [reservation]=await tx.select().from(schema.mediaReservations)
         .where(eq(schema.mediaReservations.id,this.plan.sessionId)).for("update");
-      if(!reservation||reservation.eventId!==plan.eventId||reservation.creatorId!==plan.owner.creatorId||
-        reservation.storageKey!==plan.key||!Number.isSafeInteger(reservation.reservedBytes)||
-        reservation.reservedBytes<plan.size)fail("denied");
       if(plan.owner.creatorId!==null)
         await tx.select().from(schema.users).where(eq(schema.users.id,plan.owner.creatorId)).for("update");
       const [actor]=await tx.select().from(schema.users).where(eq(schema.users.id,plan.actorId));
@@ -72,10 +75,21 @@ export class PostgresMultipartJournal implements MultipartJournal {
       if(!actor||!creatorAllowed(actor)||!event||event.creatorId!==plan.owner.creatorId||
         !actor.isAdmin&&event.creatorId!==actor.id||event.isPremium||
         !session||session.actorId!==plan.actorId||session.eventId!==plan.eventId||
-        session.ownerId!==plan.owner.creatorId||session.state!=="finalizing"||session.cleanedAt||
+        session.ownerId!==plan.owner.creatorId||
         session.size!==plan.size||session.mime!==plan.mime||session.sha256!==plan.sha256||
         session.requestFingerprint!==plan.owner.revision||session.expiresAt.getTime()!==plan.expiresAt)
         fail("denied");
+      const receipt=(session.metadata as {nativeReceipt?:{binding?:string;kind?:string;mediaId?:number}})?.nativeReceipt;
+      const terminal=receipt?.binding===this.binding&&(
+        receipt.kind==="registered"&&session.state==="completed"&&session.mediaId===receipt.mediaId||
+        receipt.kind==="released"&&["cancelled","failed"].includes(session.state)&&!!session.cleanedAt);
+      if(!reservation&&terminal){
+        if(stage==="upload")fail("closed");
+        return work(tx);
+      }
+      if(!reservation||reservation.eventId!==plan.eventId||reservation.creatorId!==plan.owner.creatorId||
+        reservation.storageKey!==plan.key||!Number.isSafeInteger(reservation.reservedBytes)||
+        reservation.reservedBytes<plan.size||session.state!=="finalizing"||session.cleanedAt)fail("denied");
       if(stage==="upload"){
         this.driver.writable();
         if(plan.expiresAt<=Date.now())fail("closed");
@@ -84,8 +98,10 @@ export class PostgresMultipartJournal implements MultipartJournal {
         if(plan.size>limit||plan.owner.kind==="creator"&&!plan.mime.startsWith("image/"))fail("denied");
         if(plan.owner.creatorId!==null)await lockedCreatorBudget(tx,plan.owner.creatorId,0,0,0,0,true,"CREATOR");
       }
+      return work(tx);
     });
     this.held();
+    return result;
   }
   async exclusive<T>(scope:string,key:string,sessionId:string,
     work:(saved:unknown,save:(state:MultipartCheckpoint)=>Promise<void>)=>Promise<T>):Promise<T>{
@@ -137,9 +153,11 @@ export class PostgresMultipartJournal implements MultipartJournal {
         if(!row){
           // Read-only inspection/cancel with no intent must not create a journal.
           // Only a validated write intent pins the existing reservation.
-          await this.authorize(this.plan,"upload");
-          const inserted=await db.insert(journals).values({sessionId,reservationId:sessionId,scope,
-            objectKey:key,binding:this.binding,revision:1,checkpoint:next}).onConflictDoNothing().returning();
+          // Keep reservation/session locks through initial insertion. Otherwise
+          // legacy cleanup could mark failed/remove staging in this gap.
+          const inserted=await this.authorized(this.plan,"upload",tx=>tx.insert(journals)
+            .values({sessionId,reservationId:sessionId,scope,objectKey:key,binding:this.binding,
+              revision:1,checkpoint:next}).onConflictDoNothing().returning());
           if(inserted.length!==1)fail("conflict");
           row=inserted[0];previous=next;revision=1;return;
         }

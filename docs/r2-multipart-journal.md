@@ -50,13 +50,56 @@ This prevents ordinary abandonment from deleting the reservation and freeing
 quota while the provider outcome is uncertain. Failed abandonment rolls back
 its attempted cleanup-accounting changes too.
 
-**Verified transport bytes are not a registered asset.** Even verified or
-provider-aborted checkpoints keep their reservation pinned in this preparation.
+**Verified transport bytes are not a registered asset.** Verified or
+provider-aborted checkpoints keep their reservation pinned until the private
+lifecycle repository confirms registration or completed staging cleanup.
 Do not manually delete journal rows as a cleanup procedure.
+
+## Atomic asset handoff and staging lifecycle
+
+`server/r2-multipart-lifecycle.ts` is prepared, **not imported by upload routes**:
+
+- `registerValidatedMultipart` consumes server-trusted output of the existing
+  content/derivative validation pipeline, not browser metadata. Transport
+  verification is not image/container validation or a safety decision.
+- Existing `finishMedia` performs one transaction. Its optional internal
+  pre-release hook checks the current actor/gallery/session and the verified
+  source hash, size, MIME and object version, plus the reserved thumbnail route
+  and actual distinct byte/object totals. Unknown or conflicting routes fail.
+- The same transaction removes the restrictive journal, removes the reservation,
+  links physical asset objects/variants, checks final Creator usage, admits the
+  existing analysis job once, and completes the session. Asset linking accepts
+  the existing transaction instead of opening a nested independent transaction.
+  Creator safety remains pending under existing policy; no safety is bypassed.
+- A minimal server-only receipt in the existing session metadata replaces the
+  journal atomically. Lost commit responses and concurrent retries return that
+  same media item; they do not create another asset/job or require open gates.
+  Deleted media cannot be recreated by replaying its receipt.
+- Actual bytes replace reserved bytes without counting both during final
+  capacity enforcement. Original and generated thumbnail physical objects are
+  counted once, under persisted gallery ownership.
+- `cleanupMultipartStaging` takes the same cross-connection session/key lease.
+  Registered receipts permit only local staging cleanup. Held reservations are
+  released only after a known abort, another provider multipart/destination
+  absence check and confirmed local directory removal. Unknown initiation or
+  completion never permits source removal or release.
+- Native adapters must keep **all parts and assembled native sources** under the
+  fixed UUID session directory supplied by `upload-session-staging.ts`; no
+  arbitrary cleanup path is accepted. An adapter must close source readers before
+  cleanup. The native engine finishes before registration/cleanup is called.
+- Legacy expiry selection excludes native journals and terminal receipts before
+  its batch limit. Discard/expiry recheck the fence under reservation/session
+  locks. Initial authorization and journal insertion hold those same row locks
+  through one short transaction, closing the pre-insertion cleanup race.
+
+These helpers neither implement content parsing nor dispatch paid AI/safety
+calls. The future intake adapter must reuse those existing workflows, validated
+derivatives and policy decisions, and must not run a legacy and native finalizer
+for the same session.
 
 ## Actual evidence
 
-The newest journal suite passed **15 scenarios / 16 Node-reported tests**, with no
+The newest journal suite passed **27 scenarios / 28 Node-reported tests**, with no
 failures or skips. It used a newly initialized, disposable loopback PostgreSQL
 database and synthetic R2 commands backed by temporary disk files:
 
@@ -77,10 +120,26 @@ database and synthetic R2 commands backed by temporary disk files:
 14. A deliberately stalled SQL insert fails around five seconds without issuing
     any provider write, rather than waiting for the complete stalled statement.
 15. Terminating the PostgreSQL lease aborts the worker; saved intent remains.
+16. Atomic registration preserves creator text, transfers usage once and permits
+    terminal replay/cleanup with closed gates without another analysis job.
+17. Original/thumbnail relationships and actual byte accounting are committed.
+18. Failure after journal removal rolls back media, route and reservation changes.
+19. A lost database completion reply recovers one committed asset/job.
+20. Invalid source identities or byte totals retain the verified reservation.
+21. Known abort removes actual source staging before releasing capacity.
+22. Unknown initiation cannot remove source staging or release capacity.
+23. Legacy expiry preserves native staging/reservations.
+24. Native terminal receipts remain protected after the journal is removed.
+25. An intentionally delayed first insert races real expiry cleanup; cleanup
+    waits on the reservation/session locks and then honors the committed fence.
+26. Concurrent registration cannot duplicate media or analysis jobs.
+27. Missing generated derivatives prevent registration without freeing capacity.
 
-The unchanged provider transport (including the isolated 250-MiB case), R2/private
-delivery, browser-client protocol, HTTP resumable and retained-capacity regression
-suites also passed. TypeScript and the production bundle build passed.
+The final affected integration/regression batch reported **49 passing tests**
+(journal, existing HTTP resumable and retained capacity), without failures or
+skips. The earlier unchanged provider transport (including the isolated 250-MiB
+case), R2/private delivery and browser-client protocol checks also passed.
+TypeScript and the production bundle build passed.
 
 The database tests deliberately stay within current application file policy.
 The 250-MiB provider-engine fixture is **not** a 250-MiB application upload test.
@@ -89,7 +148,8 @@ All fixtures were removed.
 
 ```sh
 node scripts/test-image-downloads.mjs --enable-uploads \
-  tests/r2-multipart-journal.test.mjs
+  tests/r2-multipart-journal.test.mjs tests/resumable-uploads.test.mjs \
+  tests/retained-storage-capacity.test.mjs
 ```
 
 `--enable-uploads` opens uploads only in that disposable runner's child process,
@@ -97,20 +157,15 @@ with its loopback database and test storage. It changes no workspace settings.
 
 ## Remaining before any activation
 
-1. Atomic media/object registration and reservation handoff must verify the
-   current owner, provider route, byte/version/hash identity and content/safety
-   decisions before unpinning the journal. Reuse existing finalization and
-   idempotent media/analysis admission; transport verification alone must not
-   publish or trigger duplicate AI.
-2. Make existing temporary-file/session cleanup native-journal aware **before**
-   wiring any application endpoint. Current legacy cleanup does not honor the
-   native lease before removing local staging; the reservation FK alone does
-   not solve that source-file lifecycle issue.
-3. Reconcile uncertain initiation/completion conservatively. No guessed provider
+1. Integrate validated, original-preserving intake and derivatives, independent
+   safety and existing AI dispatch with the prepared private registration
+   boundary. Codec/metadata correctness is not proven by opaque transport files.
+2. Reconcile uncertain initiation/completion conservatively. No guessed provider
    IDs, broad cleanup, blind completion replay or capacity release.
-4. Prepare authenticated HTTP/UI integration and end-to-end restart/cancel/error
-   coverage without nested work-budget acquisition or changed product limits.
-5. Obtain explicit approval before making this schema active/applying Development
+3. Prepare authenticated HTTP/UI integration and end-to-end restart/cancel/error
+   coverage, native staging ownership and maintenance cleanup dispatch without
+   nested work-budget acquisition or changed product limits.
+4. Obtain explicit approval before making this schema active/applying Development
    changes, running a connected Development smoke or opening upload gates.
    Production schema and publishing remain separately approved steps.
 

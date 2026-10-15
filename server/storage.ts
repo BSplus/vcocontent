@@ -580,7 +580,8 @@ class DatabaseStorage implements IStorage {
   }
 
   async finishMedia(id: string, mediaItem: InsertMediaItem, nextcloudFileId?: number, workerToken?: string, requestAnalysis = false, _community = false,
-    onCommit?: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], item: MediaItem) => Promise<void>): Promise<MediaItem> {
+    onCommit?: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], item: MediaItem) => Promise<void>,
+    beforeReservationRelease?: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], item: MediaItem) => Promise<void>): Promise<MediaItem> {
     assertMediaTagsAllowed(mediaItem);
     return db.transaction(async tx => {
       if (workerToken) {
@@ -658,6 +659,9 @@ class DatabaseStorage implements IStorage {
           .where(and(eq(nextcloudFiles.id, nextcloudFileId), eq(nextcloudFiles.status, "pending"))).returning();
         if (!file) throw new Error("Import file reservation is no longer pending");
       }
+      // Native multipart's restrictive journal FK is detached only within this
+      // same successful asset transaction. Existing callers need no hook.
+      if (beforeReservationRelease) await beforeReservationRelease(tx,item);
       await tx.delete(mediaReservations).where(eq(mediaReservations.id, id));
       if (onCommit) await onCommit(tx,item);
       if (reservation.creatorId)

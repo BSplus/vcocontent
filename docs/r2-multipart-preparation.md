@@ -8,7 +8,9 @@ The operator approved preparation and disposable tests up to **250 MiB**.
 This is not approval to raise application file limits, activate large uploads,
 apply schema changes, change hosting/bucket configuration or publish.
 
-The private provider transport is prepared. **P2-5 is not feature-complete**:
+The private provider transport, PostgreSQL journal and atomic lifecycle repository
+are prepared; see `docs/r2-multipart-journal.md` for the newer handoff/cleanup
+evidence. **P2-5 is not feature-complete**:
 normal HTTP/Studio intake still uses the existing transport and limits.
 No connected database, live bucket, paid AI service or Production endpoint was
 used by these tests. The generated large payload is an opaque transport fixture,

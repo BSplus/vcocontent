@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
-import {rm} from "node:fs/promises";
+import {rm,mkdir,rename,readFile,writeFile,stat} from "node:fs/promises";
+import path from "node:path";
 
 test("native multipart PostgreSQL journal uses a disposable database only",{
   skip:!process.env.VCO_TEST_PG_PROXY||!process.env.VCO_TEST_OBJECTS,timeout:90000,
@@ -12,14 +13,19 @@ test("native multipart PostgreSQL journal uses a disposable database only",{
   await import("./helpers/beta-provider-preload.mjs");
   const {db,pool}=await import("../server/db.ts");
   const {storage}=await import("../server/storage.ts");
-  const {users,events,mediaReservations,mediaUploadSessions:sessions,mediaCleanup}=await import("../shared/schema.ts");
+  const {users,events,mediaReservations,mediaUploadSessions:sessions,mediaCleanup,
+    mediaItems,mediaAssetVariants,mediaAssetObjects,mediaAssetRecords,mediaObjectRoutes:routes,mediaAnalysisJobs}=
+    await import("../shared/schema.ts");
   const {r2MultipartJournals:journals}=await import("../shared/r2-multipart-schema.ts");
   const {databaseMultipartContext}=await import("../server/r2-multipart-journal.ts");
   const {uploadR2MultipartFile,cancelR2Multipart,multipartPlanBinding}=await import("../server/r2-multipart-upload.ts");
   const {multipartFixture}=await import("./helpers/r2-multipart-fixture.mjs");
   const {mediaDatabaseFingerprint}=await import("../server/media-storage-config.ts");
   const {creatorUsage}=await import("../server/beta-policy.ts");
-  const {eq,sql}=await import("drizzle-orm");
+  const {registerValidatedMultipart,cleanupMultipartStaging}=await import("../server/r2-multipart-lifecycle.ts");
+  const {uploadSessionDirectory}=await import("../server/upload-session-staging.ts");
+  const {cleanupUploadSessions}=await import("../server/resumable-uploads.ts");
+  const {eq,inArray,sql}=await import("drizzle-orm");
   assert.equal((await pool.query("select to_regclass('media_r2_multipart_journals') as name")).rows[0].name,null);
   // Test-only DDL. This schema is NOT part of the connected app schema entry.
   await db.execute(sql`create table media_r2_multipart_journals (
@@ -50,22 +56,50 @@ test("native multipart PostgreSQL journal uses a disposable database only",{
         key:options.key??f.plan.key.replace(/mp4$/,"jpg"),mime:options.video?"video/mp4":"image/jpeg",
       });
       if(options.video)f.plan.key=f.plan.key.replace(/jpg$/,"mp4");
+      const directory=uploadSessionDirectory(f.plan.sessionId);
+      await mkdir(directory,{recursive:true});
+      const local=path.join(directory,"assembled-source");
+      await rename(f.source,local);f.source=local;
+      f.thumbnailKey=`thumb-${randomUUID()}.webp`;
       await storage.reserveMedia(f.plan.sessionId,gallery.id,gallery.creatorId,f.plan.size+102400,
-        f.plan.key,`thumb-${randomUUID()}.webp`,options.admin??false);
+        f.plan.key,f.thumbnailKey,options.admin??false);
       await db.insert(sessions).values({id:f.plan.sessionId,actorId:f.plan.actorId,eventId:gallery.id,
         ownerId:gallery.creatorId,requestKey:randomUUID(),requestFingerprint:f.plan.owner.revision,
         size:f.plan.size,mime:f.plan.mime,sha256:f.plan.sha256,metadata:{},state:"finalizing",
         expiresAt:new Date(f.plan.expiresAt)});
+      // Simulated output of the existing validated thumbnail pipeline. Native
+      // lifecycle does not replace the actual content/derivative processors.
+      await db.insert(routes).values({key:f.thumbnailKey,provider:"r2",state:"verified",size:100,
+        sha256:"a".repeat(64),objectVersion:'"fixture-thumb"',mime:"image/webp"});
       f.ctx=()=>databaseMultipartContext(f.plan,f.context().driver);
       f.send=()=>uploadR2MultipartFile(f.plan,f.source,f.ctx());
       f.read=async()=>(await db.select().from(journals).where(eq(journals.sessionId,f.plan.sessionId)))[0];
       f.intent=()=>({binding:multipartPlanBinding(f.plan,f.context().driver),phase:"initiating",parts:[]});
+      f.media=()=>({eventId:f.plan.eventId,type:f.plan.mime.startsWith("image/")?"image":"video",
+        url:`/api/media/files/${f.plan.key}`,thumbnail:`/api/media/files/${f.thumbnailKey}`,
+        highBytes:f.plan.size,lowBytes:100,storedBytes:f.plan.size+100,objectCount:2,isPremium:false,
+        caption:"Creator-edited caption",photographer:"Fixture credit",tags:["Day"]});
+      f.register=(input=f.media(),analysis=false)=>registerValidatedMultipart(f.plan,input,f.driver(),analysis);
+      f.cleanup=()=>cleanupMultipartStaging(f.plan,f.driver());
       await work(f);
     }finally{
       await db.delete(journals).where(eq(journals.sessionId,f.plan.sessionId));
+      if(gallery){
+        const items=await db.select({id:mediaItems.id}).from(mediaItems).where(eq(mediaItems.eventId,gallery.id));
+        const ids=items.map(item=>item.id);
+        if(ids.length){
+          await db.delete(mediaAssetVariants).where(inArray(mediaAssetVariants.mediaId,ids));
+          await db.delete(mediaAssetRecords).where(inArray(mediaAssetRecords.mediaId,ids));
+          await db.delete(mediaAnalysisJobs).where(inArray(mediaAnalysisJobs.mediaId,ids));
+        }
+        await db.delete(mediaAssetObjects).where(eq(mediaAssetObjects.eventId,gallery.id));
+        await db.delete(mediaItems).where(eq(mediaItems.eventId,gallery.id));
+      }
+      await db.delete(routes).where(inArray(routes.key,[f.plan.key,f.thumbnailKey??"no-fixture"]));
       await db.delete(sessions).where(eq(sessions.id,f.plan.sessionId));
       await db.delete(mediaReservations).where(eq(mediaReservations.id,f.plan.sessionId));
       if(gallery)await db.delete(events).where(eq(events.id,gallery.id));
+      await rm(uploadSessionDirectory(f.plan.sessionId),{recursive:true,force:true});
       await f.close();
     }
   };
@@ -269,6 +303,147 @@ test("native multipart PostgreSQL journal uses a disposable database only",{
       }),isCode("lease_lost"));
       assert.equal(f.state.calls.length,0);
       assert.equal((await f.read()).checkpoint.phase,"initiating");
+    }));
+    await t.test("atomic registration transfers reservation to retained bytes and admits analysis only once",async()=>using({},async f=>{
+      await f.send();
+      const item=await f.register(f.media(),true);
+      assert.equal(item.caption,"Creator-edited caption");assert.deepEqual(item.manualTags,["Day"]);
+      assert.equal(item.photographer,"Fixture credit");assert.equal(item.safetyStatus,"error");
+      assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,f.plan.sessionId))).length,0);
+      assert.equal(await f.read(),undefined);
+      const usage=await creatorUsage(db,accounts[0].id);
+      assert.equal(usage.retainedBytes,f.plan.size+100);assert.equal(usage.reservedBytes,0);
+      const jobs=await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,item.id));
+      assert.equal(jobs.length,1);
+      f.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="false";f.env.MEDIA_R2_MULTIPART_ENABLED="false";
+      assert.equal((await f.register(f.media(),true)).id,item.id);
+      assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,item.id))).length,1);
+      assert.equal(await f.cleanup(),"registered");await assert.rejects(stat(f.source),e=>e.code==="ENOENT");
+      assert.ok(f.state.objects.has(f.plan.key),"Staging cleanup must not delete a committed R2 object");
+      assert.equal(await f.cleanup(),"registered");
+    }));
+    await t.test("source and generated thumbnail count once with their asset relationship",async()=>using({},async f=>{
+      await f.send();
+      await db.insert(routes).values({key:f.thumbnailKey,provider:"r2",state:"verified",size:100,
+        sha256:"a".repeat(64),objectVersion:'"fixture-thumb"',mime:"image/webp"}).onConflictDoNothing();
+      const media={...f.media(),thumbnail:`/api/media/files/${f.thumbnailKey}`,
+        storedBytes:f.plan.size+100,lowBytes:100,objectCount:2};
+      const item=await f.register(media);
+      const variants=await db.select().from(mediaAssetVariants).where(eq(mediaAssetVariants.mediaId,item.id));
+      assert.equal(variants.length,2);
+      assert.equal(variants.find(v=>v.purpose==="thumbnail").sourceKey,f.plan.key);
+      assert.equal((await creatorUsage(db,accounts[0].id)).retainedBytes,f.plan.size+100);
+    }));
+    await t.test("transaction failure after journal unpin rolls back media, route and reservation handoff",async()=>using({},async f=>{
+      await f.send();
+      const finish=storage.finishMedia;
+      storage.finishMedia=function(...args){
+        const hook=args[7];
+        args[7]=async(tx,item)=>{await hook(tx,item);throw Error("fixture rollback after unpin");};
+        return finish.apply(this,args);
+      };
+      try{await assert.rejects(f.register(f.media(),true));}finally{storage.finishMedia=finish;}
+      assert.equal((await f.read()).checkpoint.phase,"verified");
+      assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,f.plan.sessionId))).length,1);
+      assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.eventId,f.plan.eventId))).length,0);
+      assert.equal((await db.select().from(routes).where(eq(routes.key,f.plan.key))).length,0);
+      await f.register();
+    }));
+    await t.test("lost database completion reply recovers the committed asset without duplicate registration",async()=>using({},async f=>{
+      await f.send();
+      const finish=storage.finishMedia;
+      let calls=0;
+      storage.finishMedia=async function(...args){calls++;await finish.apply(this,args);throw Error("lost fixture commit reply");};
+      try{await assert.rejects(f.register(f.media(),true));}finally{storage.finishMedia=finish;}
+      const saved=await f.register(f.media(),true);
+      assert.equal(calls,1);
+      assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.eventId,f.plan.eventId))).length,1);
+      assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,saved.id))).length,1);
+    }));
+    await t.test("invalid routing or byte totals never release the verified reservation",async()=>using({},async f=>{
+      await f.send();
+      await assert.rejects(f.register({...f.media(),storedBytes:f.plan.size-1}),isCode("conflict"));
+      await db.insert(routes).values({key:f.plan.key,provider:"r2",state:"verified",size:f.plan.size,
+        sha256:"c".repeat(64),objectVersion:'"wrong-source"',mime:f.plan.mime});
+      await assert.rejects(f.register(),isCode("conflict"));
+      assert.equal((await f.read()).checkpoint.phase,"verified");
+      assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.eventId,f.plan.eventId))).length,0);
+    }));
+    await t.test("known abort removes actual staging before releasing capacity; replay is read-only",async()=>using({},async f=>{
+      f.state.after=async name=>{if(name==="UploadPartCommand")throw Error("pause");};
+      await assert.rejects(f.send());f.state.after=undefined;
+      await cancelR2Multipart(f.plan,f.ctx());
+      f.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="false";f.env.MEDIA_R2_MULTIPART_ENABLED="false";
+      assert.equal(await f.cleanup(),"released");
+      await assert.rejects(stat(f.source),e=>e.code==="ENOENT");
+      assert.equal((await creatorUsage(db,accounts[0].id)).reservedBytes,0);
+      assert.equal((await f.cleanup()),"released");
+      assert.equal(await f.read(),undefined);
+      await assert.rejects(f.register(),isCode("closed"));
+    }));
+    await t.test("uncertain outcomes cannot delete staging or release quota",async()=>using({},async f=>{
+      f.state.after=async name=>{if(name==="CreateMultipartUploadCommand")throw Error("lost reply");};
+      await assert.rejects(f.send());f.state.after=undefined;
+      await assert.rejects(f.cleanup(),isCode("uncertain"));
+      assert.equal((await stat(f.source)).size,f.plan.size);
+      assert.equal((await f.read()).checkpoint.phase,"initiating");
+      assert.equal((await creatorUsage(db,accounts[0].id)).reservedBytes,f.plan.size+102400);
+    }));
+    await t.test("legacy expiry cleanup preserves native source files and reservations",async()=>using({},async f=>{
+      const ctx=f.ctx();
+      await ctx.journal.exclusive(ctx.driver.scope,f.plan.key,f.plan.sessionId,async(_raw,save)=>save(f.intent()));
+      await db.update(sessions).set({expiresAt:new Date(Date.now()-1000),workerPid:null}).where(eq(sessions.id,f.plan.sessionId));
+      await cleanupUploadSessions();
+      assert.equal((await stat(f.source)).size,f.plan.size);
+      assert.equal((await f.read()).checkpoint.phase,"initiating");
+      assert.equal((await db.select().from(sessions).where(eq(sessions.id,f.plan.sessionId)))[0].state,"finalizing");
+    }));
+    await t.test("legacy cleanup also respects native terminal receipts after journal handoff",async()=>using({},async f=>{
+      await f.send();await f.register();
+      assert.equal(await f.read(),undefined);
+      await db.update(sessions).set({expiresAt:new Date(Date.now()-1000)}).where(eq(sessions.id,f.plan.sessionId));
+      await cleanupUploadSessions();
+      assert.equal((await stat(f.source)).size,f.plan.size);
+      assert.equal((await db.select().from(sessions).where(eq(sessions.id,f.plan.sessionId)))[0].cleanedAt,null);
+    }));
+    await t.test("first intent insertion and legacy expiry cannot race staging deletion",async()=>using({},async f=>{
+      f.plan.expiresAt=Date.now()+2000;
+      await db.update(sessions).set({expiresAt:new Date(f.plan.expiresAt)}).where(eq(sessions.id,f.plan.sessionId));
+      await db.execute(sql`create function multipart_fixture_hold() returns trigger language plpgsql as $$
+        begin perform pg_sleep(3); return new; end $$`);
+      await db.execute(sql`create trigger multipart_fixture_hold before insert on media_r2_multipart_journals
+        for each row execute function multipart_fixture_hold()`);
+      let first;
+      try{
+        const ctx=f.ctx();
+        first=ctx.journal.exclusive(ctx.driver.scope,f.plan.key,f.plan.sessionId,async(_raw,save)=>save(f.intent()))
+          .then(()=>null,error=>error);
+        await new Promise(resolve=>setTimeout(resolve,2200));
+        await cleanupUploadSessions();
+        assert.equal(await first,null);
+        assert.equal((await stat(f.source)).size,f.plan.size);
+        assert.equal((await f.read()).checkpoint.phase,"initiating");
+      }finally{
+        if(first)await first;
+        await db.execute(sql`drop trigger multipart_fixture_hold on media_r2_multipart_journals`);
+        await db.execute(sql`drop function multipart_fixture_hold()`);
+      }
+    }));
+    await t.test("concurrent registration cannot duplicate assets or analysis jobs",async()=>using({},async f=>{
+      await f.send();
+      const outcomes=await Promise.allSettled([f.register(f.media(),true),f.register(f.media(),true)]);
+      assert.ok(outcomes.some(result=>result.status==="fulfilled"));
+      for(const result of outcomes)if(result.status==="rejected")assert.equal(result.reason.code,"busy");
+      const item=await f.register(f.media(),true);
+      assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.eventId,f.plan.eventId))).length,1);
+      assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,item.id))).length,1);
+    }));
+    await t.test("a missing generated derivative blocks handoff without freeing capacity",async()=>using({},async f=>{
+      await f.send();
+      await db.delete(routes).where(eq(routes.key,f.thumbnailKey));
+      await assert.rejects(f.register(),isCode("conflict"));
+      assert.equal((await f.read()).checkpoint.phase,"verified");
+      assert.equal((await creatorUsage(db,accounts[0].id)).reservedBytes,f.plan.size+102400);
     }));
   }finally{
     for(const account of accounts)await db.delete(users).where(eq(users.id,account.id));

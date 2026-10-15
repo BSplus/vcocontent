@@ -45,10 +45,10 @@ function assertVerified(route: typeof mediaObjectRoutes.$inferSelect | undefined
 export async function linkAssetObject(input: {
   mediaId:number; ownership:GalleryOwnership; key:string; purpose:AssetPurpose;
   sourceVersion:number; sourceKey?:string; sha256:string; objectVersion:string;
-}) {
+}, transaction?: Transaction) {
   if (!Number.isSafeInteger(input.sourceVersion) || input.sourceVersion <= 0 ||
       input.sourceVersion > 2_147_483_647) throw new Error("Invalid source version");
-  return db.transaction(async tx => {
+  const register = async (tx:Transaction) => {
     // Same owner-before-gallery order as upload reservations.
     if (input.ownership.ownerId !== null) await lockedCreatorBudget(tx,input.ownership.ownerId);
     const item = await lockedAsset(tx, input.mediaId, input.ownership);
@@ -103,7 +103,8 @@ export async function linkAssetObject(input: {
     if (input.ownership.ownerId !== null)
       await lockedCreatorBudget(tx,input.ownership.ownerId,0,0,0,0,true);
     return variant;
-  });
+  };
+  return transaction ? register(transaction) : db.transaction(register);
 }
 
 export async function setAssetTitle(mediaId:number, ownership:GalleryOwnership, title:string|null) {
