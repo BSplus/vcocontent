@@ -254,6 +254,12 @@ Preferred communication style: Simple, everyday language.
 - Focused legal text/navigation/mobile checks: `node --test --test-concurrency=1 tests/legal-pages.test.mjs`, plus `npm run check` and `npm run build`. Technical checks are not legal clearance.
 
 ## Pagination
+- Thumbnail loading/performance: `docs/home-thumbnail-performance.md` distinguishes
+  the latest bounded 200px/96px look-ahead and verified prepared-byte reuse from
+  the historical baseline. Run `tests/thumbnail-lookahead-ui.test.mjs` alongside
+  the isolated home-thumbnail/access suites. Keep fresh provider metadata and
+  current authorization checks before every prepared-cache hit or 304; never
+  replace them with a cached routing/permission decision.
 - Visible page counters use the literal `PAGE X OF Y`; totals must describe the same accessible, filtered rows as the list. Do not infer the last page from a full page of results.
 - Search and event-media APIs retain array responses by default; `pagination=true` opts into `{ items, page, pageSize, total, totalPages, hasMore }`. Existing account and thumbnail envelopes include the same metadata.
 - Photo matching retains 500-photo cursor navigation. A shifted/deleted boundary returns `positionReset`, the first page and confirmed totals; the UI clears selection and confirmation and explains the reset.

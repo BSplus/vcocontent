@@ -720,6 +720,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const event = record.eventId ? await storage.getEvent(record.eventId, isOriginal) : undefined;
       if (!event || (!canManage(req.user,event) && !await mediaPublic(record,event))) return res.status(404).end();
       const isThumbnail = !isOriginal && record.thumbnail === `/api/media/files/${key}` && /^thumb-.*\.webp$/.test(key);
+      if (!isOriginal && !isThumbnail) return res.status(404).end();
       if (isThumbnail && (record.isPremium || event.isPremium)) return res.status(404).end();
       if (isOriginal && req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
       if (isOriginal && (!req.isAuthenticated() || record.isPremium || event?.isPremium)) {

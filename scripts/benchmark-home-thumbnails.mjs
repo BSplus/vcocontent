@@ -3,16 +3,23 @@ import express from "express";
 import sharp from "sharp";
 import { once } from "node:events";
 import { Readable } from "node:stream";
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { Client } from "@replit/object-storage";
 import { uiBrowser, delay } from "../tests/helpers/ui-browser.mjs";
 process.env.DATABASE_URL = "postgresql://fixture:fixture@localhost/fixture";
-process.env.MEDIA_STORAGE_ROUTING = "disabled";
+process.env.MEDIA_STORAGE_ROUTING = "enabled";
 process.env.MEDIA_STORAGE_PROVIDER = "replit";
 process.env.MEDIA_STORAGE_ENVIRONMENT = "test";
+const { mediaDatabaseFingerprint } = await import("../server/media-storage-config.ts");
+process.env.MEDIA_STORAGE_DATABASE_FINGERPRINT = mediaDatabaseFingerprint(process.env.DATABASE_URL);
 process.env.MEDIA_EDGE_ORIGIN = "";
 const { storage } = await import("../server/storage.ts");
 const { pool } = await import("../server/db.ts");
+const { db } = await import("../server/db.ts");
+process.env.MEDIA_STORAGE_ENVIRONMENT = "development";
+const { ReplitStore } = await import("../server/object-store.ts");
+const { thumbnailCache } = await import("../server/thumbnail-cache.ts");
 const { registerRoutes } = await import("../server/routes.ts");
 const { publicEventThumbnails } = await import("../server/event-thumbnails.ts");
 const phase = process.argv[2] || "after";
@@ -42,6 +49,14 @@ const items = events.map((event,i)=>({id:97000+i,eventId:event.id,type:"image",
   safetyStatus:"legacy",contentVersion:0,safetyVersion:0,downloadCount:20}));
 const owner = {id:99000,username:"Fixture",creatorStatus:"approved",suspended:false};
 let queries=0, queryMs=0, storageReads=0, storageMs=0, conversions=0, conversionMs=0;
+let metadataReads=0;
+const digest=createHash("sha256").update(webp).digest("hex");
+// No SQL reaches a connected database. Current route and HEAD are deliberately
+// separate: byte reuse must never reuse a routing/metadata decision.
+db.execute=async()=>({rows:[{provider:"replit",state:"verified",sha256:digest,
+  size:webp.length,mime:"image/webp",object_version:"fixture-v1"}]});
+ReplitStore.prototype.metadata=async()=>{metadataReads++;await delay(5);
+  return {size:webp.length,mime:"image/webp",version:"fixture-v1"};};
 const read = async value => {const t=performance.now();queries++;await delay(30);queryMs+=performance.now()-t;return value;};
 const listed = item => ({...item,url:`/api/media/legacy/${item.id}/file`,
   thumbnail:item.thumbnail.startsWith("data:")?`/api/media/legacy/${item.id}/thumbnail`:item.thumbnail});
@@ -55,7 +70,7 @@ Object.assign(storage,{
   getEventCardFallbacks:ids=>read(new Map(ids.map(id=>[id,listed(items.find(i=>i.eventId===id)).thumbnail]))),
   topMedia:(_limit,creator)=>read(items.filter(i=>creator===null?i.eventId<96004:i.eventId>=96004).slice(0,3).map(listed)),
 });
-Client.prototype.downloadAsStream = () => {
+ReplitStore.prototype.open = Client.prototype.downloadAsStream = () => {
   storageReads++;
   return Readable.from((async function*(){const t=performance.now();await delay(40);storageMs+=performance.now()-t;yield webp;})());
 };
@@ -73,15 +88,15 @@ app.get("*",(_req,res)=>res.sendFile(`${process.cwd()}/dist/public/index.html`))
 server.listen(0,"127.0.0.1");await once(server,"listening");
 const base=`http://127.0.0.1:${server.address().port}`;
 const results={phase,fixture:{databaseDelayMs:30,storageDelayMs:40,jpegBytes:jpeg.length,webpBytes:webp.length},http:[],browser:[]};
-const counters=()=>({queries,queryMs,storageReads,storageMs,conversions,conversionMs});
+const counters=()=>({queries,queryMs,metadataReads,storageReads,storageMs,conversions,conversionMs});
 const diff=(a,b)=>Object.fromEntries(Object.keys(a).map(k=>[k,b[k]-a[k]]));
 try {
   for(const [name,path] of [["inline",publicEventThumbnails(events[0]).customThumbnail],
     ["legacy",`/api/media/legacy/${items[1].id}/thumbnail`],["modern",modern]]) {
     let etag;
-    for(const mode of ["cold","warm","parallel"]) {
+    for(const mode of ["parallel-cold","warm","parallel"]) {
       const start=performance.now(),before=counters();
-      const responses=await Promise.all(Array.from({length:mode==="parallel"?6:1},async()=>{
+      const responses=await Promise.all(Array.from({length:mode.startsWith("parallel")?6:1},async()=>{
         const t=performance.now(),res=await fetch(base+path,{headers:mode==="warm"&&etag?{"If-None-Match":etag}:{}});
         etag=res.headers.get("etag");const bytes=(await res.arrayBuffer()).byteLength;
         return {status:res.status,bytes,ms:performance.now()-t};
@@ -121,8 +136,14 @@ try {
           requestAnimationFrame(track);
         }
         requestAnimationFrame(track);`});
-      for(const section of ["recent-heading","top-shots-heading","creator-media-heading"]) for(const mode of ["cold","warm"]) {
+      for(const section of ["recent-heading","top-shots-heading","creator-media-heading"]) for(const mode of ["cold","warm","scroll"]) {
         if(mode==="cold") await browser.command("Network.clearBrowserCache");
+        if(mode==="cold") {
+          // Separate cold browser AND cold output caches from warm repeats.
+          thumbnailCache.clear?.();
+          const prepared=await import("../server/prepared-thumbnail.ts");
+          prepared.preparedThumbnailCache?.clear();
+        }
         const before=counters();
         const responses=[],initiated=[];
         const onResponse=message=>{
@@ -141,11 +162,23 @@ try {
         // soon as its list is ready, not after other rows finish loading.
         for(const name of [section]) {
           await browser.wait(`!!document.querySelector('section[aria-labelledby="${name}"] img')`);
+          if(mode==="scroll") {
+            await browser.evaluate(`window.scrollTo(0,Math.max(0,document.querySelector('section[aria-labelledby="${name}"]').getBoundingClientRect().top+scrollY-innerHeight-120))`);
+            await delay(160);
+            await browser.evaluate("window.scrollBy(0,180)");
+            await delay(200);
+          }
           const visibleAt=await browser.evaluate(`(()=>{document.querySelector('section[aria-labelledby="${name}"]').scrollIntoView();return performance.now();})()`);
           await browser.wait(`Array.from(document.querySelectorAll('section[aria-labelledby="${name}"] img')).filter(i=>{const r=i.getBoundingClientRect();return r.left<innerWidth&&r.right>0}).every(i=>i.complete&&i.naturalWidth>0)`);
           await browser.wait(`window.imagePaints.filter(i=>i.section===${JSON.stringify(name)}&&i.src.startsWith('/api/')).length >= Array.from(document.querySelectorAll('section[aria-labelledby="${name}"] img')).filter(i=>{const r=i.getBoundingClientRect();return r.left<innerWidth&&r.right>0&&r.top<innerHeight&&r.bottom>0}).length`);
           await delay(120);
           sections.push(await browser.evaluate(`({section:${JSON.stringify(name)},visibleAt:${visibleAt},at:performance.now(),images:window.imagePaints.filter(i=>i.section===${JSON.stringify(name)})})`));
+          if(mode==="scroll" && width<768) {
+            await browser.evaluate(`document.querySelector('section[aria-labelledby="${name}"] .mobile-gallery-row').scrollTo({left:10000,behavior:'instant'})`);
+            await browser.wait(`Array.from(document.querySelectorAll('section[aria-labelledby="${name}"] img')).filter(i=>{const r=i.getBoundingClientRect();return r.left<innerWidth&&r.right>0}).every(i=>i.complete&&i.naturalWidth>0)`);
+            await delay(100);
+            sections.push(await browser.evaluate(`({section:${JSON.stringify(name)},swipe:true,at:performance.now(),images:window.imagePaints.filter(i=>i.section===${JSON.stringify(name)})})`));
+          }
         }
         // Compare request/byte counts over the same two-second window, not
         // different windows chosen by each version's image completion time.

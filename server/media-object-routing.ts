@@ -103,6 +103,30 @@ export function openMediaObject(key: string) {
     return store.open(key);
   });
 }
+/** Fresh routing + provider HEAD on EVERY use, including byte-cache hits.
+ * No routing/authorization decision is retained. Only fully versioned small
+ * WebP thumbnails qualify; historical/unversioned objects use the old path. */
+export async function preparedThumbnailSource(key: string) {
+  assertMediaKey(key);
+  if (!/^thumb-[0-9a-f-]{36}\.webp$/.test(key) || !routingEnabled()) return undefined;
+  const route = await routeFor(key);
+  if (!route) return undefined;
+  if (route.state !== "verified") throw new ObjectStoreError("integrity");
+  const store = getObjectStore(route.provider);
+  const metadata = await store.metadata(key);
+  if (!route.object_version || metadata.version !== route.object_version ||
+      metadata.size !== Number(route.size) || metadata.mime !== route.mime)
+    throw new ObjectStoreError("integrity");
+  if (!/^[a-f0-9]{64}$/.test(route.sha256) || route.mime !== "image/webp" ||
+      metadata.size > 100 * 1024) return undefined;
+  return {
+    // Provider instance scopes identity to its configured bucket. Configuration
+    // guards run in HEAD before this identity can ever be used.
+    store, identity: JSON.stringify([key, route.provider, route.object_version, route.sha256, metadata.size, metadata.mime]),
+    size: metadata.size, sha256: route.sha256,
+    open: () => store.open(key, undefined, metadata.version),
+  };
+}
 export async function mediaVideoSource(key: string) {
   const route = await routeFor(key);
   if (route && route.state !== "verified") throw new ObjectStoreError("integrity");

@@ -14,6 +14,8 @@ export class ThumbnailCache {
     entryBytes: 100 * 1024, ttlMs: 5 * 60_000 }, private now = () => Date.now()) {}
 
   get stats() { return { entries: this.ready.size, bytes: this.bytes, pending: this.pending.size }; }
+  /** Clear retained outputs only; in-flight work still owns its bounded slot. */
+  clear() { this.ready.clear(); this.bytes = 0; }
   private remove(key: string) {
     const entry = this.ready.get(key);
     if (entry) this.bytes -= entry.body.length;

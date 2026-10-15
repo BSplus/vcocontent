@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { once } from "node:events";
 import { Readable } from "node:stream";
 import { Client } from "@replit/object-storage";
+import { createHash } from "node:crypto";
 process.env.MEDIA_STORAGE_PROVIDER="replit";
 process.env.MEDIA_STORAGE_ROUTING="disabled";
 process.env.MEDIA_EDGE_ORIGIN="";
@@ -13,11 +14,15 @@ process.env.RESEND_FROM="verify@example.test";
 process.env.PUBLIC_SITE_URL="https://example.test";
 const {storage}=await import("../server/storage.ts");
 const {pool}=await import("../server/db.ts");
+const {db}=await import("../server/db.ts");
+const {ReplitStore,ObjectStoreError}=await import("../server/object-store.ts");
+const {mediaDatabaseFingerprint}=await import("../server/media-storage-config.ts");
+const {preparedThumbnailCache}=await import("../server/prepared-thumbnail.ts");
 const {registerRoutes}=await import("../server/routes.ts");
 const {SAFETY_POLICY}=await import("../shared/safety-policy.ts");
 const originals={},oldStream=Client.prototype.downloadAsStream;
 const key="thumb-00000000-0000-0000-0000-000000000019.webp", modern=`/api/media/files/${key}`;
-let event,media,owner,bytes,base,server,failStorage=false,conversions=0;
+let event,media,owner,bytes,base,server,viewer,failStorage=false,conversions=0;
 const originalToBuffer=sharp.prototype.toBuffer;
 test.before(async()=>{
   const input=await sharp({create:{width:1500,height:1000,channels:3,background:"#2240dd"}}).jpeg().toBuffer();
@@ -37,7 +42,7 @@ test.before(async()=>{
   })){originals[name]=storage[name];storage[name]=fn;}
   Client.prototype.downloadAsStream=()=>failStorage?new Readable({read(){this.destroy(Error("fixture read failure"));}}):Readable.from(bytes);
   sharp.prototype.toBuffer=async function(...args){conversions++;return originalToBuffer.apply(this,args);};
-  const app=express();app.use((req,_res,next)=>{req.isAuthenticated=()=>false;next();});
+  const app=express();app.use((req,_res,next)=>{req.user=viewer;req.isAuthenticated=()=>!!viewer;next();});
   server=await registerRoutes(app,{workers:false});server.listen(0,"127.0.0.1");await once(server,"listening");
   base=`http://127.0.0.1:${server.address().port}`;
 });
@@ -131,4 +136,79 @@ test("direct selected gallery previews eliminate the redirect but retain same-ga
     assert.equal(modernFirst.status,200);assert.equal((await call(path,modernEtag)).status,304);
     await checkRevocations(path,modernEtag);
   }finally{event.customThumbnail=saved;media.thumbnail=oldMedia;media.eventId=902;}
+});
+test("versioned prepared bytes coalesce; every hit/304 checks routing, storage state and current rights",async()=>{
+  const savedThumbnail=media.thumbnail,savedImage=event.customThumbnail;
+  const execute=db.execute,open=ReplitStore.prototype.open,metadata=ReplitStore.prototype.metadata;
+  let reads=0,heads=0,broken=false,missing=false;
+  let route={provider:"replit",state:"verified",sha256:createHash("sha256").update(bytes).digest("hex"),
+    size:bytes.length,mime:"image/webp",object_version:"v1"};
+  let meta={size:route.size,mime:route.mime,version:route.object_version};
+  process.env.MEDIA_STORAGE_DATABASE_FINGERPRINT=mediaDatabaseFingerprint(process.env.DATABASE_URL);
+  process.env.MEDIA_STORAGE_ROUTING="enabled";
+  db.execute=async()=>({rows:route?[route]:[]});
+  ReplitStore.prototype.metadata=async()=>{heads++;if(missing)throw new ObjectStoreError("missing");return {...meta};};
+  ReplitStore.prototype.open=()=>{
+    reads++;
+    return Readable.from((async function*(){await new Promise(r=>setTimeout(r,30));
+      if(broken)throw Error("read failed");yield bytes;})());
+  };
+  const reset=()=>preparedThumbnailCache.clear();
+  media.thumbnail=modern;event.customThumbnail=modern;reset();
+  try{
+    const parallel=await Promise.all(Array.from({length:6},()=>call(modern)));
+    assert.ok(parallel.every(r=>r.status===200));assert.equal(reads,1);assert.equal(heads,6);
+    const etag=parallel[0].headers.get("etag");
+    assert.equal((await call(modern,etag)).status,304);assert.equal(reads,1);assert.equal(heads,7);
+    const direct="/api/events/902/thumbnail?direct=1";
+    assert.equal((await call(direct,etag)).status,304);assert.equal(reads,1,"Selected event image shares byte cache");
+    await checkRevocations(modern,etag);await checkRevocations(direct,etag);
+    event.visibility="draft";
+    viewer={id:owner.id,creatorStatus:"approved",emailVerifiedAt:new Date(),suspended:false};
+    assert.equal((await call(modern,etag)).status,304,"Owner may revalidate their private draft");
+    viewer={...viewer,suspended:true};
+    assert.equal((await call(modern,etag)).status,404,"Suspended owner loses cached access");
+    viewer={id:12345,isAdmin:true};
+    assert.equal((await call(modern,etag)).status,304,"Admin may revalidate private draft");
+    viewer={id:12345,isAdmin:false};
+    assert.equal((await call(modern,etag)).status,404,"Removed admin role cannot revalidate cached draft");
+    viewer=undefined;event.visibility="published";
+    media.eventId=904;assert.equal((await call(direct,etag)).status,404);media.eventId=902;
+    const oldThumbnail=media.thumbnail;media.thumbnail="/api/media/files/thumb-00000000-0000-0000-0000-000000000088.webp";
+    assert.equal((await call(modern,etag)).status,404);media.thumbnail=oldThumbnail;
+    for(const change of [{state:"deleted"},{state:"pending"},{object_version:"wrong"},{size:route.size+1},{mime:"image/png"}]){
+      const saved={...route};Object.assign(route,change);
+      const response=await call(modern,etag);assert.equal(response.status,502,JSON.stringify(change));
+      assert.notEqual(response.headers.get("etag"),etag);
+      assert.equal(response.headers.get("cache-control"),"private, no-store");Object.assign(route,saved);
+    }
+    missing=true;assert.equal((await call(modern,etag)).status,502);missing=false;
+    // An out-of-band replacement under the same key fails closed against the
+    // registered version, rather than reusing old bytes for a matching validator.
+    meta.version="out-of-band";assert.equal((await call(modern,etag)).status,502);
+    const oldBytes=bytes;
+    bytes=await originalToBuffer.call(sharp({create:{width:20,height:20,channels:3,background:"green"}}).webp());
+    route={...route,object_version:"v2",sha256:createHash("sha256").update(bytes).digest("hex"),size:bytes.length};
+    meta={version:"v2",size:bytes.length,mime:"image/webp"};
+    const changed=await call(modern,etag);assert.equal(changed.status,200);
+    assert.notEqual(changed.headers.get("etag"),etag);assert.deepEqual(Buffer.from(await changed.arrayBuffer()),bytes);
+    reset();broken=true;assert.equal((await call(modern)).status,502);
+    broken=false;assert.equal((await call(modern)).status,200,"Failed reads do not poison cache");
+    reset();route.sha256="a".repeat(64);
+    assert.equal((await call(modern)).status,502);assert.equal(preparedThumbnailCache.stats.entries,0);
+    route.sha256=createHash("sha256").update(bytes).digest("hex");
+    route.size=meta.size=bytes.length+1;assert.equal((await call(modern)).status,502);
+    route.size=meta.size=bytes.length-1;assert.equal((await call(modern)).status,502);
+    route.size=meta.size=bytes.length;assert.equal((await call(modern)).status,200);
+    // Missing/unversioned historical routing must read again, not consult the
+    // versioned cache left warm by the requests above.
+    route=undefined;const before=reads;
+    assert.equal((await call(modern)).status,200);assert.equal((await call(modern)).status,200);
+    assert.equal(reads,before+2);bytes=oldBytes;
+  }finally{
+    media.thumbnail=savedThumbnail;event.customThumbnail=savedImage;media.eventId=902;
+    viewer=undefined;event.visibility="published";
+    db.execute=execute;ReplitStore.prototype.open=open;ReplitStore.prototype.metadata=metadata;
+    process.env.MEDIA_STORAGE_ROUTING="disabled";reset();
+  }
 });

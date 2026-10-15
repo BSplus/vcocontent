@@ -1,5 +1,188 @@
 # Startseiten-Thumbnails: lokaler Vorher-/Nachher-Vergleich
 
+## Ergänzung vom 15. Oktober 2026: begrenzter Vorlauf und vorbereitete Objektbytes
+
+### Umfang und Sicherheitsgrenzen
+
+Der bereits zusammengeführte Stand aus dem nachstehenden Bericht bleibt erhalten:
+keine erneute Legacy-Konvertierung, keine Medienliste pro Eventkarte, gleiche
+Auswahlreihenfolge und unveränderte Bildqualität. Neu hinzu kommen:
+
+- Ein gemeinsamer Bildstarter prüft die aktuelle Geometrie bereits im Layout-Effekt.
+  Weitere Prüfungen erfolgen gebündelt je Animationsframe bei Scrollen (auch in
+  verschachtelten Swipe-Containern), Größenänderungen und Layoutverschiebungen.
+  Vertikaler Vorlauf: **200 CSS-Pixel**; horizontal: **96 CSS-Pixel**, auch gegenüber
+  Clipping-Vorfahren. Es werden nur gerenderte Karten betrachtet. Ferne Reihen,
+  weitere Archivseiten und entfernte horizontale Karten bekommen keine Bildquelle.
+  Native, je Browser sehr unterschiedlich große Lazy-Loading-Zonen entfallen.
+  Höchstens zwei tatsächlich sichtbare Bilder pro Prüfzyklus erhalten hohe Priorität;
+  Vorlaufbilder bleiben bei normaler Priorität. Quellenwechsel werden neu geprüft.
+- Ein separater, prozesslokaler Cache für vorbereitete WebP-Bytes hat **64 Einträge,
+  4 MiB insgesamt, 100 KiB je Ergebnis, fünf Minuten TTL** und höchstens zehn
+  gleichzeitige unterschiedliche Lesevorgänge. Gleichzeitige gleiche Reads teilen
+  einen Vorgang; Fehler werden nicht behalten. Kein neues Caching von Originalen,
+  Downloads oder Berechtigungen.
+- **Vor jedem Cachezugriff und vor jeder 304-Antwort** laufen weiterhin die aktuellen
+  Medien-/Event-/Benutzerprüfungen. Zusätzlich werden Routingdatensatz und
+  Provider-Metadaten frisch gelesen. Nur verifizierte, kleine WebP-Objekte mit
+  registriertem SHA-256, Größe, MIME und übereinstimmender Storage-Version sind
+  geeignet. Der erste Read ist versionsgebunden und prüft SHA-256 sowie exakte
+  Länge. Die Identität enthält Providerinstanz, Schlüssel, Inhaltsdigest, Version,
+  Größe und MIME. Fehlender Routingdatensatz, fehlender Digest oder historisch
+  große Ausgaben bleiben im bisherigen Read-/begrenzten Streamingpfad.
+  Gelöschtes/pending Routing, fehlende Objekte und abweichende Metadaten scheitern
+  geschlossen. Ein out-of-band ausgetauschtes Objekt wird nicht aus dem warmen
+  Cache bedient. Direkt ausgewählte Eventbilder verwenden denselben Bytepfad.
+- Der Dateiendpunkt weist auch eine nicht mehr passende Medienzuordnung explizit
+  zurück, bevor eine Datei oder eine bedingte Antwort ausgeliefert werden kann.
+  Browserheader bleiben `private, no-cache, max-age=0, must-revalidate` und
+  `Vary: Cookie`. Ein warmer Bytecache erspart **keinen** HEAD-/Rechtecheck.
+
+### Vergleichsaufbau und veröffentlichter Stand
+
+Erneut wurde ein isolierter Express-Server mit echten Routen, synthetischen
+Speicher-Fixtures und dem jeweiligen Produktionsfrontend gemessen. Keine
+verbundene Datenbank und kein echter Bucket werden benutzt. Quelle, CSS-Toolchain,
+Assets, 30-ms-Metadaten-Fixtures und der 40-ms-Objektstream sind in beiden Läufen
+gleich; neu enthält das Fixture einen aktuellen verifizierten Routingdatensatz
+und einen separat gezählten **5-ms-Provider-HEAD**. Diese künstlichen Wartezeiten
+sind **keine gemessenen Providerlatenzen**. Builds, Regressionstests und die
+timed Messläufe liefen nacheinander.
+
+Der Baseline-Build hatte `index-DbVXszm8.js` / `index-W5_kAub3.css`.
+Eine ausschließlich lesende, anonyme Anfrage an die durch die Deploymentauskunft
+bestätigte öffentliche Startseite lieferte `index-BtF0dmk3.js` /
+`index-BKlAKRTr.css`. Die Builddateien sind also **nicht identisch**. Daraus lässt
+sich weder ein exakter Live-Quellstand noch die dominante Ursache beim Betreiber
+ableiten. Keine Anmeldung, Produktionsdatenabfrage, Schreibaktion oder
+Veröffentlichung wurde durchgeführt.
+
+`scripts/benchmark-home-thumbnails.mjs` schreibt getrennte Rohdaten unter
+`generated-artifacts/home-thumbnails/visibility-{before,after}.json` (ignoriert).
+Für jede Reihe gibt es eine neue Navigation. „Kalt“ leert nun **Browser- und beide
+Ausgabecaches**, „warm“ wiederholt mit denselben Caches. „Scroll“ nähert die Reihe
+in zwei Schritten an und zeigt sie danach vollständig; auf Mobil folgt ein
+horizontaler Sprung zur letzten Karte. Das ist ein reproduzierbares
+Scroll-/Swipe-Ziel, keine Messung einer physischen Fingergeste.
+
+Bildanzeige erfordert geladenes, dekodiertes Bild, tatsächliche Viewportgeometrie,
+freigegebene Startseiten-Sichtbarkeit und zwei Animationsframes. Zusätzlich prüft
+der neue Komponenten-Browsertest **reale Screenshotpixel** des Bildes auf Desktop
+und Mobil. Die folgende Anzeigezeit ist ein browserseitiger Darstellungsindikator,
+keine Hardware-Displaymessung. Alle Browserwerte sind einzelne lokale Stichproben;
+kleine Differenzen sind nicht statistisch belastbar.
+
+### HTTP: echte Antwortzeit, Körperbytes und Storage-Arbeit
+
+Zeiten in ms für den gesamten jeweiligen Abrufblock. „Kalt, 6“ sind sechs
+gleichzeitige erste Abrufe, „warm, 1“ ist eine bedingte Wiederholung und „warm, 6“
+sind sechs parallele vollständige Wiederholungen. Jeder Objektabruf führt weiterhin
+einen frischen HEAD aus (6 / 1 / 6 vorher **und** nachher).
+
+| Quelle | Abruf | Antwortzeit vorher → nachher | Objektkörper-Reads vorher → nachher | Körperbytes vorher → nachher |
+|---|---|---:|---:|---:|
+| Inline | kalt, 6 | 309 → 335 | 0 → 0 | 269.928 → 269.928 |
+| Inline | warm, 1 | 68 → 64 | 0 → 0 | 0 → 0 |
+| Inline | warm, 6 | 233 → 220 | 0 → 0 | 269.928 → 269.928 |
+| Legacy | kalt, 6 | 159 → 148 | 0 → 0 | 227.940 → 227.940 |
+| Legacy | warm, 1 | 74 → 68 | 0 → 0 | 0 → 0 |
+| Legacy | warm, 6 | 97 → 98 | 0 → 0 | 227.940 → 227.940 |
+| Objekt | kalt, 6 | 116 → 114 | 6 → 1 | 227.940 → 227.940 |
+| Objekt | warm, 1 | 107 → 68 | 1 → 0 | 0 → 0 |
+| Objekt | warm, 6 | 137 → 72 | 6 → 0 | 227.940 → 227.940 |
+
+Die 40-ms-Storage-Körperwartezeit entfällt warm vollständig. Kalt wird sie für
+identische parallele Abrufe einmal statt sechsmal ausgeführt. Parallele Wartezeiten
+dürfen nicht als CPU-Zeit addiert oder von einer einzelnen Antwort subtrahiert
+werden. Die Rohdaten trennen `storageReads`, aggregierte `storageMs`,
+`metadataReads`, `queries`/`queryMs`, `conversions`/`conversionMs` und HTTP-Zeit.
+Die zwei notwendigen aktuellen Rechte-/Medienlesevorgänge mit zusammen ungefähr
+60 ms Fixture-Wartezeit bleiben erhalten.
+
+### Browser: Listen, Anforderungsstart, sichtbare Ausgabe und Bytes
+
+Die Rohdaten enthalten je Ressource `startMs`, `responseMs`, `bytes` und `body`.
+Damit bleiben Bildanforderungsstart und Server-/Transferzeit getrennt von der
+Anzeige. Die Eventliste benötigte in den kalten Läufen **86 → 84 ms** auf Desktop
+und **79 → 80 ms** auf Mobil; die Top-Shots-Liste **33 → 44 / 34 → 36 ms**, die
+Creator-Liste **33 → 32 / 60 → 39 ms**. Hier wurde keine Listenoptimierung
+implementiert. Der früheste API-Bildstart auf der gesamten Seite lag kalt bei
+Event-Navigation **400 → 485 / 336 → 410 ms**; er ist nicht gleichbedeutend mit
+dem Start einer bestimmten Karte, weil mehrere Reihen gleichzeitig bereitstehen.
+Insbesondere entfällt der zuvor unkontrollierte native Vorlauf des ersten
+Medienposters. Seine frühe Anfrage allein bewies keine frühere sichtbare Reihe.
+
+Zeit seit Navigation; „alle“ meint nur tatsächlich sichtbare Zielbilder.
+1600 × 1000: vier Eventkarten / drei Medien. 390 × 1000: erste Karte und
+sichtbarer Anschnitt der zweiten. Anfragen/Bytes zählen alle API-Ressourcen im
+gleichen Zwei-Sekunden-Fenster; statische Assets/JS/CSS/Fonts sind nicht enthalten.
+
+| Viewport / Reihe | Zustand | Erstes Bild vorher → nachher | Alle sichtbaren vorher → nachher | Anfragen vorher → nachher | Bytes vorher → nachher |
+|---|---|---:|---:|---:|---:|
+| Desktop / Events | kalt | 703 → 685 | 769 → 736 | 22 → 21 | 361.234 → 322.944 |
+| Desktop / Events | warm | 310 → 324 | 412 → 374 | 22 → 21 | 11.936 → 11.636 |
+| Desktop / Events | Scroll | 364 → 283 | 481 → 333 | 22 → 21 | 11.936 → 11.636 |
+| Desktop / Top Shots | kalt | 319 → 433 | 386 → 465 | 19 → 23 | 239.366 → 399.524 |
+| Desktop / Top Shots | warm | 243 → 341 | 427 → 375 | 23 → 23 | 171.194 → 12.236 |
+| Desktop / Top Shots | Scroll | 601 → 616 | 735 → 616 | 22 → 26 | 125.906 → 127.106 |
+| Desktop / Creator | kalt | 348 → 340 | 431 → 389 | 17 → 19 | 162.786 → 239.366 |
+| Desktop / Creator | warm | 288 → 432 | 437 → 432 | 21 → 23 | 170.594 → 171.194 |
+| Desktop / Creator | Scroll | 579 → 641 | 728 → 641 | 23 → 26 | 88.216 → 127.106 |
+| Mobil / Events | kalt | 581 → 594 | 649 → 627 | 18 → 17 | 208.074 → 169.784 |
+| Mobil / Events | warm | 351 → 313 | 401 → 363 | 18 → 17 | 10.736 → 10.436 |
+| Mobil / Events | Scroll | 358 → 269 | 408 → 319 | 20 → 19 | 87.316 → 87.016 |
+| Mobil / Top Shots | kalt | 325 → 364 | 492 → 382 | 19 → 17 | 246.364 → 162.786 |
+| Mobil / Top Shots | warm | 250 → 356 | 350 → 373 | 19 → 19 | 11.036 → 94.014 |
+| Mobil / Top Shots | Scroll | 591 → 598 | 674 → 598 | 19 → 21 | 87.016 → 87.616 |
+| Mobil / Creator | kalt | 377 → 440 | 493 → 440 | 18 → 17 | 208.074 → 162.786 |
+| Mobil / Creator | warm | 285 → 447 | 384 → 447 | 18 → 19 | 10.736 → 94.014 |
+| Mobil / Creator | Scroll | 591 → 588 | 708 → 589 | 20 → 20 | 87.316 → 49.326 |
+
+**Ergebnis:** Sichtbare Eventreihen werden in allen sechs Vergleichsfällen
+früher vollständig angezeigt, beim Scrollen um 148 ms (Desktop) / 89 ms (Mobil).
+Die vollständigen Medienreihen erscheinen beim Scrollen um 76–119 ms früher.
+Kalte mobile Medienreihen verbessern sich um 110 / 53 ms. Es gibt aber ausdrücklich
+**Gegenbeispiele**: erste Medienbilder sind oft später, kalte Desktop-Top-Shots
+sowie warme mobile Medienreihen ebenfalls. Ein pauschaler Nachweis „jedes erste
+Bild ist früher“ ist mit diesen Messungen nicht gegeben. Cacheeinsparung und
+begrenzter Vorlauf sind dagegen deterministisch geprüft.
+
+Der Vorlauf verursacht in einzelnen Desktop-Szenarien bis zu vier zusätzliche
+API-Anfragen bzw. rund 160 KiB zusätzliche übertragene API-Daten; das ist
+gemessene Mehrarbeit für nahende Reihen, kein Vorabdownload des Archivs.
+Warme Medienseiten können ebenfalls mehr Bytes übertragen, wenn durch den neuen
+Vorlauf zuvor noch nicht besuchte Nachbarbilder erstmals geladen werden.
+Listenwartezeit, initialer App-/Fontstart, Layout, verbliebene Rechteabfragen und
+HEAD bleiben mögliche Engpässe. Der tatsächliche Betreiberengpass bleibt offen.
+
+### Verifikation des Ergänzungsstands
+
+- `npm run check` und `npm run build`: bestanden.
+- Bestehender isolierter Thumbnail-/Rechte-/Download-Prüfblock aus dem unteren
+  Bericht: **39/39** bestanden, ausschließlich kurzlebige lokale Datenbank und
+  synthetischer Storage. Einschließlich warmer Revokation, bedingter Antworten,
+  Eventzuordnung, Löschung, Premium/Safety/Eigentümerrechten, SHA-/Längenfehlern,
+  parallelen Reads, Quellenwechsel und Wiederholung nach Fehlern.
+- `node --import tsx --test tests/thumbnail-lookahead-ui.test.mjs`: **2/2**
+  bestanden; Desktop/Mobil, vertikaler/horizontaler Vorlauf vor Sichtbarkeit,
+  entfernte Reihen, schnelles Scrollen, Quellenwechsel, Prioritätsgrenze und
+  reale Bildpixel.
+- `TEST_BASE_URL="https://$REPLIT_DEV_DOMAIN" node --import tsx --test tests/mobile-gallery-ui.test.mjs`:
+  bestanden; native Wischgesten, Fotovorschau, Navigation und Desktop-Raster.
+- Wiederholung: zuerst Baseline-Frontend und unveränderte Routen bauen und
+  `node --import tsx scripts/benchmark-home-thumbnails.mjs visibility-before`
+  ausführen; anschließend den geänderten Stand bauen und denselben Befehl mit
+  `visibility-after` ausführen. Der Benchmark ersetzt sämtliche SQL-/Storage-
+  Lesezugriffe durch Fixtures und aktiviert keine echten Uploads.
+
+Keine Dienste, Kosten-, Hosting-, Produktionskonfigurations- oder
+Veröffentlichungsänderungen. Kein langfristig frisches Browsercaching und keine
+Abschwächung von Safety, Qualität, Veröffentlichungsregeln oder Downloads.
+
+---
+
+## Historischer Vergleich vom 13. Oktober 2026
+
 ## Umsetzung
 
 - Legacy- und offizielle Inline-Bilder teilen einen prozesslokalen LRU-Ausgabe-Cache: höchstens 64 Einträge, 4 MiB insgesamt, 100 KiB pro gespeichertem Ergebnis und fünf Minuten Gültigkeit. Gleichzeitige Berechnungen desselben Inhalts werden zusammengeführt. Fehler bleiben nicht im Cache. Die bestehende CPU-Warteschlange, Pixelgrenzen, Bildkante und jeweiligen Qualitätsstufen bleiben erhalten.
