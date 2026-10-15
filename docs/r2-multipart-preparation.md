@@ -98,10 +98,12 @@ historical file or Production data was repaired.
 
 ## Remaining integration/release gates
 
-1. Implement a real durable `MultipartJournal` and destination-key ownership
-   lease, tied to existing actor/gallery permissions, reservations and routing
-   authority. The interface deliberately has no in-memory application fallback.
-   Prepare/review any additive DDL separately; do not apply it automatically.
+1. A real database-backed journal, key lease and reservation binding are now
+   prepared and tested: see `docs/r2-multipart-journal.md`. Its optional schema
+   remains outside the active schema entry point. Atomic media-registration
+   handoff and native-aware local staging cleanup are still required before
+   HTTP integration or activation. There is no in-memory application fallback.
+   Review/apply additive schema changes only with separate approval.
 2. Reconcile uncertain initiation/completion with narrowly proven provider
    ownership. A lost Create reply retains `initiating` and never creates again;
    a missing completion retains `completing` and never blindly completes again.

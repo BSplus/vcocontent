@@ -43,7 +43,7 @@ const etag=(value:unknown)=>{
   if(typeof value!=="string"||!/^("[a-f0-9]{32}"|[a-f0-9]{32})$/.test(value))return fail("integrity");
   return value.replaceAll('"',"");
 };
-function binding(plan:MultipartPlan,driver:R2MultipartDriver) {
+export function multipartPlanBinding(plan:MultipartPlan,driver:R2MultipartDriver) {
   if(!plan||!/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(plan.sessionId)||
     !Number.isSafeInteger(plan.actorId)||plan.actorId<=0||!Number.isSafeInteger(plan.eventId)||plan.eventId<=0||
     !plan.owner||!["official","creator"].includes(plan.owner.kind)||
@@ -57,7 +57,7 @@ function binding(plan:MultipartPlan,driver:R2MultipartDriver) {
   return sha(JSON.stringify([driver.scope,plan.sessionId,plan.actorId,plan.eventId,
     plan.owner.kind,plan.owner.creatorId,plan.owner.revision,plan.key,plan.mime,plan.size,plan.sha256,plan.expiresAt]));
 }
-function restore(raw:unknown,expected:string,plan:MultipartPlan):MultipartCheckpoint|null {
+export function restoreMultipartCheckpoint(raw:unknown,expected:string,plan:MultipartPlan):MultipartCheckpoint|null {
   if(raw==null)return null;
   const state=raw as MultipartCheckpoint;
   if(state.binding!==expected||!["initiating","uploading","completing","verified","aborting","aborted"].includes(state.phase)||
@@ -120,11 +120,11 @@ async function verifyRemote(plan:MultipartPlan,state:MultipartCheckpoint,context
  * registration. Verified transport bytes alone are never publication approval.
  */
 export async function uploadR2MultipartFile(plan:MultipartPlan,filename:string,context:Context){
-  const expected=binding(plan,context.driver);
+  const expected=multipartPlanBinding(plan,context.driver);
   const signal=AbortSignal.any([context.signal??new AbortController().signal,AbortSignal.timeout(600_000)]);
   return withMediaWorkBudget(()=>context.journal.exclusive(context.driver.scope,plan.key,plan.sessionId,async(raw,save)=>{
     signal.throwIfAborted();
-    let state=restore(raw,expected,plan);
+    let state=restoreMultipartCheckpoint(raw,expected,plan);
     if(state&&["verified","completing"].includes(state.phase))return verifyRemote(plan,state,context,signal,save);
     if(state?.phase==="initiating")return fail("uncertain"); // Create response may have been lost; never create again.
     if(state&&state.phase!=="uploading")return fail("closed");
@@ -192,11 +192,11 @@ export async function uploadR2MultipartFile(plan:MultipartPlan,filename:string,c
 }
 
 export async function cancelR2Multipart(plan:MultipartPlan,context:Context){
-  const expected=binding(plan,context.driver);
+  const expected=multipartPlanBinding(plan,context.driver);
   const signal=AbortSignal.any([context.signal??new AbortController().signal,AbortSignal.timeout(60_000)]);
   return context.journal.exclusive(context.driver.scope,plan.key,plan.sessionId,async(raw,save)=>{
     await context.authorize(plan,"cancel");
-    const state=restore(raw,expected,plan);
+    const state=restoreMultipartCheckpoint(raw,expected,plan);
     if(!state||state.phase==="aborted")return;
     if(!state.uploadId||["verified","completing","initiating"].includes(state.phase))return fail("uncertain");
     state.phase="aborting";await save(state);

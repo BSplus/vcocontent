@@ -25,4 +25,10 @@ if (process.env.MEDIA_STORAGE_ENVIRONMENT === "development") {
 }
 
 export const pool = new Pool({ connectionString });
+/** Same verified runtime target, with bounded dedicated worker connections.
+ * Creating this pool does not provision a database or change connection policy.
+ */
+export function createMediaLeasePool() {
+  return new Pool({connectionString,max:2,connectionTimeoutMillis:5000,query_timeout:5000});
+}
 export const db = drizzle({ client: pool, schema });

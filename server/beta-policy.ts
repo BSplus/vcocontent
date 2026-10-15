@@ -71,11 +71,13 @@ export async function creatorUsage(executor: any, creatorId: number) {
   const row = result.rows[0];
   return {...usage,galleries:Number(row.galleries),photos:Number(row.photos)};
 }
-export async function lockedCreatorBudget(tx: any, creatorId: number, bytes = 0, photos = 0, galleries = 0, replacementCredit = 0, checkCurrent = false) {
+export async function lockedCreatorBudget(tx: any, creatorId: number, bytes = 0, photos = 0, galleries = 0, replacementCredit = 0, checkCurrent = false, accounting?: "CREATOR") {
   const result = await tx.execute(sql`select is_admin,quota_exception,suspended,creator_status from users where id=${creatorId} for update`);
   const user = result.rows[0];
   if (!user || user.suspended || user.creator_status === "rejected") throw new MediaLimitError("Creator access is blocked.", "permission");
-  if (user.is_admin) return;
+  // Opt-in ownership accounting for the prepared marketplace transport only.
+  // Existing beta callers retain their current admin policy.
+  if (user.is_admin && accounting !== "CREATOR") return;
   if (!bytes && !photos && !galleries && !replacementCredit && !checkCurrent) return;
   const limits = communityLimitsFor(user.quota_exception);
   const used = await creatorUsage(tx,creatorId);

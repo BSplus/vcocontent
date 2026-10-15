@@ -36,3 +36,25 @@ can destroy an existing part, and multipart ETags are not whole-file SHA-256.
 evidence before resending. Verify completed bytes independently with a pinned
 read. Do not release capacity or broaden cleanup when initiation/completion or
 the destination object's outcome is uncertain.
+
+Prepared optional schema must remain outside automatic schema discovery until
+its application is approved.
+
+**Why:** Merge-time setup can apply active schema definitions to Development.
+Preparing a declaration is not approval to change a connected database.
+
+**How to apply:** Keep dormant declarations separate from the active schema
+entry point and test them in disposable databases. Review integration and
+approval gates before adding them to the publishing/development schema path.
+
+Save multipart write intents independently of provider work, and bound SQL
+waiting on the client as well as the database server.
+
+**Why:** SQL rollback cannot undo R2 writes; a long surrounding transaction can
+erase the evidence needed after a crash. Server statement timeouts alone do not
+cover a lost network response and can leave worker slots waiting indefinitely.
+
+**How to apply:** Use committed checkpoints under a dedicated, fenced session
+lease, captured verified connection settings and bounded client query/connect
+deadlines. Capacity must survive uncertain results until provider and staging
+cleanup or atomic asset registration are confirmed.
