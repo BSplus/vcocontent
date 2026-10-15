@@ -61,12 +61,11 @@ completed or uncertain outcomes, rather than claiming storage was released.
 
 ## Release blockers still open
 
-1. **Ordinary deletion is not compatible with native physical inventory yet.**
-   Existing gallery bulk deletion does not retire the new variant/object
-   inventory, and its foreign keys prevent deleting the gallery. Upload/retrieval
-   success is not lifecycle acceptance. Complete native-aware media/gallery
-   deletion, retained cleanup accounting and uncertain-operation reconciliation
-   under P2-8 before enabling this path in a connected environment.
+1. **Ordinary native-aware deletion is now prepared and tested**, including
+   retained cleanup accounting and R2 absence confirmation; see
+   `docs/native-asset-deletion.md`. Bounded reconciliation/diagnostics for
+   uncertain uploads and other P2-8 operational acceptance still remain before
+   enabling this path in a connected environment.
 2. Complete interactive native Studio acceptance on mobile/desktop and the
    resource/restart/operational acceptance in P2-5/P2-9. Previous current-limit
    browser checks are not evidence of interactive native acceptance.
@@ -96,3 +95,8 @@ object fixtures. Test-only inventory removal is explicitly scoped to their new
 gallery/session IDs; it does not assert that application deletion is finished.
 No connected database writes, live R2 operations, paid AI calls or Production
 changes were performed. TypeScript and the production bundle passed.
+
+16 October update: the final native-flow suite now passes 22 Node-reported tests,
+including deletion/recovery acceptance. It uses ordinary application deletion
+for inventory teardown rather than manually removing variants and objects.
+See `docs/native-asset-deletion.md` for the latest test-run boundaries.

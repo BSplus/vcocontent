@@ -156,7 +156,28 @@ export async function deleteRoutedMediaObject(key: string, registered = false, t
   await assertAssetObjectDeletable(key,execute);
   if (route?.provider === "r2" && !routingEnabled()) throw new ObjectStoreError("configuration");
   if (route?.retained_source && route.provider === "replit") throw new ObjectStoreError("retained");
-  await getObjectStore(route?.provider || "replit").delete(key);
+  const store=getObjectStore(route?.provider || "replit");
+  if(route?.provider==="r2"){
+    let present=true;
+    try{
+      const head=await store.metadata(key);
+      if(route.state==="verified"&&route.object_version&&
+        (head.version!==route.object_version||head.size!==Number(route.size)||head.mime!==route.mime))
+        throw new ObjectStoreError("integrity");
+    }catch(error){
+      if(error instanceof ObjectStoreError&&error.code==="missing")present=false;
+      else throw error;
+    }
+    if(present){
+      await store.delete(key);
+      try{
+        await store.metadata(key);
+        throw new ObjectStoreError("upstream");
+      }catch(error){
+        if(!(error instanceof ObjectStoreError&&error.code==="missing"))throw error;
+      }
+    }
+  }else await store.delete(key); // Preserve the existing Replit SDK contract.
   if (route) await execute(sql`update media_object_routes set state='deleted',updated_at=now() where key=${key}`);
   // Retained Replit source is NEVER removed, even on deletion of the R2 target.
 }

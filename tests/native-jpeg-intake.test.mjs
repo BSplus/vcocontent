@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import express from "express";
 import {once} from "node:events";
 import {randomUUID,createHash} from "node:crypto";
-import {readFile,rm} from "node:fs/promises";
+import {readFile,writeFile,rm} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
 import sharp from "sharp";
@@ -12,7 +12,7 @@ import {eq,inArray,sql} from "drizzle-orm";
 import {db,pool} from "../server/db.ts";
 import {storage} from "../server/storage.ts";
 import {users,events,mediaItems,mediaReservations,mediaUploadSessions as sessions,mediaAnalysisJobs,mediaAssetObjects,
-  mediaAssetVariants,mediaAssetRecords,mediaCleanup,betaRateLimits}
+  mediaAssetVariants,mediaAssetRecords,mediaObjectRoutes,mediaCleanup,betaRateLimits}
   from "../shared/schema.ts";
 import {registerRoutes} from "../server/routes.ts";
 import {stopAnalysisWorker} from "../server/analysis-jobs.ts";
@@ -20,6 +20,11 @@ import {UPLOAD_PART_BYTES} from "../server/resumable-uploads.ts";
 import {mediaDatabaseFingerprint} from "../server/media-storage-config.ts";
 import {multipartFixture} from "./helpers/r2-multipart-fixture.mjs";
 import {nativeR2HttpFixture} from "./helpers/native-r2-http-fixture.mjs";
+import {R2Store,ObjectStoreError} from "../server/object-store.ts";
+import {retainedStorageUsage} from "../server/retained-storage.ts";
+import {linkAssetObject} from "../server/media-asset-store.ts";
+import {resolveGalleryOwnership} from "../shared/gallery-ownership.ts";
+import {mockMediaStorage} from "./helpers/memory-media-storage.mjs";
 
 const hash=b=>createHash("sha256").update(b).digest("hex");
 test("authenticated native JPEG intake stays isolated and gated",{timeout:150000},async t=>{
@@ -32,7 +37,7 @@ test("authenticated native JPEG intake stays isolated and gated",{timeout:150000
     MEDIA_RESUMABLE_UPLOADS_ENABLED:"true"});
   await synthetic.close();
   const {fixtureRoots,restoreR2Fixture}=await import("./helpers/r2-cli-preload.mjs");
-  const native=nativeR2HttpFixture(fixtureRoots.r2),accounts=[];
+  const native=nativeR2HttpFixture(fixtureRoots.r2),memory=mockMediaStorage(),accounts=[];
   let server;
   try{
     await db.execute(sql`create table media_r2_multipart_journals(
@@ -87,17 +92,14 @@ test("authenticated native JPEG intake stays isolated and gated",{timeout:150000
           await db.delete(sessions).where(eq(sessions.id,row.id));await storage.abandonMedia(row.id);
           await rm(path.join(tmpdir(),"vco-upload-sessions",row.id),{recursive:true,force:true});
         }
-        // Variant-aware application deletion is the separate P2-8 release
-        // gate. Remove this exact fixture's inventory explicitly, never live.
-        const items=await db.select({id:mediaItems.id}).from(mediaItems).where(eq(mediaItems.eventId,gallery.id));
-        if(items.length){
-          const ids=items.map(item=>item.id);
-          await db.delete(mediaAssetVariants).where(inArray(mediaAssetVariants.mediaId,ids));
-          await db.delete(mediaAssetRecords).where(inArray(mediaAssetRecords.mediaId,ids));
+        // Use application inventory handoff, not manual variant/object removal.
+        if((await db.select().from(events).where(eq(events.id,gallery.id))).length){
+          const deleted=await storage.deleteEvent(gallery.id);assert.equal(deleted.success,true,deleted.message);
         }
-        await db.delete(mediaAssetObjects).where(eq(mediaAssetObjects.eventId,gallery.id));
-        const deleted=await storage.deleteEvent(gallery.id);assert.equal(deleted.success,true);
-        await storage.cleanupObjects();
+        for(let attempt=0;attempt<8;attempt++){
+          await storage.cleanupObjects();
+          if(!(await db.select({key:mediaCleanup.key}).from(mediaCleanup).limit(1)).length)break;
+        }
       }
     };
     await t.test("native selection requires explicit flag/schema and cannot be supplied by a browser",async()=>using({},async f=>{
@@ -206,9 +208,152 @@ test("authenticated native JPEG intake stays isolated and gated",{timeout:150000
       assert.equal((await f.status()).state,"cancelled");assert.equal((await f.cancel()).status,200);
       assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,f.session.id))).length,0);
     }));
+    const saved=async f=>{
+      await f.stage();const response=await f.complete();assert.equal(response.status,200);
+      await stopAnalysisWorker();return (await response.json()).item;
+    };
+    const remove=(f,item,actor=f.actor)=>request(`/api/media/${item.id}`,{method:"DELETE"},actor);
+    const removeGallery=(f,actor=f.actor)=>request(`/api/events/${f.gallery.id}`,{method:"DELETE"},actor);
+    const usage=()=>retainedStorageUsage(db,accounts[0].id);
+    await t.test("normal owner deletion retires native inventory; another Creator cannot delete it",async()=>using({},async f=>{
+      const item=await saved(f);
+      assert.equal((await remove(f,item,1)).status,403);
+      assert.equal((await remove(f,item)).status,204);await storage.cleanupObjects();
+      assert.equal((await db.select().from(mediaAssetObjects).where(eq(mediaAssetObjects.eventId,f.gallery.id))).length,0);
+      assert.equal((await db.select().from(mediaAssetRecords).where(eq(mediaAssetRecords.mediaId,item.id))).length,0);
+      for(const key of [item.url,item.thumbnail].map(url=>url.split("/").at(-1))){
+        assert.equal((await db.select().from(mediaObjectRoutes).where(eq(mediaObjectRoutes.key,key)))[0].state,"deleted");
+        await assert.rejects(readFile(path.join(fixtureRoots.r2,key)),e=>e.code==="ENOENT");
+      }
+      assert.equal((await removeGallery(f,1)).status,403);
+      assert.equal((await removeGallery(f)).status,200);
+    }));
+    await t.test("official native gallery deletion remains admin-only",async()=>using({official:true,admin:true},async f=>{
+      const item=await saved(f);
+      assert.equal((await removeGallery(f,0)).status,403);
+      assert.equal((await removeGallery(f)).status,200);await storage.cleanupObjects();
+      for(const url of [item.url,item.thumbnail])
+        await assert.rejects(readFile(path.join(fixtureRoots.r2,url.split("/").at(-1))),e=>e.code==="ENOENT");
+    }));
+    await t.test("failed, false-positive and lost deletion replies retain bytes until absence is confirmed",async()=>using({},async f=>{
+      const item=await saved(f),before=(await usage()).bytes,original=R2Store.prototype.delete;
+      const keys=[item.url,item.thumbnail].map(url=>url.split("/").at(-1));
+      try{
+        R2Store.prototype.delete=async()=>{throw new ObjectStoreError("upstream");};
+        process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="false";process.env.MEDIA_R2_MULTIPART_ENABLED="false";
+        assert.equal((await removeGallery(f)).status,200);await storage.cleanupObjects();
+        assert.equal((await usage()).bytes,before);
+        assert.equal((await request(item.url,{},f.actor)).status,404,"Logical deletion revokes delivery before physical cleanup");
+        assert.equal((await db.select().from(events).where(eq(events.id,f.gallery.id))).length,0);
+        for(const key of keys)await readFile(path.join(fixtureRoots.r2,key));
+        R2Store.prototype.delete=async()=>{}; // provider acceptance is not absence
+        await storage.cleanupObjects();assert.equal((await usage()).bytes,before);
+        R2Store.prototype.delete=async function(key){
+          await original.call(this,key);throw new ObjectStoreError("upstream");
+        };
+        await storage.cleanupObjects();assert.equal((await usage()).bytes,before);
+        for(const key of keys)await assert.rejects(readFile(path.join(fixtureRoots.r2,key)),e=>e.code==="ENOENT");
+        R2Store.prototype.delete=original;await storage.cleanupObjects();
+        assert.equal((await usage()).bytes,0);
+      }finally{R2Store.prototype.delete=original;}
+    }));
+    await t.test("shared native source and thumbnail survive until their final media reference is removed",async()=>using({},async f=>{
+      const item=await saved(f),before=(await usage()).bytes;
+      const [copy]=await db.insert(mediaItems).values({eventId:f.gallery.id,type:"image",url:item.url,thumbnail:item.thumbnail,
+        highBytes:item.highBytes,lowBytes:item.lowBytes,storedBytes:item.storedBytes}).returning();
+      const ownership=resolveGalleryOwnership(f.gallery),source=item.url.split("/").at(-1);
+      for(const [url,purpose] of [[item.url,"original"],[item.thumbnail,"thumbnail"]]){
+        const key=url.split("/").at(-1),[route]=await db.select().from(mediaObjectRoutes).where(eq(mediaObjectRoutes.key,key));
+        await linkAssetObject({mediaId:copy.id,ownership,key,purpose,sourceVersion:1,
+          ...(purpose==="original"?{}:{sourceKey:source}),sha256:route.sha256,objectVersion:route.objectVersion});
+      }
+      assert.equal((await remove(f,item)).status,204);await storage.cleanupObjects();
+      assert.equal((await usage()).bytes,before);
+      assert.equal((await db.select().from(mediaAssetObjects).where(eq(mediaAssetObjects.eventId,f.gallery.id))).length,2);
+      assert.equal((await remove(f,copy)).status,204);await storage.cleanupObjects();
+      assert.equal((await usage()).bytes,0);
+    }));
+    await t.test("registered derivatives outside legacy URLs also enter cleanup",async()=>using({},async f=>{
+      const item=await saved(f),key=`thumb-${randomUUID()}.webp`,bytes=Buffer.from("isolated object fixture");
+      await writeFile(path.join(fixtureRoots.r2,key),bytes);
+      await db.insert(mediaObjectRoutes).values({key,provider:"r2",state:"verified",sha256:hash(bytes),
+        size:bytes.length,mime:"image/webp",objectVersion:"fixture"});
+      await linkAssetObject({mediaId:item.id,ownership:resolveGalleryOwnership(f.gallery),key,purpose:"preview",
+        sourceVersion:1,sourceKey:item.url.split("/").at(-1),sha256:hash(bytes),objectVersion:"fixture"});
+      assert.equal((await usage()).bytes,item.storedBytes+bytes.length);
+      assert.equal((await removeGallery(f)).status,200);await storage.cleanupObjects();
+      await assert.rejects(readFile(path.join(fixtureRoots.r2,key)),e=>e.code==="ENOENT");
+      assert.equal((await usage()).bytes,0);
+    }));
+    await t.test("changed provider version cannot be deleted or released",async()=>using({},async f=>{
+      const item=await saved(f),key=item.url.split("/").at(-1),metadata=R2Store.prototype.metadata,del=R2Store.prototype.delete;
+      let attempts=0;
+      try{
+        R2Store.prototype.metadata=async function(k){const result=await metadata.call(this,k);
+          return k===key?{...result,version:"unexpected replacement"}:result;};
+        R2Store.prototype.delete=async function(k){if(k===key)attempts++;await del.call(this,k);};
+        assert.equal((await removeGallery(f)).status,200);await storage.cleanupObjects();
+        assert.equal(attempts,0);await readFile(path.join(fixtureRoots.r2,key));
+        assert.equal((await usage()).bytes,item.highBytes);
+      }finally{R2Store.prototype.metadata=metadata;R2Store.prototype.delete=del;await storage.cleanupObjects();}
+    }));
+    await t.test("unverified inventory or unfinished native staging blocks deletion without partial handoff",async()=>using({},async f=>{
+      const item=await saved(f),key=item.url.split("/").at(-1);
+      const [route]=await db.select().from(mediaObjectRoutes).where(eq(mediaObjectRoutes.key,key));
+      try{
+        await db.update(mediaObjectRoutes).set({sha256:null}).where(eq(mediaObjectRoutes.key,key));
+        assert.equal((await removeGallery(f)).status,500);
+        assert.equal((await db.select().from(mediaAssetObjects).where(eq(mediaAssetObjects.eventId,f.gallery.id))).length,2);
+        assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.id,item.id))).length,1);
+      }finally{await db.update(mediaObjectRoutes).set({sha256:route.sha256}).where(eq(mediaObjectRoutes.key,key));}
+      await db.update(sessions).set({cleanedAt:null}).where(eq(sessions.id,f.session.id));
+      assert.equal((await removeGallery(f)).status,500);
+      assert.equal((await remove(f,item)).status,500);
+      await db.update(sessions).set({cleanedAt:new Date()}).where(eq(sessions.id,f.session.id));
+    }));
+    await t.test("a reference from another gallery prevents partial gallery deletion",async()=>using({},async f=>{
+      const item=await saved(f),other=await storage.createEvent({title:"Scoped referencing fixture",description:"Isolated",
+        date:new Date(),creatorId:accounts[1].id});
+      const [reference]=await db.insert(mediaItems).values({eventId:other.id,type:"image",url:item.url,thumbnail:item.thumbnail,
+        storedBytes:item.storedBytes,highBytes:item.highBytes,lowBytes:item.lowBytes}).returning();
+      try{
+        assert.equal((await removeGallery(f)).status,500);
+        assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.id,item.id))).length,1);
+        assert.equal((await db.select().from(mediaAssetVariants).where(eq(mediaAssetVariants.mediaId,item.id))).length,2);
+        await readFile(path.join(fixtureRoots.r2,item.url.split("/").at(-1)));
+      }finally{
+        await db.delete(mediaItems).where(eq(mediaItems.id,reference.id));
+        assert.equal((await storage.deleteEvent(other.id)).success,true);
+      }
+    }));
+    await t.test("concurrent media and gallery deletion cannot duplicate cleanup or lose accounting",async()=>using({},async f=>{
+      const item=await saved(f);
+      const [media,gallery]=await Promise.all([remove(f,item),removeGallery(f)]);
+      assert.ok([204,404].includes(media.status));assert.ok([200,404].includes(gallery.status));
+      await storage.cleanupObjects();
+      assert.equal((await usage()).bytes,0);
+      assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.id,item.id))).length,0);
+      assert.equal((await db.select().from(events).where(eq(events.id,f.gallery.id))).length,0);
+    }));
+    await t.test("large inventory handoff uses bounded batches and retains every byte without a provider call",async()=>using({},async f=>{
+      const item=await saved(f),extra=Array.from({length:513},()=>({key:`thumb-${randomUUID()}.webp`,provider:"r2",
+        state:"verified",sha256:"a".repeat(64),size:1,mime:"image/webp",objectVersion:"fixture"}));
+      await db.insert(mediaObjectRoutes).values(extra);
+      await db.insert(mediaAssetObjects).values(extra.map(object=>({key:object.key,eventId:f.gallery.id,
+        ownerId:accounts[0].id,category:"CREATOR"})));
+      const before=(await usage()).bytes,cleanup=storage.cleanupObjects,calls=native.calls.length;
+      storage.cleanupObjects=async()=>{}; // Observe durable handoff before the worker runs.
+      try{
+        assert.equal((await removeGallery(f)).status,200);
+        assert.equal((await usage()).bytes,before);assert.equal(before,item.storedBytes+513);
+        assert.equal((await db.select().from(mediaCleanup)).length,515);
+        assert.equal((await db.select().from(mediaAssetObjects).where(eq(mediaAssetObjects.eventId,f.gallery.id))).length,0);
+        assert.equal(native.calls.length,calls);
+      }finally{storage.cleanupObjects=cleanup;}
+    }));
   }finally{
     await stopAnalysisWorker();if(server){server.close();await once(server,"close");}
-    native.restore();restoreR2Fixture();
+    native.restore();restoreR2Fixture();memory.restore();
     if(accounts.length){
       await db.delete(mediaCleanup).where(inArray(mediaCleanup.creatorId,accounts.map(u=>u.id)));
       for(const account of accounts)await db.delete(betaRateLimits).where(sql`${betaRateLimits.key} like ${`%:${account.id}`}`);

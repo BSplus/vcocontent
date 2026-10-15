@@ -22,6 +22,7 @@ import { automaticPhotoMatching } from "./automatic-photo-matching";
 import { matchedPhotoCaption } from "./caption-proposal";
 import { assertGalleryOwnership, resolveGalleryOwnership } from "@shared/gallery-ownership";
 import { retainedStorageUsage } from "./retained-storage";
+import { prepareAssetDeletion } from "./media-asset-deletion";
 
 type SafeUser = Omit<User, "password">;
 type EventUpdateResult = Event & { saveStatus: "saved" | "unchanged" };
@@ -268,7 +269,8 @@ class DatabaseStorage implements IStorage {
 
       await db.transaction(async tx => {
         if (eventExists[0].creatorId) await tx.execute(sql`select id from users where id=${eventExists[0].creatorId} for update`);
-        await tx.execute(sql`select id from events where id = ${id} for update`);
+        const [lockedEvent]=await tx.select().from(events).where(eq(events.id,id)).for("update");
+        if(!lockedEvent||lockedEvent.creatorId!==eventExists[0].creatorId)throw new Error("Gallery ownership changed. Please retry.");
         const archived = await tx.execute(sql`select id from media_items where event_id=${id} and archived_at is not null limit 1`);
         if (archived.rows.length) throw new Error("Restore archived media before deleting this gallery.");
         const documents = await tx.select({key:referenceDocuments.sourceKey,bytes:referenceDocuments.storedBytes}).from(referenceDocuments)
@@ -276,7 +278,9 @@ class DatabaseStorage implements IStorage {
         for (const doc of documents) if (doc.key) await tx.insert(mediaCleanup).values({key:doc.key,creatorId:eventExists[0].creatorId,storedBytes:doc.bytes}).onConflictDoNothing();
         const keys = await tx.select({ id:mediaItems.id,type:mediaItems.type,url: mediaItems.url, thumbnail: mediaItems.thumbnail,highBytes:mediaItems.highBytes,lowBytes:mediaItems.lowBytes })
           .from(mediaItems).where(eq(mediaItems.eventId, id));
+        const covered=await prepareAssetDeletion(tx,lockedEvent,keys.map(row=>row.id),true);
         for (const row of keys) for (const key of objectKeys(row)) {
+          if(covered.has(key))continue;
           await tx.insert(mediaCleanup).values({ key,creatorId:eventExists[0].creatorId,storedBytes:row.url.endsWith(key)?row.highBytes:row.lowBytes,
             photoToken:row.type==="image"?`item:${row.id}`:null }).onConflictDoNothing();
         }
@@ -287,7 +291,7 @@ class DatabaseStorage implements IStorage {
 
       return {
         success: true,
-        message: "Event and associated media items deleted successfully"
+        message: "Event deleted. Stored files are queued for verified cleanup."
       };
     } catch (error) {
       return {
@@ -483,9 +487,18 @@ class DatabaseStorage implements IStorage {
       if (!item || item.archivedAt) return;
       const event = item.eventId ? await tx.select().from(events).where(eq(events.id,item.eventId)).then(rows=>rows[0]) : undefined;
       if (event?.creatorId) await tx.execute(sql`select id from users where id=${event.creatorId} for update`);
-      if (item.eventId) await tx.execute(sql`select id from events where id = ${item.eventId} for update`);
-      for (const key of objectKeys(item)) await tx.insert(mediaCleanup).values({ key,creatorId:event?.creatorId,storedBytes:item.url.endsWith(key)?item.highBytes:item.lowBytes,
+      const lockedEvent=item.eventId?
+        (await tx.select().from(events).where(eq(events.id,item.eventId)).for("update"))[0]:undefined;
+      const [current]=await tx.select().from(mediaItems).where(eq(mediaItems.id,id)).for("update");
+      if(!current||current.archivedAt)return;
+      if(lockedEvent?.creatorId!==event?.creatorId)throw new Error("Gallery ownership changed. Please retry.");
+      if(current.eventId!==item.eventId)throw new Error("Media gallery changed. Please retry.");
+      const covered=lockedEvent?await prepareAssetDeletion(tx,lockedEvent,[id]):new Set<string>();
+      for (const key of objectKeys(current)) {
+        if(covered.has(key))continue;
+        await tx.insert(mediaCleanup).values({ key,creatorId:event?.creatorId,storedBytes:current.url.endsWith(key)?current.highBytes:current.lowBytes,
         photoToken:item.type==="image"?`item:${item.id}`:null }).onConflictDoNothing();
+      }
       await tx.delete(mediaItems).where(eq(mediaItems.id, id));
     });
     void this.cleanupObjects().catch(error => console.error("Media cleanup failed:", error));

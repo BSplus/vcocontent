@@ -94,3 +94,23 @@ could not delete the gallery. This was isolated-test evidence, not live damage.
 **How to apply:** Keep native activation blocked until normal deletion and
 retained cleanup accounting have end-to-end acceptance. Removing fixture
 inventory manually is test teardown, never proof of working application deletion.
+
+Use a transactional handoff to durable cleanup accounting when gallery-bound
+physical inventory must be detached before the gallery can be removed.
+
+**Why:** Keeping the inventory prevents gallery deletion, while dropping it
+without transferring actual bytes and ownership would falsely free quota.
+The existing cleanup lifecycle provides this handoff without another schema.
+
+**How to apply:** Detach references and hand off verified ownership/bytes
+atomically. Preserve shared objects and uncertain uploads. Keep pending bytes
+charged until R2 absence is confirmed, including after lost DELETE replies.
+Respect queue-before-route locking for existing cleanup rows.
+
+Isolated native-storage tests must mock legacy storage as well as R2.
+
+**Why:** A reservation that never persisted an object may have no provider route;
+its cleanup can therefore enter the legacy adapter even in an R2-oriented test.
+
+**How to apply:** Cover every provider fallback in the disposable fixture, not
+just the selected upload provider. A synthetic R2 client alone is insufficient.
