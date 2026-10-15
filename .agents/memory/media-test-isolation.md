@@ -13,3 +13,14 @@ could also act on another server's active media extraction.
 which gives subprocesses their own temporary-file scope. Wait for an actual
 failed attempt before asserting retry state: the initial queued state is not
 proof that a request ran or finished.
+
+Quota-sensitive recovery tests must distinguish rejected admission from failed
+recovery, and logical deletion from confirmed physical cleanup.
+
+**Why:** Pending deletions deliberately remain charged. A resolved fixture
+request can therefore contain an admission rejection rather than a usable
+session; downstream missing-reservation assertions then misdiagnose recovery.
+
+**How to apply:** Assert successful admission before using fixture IDs. Treat
+cleanup confirmation as a separate phase boundary before testing newly
+available capacity; do not assume that awaiting logical deletion freed it.

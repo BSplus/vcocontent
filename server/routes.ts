@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { registerResumableUploadRoutes, resumableUploadsAvailable, cleanupUploadSessions } from "./resumable-uploads";
 import { isPreservedPhoto } from "@shared/image-provenance";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
@@ -99,11 +100,13 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   registerReferenceRoutes(app, requireCreator);
   registerPhotoMatchingRoutes(app, requireCreator, kickAnalysisWorker);
   registerManualNumberRoutes(app);
+  registerResumableUploadRoutes(app);
   registerMediaEdge(app);
   const openAITestCooldowns = new Map<number, number>();
   const captionDetections = new Map<number, { thumbnail: string; expires: number; result: Promise<Awaited<ReturnType<typeof detectRaceNumbers>>> }>();
   // Auth already set up in index.ts
   const cleanupTimer = setInterval(() => {
+    void cleanupUploadSessions().catch(()=>console.error("Upload session reconciliation pending."));
     void storage.cleanupObjects().catch(error => console.error("Media reconciliation failed:", error));
   }, 15 * 60 * 1000);
   cleanupTimer.unref();
@@ -459,6 +462,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
         thumbnailEdge: Math.min(mediaPolicy.thumbnailEdge, 640),
         zipCount: mediaPolicy.zipCount,
         zipBytes: mediaPolicy.zipBytes,
+        resumableUploads: await resumableUploadsAvailable(),
       });
     } catch {
       res.status(502).json({error:"Upload policy could not be loaded"});

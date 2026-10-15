@@ -11,9 +11,11 @@ const click = async (browser, label) => {
   await browser.evaluate(`(${button(label)}).click()`);
 };
 
-async function fixture(role, width) {
+async function fixture(role, width, resumable=false) {
   const browser = await uiBrowser();
+  try {
   const state = { mode: "success", posts: [], reads: [], held: [], photos: [], mockErrors: [], analysis: "queued" };
+  state.session=null;state.sessionStarts=0;state.partAttempts=[];
   const gallery = { id, title: "Upload fixture", description: "Isolated browser data",
     date: "2026-10-13T00:00:00Z", creatorId: role === "admin" ? null : 96700,
     visibility: "published", safetyStatus: "approved", coverImage: poster };
@@ -34,6 +36,33 @@ async function fixture(role, width) {
     if (message.method !== "Fetch.requestPaused") return;
     const { requestId, request } = message.params;
     const path = new URL(request.url).pathname;
+    if(resumable && path.includes("upload-sessions")){
+      if(path.includes("/by-request/")){
+        void fulfill(requestId,state.session || {error:"Not found"},state.session?200:404);return;
+      }
+      if(request.method==="POST" && path.endsWith("/upload-sessions")){
+        const body=JSON.parse(request.postData);
+        state.sessionStarts++;
+        state.session={id:"11111111-1111-4111-8111-111111111111",state:"receiving",size:body.size,
+          sha256:body.sha256,partBytes:1048576,received:0,uploadedBytes:0,mediaId:null,
+          expiresAt:new Date(Date.now()+3600000).toISOString()};
+        void fulfill(requestId,state.session);return;
+      }
+      if(request.method==="PUT"){
+        const index=Number(path.split("/").at(-1));state.partAttempts.push(index);
+        if(index===1 && state.mode==="resume-delay"){state.held.push(requestId);return;}
+        state.session.received=index+1;
+        state.session.uploadedBytes=Math.min(state.session.size,(index+1)*1048576);
+        void fulfill(requestId,state.session);return;
+      }
+      if(request.method==="POST" && path.endsWith("/complete")){
+        const photo={id:96800,eventId:id,type:"image",caption:"Saved resumable fixture",
+          tags:[],url:poster,thumbnail:poster,safetyStatus:"pending",analysis:{status:"queued"}};
+        state.photos.push(photo);
+        state.session={...state.session,state:"completed",mediaId:photo.id,item:photo};
+        void fulfill(requestId,state.session);return;
+      }
+    }
     if (request.method !== "GET") {
       if (path !== `/api/events/${id}/media/upload` || request.method !== "POST") {
         state.mockErrors.push(`Unexpected write: ${request.method} ${path}`);
@@ -72,7 +101,8 @@ async function fixture(role, width) {
       if (new URL(request.url).searchParams.get("pagination") === "true")
         body = { items: state.photos, page: 1, totalPages: 1, hasMore: false };
     } else if (path === "/api/media/policy") body = { community: role !== "admin", imageBytes: 5000000,
-      videoBytes: role === "admin" ? 10000000 : 0, maxPixels: 40000000, zipCount: 100, zipBytes: 104857600 };
+      videoBytes: role === "admin" ? 10000000 : 0, maxPixels: 40000000, zipCount: 100, zipBytes: 104857600,
+      resumableUploads:resumable };
     else if (path === `/api/events/${id}/analysis`) body = state.photos.map(photo => ({
       mediaId: photo.id, status: state.analysis,
       error: state.analysis === "failed" ? "Synthetic analysis failure" : null,
@@ -93,17 +123,18 @@ async function fixture(role, width) {
     await browser.wait(`!!document.querySelector('[role="dialog"] input[type="file"]')`);
     await delay(100);
   };
-  const select = async names => {
+  const select = async (names,padding=0) => {
     await browser.evaluate(`(()=>{
       const input=document.querySelector('[role="dialog"] input[type="file"]');
       const files=new DataTransfer();
-      for(const name of ${JSON.stringify(names)}) files.items.add(new File(['synthetic image'],name,{type:'image/png'}));
+      for(const name of ${JSON.stringify(names)}) files.items.add(new File(['synthetic image',new Uint8Array(${padding})],name,{type:'image/png'}));
       input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));
     })()`);
     await browser.wait(`document.querySelectorAll('[role="dialog"] img').length===${names.length}`);
   };
   const reset = () => { state.posts = []; state.held = []; state.mode = "success"; state.analysis = "queued"; };
   return { browser, state, open, select, save, reset };
+  } catch(error) {await browser.close();throw error;}
 }
 
 for (const role of ["creator", "admin"]) for (const width of [1280, 390])
@@ -220,6 +251,29 @@ for (const role of ["creator", "admin"]) for (const width of [1280, 390])
       await click(browser, "Cancel"); await browser.wait(`!document.querySelector('[role="dialog"]')`);
       assert.deepEqual(state.mockErrors, []); assert.deepEqual(browser.errors, []);
     } finally { await browser.close(); }
+  });
+
+for(const [role,width] of [["creator",390],["admin",1280]])
+  test(`resumable ${role} can pause and resume without repeating accepted parts at ${width}px`,{timeout:90000},async()=>{
+    const {browser,state,open,select}=await fixture(role,width,true);
+    try{
+      state.mode="resume-delay";await open();await select(["resume-fixture.png"],1048576);
+      await click(browser,"Upload 1 file");
+      await browser.wait(`document.querySelector('[role="dialog"]').textContent.includes('99% transferred')`);
+      await click(browser,"Pause uploads");
+      await browser.wait(`!!(${button("Resume / check status")}) && !(${button("Resume / check status")}).matches(':disabled')`);
+      assert.equal(state.session.received,1);
+      assert.equal(await browser.evaluate(`document.querySelector('[role="dialog"]').scrollWidth<=document.querySelector('[role="dialog"]').clientWidth+1`),true);
+      for(const requestId of state.held.splice(0))
+        await browser.command("Fetch.failRequest",{requestId,errorReason:"Aborted"}).catch(()=>{});
+      state.mode="success";
+      await click(browser,"Resume / check status");
+      await browser.wait(`!document.querySelector('[role="dialog"]')`);
+      assert.equal(state.sessionStarts,1);assert.equal(state.photos.length,1);
+      assert.deepEqual(state.partAttempts,[0,1,1]);
+      assert.equal(state.posts.length,0,"No legacy non-idempotent upload fallback");
+      assert.deepEqual(state.mockErrors,[]);
+    }finally{await browser.close();}
   });
 
 for (const mode of ["lost", "invalid", "missing-id", "gateway"])

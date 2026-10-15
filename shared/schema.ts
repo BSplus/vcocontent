@@ -316,6 +316,32 @@ export const mediaCleanup = pgTable("media_cleanup", {
   lastError: text("last_error"),
 });
 
+/** Optional, disabled-by-default single-VM resumable transport. No media bytes. */
+export const mediaUploadSessions = pgTable("media_upload_sessions", {
+  id: text("id").primaryKey(),
+  actorId: integer("actor_id").notNull(),
+  requestKey: text("request_key").notNull(),
+  requestFingerprint: text("request_fingerprint").notNull(),
+  eventId: integer("event_id").notNull(),
+  ownerId: integer("owner_id"),
+  size: bigint("size", {mode:"number"}).notNull(),
+  mime: text("mime").notNull(),
+  sha256: text("sha256").notNull(),
+  metadata: jsonb("metadata").notNull(),
+  parts: jsonb("parts").notNull().default({}),
+  state: text("state").notNull().default("receiving"),
+  workerPid: integer("worker_pid"),
+  mediaId: integer("media_id"),
+  cleanedAt: timestamp("cleaned_at", {withTimezone:true}),
+  createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", {withTimezone:true}).notNull(),
+}, t => [
+  uniqueIndex("upload_session_request_idx").on(t.actorId,t.requestKey),
+  index("upload_session_expiry_idx").on(t.state,t.expiresAt),
+  check("upload_session_size",sql`${t.size} > 0`),
+  check("upload_session_state",sql`${t.state} in ('receiving','finalizing','completed','failed','cancelled')`),
+]);
+
 export const emailVerifications = pgTable("email_verifications", {
   userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull(),

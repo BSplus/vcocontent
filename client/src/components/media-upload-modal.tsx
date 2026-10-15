@@ -34,6 +34,7 @@ import { analysisPending, requestAnalysis, type AnalysisState } from "@/hooks/us
 import { useAuth } from "@/hooks/use-auth";
 import LegalLinks from "@/components/legal-links";
 import { mediaCreditSchema, uploadCreditLabel } from "@shared/media-credit";
+import { resumableUpload, cancelResumableUpload, hasResumableUploadRecord, ResumableRejected, UploadPaused } from "@/lib/resumable-upload";
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -45,7 +46,8 @@ interface FileUpload {
   file: File;
   preview: string;
   progress: number;
-  status: 'pending' | 'uploading' | 'success' | 'error' | 'unknown';
+  status: 'pending' | 'uploading' | 'success' | 'error' | 'unknown' | 'paused';
+  resumable?: boolean;
   error?: string;
   aiWarning?: string;
   aiTags?: string[];
@@ -64,7 +66,7 @@ export default function MediaUploadModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { data: limits } = useQuery<{ imageBytes: number; videoBytes: number; maxPixels: number; zipCount: number; zipBytes: number; community: boolean }>({
+  const { data: limits } = useQuery<{ imageBytes: number; videoBytes: number; maxPixels: number; zipCount: number; zipBytes: number; community: boolean; resumableUploads?:boolean }>({
     queryKey: [`/api/media/policy?eventId=${eventId}`],
   });
   const imageLimit = limits?.imageBytes ?? IMAGE_LIMIT;
@@ -75,6 +77,7 @@ export default function MediaUploadModal({
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const uploadLock = useRef(false);
+  const uploadAbort = useRef<AbortController|null>(null);
   const selectionLock = useRef(false);
   const [selecting, setSelecting] = useState(false);
   const [attempted, setAttempted] = useState(false);
@@ -284,6 +287,16 @@ export default function MediaUploadModal({
       caption: string;
       photographer: string;
     }): Promise<MediaItem> => {
+      if(user && (limits?.resumableUploads || hasResumableUploadRecord(upload.file,user.id,eventId))){
+        upload.resumable=true;
+        setUploads(previous=>previous.map(u=>u.file===upload.file?{...u,resumable:true}:u));
+        const controller=new AbortController();uploadAbort.current=controller;
+        try{return await resumableUpload({file:upload.file,userId:user.id,eventId,
+          metadata:{type:upload.file.type.startsWith("video/")?"video":"image",caption,photographer,tags,
+            autoTag:upload.file.type.startsWith("video/") || autoTagEnabled},
+          signal:controller.signal,onProgress:progress=>setUploads(previous=>previous.map(u=>u.file===upload.file?{...u,progress}:u))});
+        }finally{uploadAbort.current=null;}
+      }
       const formData = new FormData();
       formData.append("file", upload.file);
       formData.append("type", upload.file.type.startsWith("video/") ? "video" : "image");
@@ -328,7 +341,7 @@ export default function MediaUploadModal({
   const handleBulkUpload = async () => {
     if (uploadLock.current || selectionLock.current) return;
     const batch = uploads.map(upload => ({ ...upload }));
-    const pendingUploads = batch.filter(u => u.status === 'pending');
+    const pendingUploads = batch.filter(u => u.status === 'pending' || u.status==="paused" || u.status==="unknown" && u.resumable);
     if (!pendingUploads.length) return;
     const updateUpload = (upload: FileUpload, changes: Partial<FileUpload>) => {
       Object.assign(upload, changes);
@@ -371,9 +384,10 @@ export default function MediaUploadModal({
                (community || upload.file.type.startsWith("video/") || autoTagEnabled ? "queued" : "not_requested") });
 
         } catch (error) {
-          updateUpload(upload, { status: error instanceof UploadRejected ? "error" : "unknown",
-            error: error instanceof UploadRejected ? error.message :
+          updateUpload(upload, { status: error instanceof UploadPaused?"paused":error instanceof UploadRejected || error instanceof ResumableRejected ? "error" : "unknown",
+            error: error instanceof UploadPaused || error instanceof ResumableRejected || upload.resumable && error instanceof Error ? error.message : error instanceof UploadRejected ? error.message :
               "Save not confirmed. This file may already be stored. Check Manage Media before selecting it again; it will not be automatically retried." });
+          if(error instanceof UploadPaused) break;
         }
       }
 
@@ -403,11 +417,15 @@ export default function MediaUploadModal({
     }
   };
 
-  const removeUpload = (index: number) => {
+  const removeUpload = async (index: number) => {
     if (uploadLock.current || selectionLock.current) return;
+    if(user && hasResumableUploadRecord(uploads[index].file,user.id,eventId)){
+      try{await cancelResumableUpload(uploads[index].file,user.id,eventId);}
+      catch(error){toast({title:"Upload not removed",description:error instanceof Error?error.message:"Cancellation not confirmed.",variant:"destructive"});return;}
+    }
     URL.revokeObjectURL(uploads[index].preview);
     previewUrls.current.delete(uploads[index].preview);
-    setUploads(uploads.filter((_, i) => i !== index));
+    setUploads(previous=>previous.filter(u=>u.file!==uploads[index].file));
   };
 
   useEffect(() => {
@@ -423,6 +441,7 @@ export default function MediaUploadModal({
     }
   }, [open, form]);
   useEffect(() => () => {
+    uploadAbort.current?.abort();
     previewUrls.current.forEach(url => URL.revokeObjectURL(url));
     previewUrls.current.clear();
   }, []);
@@ -440,7 +459,7 @@ export default function MediaUploadModal({
         </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); handleBulkUpload(); }} className="space-y-4">
           {attempted && <div role={uploading ? "status" : "alert"} className="rounded border border-border p-3 text-sm space-y-2">
-            <p className="font-semibold">{uploads.filter(u => u.status === "success").length} saved · {uploads.filter(u => u.status === "error").length} rejected · {uploads.filter(u => u.status === "unknown").length} unconfirmed · {uploads.filter(u => u.status === "pending" || u.status === "uploading").length} remaining</p>
+            <p className="font-semibold">{uploads.filter(u => u.status === "success").length} saved · {uploads.filter(u => u.status === "error").length} rejected · {uploads.filter(u => u.status === "unknown").length} unconfirmed · {uploads.filter(u => u.status === "pending" || u.status === "uploading" || u.status==="paused").length} remaining</p>
             <p>{uploading ? "Uploading — please keep this dialog open." : "Rejected files can be retried below. Unconfirmed files may already be saved; check Manage Media before uploading them again."}</p>
             <p>{backgroundNotice}</p>
           </div>}
@@ -518,7 +537,8 @@ export default function MediaUploadModal({
                         )}
                       </div>
                       <p className="mt-1 break-all text-xs font-medium">{upload.file.name}</p>
-                      {(upload.status === 'error' || upload.status === "unknown") && (
+                      {upload.resumable && <p role="status" className="text-xs text-muted-foreground mt-1">{upload.progress}% transferred{upload.status==="paused"?" · Paused":""}</p>}
+                      {(upload.status === 'error' || upload.status === "unknown" || upload.status==="paused") && (
                         <p className="text-sm text-destructive mt-1">{upload.error}</p>
                       )}
                       {upload.status === "error" && <Button type="button" size="sm" variant="outline" disabled={uploading}
@@ -640,6 +660,10 @@ export default function MediaUploadModal({
           </fieldset>
 
            <div className="flex flex-wrap justify-end gap-2">
+            {uploading && (limits?.resumableUploads || uploads.some(u=>u.resumable)) &&
+              <Button type="button" variant="outline" onClick={()=>uploadAbort.current?.abort()}>Pause uploads</Button>}
+            {!uploading && uploads.some(u=>u.resumable && u.status!=="success") &&
+              <p className="w-full text-xs text-muted-foreground">Paused uploads expire after one hour. Reselect the same file to resume after reopening. Resume keeps the saved caption, credit and tags.</p>}
             <Button
               type="button"
               variant="outline"
@@ -649,10 +673,10 @@ export default function MediaUploadModal({
               {attempted ? "Close" : "Cancel"}
             </Button>
             <Button
-              type={uploads.some(upload => upload.status === "pending") ? "submit" : "button"}
+              type={uploads.some(upload => upload.status === "pending" || upload.status==="paused" || upload.status==="unknown" && upload.resumable) ? "submit" : "button"}
               disabled={busy || !uploads.length}
               onClick={() => {
-                if (!uploads.some(upload => upload.status === "pending")) onOpenChange(false);
+                if (!uploads.some(upload => upload.status === "pending" || upload.status==="paused" || upload.status==="unknown" && upload.resumable)) onOpenChange(false);
               }}
               className="bg-primary text-black hover:bg-primary/90"
             >
@@ -662,6 +686,7 @@ export default function MediaUploadModal({
                   Uploading...
                 </>
               ) : (
+                uploads.some(upload => upload.status==="paused" || upload.status==="unknown" && upload.resumable) ? "Resume / check status" :
                 uploads.some(upload => upload.status === "pending")
                   ? `Upload ${uploads.filter(upload => upload.status === "pending").length} ${uploads.filter(upload => upload.status === "pending").length === 1 ? "file" : "files"}`
                   : uploads.some(upload => upload.status !== "success") ? "Close" : uploads.length ? "Done — all files saved" : "Select files above"

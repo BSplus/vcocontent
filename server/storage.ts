@@ -579,7 +579,8 @@ class DatabaseStorage implements IStorage {
     });
   }
 
-  async finishMedia(id: string, mediaItem: InsertMediaItem, nextcloudFileId?: number, workerToken?: string, requestAnalysis = false, _community = false): Promise<MediaItem> {
+  async finishMedia(id: string, mediaItem: InsertMediaItem, nextcloudFileId?: number, workerToken?: string, requestAnalysis = false, _community = false,
+    onCommit?: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], item: MediaItem) => Promise<void>): Promise<MediaItem> {
     assertMediaTagsAllowed(mediaItem);
     return db.transaction(async tx => {
       if (workerToken) {
@@ -658,6 +659,7 @@ class DatabaseStorage implements IStorage {
         if (!file) throw new Error("Import file reservation is no longer pending");
       }
       await tx.delete(mediaReservations).where(eq(mediaReservations.id, id));
+      if (onCommit) await onCommit(tx,item);
       if (reservation.creatorId)
         await lockedCreatorBudget(tx,reservation.creatorId,0,0,0,0,true);
       return item;
@@ -750,8 +752,12 @@ class DatabaseStorage implements IStorage {
     const scope = creatorIds ? sql`creator_id in (${sql.join(creatorIds.map(id=>sql`${id}`),sql`,`)})` : undefined;
     // Expired uploads are marked for cleanup after an hour. No successful
     // upload may still use the reservation by then (see route timeout policy).
+    const sessionTable = await db.execute(sql`select to_regclass('media_upload_sessions') as name`);
+    const resumable = sessionTable.rows[0]?.name
+      ? sql`not exists (select 1 from media_upload_sessions s where s.id=media_reservations.id)`
+      : sql`true`;
     const expired = await db.select().from(mediaReservations)
-      .where(and(lt(mediaReservations.createdAt, new Date(Date.now() - 60 * 60 * 1000)),scope)).limit(100);
+      .where(and(lt(mediaReservations.createdAt, new Date(Date.now() - 60 * 60 * 1000)),scope,resumable)).limit(100);
     for (const reservation of expired) await this.abandonMedia(reservation.id);
     const pending = await db.select().from(mediaCleanup).where(scope).orderBy(mediaCleanup.createdAt).limit(100);
     for (const item of pending) {
