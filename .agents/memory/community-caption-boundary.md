@@ -70,3 +70,12 @@ die Herstellerangabe; keine zusätzliche Nutzerbestätigung und keine zweite
 positive Herstellererkennung verlangen. Unklare Angaben weglassen, nicht Upload
 oder Veröffentlichung blockieren. Herstellernamen aus Logos nicht mit Sponsor-
 oder Ausrüstungsmarken verwechseln; Nummern-/Entry-List-Sicherheiten bleiben getrennt.
+
+In Captions niemals „Vehicle make:“ vor die Automarke schreiben; die Marke
+steht ohne dieses Präfix.
+
+**Why:** Der Betreiber hat diese Caption-Schreibweise ausdrücklich verlangt.
+
+**How to apply:** Für automatische Foto- und Videocaptions gleichermaßen,
+auch bei mehreren Marken. Keine nachträgliche Änderung gespeicherter Captions
+ohne entsprechenden Auftrag.

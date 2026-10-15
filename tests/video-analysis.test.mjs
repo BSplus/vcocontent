@@ -275,7 +275,7 @@ test("a no-list video saves a checked-make caption without inventing a model or 
     await enqueueAnalysis(item);
     await until(async()=>(await analysisStatus(item.id)).status==="completed");
     const saved=await storage.getMediaItem(item.id);
-    assert.ok(saved.caption.includes("Vehicle make: Porsche"));
+    assert.ok(saved.caption.endsWith(" | Porsche"));
     assert.ok(!saved.caption.includes("#")&&!saved.caption.includes("911"));
     assert.ok(saved.identification.every(v=>v.source==="visual"&&!v.drivers&&!v.team));
   }finally{mockProvider();}

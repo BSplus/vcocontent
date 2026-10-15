@@ -93,7 +93,7 @@ export function matchedPhotoCaption(
   // No reference match: only independently checked makes, never guessed models,
   // numbers, teams or registered drivers. Explicit one-make context wins.
   const makes=!matched&&!event.vehicle?.trim()?visuallyCheckedMakes(observations):[];
-  const description=makes.length?`${makes.length===1?"Vehicle make":"Vehicle makes"}: ${makes.join(", ")}`:"";
+  const description=makes.join(", ");
   // Do not partially truncate a lineup into a misleading fragment.
   const full = [context, ...vehicles,description].filter(Boolean).join(" | ");
   return {caption:(full.length <= 1000 ? full : context).slice(0,1000),

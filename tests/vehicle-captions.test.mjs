@@ -38,7 +38,8 @@ test("one-make event context is optional and no-match context wins over visual g
 });
 test("no entry list: checked manufacturer only, never a visual model or number/team guess",()=>{
   const caption=matchedPhotoCaption(event,null,[{...checked,vehicle:"911 GT3 R",number:"96",team:"Imagined team"}]).caption;
-  assert.ok(caption.includes("Vehicle make: Porsche"));
+  assert.ok(caption.endsWith(" | Porsche"));
+  assert.ok(!/Vehicle makes?:/i.test(caption));
   assert.ok(!caption.includes("911")&&!caption.includes("#96")&&!caption.includes("Imagined"));
 });
 test("uncertain makes, sponsor names and invalid car geometry remain context-only",()=>{
@@ -46,6 +47,12 @@ test("uncertain makes, sponsor names and invalid car geometry remain context-onl
     {...checked,source:"manual"},{...checked,vehicleRegion:[0,0,0,0]}]){
     assert.equal(matchedPhotoCaption(event,null,[item]).caption,communityCaption(event));
   }
+});
+test("multiple checked manufacturers appear without a vehicle-make label",()=>{
+  const caption=matchedPhotoCaption(event,null,[checked,
+    {...checked,manufacturer:"Ferrari"}]).caption;
+  assert.ok(caption.endsWith(" | Porsche, Ferrari"));
+  assert.ok(!/Vehicle makes?:/i.test(caption));
 });
 test("manufacturer aliases do not create sponsor/model aliases",()=>{
   assert.equal(canonicalVehicleMake("Mercedes-AMG"),"Mercedes-Benz");
@@ -87,7 +94,7 @@ test("one clear Ferrari factory logo is sufficient in either view without a seco
     Object.assign(reading,{manufacturer:"Ferrari",manufacturerConfident:true,manufacturerBasis:"factory_logo"});
     const [v]=await verify(data);
     assert.equal(v.manufacturer,"Ferrari");assert.equal(v.manufacturerEvidence,VEHICLE_MAKE_POLICY);
-    assert.ok(matchedPhotoCaption(event,null,[v]).caption.includes("Vehicle make: Ferrari"));
+    assert.ok(matchedPhotoCaption(event,null,[v]).caption.endsWith(" | Ferrari"));
   }
 });
 test("a clear factory logo outranks a shape suggestion, without certifying mismatching race numbers",async()=>{
@@ -126,7 +133,7 @@ test("video source-bound checks retain makes while legacy/unchecked frames canno
   return import("../server/video-recognition.ts").then(({VIDEO_NUMBER_PIPELINE})=>{
     frame.numberCheck.policy=VIDEO_NUMBER_PIPELINE;
     const verified=aggregateVideo([frame]);
-    assert.ok(matchedPhotoCaption(event,null,verified.vehicles).caption.includes("Vehicle make: Porsche"));
+    assert.ok(matchedPhotoCaption(event,null,verified.vehicles).caption.endsWith(" | Porsche"));
     frame.numberCheck.hash="stale";
     const stale=aggregateVideo([frame]);
     assert.equal(matchedPhotoCaption(event,null,stale.vehicles).caption,communityCaption(event));

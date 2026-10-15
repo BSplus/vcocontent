@@ -1,0 +1,1364 @@
+VCO Content Marketplace
+
+Unified Master Specification, Architecture Review & Implementation Planning
+
+Task: #223 — Review and update the unified VCO Marketplace specification
+Mode: PLANNING ONLY
+Implementation authorization: NOT GRANTED
+
+This prompt supersedes all previous planning instructions concerning the VCO Content Marketplace.
+
+Update the existing specification:
+
+.local/tasks/vco-marketplace-unified-specification.md
+
+Use Task #224 and the existing technical audits as supporting references.
+
+Do not create a competing specification.
+
+The objective is to transform the existing VCO Content Database into a professional, AI-powered media marketplace while preserving its existing capabilities, performance and operational reliability.
+
+⸻
+
+1. Fundamental Principle: Preserve, Reuse, Optimize
+
+The VCO Content Database is an existing application with substantial working functionality.
+
+Do not rebuild components merely to create a theoretically cleaner architecture.
+
+The preferred engineering approach is:
+
+1. REUSE working functionality.
+2. EXTEND existing components where necessary.
+3. REFACTOR selectively when there is a demonstrable benefit.
+4. REPLACE only when the existing implementation cannot reasonably meet the requirements.
+
+For every proposed architectural change, evaluate:
+
+* Performance and response times.
+* Infrastructure and operating costs.
+* Development effort.
+* Maintainability.
+* Operational complexity.
+* Reliability.
+* Security.
+* Scalability.
+* Compatibility with existing workflows.
+* Regression risk.
+
+For every proposed replacement, document:
+
+* Current limitation.
+* Proposed solution.
+* Measurable or clearly explainable benefit.
+* Implementation effort.
+* Operational implications.
+* Migration requirements.
+* Regression risk.
+* Why a smaller modification is insufficient.
+
+Default decision: REUSE or EXTEND.
+
+Avoid unnecessary microservices, databases, storage systems, processing services and third-party dependencies.
+
+Prefer the existing PostgreSQL, Cloudflare R2 and application infrastructure wherever appropriate.
+
+The goal is not architectural perfection.
+
+The goal is the fastest, safest, most cost-efficient and most maintainable path to the required product.
+
+⸻
+
+2. Two Operating Models — One Shared Platform
+
+This is a fundamental product requirement.
+
+The VCO Content Database must continue to support:
+
+A. Official VCO-managed events, galleries and media
+
+B. External Creator-owned events, galleries and media
+
+Both operating models must use the same underlying technology wherever practical.
+
+Do not build two separate applications or duplicate processing pipelines.
+
+2.1 Shared Functionality
+
+Both official VCO content and external Creator content must support:
+
+* Events and galleries.
+* JPEG photographs.
+* Optional RAW variants.
+* Video clips.
+* AI tagging.
+* Driver and vehicle identification.
+* Event and reference matching.
+* AI captioning.
+* Manual metadata corrections.
+* IPTC, EXIF and XMP workflows.
+* Media search and discovery.
+* Preview generation.
+* Protected downloads.
+* Licensing.
+* Marketplace sales where enabled.
+* Cloudflare R2 storage.
+* Integrity and security controls.
+
+The existing AI pipeline must serve both operating models.
+
+2.2 Official VCO Operating Model
+
+Official VCO events and galleries:
+
+1. Continue to function as they do today.
+2. Are managed by authorized VCO administrators.
+3. Do not require a Creator subscription.
+4. Are not subject to Free, Pro, Studio or Archive storage quotas.
+5. Are not blocked by Creator subscription storage limits.
+6. Can contain JPEG, RAW and video assets.
+7. Use the same AI tagging, matching and captioning technology.
+8. Can contain free or paid assets.
+9. Can use VCO-defined licences and prices.
+10. Do not incur an internal Creator commission.
+11. Retain their existing event, gallery and media relationships.
+12. Remain available independently of external Creator subscription features.
+
+Official VCO storage is operationally unlimited with respect to Creator subscription quotas.
+
+This does not mean unlimited physical infrastructure resources.
+
+Track actual storage consumption, processing usage and costs.
+
+Apply technical safety limits, upload validation and abuse protection.
+
+However, do not introduce subscription-based upload restrictions for official VCO galleries.
+
+Official VCO content must not need an artificial Creator plan to bypass quota enforcement.
+
+2.3 External Creator Operating Model
+
+External Creators:
+
+* Manage their own galleries and media.
+* Use the same underlying asset and AI technology.
+* Have subscription-based storage allowances.
+* May purchase additional storage.
+* Control their own Marketplace prices.
+* Receive earnings from eligible sales.
+* Pay the applicable Marketplace commission.
+* Manage storage within their purchased allowance.
+
+2.4 Ownership Must Be Explicit
+
+The system must reliably distinguish:
+
+* Official VCO-owned or VCO-managed content.
+* External Creator-owned content.
+
+Do not determine ownership merely from the identity of the uploader.
+
+An administrator uploading into an external Creator gallery consumes that Creator’s storage allowance.
+
+An administrator uploading into an official VCO gallery uses the official VCO storage allocation and is not subject to Creator subscription quotas.
+
+Preserve existing official-event ownership conventions, including nullable Creator ownership where currently used, unless a targeted change is justified.
+
+Avoid ambiguous ownership states.
+
+2.5 Shared Marketplace Infrastructure
+
+Official VCO assets may participate in the Marketplace.
+
+For VCO-owned assets:
+
+* VCO controls pricing.
+* VCO controls licensing.
+* VCO receives the applicable sales proceeds.
+* No internal Creator commission is deducted.
+
+Use the same purchasing, entitlement and delivery infrastructure as external Creator assets.
+
+Do not create a separate VCO checkout system.
+
+⸻
+
+3. Protected Existing Functionality
+
+3.1 AI Tagging, Matching and Captioning
+
+The existing AI pipeline represents substantial development investment.
+
+It is a protected core component and must be preserved.
+
+Preserve:
+
+* AI image tagging.
+* Event matching.
+* Series matching.
+* Driver identification.
+* Vehicle identification.
+* Racing-number matching.
+* Reference-data matching.
+* AI caption generation.
+* Evidence-based identification logic.
+* Confidence thresholds.
+* Manual corrections.
+* AI suppression rules.
+* Existing provenance mechanisms.
+* Media-to-event relationships.
+* Media-to-reference relationships.
+* Existing processing safeguards.
+
+Do not remove, simplify, rewrite or replace this functionality as part of the Marketplace modernization.
+
+Any proposed modification to existing AI core logic must be documented separately and explicitly approved.
+
+New media types must integrate with the existing AI services wherever possible.
+
+Before changing data models or interfaces, document all existing AI dependencies.
+
+Add regression tests proving that the existing photo AI workflows remain intact.
+
+3.2 Other Existing Functionality
+
+Preserve and reuse where practical:
+
+* Authentication.
+* Sessions.
+* Email verification.
+* User roles.
+* Creator activation.
+* Admin permissions.
+* Moderation.
+* Gallery and event management.
+* Creator Studio.
+* Protected media delivery.
+* R2 object routing.
+* Upload reservations.
+* Existing cleanup mechanisms.
+* Existing background processing.
+* Existing email infrastructure.
+* Production environment isolation.
+
+Do not redesign existing screens or navigation merely because new Marketplace features are being added.
+
+⸻
+
+4. Production Inventory and Migration Strategy
+
+The Production application currently contains very little meaningful media content, primarily test galleries.
+
+This does not mean the entire Production database is disposable.
+
+Before proposing migrations:
+
+1. Inspect the actual Production database using read-only methods.
+2. Inspect the Production R2 object inventory using read-only methods.
+3. Identify users, roles, series, events, galleries and media.
+4. Identify test galleries and their objects.
+5. Preserve user accounts and authentication data.
+6. Preserve roles, series and relevant configuration.
+7. Preserve existing AI functionality and dependencies.
+8. Identify genuinely obsolete beta structures.
+9. Avoid unnecessary historical-media migrations.
+10. Do not delete test content without permission.
+
+Prefer targeted additive schema changes.
+
+Simplification of unused beta-era components is acceptable only where safe and justified.
+
+Do not convert legacy credit balances into purchasing power without an approved financial policy.
+
+Do not invent historical Creator earnings from existing downloads.
+
+Preserve existing media identifiers and URLs where relevant.
+
+Never enable “Copy your development database to production database.”
+
+Before implementation involving Production schema or storage, establish an appropriate backup and recovery plan.
+
+⸻
+
+5. Unified Logical Asset Architecture
+
+Support two primary logical asset types:
+
+* PHOTO
+* VIDEO
+
+Use shared infrastructure where appropriate and format-specific processing where necessary.
+
+A logical asset contains:
+
+* Stable identity.
+* Owner or rights holder.
+* Gallery and event relationships.
+* Title.
+* Caption.
+* Tags and keywords.
+* AI analysis results.
+* Matching and identification results.
+* Metadata provenance.
+* Available file variants.
+* Storage ownership.
+* Licence availability.
+* Creator-defined prices.
+* Purchase entitlements.
+
+Avoid duplicating editorial metadata across variants of the same logical asset.
+
+5.1 File/Object Model
+
+Each persistent stored object should have:
+
+* Owner.
+* Parent asset.
+* Object purpose.
+* Storage provider.
+* Storage key.
+* MIME type.
+* Actual byte size.
+* SHA-256 checksum.
+* Lifecycle state.
+* Creation and deletion state.
+
+Use existing storage abstractions where suitable.
+
+Do not duplicate original files unnecessarily.
+
+5.2 Photo Variants
+
+A photo asset may contain:
+
+* Primary JPEG.
+* Optional RAW original.
+* Thumbnail.
+* Preview.
+* Optional XMP sidecar.
+* Optional export variants.
+
+5.3 Video Variants
+
+A video asset may contain:
+
+* Original video.
+* Poster image.
+* Playable preview.
+* Representative analysis frames.
+* Optional download variants.
+
+Not every generated intermediate file must be retained permanently.
+
+Use temporary processing and cleanup where possible.
+
+⸻
+
+6. JPEG and RAW Architecture
+
+6.1 Mandatory JPEG
+
+For the initial Marketplace version, every publishable photo asset must have at least one JPEG.
+
+JPEG is the primary visual and AI-analysis representation.
+
+RAW is an optional additional file variant.
+
+Requirements:
+
+* JPEG is required for publishing.
+* RAW cannot be published or sold independently without an associated JPEG.
+* JPEG and RAW share one logical media identity.
+* Both originals remain byte-for-byte unchanged.
+* The existing AI pipeline analyzes the JPEG.
+* RAW does not trigger duplicate AI analysis.
+* JPEG and RAW share tags, captions and matching results.
+* RAW may have a different selling price.
+* RAW counts toward the applicable storage allocation.
+
+The JPEG requirement applies to both official VCO content and external Creator content.
+
+6.2 RAW/JPEG Pairing
+
+Support pairing suggestions based on:
+
+* File stems.
+* Compatible filenames.
+* Capture timestamps when reliable.
+* Camera metadata where available.
+* Other trustworthy relationships.
+
+Do not assume matching filenames always represent the same photograph.
+
+Require Creator confirmation for ambiguous matches.
+
+Support manual pairing and corrections.
+
+Do not silently attach a RAW to the wrong JPEG.
+
+6.3 RAW Downloads
+
+* Preserve original RAW bytes.
+* Support optional XMP sidecars.
+* Preserve existing editing adjustments.
+* Preserve unrelated XMP namespaces.
+* Allow paired RAW/XMP delivery.
+* Require explicit Creator permission for exact-original delivery.
+* Warn about potentially sensitive embedded metadata.
+
+Define supported RAW formats and size limits during technical planning.
+
+⸻
+
+7. Video MVP — Same AI Intelligence as Photos
+
+Videos are individual Marketplace assets.
+
+The Video MVP is not a separate AI product.
+
+Videos must use the existing VCO AI tagging, matching and captioning intelligence.
+
+7.1 Video Asset Management
+
+Support:
+
+* Individual video uploads.
+* Gallery and event assignment.
+* Original-file preservation.
+* Poster generation.
+* Playable previews.
+* Titles.
+* Captions.
+* Tags.
+* Manual corrections.
+* Creator-defined licence prices.
+* Protected playback.
+* Authorized downloads.
+
+The same features apply to official VCO and external Creator galleries.
+
+7.2 AI Analysis Through Video Frames
+
+Create a video-specific adapter around existing image-analysis components.
+
+The adapter should:
+
+1. Extract representative video frames.
+2. Use bounded and configurable sampling.
+3. Submit suitable frames to existing AI analysis.
+4. Aggregate matching and tagging results.
+5. Produce video-level captions.
+6. Preserve evidence and confidence information.
+7. Allow manual corrections.
+8. Avoid unsupported identification claims.
+9. Avoid repeated analysis of unchanged videos.
+10. Enforce processing budgets.
+
+Do not modify the existing photo AI pipeline merely to accommodate videos.
+
+Frame extraction and AI processing should run asynchronously.
+
+Avoid analyzing every video frame.
+
+Choose sampling defaults based on measured quality, cost and performance.
+
+7.3 Video MVP Exclusions
+
+Out of scope:
+
+* Automatic scene detection.
+* Automatic highlight generation.
+* Automatic clip extraction.
+* Automatic editing.
+* AI-generated compilations.
+* Full-video transcription.
+* Continuous frame-by-frame recognition.
+
+7.4 Video Processing and Delivery
+
+Define:
+
+* Supported input formats.
+* Maximum upload sizes.
+* Preview format.
+* Preview resolution.
+* Poster generation.
+* Protected streaming.
+* Range-request authorization.
+* Download formats.
+* Processing limits.
+* Storage costs.
+* AI costs.
+
+Prefer a simple, efficient solution.
+
+Do not introduce a complex streaming infrastructure without demonstrated need.
+
+⸻
+
+8. Unified Storage Management
+
+8.1 Separate Accounting, Shared Technology
+
+Use the same storage infrastructure for official VCO and Creator media.
+
+However, maintain separate accounting.
+
+Official VCO
+
+* No Creator subscription quota.
+* No Creator quota-based upload blocking.
+* No subscription required.
+* Storage consumption measured internally.
+* Processing and storage costs monitored.
+* Technical safety limits still apply.
+
+External Creator
+
+* Subscription-based storage allowance.
+* Optional purchased additional capacity.
+* Uploads blocked when available quota is exhausted.
+* All persistent Creator-owned objects count toward the quota.
+
+8.2 Creator Quota Calculation
+
+Creator allowance = active plan storage + active purchased storage grants.
+
+Count:
+
+* JPEG originals.
+* RAW originals.
+* Video originals.
+* Persistent previews.
+* Persistent derivatives.
+* Creator-managed XMP sidecars.
+* Archived and hidden assets.
+* Creator-owned profile/reference objects.
+* Upload reservations.
+* Objects awaiting confirmed deletion.
+
+Storage consumption does not depend on whether an asset is published or listed for sale.
+
+Do not exclude archived media from storage accounting.
+
+No special RAW tariff.
+
+RAW simply consumes its actual stored capacity.
+
+8.3 Storage Dashboard
+
+Display:
+
+* Total allowance.
+* Used capacity.
+* Available capacity.
+* Usage by media type.
+* Usage by gallery.
+* Pending cleanup.
+* Purchased storage grants.
+
+Warn at approximately:
+
+* 80%.
+* 90%.
+* 100%.
+
+At 100%, block new Creator uploads safely.
+
+Do not automatically delete existing content.
+
+Release storage only after physical deletion is confirmed.
+
+8.4 Large Uploads
+
+The current R2 implementation has an approximately 100 MiB single-write limit.
+
+Design reliable large-file uploads for RAW and video.
+
+Evaluate:
+
+* Multipart uploads.
+* Direct-to-R2 transfers.
+* Short-lived authorization.
+* Server-side ownership validation.
+* Quota reservations.
+* Checksums.
+* Retry and resume.
+* Incomplete upload cleanup.
+* Abuse prevention.
+
+Prefer the simplest secure approach that avoids unnecessary server bandwidth and memory usage.
+
+⸻
+
+9. IPTC, EXIF and XMP Metadata
+
+Professional metadata support must remain optional.
+
+Uploads and publication must not require editorial IPTC/XMP completion.
+
+Required legal rights declarations are separate.
+
+9.1 Metadata Precedence
+
+Use:
+
+Explicit Creator edit → existing embedded metadata → eligible event/reference/AI information.
+
+For official VCO content, authorized VCO editorial edits have the same precedence as Creator edits.
+
+Preserve:
+
+* Intentional blanks.
+* Manual corrections.
+* Suppressed AI values.
+* Existing embedded Creator metadata.
+* Field-level provenance.
+
+Never silently overwrite manually entered information with AI.
+
+9.2 Safe Metadata Inference
+
+AI and reference data may suggest:
+
+* Event.
+* Series.
+* Keywords.
+* Captions.
+* Confirmed driver identification.
+* Confirmed vehicle identification.
+* Relevant racing context.
+
+Do not infer:
+
+* Photographer identity from uploader identity.
+* Copyright ownership from account identity.
+* Licensing rights from AI.
+* Depicted people solely from entry lists.
+* Capture time from event schedules.
+* GPS coordinates from circuit locations.
+
+9.3 Metadata Standards
+
+Use IPTC Core/Extension in XMP as the primary editorial representation.
+
+Mirror compatible fields into IPTC IIM and EXIF where appropriate.
+
+Reuse the installed ExifTool where suitable.
+
+Support Unicode and structured metadata.
+
+9.4 Download Metadata
+
+* Preserve uploaded originals unchanged.
+* Create metadata-enriched JPEG exports from working copies.
+* Avoid recompression when changing metadata only.
+* Preserve ICC profiles and orientation.
+* Read back and validate generated metadata.
+* Generate separate export checksums.
+* Use non-destructive XMP sidecars for RAW.
+* Preserve existing RAW editing settings.
+
+9.5 Privacy
+
+Standard exports should apply a tested privacy policy.
+
+Review:
+
+* GPS.
+* Camera serial numbers.
+* Contact information.
+* MakerNotes.
+* Embedded thumbnails.
+* Hidden metadata namespaces.
+
+Exact-original downloads may retain sensitive metadata.
+
+Creators must explicitly enable exact-original delivery and receive appropriate warnings.
+
+⸻
+
+10. Processing and Export Cache Efficiency
+
+Generated exports may be cached temporarily.
+
+Temporary platform-managed download exports should not consume Creator storage quotas.
+
+Implement:
+
+* Global cache byte limits.
+* Object-count limits.
+* TTL.
+* Automatic cleanup.
+* Concurrency limits.
+* Temporary disk limits.
+* Failed-job cleanup.
+* Crash recovery.
+
+Cache keys should include relevant source identity, metadata revision, privacy policy and export recipe.
+
+Include licence or Buyer context where necessary.
+
+Persistent Creator-managed variants and sidecars count toward Creator storage.
+
+Temporary processing intermediates should be cleaned up promptly.
+
+Never serve an unsafe original as a fallback after privacy-filtered export failure.
+
+Reuse existing processing infrastructure where suitable.
+
+⸻
+
+11. Creator Subscription Plans
+
+Use the following provisional planning assumptions:
+
+Plan	Monthly price	Storage	VCO commission
+Free	€0	5 GB	25%
+Pro	€9.90	100 GB	20%
+Studio	€29.90	500 GB	15%
+Archive	€119	2 TB	12%
+
+These are not final approved prices.
+
+Plans define:
+
+* Creator storage allowance.
+* Marketplace commission.
+* Eligible services.
+
+Plans do not replace application roles.
+
+Official VCO content is not subject to these plans.
+
+Studio does not automatically include team management in the MVP.
+
+Additional storage packages should be supported.
+
+Their prices and sizes require economic validation.
+
+Do not offer unlimited external Creator storage.
+
+⸻
+
+12. Creator-Controlled Marketplace Pricing
+
+External Creators determine their own prices.
+
+This is mandatory.
+
+Creators must be able to:
+
+* Set prices for individual assets.
+* Set prices by licence type.
+* Set prices by eligible delivery variant.
+* Charge more for RAW delivery.
+* Apply prices to multiple assets.
+* Apply gallery-level pricing presets.
+* Edit prices later.
+* Review active listings.
+
+VCO may offer recommended prices.
+
+Do not silently override Creator-defined prices.
+
+RAW is a delivery variant, not a licence type.
+
+12.1 Price Integrity
+
+* Validate prices server-side.
+* Reject negative or malformed values.
+* Enforce approved credit precision.
+* Verify ownership.
+* Track price revisions.
+* Snapshot prices at purchase.
+* Prevent concurrent checkout inconsistencies.
+* Never retroactively modify completed sales.
+
+If the price changes during checkout, the Buyer must confirm the new price.
+
+12.2 Official VCO Pricing
+
+Authorized VCO administrators control prices for official VCO-owned assets.
+
+Official VCO sales do not incur an internal Creator commission.
+
+12.3 Admin Moderation
+
+Admins may moderate or disable non-compliant listings.
+
+They must not silently alter external Creator prices as a routine operation.
+
+⸻
+
+13. Marketplace Licensing
+
+Use versioned licence definitions.
+
+Separate usage rights from file formats.
+
+Potential licence categories include:
+
+* Editorial.
+* Commercial.
+
+Final licence definitions require approval.
+
+A RAW file does not automatically provide broader rights than JPEG.
+
+A video file does not automatically provide broader rights than a photograph.
+
+13.1 Purchase Records
+
+Capture:
+
+* Buyer.
+* Seller.
+* Asset.
+* Asset version.
+* Licence.
+* Licence version.
+* Delivery entitlement.
+* Price.
+* Price revision.
+* Credit amount.
+* Monetary allocation.
+* Currency.
+* Commission policy.
+* Seller classification.
+* Timestamp.
+
+Purchases must be atomic and idempotent.
+
+Repeated downloads or video Range requests must not create additional sales.
+
+13.2 Entitlement Enforcement
+
+Enforce authorization for:
+
+* JPEG downloads.
+* RAW downloads.
+* Video downloads.
+* Video playback.
+* Original files.
+* XMP sidecars.
+* ZIP packages.
+* Cached exports.
+* Existing delivery routes.
+
+Do not rely on frontend visibility as an access-control mechanism.
+
+13.3 Deletion After Purchase
+
+Purchase and licence records must survive media deletion.
+
+Define:
+
+* Re-download periods.
+* File availability after Creator deletion.
+* Takedown behavior.
+* Refund rules.
+* Storage responsibility.
+
+A 30-day re-download period is a proposal, not an approved policy.
+
+⸻
+
+14. Buyer Credits and Creator Earnings
+
+Use separate financial systems.
+
+14.1 Buyer Credits
+
+Buyers purchase credits and spend them on licences.
+
+Use an auditable ledger.
+
+Support:
+
+* Purchases.
+* Debits.
+* Refunds.
+* Reversals.
+* Idempotency.
+* Reconciliation.
+
+Do not treat Buyer credits as withdrawable money.
+
+Do not automatically convert legacy balances.
+
+14.2 Creator Earnings
+
+Creators receive monetary earnings from eligible sales.
+
+Use integer minor currency units.
+
+Support:
+
+* Pending earnings.
+* Available earnings.
+* Reserved earnings.
+* Settled earnings.
+* Reversals.
+
+Creators may use eligible earnings to pay for hosting/services or request payouts.
+
+Do not silently convert earnings into Buyer credits.
+
+14.3 Financial Integrity
+
+Use append-only financial journals.
+
+Corrections require linked reversals.
+
+Do not derive sales or earnings from download counts.
+
+Credit-to-money conversion, tax treatment and commission calculations require an approved accounting policy.
+
+⸻
+
+15. Stripe Billing and Connect
+
+Use Stripe for:
+
+* Creator subscriptions.
+* Additional storage purchases.
+* Buyer credit purchases.
+* Creator payout infrastructure.
+
+Implement only after commercial and legal decisions are approved.
+
+Required safeguards:
+
+* Server-created checkout sessions.
+* Verified webhooks.
+* Durable event deduplication.
+* Idempotent processing.
+* Out-of-order event handling.
+* Subscription lifecycle management.
+* Refunds and disputes.
+* Test/live isolation.
+* Reconciliation.
+* Connect onboarding.
+* Payout eligibility checks.
+
+An internal earnings balance, Stripe transfer and bank payout are separate states.
+
+The merchant-of-record, seller-of-record and Stripe Connect fund-flow model remain open decisions.
+
+Official VCO sales must be represented correctly without artificial Creator commissions.
+
+⸻
+
+16. Creator Studio and User Flows
+
+Extend the existing Creator Studio.
+
+Do not rebuild it without demonstrated benefit.
+
+16.1 External Creator Flow
+
+1. Creator logs in.
+2. Creator opens the dashboard.
+3. Creator reviews galleries and storage.
+4. Creator creates or selects an event/gallery.
+5. Creator uploads JPEG, optional RAW or video.
+6. System validates files and reserves storage.
+7. System generates previews.
+8. AI analyzes JPEGs or selected video frames.
+9. Creator optionally reviews tags and captions.
+10. Creator selects licences and delivery variants.
+11. Creator defines prices.
+12. Creator publishes assets.
+13. Buyer discovers and purchases content.
+14. Buyer downloads authorized files.
+15. Creator reviews sales, earnings and storage.
+
+Keep this workflow efficient.
+
+Avoid unnecessary mandatory metadata steps.
+
+Support bulk operations where useful.
+
+16.2 Official VCO Flow
+
+Authorized VCO administrators continue using the existing event/gallery workflow.
+
+They can:
+
+* Create and manage official events.
+* Upload JPEG, RAW and video.
+* Use the same AI functionality.
+* Edit metadata.
+* Publish free content.
+* Optionally offer paid content.
+* Set VCO-controlled prices.
+
+No Creator subscription or Creator storage quota applies.
+
+Do not degrade existing official workflows.
+
+⸻
+
+17. Security, Reliability and Operational Safety
+
+Review:
+
+* Authentication.
+* Authorization.
+* Ownership enforcement.
+* Official versus Creator classification.
+* Storage reservations.
+* Concurrent uploads.
+* Large-file validation.
+* RAW parsing.
+* Video frame extraction.
+* Metadata processing.
+* ExifTool limits.
+* XML/XMP safety.
+* Privacy leakage.
+* Download permissions.
+* Range-request authorization.
+* Financial transaction integrity.
+* Stripe webhooks.
+* Orphaned objects.
+* Failed processing.
+* Cache cleanup.
+* Backups.
+* Disaster recovery.
+
+Preserve private Cloudflare R2 access.
+
+Do not make the bucket public.
+
+Do not expose permanent storage credentials to clients.
+
+Preserve Production environment isolation.
+
+⸻
+
+18. Performance, Cost and Efficiency Requirements
+
+Optimize based on actual technical and operational evidence.
+
+Storage
+
+* Avoid unnecessary duplicate files.
+* Use appropriately sized previews.
+* Track actual bytes.
+* Clean up abandoned uploads.
+* Bound export caches.
+* Separate official VCO accounting from Creator quotas.
+
+AI
+
+* Preserve existing photo AI.
+* Analyze JPEG rather than RAW.
+* Use representative video frames.
+* Avoid redundant AI calls.
+* Reuse valid analysis results where safe.
+* Maintain identification quality.
+
+Processing
+
+* Prefer asynchronous expensive operations.
+* Bound CPU, memory and concurrency.
+* Avoid unnecessary image recompression.
+* Avoid unnecessary video transcoding.
+* Reuse existing job infrastructure.
+
+Delivery
+
+* Preserve efficient R2 streaming.
+* Support authorized Range requests.
+* Avoid unnecessary application-server bandwidth.
+* Use caching only where justified.
+
+Engineering
+
+* Prefer targeted modifications.
+* Minimize additional abstractions.
+* Avoid premature distributed systems.
+* Keep deployments manageable.
+* Avoid vendor dependencies without clear benefits.
+
+Do not claim cost savings without explaining the assumptions.
+
+⸻
+
+19. Implementation Phases
+
+Prepare an implementation-ready plan.
+
+Do not execute it.
+
+Phase 1 — Decisions and Release Design
+
+Clarify:
+
+* Licensing.
+* Seller/merchant-of-record.
+* Credit valuation.
+* Payout policy.
+* Creator plans.
+* Storage add-ons.
+* Download retention.
+* RAW format limits.
+* Video format limits.
+* Video AI sampling budgets.
+* Backup and recovery requirements.
+
+Identify blockers and independent workstreams.
+
+Phase 2 — Asset and Storage Foundation
+
+Plan:
+
+* Targeted asset model changes.
+* Explicit official/Creator ownership classification.
+* Unified object relationships.
+* Separate VCO and Creator storage accounting.
+* Creator quota enforcement.
+* Immutable originals.
+* JPEG/RAW pairing.
+* Large-file uploads.
+* Storage reservations.
+* Cleanup and integrity.
+* Compatibility with existing photo AI.
+
+Do not rebuild the existing storage system if it can be extended safely.
+
+Phase 3 — Metadata and AI Expansion
+
+Plan:
+
+* Server-side metadata extraction.
+* Field-level provenance.
+* Creator overrides.
+* IPTC/XMP exports.
+* Privacy-safe downloads.
+* RAW sidecars.
+* Video frame extraction.
+* Shared AI tagging and matching.
+* Video-level captioning.
+* Photo AI regression tests.
+
+Phase 4 — Creator Subscriptions
+
+Plan:
+
+* Subscription plans.
+* Storage grants.
+* Stripe billing.
+* Plan changes.
+* Quota management.
+* Downgrade behavior.
+
+Phase 5 — Marketplace Transactions
+
+Plan:
+
+* Creator-defined prices.
+* Licence catalogue.
+* Listings.
+* Buyer credit ledger.
+* Purchases.
+* Entitlements.
+* Commission accounting.
+* Protected paid delivery.
+
+Phase 6 — Creator Earnings and Payouts
+
+Plan:
+
+* Creator earnings ledger.
+* Stripe Connect.
+* Earnings-funded services.
+* Transfers.
+* Payouts.
+* Reconciliation.
+
+Phase 7 — Controlled Production Release
+
+Plan:
+
+* Regression tests.
+* AI quality tests.
+* Storage integrity tests.
+* Financial reconciliation tests.
+* Permission tests.
+* Production readiness review.
+* Explicit activation approval.
+
+Feature flags should allow independent activation of:
+
+* New upload functionality.
+* RAW support.
+* Video support.
+* Metadata exports.
+* Creator subscriptions.
+* Paid listings.
+* Credit purchases.
+* Connect payouts.
+
+Do not activate commercial functionality automatically after deployment.
+
+⸻
+
+20. Required Replit Deliverables
+
+Update the unified specification and return the following.
+
+A. Consolidated Architecture
+
+Explain how existing and new systems interact.
+
+Explicitly show official VCO and external Creator operating models.
+
+B. Reuse / Extend / Refactor / Replace Matrix
+
+For each major subsystem, state:
+
+* Current implementation.
+* Recommended action.
+* Reason.
+* Expected benefit.
+* Risk.
+* Effort.
+
+Justify every proposed replacement.
+
+C. Technical Change Inventory
+
+Identify relevant:
+
+* Source files.
+* Database tables.
+* Services.
+* API routes.
+* Background jobs.
+* UI components.
+* R2 integration points.
+
+Distinguish mandatory from optional changes.
+
+D. Detailed Phase 2 Plan
+
+Provide small, independently testable implementation tasks.
+
+Include dependencies, risks and acceptance criteria.
+
+E. Data Model and Migration Strategy
+
+Propose minimal, targeted schema changes.
+
+Preserve existing accounts, roles, series, events and AI relationships.
+
+Avoid unnecessary legacy-media migration complexity.
+
+F. AI Preservation Strategy
+
+Document existing AI dependencies.
+
+Define regression tests for tagging, matching, captioning, manual corrections and suppression rules.
+
+G. RAW and Video Technical Design
+
+Include:
+
+* JPEG/RAW pairing.
+* Supported formats.
+* Upload limits.
+* Preview handling.
+* Video frame sampling.
+* Shared AI integration.
+* Processing budgets.
+
+H. Storage and Cost Model
+
+Include:
+
+* Official VCO storage accounting.
+* Creator quota accounting.
+* Temporary export cache.
+* Video storage and processing costs.
+* AI processing costs.
+* Cleanup and recovery costs.
+
+I. Security and Operations
+
+Include:
+
+* Ownership checks.
+* Privacy.
+* Data integrity.
+* Monitoring.
+* Backups.
+* Recovery.
+* Rollback.
+* Production isolation.
+
+J. Acceptance Tests
+
+Define objective pass/fail criteria for each implementation phase.
+
+K. Open Decisions
+
+List unresolved decisions with:
+
+* Recommended option.
+* Alternatives.
+* Consequences.
+* Implementation blockers.
+
+Do not treat provisional commercial assumptions as approved final decisions.
+
+⸻
+
+21. Strict Execution Restrictions
+
+THIS REQUEST IS FOR PLANNING ONLY.
+
+Permitted:
+
+* Read existing code.
+* Inspect relevant configuration without exposing secrets.
+* Review schemas.
+* Review existing workflows.
+* Perform authorized read-only inventory checks.
+* Update Task #223.
+* Update the existing unified specification.
+* Produce architecture diagrams and implementation tasks.
+
+Not permitted:
+
+* Modify application code.
+* Run database migrations.
+* Change Production data.
+* Delete or rewrite media.
+* Modify Cloudflare R2 objects.
+* Change Production configuration.
+* Activate payments.
+* Activate subscriptions.
+* Activate paid listings.
+* Deploy application changes.
+* Replace or weaken existing AI components.
+* Begin implementation without explicit approval.
+
+Keep the Production database-copy option disabled.
+
+Return the complete updated unified specification, the Reuse/Extend/Refactor/Replace matrix and a detailed Phase 2 implementation plan for approval.
+
+Final Guiding Principle
+
+Build one shared, professional, AI-powered media platform with two operating models:
+
+Official VCO: Full functionality, no Creator subscription limits, internally monitored storage and costs.
+
+External Creators: Full functionality, subscription-based storage, Creator-controlled pricing and Marketplace earnings.
+
+Preserve the existing AI technology and working application wherever possible.
+
+Modernize only where there is a genuine benefit in performance, cost, efficiency, scalability, reliability or maintainability.
+
+Do not rebuild what already works well.

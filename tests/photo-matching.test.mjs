@@ -165,7 +165,7 @@ test("no-list photos receive a checked make without a model, number or team; edi
   try{
     const before=auditCalls;await enqueueAnalysis(p,{recognition:false,reanalyse:true});
     const saved=await settled(p.id);
-    assert.ok(saved.caption.includes("Vehicle make: Porsche"));
+    assert.ok(saved.caption.endsWith(" | Porsche"));
     assert.ok(!saved.caption.includes("#")&&!saved.caption.includes(entry.team));
     assert.ok(!saved.identification.length);assert.equal(auditCalls,before+1);
     const protectedPhoto=await photo(e,{caption:"My own text"});scope([protectedPhoto]);
