@@ -92,14 +92,47 @@ Do not manually delete journal rows as a cleanup procedure.
   locks. Initial authorization and journal insertion hold those same row locks
   through one short transaction, closing the pre-insertion cleanup race.
 
+### Validated JPEG preparation bridge
+
+`server/r2-multipart-jpeg.ts` now connects actual JPEG validation/preview
+preparation to this private lifecycle. It uses the existing `preparePhoto`,
+byte/pixel policy and processing budget, preserves source bytes/checksum and
+orientation metadata, and stages an auto-oriented, metadata-stripped WebP under
+the existing 640-pixel/100,000-byte preview ceilings. Current Creator/official
+limits are not raised. Source paths must resolve inside the owned UUID staging
+directory, and source keys must preserve the established official/Creator
+provenance conventions used by private delivery. Registration enforces those
+JPEG key conventions too.
+
+An explicit preparation fence pins staging before decoding. Its **NULL
+checkpoint is not an initiating provider intent**: preparation performs no
+storage write or AI call. It must finish/release its processing slot and lease
+before transport opens a fresh context, avoiding nested work-budget acquisition.
+Preview installation is atomic and cannot overwrite an existing differing
+preview. Source hashes and existing previews are checked on retry.
+
+Known no-write preparation can be cancelled with closed write gates: the
+repository requires a matching NULL fence, no original/thumbnail route indicating
+any persistence attempt, and confirmed absence of the source destination before
+removing staging and atomically releasing the reservation. Missing rows or an
+initiating checkpoint are **not** interchangeable with this positive no-write
+proof. Any conflicting route or uncertain provider result retains capacity.
+
+**Still not an HTTP/Studio integration:** the private bridge returns prepared
+source/thumbnail descriptors. The authenticated finalizer must still wire mode
+selection, bounded assembly, ordinary small-thumbnail persistence, provider
+transport, registration, existing safety/AI dispatch and native status/recovery
+into the current controls. No public route uses this module.
+
 These helpers neither implement content parsing nor dispatch paid AI/safety
-calls. The future intake adapter must reuse those existing workflows, validated
+calls independently; JPEG preparation reuses the existing photo parser.
+The future intake adapter must reuse those existing workflows, validated
 derivatives and policy decisions, and must not run a legacy and native finalizer
 for the same session.
 
 ## Actual evidence
 
-The newest journal suite passed **27 scenarios / 28 Node-reported tests**, with no
+The newest journal suite passed **34 scenarios / 35 Node-reported tests**, with no
 failures or skips. It used a newly initialized, disposable loopback PostgreSQL
 database and synthetic R2 commands backed by temporary disk files:
 
@@ -134,10 +167,22 @@ database and synthetic R2 commands backed by temporary disk files:
     waits on the reservation/session locks and then honors the committed fence.
 26. Concurrent registration cannot duplicate media or analysis jobs.
 27. Missing generated derivatives prevent registration without freeing capacity.
+28–29. Actual Creator and official JPEGs preserve source bytes, auto-orient the
+       stripped preview, reuse validation and progress from a preparation fence
+       through transport/atomic registration. Synthetic storage supplies the
+       thumbnail's verified route; this is not a live-thumbnail upload smoke.
+30. Malformed JPEG has no provider writes and its known no-write fence cleans.
+31. Changed source hash or differing immutable preview cannot pass preparation.
+32. Closed gates and non-owned source paths cannot start preparation.
+33. A persistence-route conflict prevents no-write cleanup/capacity release.
+34. JPEG preparation never retries an uncertain provider initiation.
 
-The final affected integration/regression batch reported **49 passing tests**
-(journal, existing HTTP resumable and retained capacity), without failures or
-skips. The earlier unchanged provider transport (including the isolated 250-MiB
+The final affected runs cover **56 passing tests**: 35 journal/JPEG tests and
+21 existing HTTP resumable/retained-capacity checks. After correcting the
+fixture's official actor and preserving explicitly requested collision keys,
+the full 35-test journal run passed with no failures/skips; the unchanged
+21 regression checks had passed in the preceding batch. The earlier unchanged
+provider transport (including the isolated 250-MiB
 case), R2/private delivery and browser-client protocol checks also passed.
 TypeScript and the production bundle build passed.
 

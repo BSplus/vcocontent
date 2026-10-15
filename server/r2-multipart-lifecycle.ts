@@ -13,6 +13,7 @@ import {lockedCreatorBudget,creatorAllowed} from "./beta-policy";
 import {users,events,insertMediaItemSchema} from "@shared/schema";
 import {removeUploadSessionStaging} from "./upload-session-staging";
 import {resolveGalleryOwnership} from "@shared/gallery-ownership";
+import {isCreatorOriginal,isPreservedPhoto} from "@shared/image-provenance";
 
 type Transaction=Parameters<Parameters<typeof db.transaction>[0]>[0];
 const conflict=():never=>{throw new MultipartJournalError("conflict");};
@@ -70,6 +71,8 @@ export async function registerValidatedMultipart(plan:MultipartPlan,input:Insert
     const media=parsed.data!;
     if(media.eventId!==plan.eventId||media.url!==fileUrl(plan.key)||media.isPremium||
       media.type!==(plan.mime.startsWith("image/")?"image":"video")||media.highBytes!==plan.size)conflict();
+    if(plan.mime==="image/jpeg"&&(!isPreservedPhoto(media.url)||
+      isCreatorOriginal(media.url)!==(plan.owner.kind==="creator")))conflict();
     const ownership=resolveGalleryOwnership({id:plan.eventId,creatorId:plan.owner.creatorId});
     let thumbnail:typeof routes.$inferSelect|undefined;
     return storage.finishMedia(plan.sessionId,media,undefined,undefined,requestAnalysis,plan.owner.kind==="creator",
@@ -144,9 +147,22 @@ export async function cleanupMultipartStaging(plan:MultipartPlan,driver:R2Multip
       return done.kind;
     }
     const state=restoreMultipartCheckpoint(raw,binding,plan);
-    if(state?.phase!=="aborted"||!state.uploadId)throw new MultipartUploadError("uncertain");
+    const [fence]=await db.select().from(journals).where(header(plan,driver,binding));
+    const preparationOnly=!state&&fence?.checkpoint===null;
+    if(!preparationOnly&&(state?.phase!=="aborted"||!state.uploadId))throw new MultipartUploadError("uncertain");
     await context.authorize(plan,"cancel");
-    await absent(()=>driver.parts(plan.key,state.uploadId!,context.signal));
+    const noRoutes=async(tx:typeof db|Transaction)=>{
+      const [reservation]=await tx.select().from(mediaReservations).where(eq(mediaReservations.id,plan.sessionId));
+      if(!reservation)conflict();
+      const found=await tx.execute(sql`select 1 from media_object_routes
+        where key in (${plan.key},${reservation.thumbnailKey}) limit 1`);
+      if(found.rows.length)throw new MultipartUploadError("cleanup_pending");
+    };
+    // NULL preparation checkpoints never admitted Create or thumbnail writes.
+    // Route evidence of any persistence attempt makes that no-write proof
+    // insufficient; retain the reservation for reconciliation instead.
+    if(preparationOnly)await noRoutes(db);
+    else await absent(()=>driver.parts(plan.key,state!.uploadId!,context.signal));
     await absent(()=>driver.head(plan.key,context.signal));
     await removeUploadSessionStaging(plan.sessionId);
     await db.transaction(async tx=>{
@@ -155,7 +171,10 @@ export async function cleanupMultipartStaging(plan:MultipartPlan,driver:R2Multip
       if(!reservation||reservation.storageKey!==plan.key||reservation.creatorId!==plan.owner.creatorId||
         reservation.eventId!==plan.eventId||current.state!=="finalizing"||current.cleanedAt)conflict();
       const [intent]=await tx.select().from(journals).where(header(plan,driver,binding)).for("update");
-      if(intent?.checkpoint?.phase!=="aborted"||intent.checkpoint.uploadId!==state.uploadId)conflict();
+      if(preparationOnly){
+        if(!intent||intent.checkpoint!==null)conflict();
+        await noRoutes(tx);
+      }else if(intent?.checkpoint?.phase!=="aborted"||intent.checkpoint.uploadId!==state!.uploadId)conflict();
       await tx.delete(journals).where(header(plan,driver,binding));
       await tx.update(sessions).set({state:"cancelled",workerPid:null,cleanedAt:new Date(),
         metadata:{nativeReceipt:{binding,kind:"released"}}}).where(eq(sessions.id,plan.sessionId));

@@ -55,6 +55,20 @@ export class PostgresMultipartJournal implements MultipartJournal {
     return this.client!;
   }
   assertLease(){this.held();}
+  /** Explicit preparation fence, not a provider write intent. Call only inside
+   * an exclusive preparation lease; reopen the context for provider progress.
+   * NULL checkpoint proves this fence has not yet admitted a Create request.
+   */
+  async pinStaging(){
+    await this.authorized(this.plan,"upload",async tx=>{
+      await tx.insert(journals).values({sessionId:this.plan.sessionId,reservationId:this.plan.sessionId,
+        scope:this.driver.scope,objectKey:this.plan.key,binding:this.binding,revision:0,checkpoint:null})
+        .onConflictDoNothing();
+      const [row]=await tx.select().from(journals).where(eq(journals.sessionId,this.plan.sessionId));
+      if(!row||row.reservationId!==this.plan.sessionId||row.binding!==this.binding||
+        row.scope!==this.driver.scope||row.objectKey!==this.plan.key)fail("conflict");
+    });
+  }
   async authorize(plan:MultipartPlan,stage:"upload"|"verify"|"cancel"){
     await this.authorized(plan,stage,async()=>{});
   }

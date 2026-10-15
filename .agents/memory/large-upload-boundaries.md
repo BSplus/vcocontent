@@ -71,3 +71,15 @@ insertion; recheck fences under those locks before unlinking. Respect terminal
 receipts too. Unpin reservations and register physical usage in one transaction;
 perform final quota checks after reservation removal so bytes are not charged
 twice. Keep every native part/assembled source inside its owned staging boundary.
+
+Distinguish a deliberate local-preparation fence from an uncertain provider
+initiation; never replace one with the other just to protect staging.
+
+**Why:** Decoding needs a cleanup fence before any storage write, but marking
+Create as initiated before it was admitted would manufacture ambiguity and
+prevent safe cancellation of invalid files.
+
+**How to apply:** Preserve positive no-write evidence until a committed provider
+intent replaces it. Release only after checking destination absence, conflicting
+persistence routes and local cleanup. Reuse existing JPEG provenance conventions,
+since source keys also select established exact-original/privacy delivery rules.

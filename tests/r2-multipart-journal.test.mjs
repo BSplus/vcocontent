@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {randomUUID} from "node:crypto";
+import {randomUUID,createHash} from "node:crypto";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {rm,mkdir,rename,readFile,writeFile,stat} from "node:fs/promises";
@@ -25,6 +25,9 @@ test("native multipart PostgreSQL journal uses a disposable database only",{
   const {registerValidatedMultipart,cleanupMultipartStaging}=await import("../server/r2-multipart-lifecycle.ts");
   const {uploadSessionDirectory}=await import("../server/upload-session-staging.ts");
   const {cleanupUploadSessions}=await import("../server/resumable-uploads.ts");
+  const {prepareMultipartJpeg}=await import("../server/r2-multipart-jpeg.ts");
+  const {createMediaKeys}=await import("../server/media-storage.ts");
+  const {default:sharp}=await import("sharp");
   const {eq,inArray,sql}=await import("drizzle-orm");
   assert.equal((await pool.query("select to_regclass('media_r2_multipart_journals') as name")).rows[0].name,null);
   // Test-only DDL. This schema is NOT part of the connected app schema entry.
@@ -56,10 +59,19 @@ test("native multipart PostgreSQL journal uses a disposable database only",{
         key:options.key??f.plan.key.replace(/mp4$/,"jpg"),mime:options.video?"video/mp4":"image/jpeg",
       });
       if(options.video)f.plan.key=f.plan.key.replace(/jpg$/,"mp4");
+      if(!options.video&&!options.key)f.plan.key=createMediaKeys("image/jpeg",
+        gallery.creatorId===null?"official":"creator-original").storageKey;
       const directory=uploadSessionDirectory(f.plan.sessionId);
       await mkdir(directory,{recursive:true});
       const local=path.join(directory,"assembled-source");
       await rename(f.source,local);f.source=local;
+      if(options.realPhoto){
+        const jpeg=await sharp({create:{width:96,height:48,channels:3,background:"blue"}})
+          .withMetadata({orientation:6}).jpeg().toBuffer();
+        const source=Buffer.concat([jpeg,Buffer.alloc(f.plan.size-jpeg.length)]);
+        await writeFile(f.source,source);
+        f.plan.sha256=createHash("sha256").update(source).digest("hex");
+      }
       f.thumbnailKey=`thumb-${randomUUID()}.webp`;
       await storage.reserveMedia(f.plan.sessionId,gallery.id,gallery.creatorId,f.plan.size+102400,
         f.plan.key,f.thumbnailKey,options.admin??false);
@@ -69,7 +81,7 @@ test("native multipart PostgreSQL journal uses a disposable database only",{
         expiresAt:new Date(f.plan.expiresAt)});
       // Simulated output of the existing validated thumbnail pipeline. Native
       // lifecycle does not replace the actual content/derivative processors.
-      await db.insert(routes).values({key:f.thumbnailKey,provider:"r2",state:"verified",size:100,
+      if(!options.realPhoto)await db.insert(routes).values({key:f.thumbnailKey,provider:"r2",state:"verified",size:100,
         sha256:"a".repeat(64),objectVersion:'"fixture-thumb"',mime:"image/webp"});
       f.ctx=()=>databaseMultipartContext(f.plan,f.context().driver);
       f.send=()=>uploadR2MultipartFile(f.plan,f.source,f.ctx());
@@ -445,6 +457,82 @@ test("native multipart PostgreSQL journal uses a disposable database only",{
       assert.equal((await f.read()).checkpoint.phase,"verified");
       assert.equal((await creatorUsage(db,accounts[0].id)).reservedBytes,f.plan.size+102400);
     }));
+    for(const official of [false,true])await t.test(`real ${official?"official":"Creator"} JPEG bridge preserves bytes and reuses bounded validation`,async()=>
+      using({realPhoto:true,official,admin:official},async f=>{
+        const before=await readFile(f.source);
+        const prepared=await prepareMultipartJpeg(f.plan,f.source,f.driver());
+        assert.deepEqual(await readFile(f.source),before);
+        assert.equal((await f.read()).checkpoint,null,"Preparation is not an ambiguous provider initiation");
+        assert.equal(f.state.calls.length,0);
+        const preview=await readFile(prepared.thumbnail.path),metadata=await sharp(preview).metadata();
+        assert.equal(metadata.format,"webp");assert.equal(metadata.exif,undefined);
+        assert.equal(metadata.width,48);assert.equal(metadata.height,96);
+        assert.ok(preview.length<=100000);assert.ok(Math.max(metadata.width,metadata.height)<=640);
+        assert.equal(prepared.media.storedBytes,before.length+preview.length);
+        assert.equal((await prepareMultipartJpeg(f.plan,f.source,f.driver())).thumbnail.sha256,prepared.thumbnail.sha256);
+        await f.send();
+        // Thumbnail persistence belongs to the existing small-object pipeline;
+        // this fixture supplies its verified route, not an extra JPEG analysis.
+        await db.insert(routes).values({key:f.thumbnailKey,provider:"r2",state:"verified",
+          size:preview.length,sha256:prepared.thumbnail.sha256,objectVersion:'"prepared-thumb"',mime:"image/webp"});
+        const item=await f.register({...f.media(),...prepared.media},true);
+        assert.equal(item.highBytes,before.length);
+        assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,item.id))).length,1);
+        await f.cleanup();
+        assert.ok(f.state.objects.has(f.plan.key));
+      }));
+    await t.test("malformed JPEG has zero provider writes and its no-write staging fence can be cleaned",async()=>
+      using({realPhoto:true},async f=>{
+        const malformed=Buffer.alloc(f.plan.size,23);
+        await writeFile(f.source,malformed);
+        f.plan.sha256=createHash("sha256").update(malformed).digest("hex");
+        await db.update(sessions).set({sha256:f.plan.sha256}).where(eq(sessions.id,f.plan.sessionId));
+        await assert.rejects(prepareMultipartJpeg(f.plan,f.source,f.driver()),isCode("integrity"));
+        assert.equal(f.state.calls.length,0);
+        assert.equal((await f.read()).checkpoint,null);
+        f.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="false";f.env.MEDIA_R2_MULTIPART_ENABLED="false";
+        assert.equal(await f.cleanup(),"released");
+        await assert.rejects(stat(f.source),error=>error.code==="ENOENT");
+        assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,f.plan.sessionId))).length,0);
+      }));
+    await t.test("changed original checksum or immutable preview cannot pass JPEG preparation",async()=>
+      using({realPhoto:true},async f=>{
+        const prepared=await prepareMultipartJpeg(f.plan,f.source,f.driver());
+        await writeFile(prepared.thumbnail.path,Buffer.alloc(prepared.thumbnail.size,1));
+        await assert.rejects(prepareMultipartJpeg(f.plan,f.source,f.driver()),isCode("integrity"));
+        await rm(prepared.thumbnail.path);
+        const source=await readFile(f.source);source[source.length-1]=1;await writeFile(f.source,source);
+        await assert.rejects(prepareMultipartJpeg(f.plan,f.source,f.driver()),isCode("integrity"));
+        assert.equal(f.state.calls.length,0);
+      }));
+    await t.test("closed gates or non-owned source paths cannot enter native JPEG processing",async()=>
+      using({realPhoto:true},async f=>{
+        f.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="false";
+        await assert.rejects(prepareMultipartJpeg(f.plan,f.source,f.driver()),isCode("configuration"));
+        assert.equal(await f.read(),undefined);
+        f.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="true";
+        await assert.rejects(prepareMultipartJpeg(f.plan,path.join(f.root,"source"),f.driver()),isCode("integrity"));
+        assert.equal(f.state.calls.length,0);
+        assert.equal(await f.cleanup(),"released");
+      }));
+    await t.test("no-write cleanup refuses release when any route shows a persistence attempt",async()=>
+      using({realPhoto:true},async f=>{
+        const prepared=await prepareMultipartJpeg(f.plan,f.source,f.driver());
+        await db.insert(routes).values({key:f.thumbnailKey,provider:"r2",state:"verified",
+          size:prepared.thumbnail.size,sha256:prepared.thumbnail.sha256,mime:"image/webp",objectVersion:'"fixture"'});
+        await assert.rejects(f.cleanup(),isCode("cleanup_pending"));
+        assert.equal((await stat(f.source)).size,f.plan.size);
+        assert.equal((await creatorUsage(db,accounts[0].id)).reservedBytes,f.plan.size+102400);
+      }));
+    await t.test("JPEG preparation never retries an uncertain provider initiation",async()=>
+      using({realPhoto:true},async f=>{
+        f.state.after=async name=>{if(name==="CreateMultipartUploadCommand")throw Error("lost reply");};
+        await assert.rejects(f.send());f.state.after=undefined;
+        const calls=f.state.calls.length;
+        await assert.rejects(prepareMultipartJpeg(f.plan,f.source,f.driver()),isCode("uncertain"));
+        assert.equal(f.state.calls.length,calls);
+        assert.equal((await f.read()).checkpoint.phase,"initiating");
+      }));
   }finally{
     for(const account of accounts)await db.delete(users).where(eq(users.id,account.id));
     await pool.end();
