@@ -63,7 +63,9 @@ or creates another analysis admission.
 Aggregate per-pass counters contain no user IDs, object keys, upload IDs,
 credentials or raw provider errors. Held states remain recorded in internal
 session metadata for future operator diagnostics. No new public diagnostic
-surface or automatic unhold mechanism is introduced.
+surface or automatic unhold mechanism is introduced by maintenance itself.
+An aggregate, admin-only Development read view is now prepared separately; see
+`docs/native-upload-diagnostics.md`. It cannot invoke recovery or release bytes.
 
 ## Verification
 
@@ -91,7 +93,7 @@ that native run is reported separately, not as another full combined run.
 ## Remaining release gates
 
 This closes the bounded native-JPEG recovery implementation slice, not all of
-P2-8/P2-9. Broader operator diagnostics, RAW/video lifecycle integration,
+P2-8/P2-9. Broader cross-object diagnostics and case-resolution procedures, RAW/video lifecycle integration,
 real-provider/connected-browser/resource/restart
 acceptance and separately approved schema/settings/publishing remain.
 Unknown initiation and expired ambiguous completion deliberately stay held until

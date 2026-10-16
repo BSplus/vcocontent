@@ -18,6 +18,7 @@ import {registerRoutes} from "../server/routes.ts";
 import {stopAnalysisWorker} from "../server/analysis-jobs.ts";
 import {UPLOAD_PART_BYTES,cleanupUploadSessions} from "../server/resumable-uploads.ts";
 import {recoverNativeUploadSessions} from "../server/native-upload-recovery.ts";
+import {summarizeNativeUploads} from "../server/native-upload-diagnostics.ts";
 import {mediaDatabaseFingerprint} from "../server/media-storage-config.ts";
 import {multipartFixture} from "./helpers/r2-multipart-fixture.mjs";
 import {nativeR2HttpFixture} from "./helpers/native-r2-http-fixture.mjs";
@@ -106,6 +107,88 @@ test("authenticated native JPEG intake stays isolated and gated",{timeout:210000
         }
       }
     };
+    await t.test("upload diagnostics require an active admin and are never cached",async()=>{
+      const url="/api/admin/native-upload-diagnostics";
+      assert.equal((await request(url,{},9)).status,401);
+      assert.equal((await request(url,{},0)).status,403);
+      accounts[2].suspended=true;
+      try{assert.equal((await request(url,{},2)).status,403);}
+      finally{accounts[2].suspended=false;}
+      const response=await request(url,{},2);assert.equal(response.status,200);
+      assert.equal(response.headers.get("cache-control"),"no-store");
+      assert.equal((await response.json()).availability,"ready");
+    });
+    await t.test("diagnostics summarize held work without writes, provider access or identifying details",async()=>using({},async f=>{
+      await f.stage();
+      const [before]=await db.select().from(sessions).where(eq(sessions.id,f.session.id));
+      await db.update(sessions).set({state:"finalizing",metadata:{...before.metadata,nativeRecovery:{
+        status:"held",reason:"integrity",attempts:1,lastAttemptAt:new Date().toISOString(),
+        nextAttemptAt:new Date(Date.now()+60000).toISOString(),
+      }}}).where(eq(sessions.id,before.id));
+      const [reservation]=await db.select().from(mediaReservations).where(eq(mediaReservations.id,before.id));
+      const snapshot=await db.select().from(sessions).where(eq(sessions.id,before.id));
+      const calls=native.calls.length,response=await request("/api/admin/native-upload-diagnostics",{},2);
+      assert.equal(response.status,200);const body=await response.json(),text=JSON.stringify(body);
+      assert.equal(body.counts.sessions,1);assert.equal(body.counts.held,1);
+      assert.equal(body.counts.finalizing,1);assert.equal(body.counts.due,0);
+      assert.equal(body.reservedBytes,String(reservation.reservedBytes));
+      assert.deepEqual(body.reasons,[{reason:"integrity",count:1}]);
+      for(const forbidden of [before.id,before.requestKey,reservation.storageKey,reservation.thumbnailKey,
+        accounts[0].username,accounts[0].email,"Creator-written caption","Fixture credit"])
+        assert.equal(text.includes(forbidden),false);
+      assert.equal(native.calls.length,calls);
+      assert.deepEqual(await db.select().from(sessions).where(eq(sessions.id,before.id)),snapshot);
+      assert.deepEqual((await db.select().from(mediaReservations).where(eq(mediaReservations.id,before.id)))[0],reservation);
+      process.env.MEDIA_R2_MULTIPART_ENABLED="false";process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="false";
+      const disabled=await (await request("/api/admin/native-upload-diagnostics",{},2)).json();
+      assert.equal(disabled.availability,"ready");assert.equal(disabled.nativeEnabled,false);
+      assert.equal(disabled.uploadsEnabled,false);assert.equal(disabled.counts.held,1);
+    }));
+    await t.test("diagnostics distinguish missing schema and do not inspect Production",async()=>{
+      const url="/api/admin/native-upload-diagnostics";
+      await db.execute(sql`alter table media_r2_multipart_journals rename to diagnostics_hidden_fixture`);
+      try{
+        const missing=await request(url,{},2);assert.equal(missing.status,200);
+        assert.equal((await missing.json()).availability,"schema_unavailable");
+        process.env.MEDIA_STORAGE_ENVIRONMENT="production";
+        const production=await request(url,{},2);assert.equal(production.status,200);
+        const body=await production.json();assert.equal(body.availability,"not_development");
+        assert.equal(body.counts.sessions,0);assert.equal(body.reservedBytes,"0");
+      }finally{
+        process.env.MEDIA_STORAGE_ENVIRONMENT="development";
+        await db.execute(sql`alter table diagnostics_hidden_fixture rename to media_r2_multipart_journals`);
+      }
+    });
+    await t.test("diagnostics bound samples, sanitize reasons and preserve large integer accounting",()=>{
+      const now=new Date("2026-10-16T12:00:00Z");
+      const row={state:"finalizing",expires_at:"2026-10-16T13:00:00Z",
+        reserved_bytes:"9007199254740993",recovery_status:"retained",
+        recovery_reason:"private-key-or-provider-error",retry_at:"2026-10-16T12:01:00Z"};
+      const result=summarizeNativeUploads(Array.from({length:201},()=>({...row})),now);
+      assert.equal(result.truncated,true);assert.equal(result.counts.sessions,200);
+      assert.equal(result.counts.retryScheduled,200);assert.equal(result.counts.due,0);
+      assert.equal(result.reservedBytes,(9007199254740993n*200n).toString());
+      assert.deepEqual(result.reasons,[{reason:"other",count:200}]);
+      const overlap=summarizeNativeUploads([
+        {...row,recovery_status:"held",expires_at:"2026-10-16T11:00:00Z"},
+        {...row,retry_at:"invalid",reserved_bytes:"-1"},
+        {...row,state:"completed",retry_at:null,reserved_bytes:null},
+        {...row,state:"receiving",recovery_reason:null},
+      ],now);
+      assert.equal(overlap.counts.held,1);assert.equal(overlap.counts.expired,1);
+      assert.equal(overlap.counts.due,2);assert.equal(overlap.counts.receiving,1);
+      assert.equal(overlap.counts.completedAwaitingCleanup,1);
+      assert.equal(overlap.truncated,false);
+    });
+    await t.test("diagnostic query failures return a sanitized non-success response",async()=>{
+      await db.execute(sql`alter table media_upload_sessions rename column metadata to diagnostic_hidden_metadata`);
+      try{
+        const response=await request("/api/admin/native-upload-diagnostics",{},2);
+        assert.equal(response.status,503);const body=await response.json();
+        assert.deepEqual(Object.keys(body),["error"]);assert.match(body.error,/temporarily unavailable/);
+        assert.equal(JSON.stringify(body).includes("metadata"),false);
+      }finally{await db.execute(sql`alter table media_upload_sessions rename column diagnostic_hidden_metadata to metadata`);}
+    });
     await t.test("native selection requires explicit flag/schema and cannot be supplied by a browser",async()=>using({},async f=>{
       assert.equal((await f.init({metadata:{...f.body.metadata,nativeTransport:"r2-jpeg-v1"}})).status,400);
       assert.equal((await f.init({storageKey:"media-untrusted.jpg"})).status,400);

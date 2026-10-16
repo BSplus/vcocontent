@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { registerResumableUploadRoutes, resumableUploadsAvailable, cleanupUploadSessions } from "./resumable-uploads";
+import {nativeUploadDiagnostics} from "./native-upload-diagnostics";
 import { isPreservedPhoto } from "@shared/image-provenance";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
@@ -1056,6 +1057,11 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   app.get("/api/admin/media-usage", requireAdmin, async (_req, res) => {
     try { res.json(await storage.mediaUsage()); }
     catch (error) { console.error("Media usage failed:", error); res.status(500).json({ error: "Could not load media usage" }); }
+  });
+  app.get("/api/admin/native-upload-diagnostics", requireAdmin, async (_req, res) => {
+    res.set("Cache-Control","no-store");
+    try {res.json(await nativeUploadDiagnostics());}
+    catch {res.status(503).json({error:"Upload diagnostics are temporarily unavailable. No recovery action was performed."});}
   });
   app.post("/api/admin/media-cleanup", requireAdmin, async (_req, res) => {
     try { await storage.cleanupObjects(); res.json(await storage.mediaUsage()); }

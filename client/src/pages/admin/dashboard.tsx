@@ -40,6 +40,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Textarea } from "@/components/ui/textarea";
 import AssignNumberAction from "@/components/assign-number-dialog";
 import { creditLabel } from "@shared/media-credit";
+import NativeUploadDiagnostics from "@/components/admin/native-upload-diagnostics";
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -296,6 +297,9 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="media" className="mt-6">
+            <div className="mb-6">
+              <NativeUploadDiagnostics enabled={activeTab === "media"} />
+            </div>
             {usage && (
               <Card className="mb-6">
                 <CardContent className="pt-5 space-y-3 break-words">

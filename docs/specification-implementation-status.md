@@ -19,7 +19,7 @@ five chat turns. Prepared code and disposable tests do not imply activation.
 | **P2-5 Upload sessions** | **In progress.** Native JPEG is connected to authenticated sessions and the existing uploader behind disabled Development-only gates. Disposable HTTP/client tests and mobile/desktop Studio controls with mocked native responses pass; connected native browser/provider and full operational acceptance remain. |
 | P2-6 RAW pairing | Remaining: approved formats, explicit safe pairing and original-delivery controls. |
 | P2-7 Creator video | Remaining: policy-gated Creator capability, bounded codec/preview support and end-to-end lifecycle. Existing official video remains unchanged. |
-| P2-8 Recovery/integrity | Native-aware deletion, durable cleanup/accounting handoff, bounded JPEG session recovery and reserved-thumbnail reconciliation are prepared/tested. Remaining: broader operator diagnostics, RAW/video lifecycle and operational acceptance. |
+| P2-8 Recovery/integrity | Native-aware deletion, durable cleanup/accounting handoff, bounded JPEG recovery, reserved-thumbnail reconciliation and aggregate Development admin diagnostics are prepared/tested. Remaining: cross-object diagnostics/case resolution, RAW/video lifecycle and operational acceptance. |
 | P2-9 Compatibility/release evidence | Remaining: complete acceptance, resource measurements and reviewed release/recovery plan. |
 
 ## After Phase 2
@@ -43,6 +43,9 @@ errors, lost commits and refused cancellation; see
 has bounded native-JPEG recovery, held uncertainty, backoff and aggregate
 diagnostics; see `docs/native-upload-recovery.md`. Next complete broader lifecycle
 and operational evidence before connected Development approval.
+The admin Media Management tab now has a read-only, bounded Development sample
+with held/retry reasons and sampled reservation bytes; see
+`docs/native-upload-diagnostics.md`. It does not invoke recovery or release quota.
 Native code uses existing
 routes but is not enabled in this workspace or Production. No current limits
 were increased; RAW, Creator video, metadata exports and paid features remain off.
