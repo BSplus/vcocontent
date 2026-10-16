@@ -1060,8 +1060,16 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   });
   app.get("/api/admin/native-upload-diagnostics", requireAdmin, async (_req, res) => {
     res.set("Cache-Control","no-store");
-    try {res.json(await nativeUploadDiagnostics());}
-    catch {res.status(503).json({error:"Upload diagnostics are temporarily unavailable. No recovery action was performed."});}
+    const controller=new AbortController();
+    const disconnected=()=>{if(!res.writableEnded)controller.abort();};
+    res.once("close",disconnected);
+    try {
+      const result=await nativeUploadDiagnostics(controller.signal);
+      if(!res.destroyed)res.json(result);
+    }
+    catch {
+      if(!res.destroyed)res.status(503).json({error:"Upload diagnostics are temporarily unavailable. No recovery action was performed."});
+    }finally{res.removeListener("close",disconnected);}
   });
   app.post("/api/admin/media-cleanup", requireAdmin, async (_req, res) => {
     try { await storage.cleanupObjects(); res.json(await storage.mediaUsage()); }

@@ -1,8 +1,13 @@
-import {sql} from "drizzle-orm";
-import {db} from "./db";
+import type {Pool} from "@neondatabase/serverless";
+import {createMediaLeasePool} from "./db";
+import {createDiagnosticReader} from "./native-diagnostic-read";
 import type {NativeUploadDiagnostics} from "@shared/native-upload-diagnostics";
 
 const SAMPLE_LIMIT=200;
+let diagnosticPool:Pool|undefined;
+// Separate, lazily acquired connections, using the already verified runtime
+// target and existing connection/query limits; never the application queue.
+const read=createDiagnosticReader(()=>(diagnosticPool??=createMediaLeasePool()).connect());
 const SAFE_REASONS=new Set(["pending","unconfirmed","uploads_paused","unknown_creation",
   "expired_uncertain","integrity","conflict","denied","lease_lost","busy","unavailable",
   "uncertain","cleanup_pending"]);
@@ -42,7 +47,7 @@ NativeUploadDiagnostics,"counts"|"reservedBytes"|"reasons"|"truncated">{
     reasons:Array.from(reasons).sort(([a],[b])=>a.localeCompare(b)).map(([reason,count])=>({reason,count}))};
 }
 
-export async function nativeUploadDiagnostics():Promise<NativeUploadDiagnostics>{
+export async function nativeUploadDiagnostics(signal?:AbortSignal):Promise<NativeUploadDiagnostics>{
   const now=new Date(),base:NativeUploadDiagnostics={
     availability:"not_development",nativeEnabled:false,uploadsEnabled:false,
     sampledAt:now.toISOString(),sampleLimit:SAMPLE_LIMIT,
@@ -54,18 +59,15 @@ export async function nativeUploadDiagnostics():Promise<NativeUploadDiagnostics>
     process.env.MEDIA_STORAGE_ROUTING==="enabled"&&process.env.MEDIA_RESUMABLE_UPLOADS_ENABLED==="true"&&
     process.env.MEDIA_R2_MULTIPART_ENABLED==="true";
   base.uploadsEnabled=process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED==="true";
-  return db.transaction(async tx=>{
-    await tx.execute(sql`set transaction read only`);
-    await tx.execute(sql`set local statement_timeout='2s'`);
-    await tx.execute(sql`set local lock_timeout='500ms'`);
-    const ready=await tx.execute(sql`select to_regclass('media_upload_sessions') is not null
+  return read(async query=>{
+    const ready=await query(`select to_regclass('media_upload_sessions') is not null
       and to_regclass('media_reservations') is not null
       and to_regclass('media_r2_multipart_journals') is not null
       and to_regclass('media_asset_records') is not null
       and to_regclass('media_asset_objects') is not null
       and to_regclass('media_asset_variants') is not null as ready`);
     if(!ready.rows[0]?.ready)return {...base,availability:"schema_unavailable" as const};
-    const result=await tx.execute(sql`select s.state,s.expires_at,
+    const result=await query(`select s.state,s.expires_at,
       r.reserved_bytes::text as reserved_bytes,
       s.metadata#>>'{nativeRecovery,status}' as recovery_status,
       s.metadata#>>'{nativeRecovery,reason}' as recovery_reason,
@@ -75,9 +77,9 @@ export async function nativeUploadDiagnostics():Promise<NativeUploadDiagnostics>
         where cleaned_at is null and mime='image/jpeg'
         and state in ('receiving','finalizing','completed')
         and (metadata->>'nativeTransport'='r2-jpeg-v1' or metadata ? 'nativeReceipt')
-        order by created_at,id limit ${SAMPLE_LIMIT+1}
-      ) s left join media_reservations r on r.id=s.id`);
+        order by created_at,id limit $1
+      ) s left join media_reservations r on r.id=s.id`,[SAMPLE_LIMIT+1]);
     return {...base,availability:"ready" as const,
       ...summarizeNativeUploads(result.rows as DiagnosticRow[],now)};
-  });
+  },signal);
 }

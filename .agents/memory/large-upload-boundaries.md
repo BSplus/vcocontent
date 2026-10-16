@@ -146,3 +146,15 @@ needed to resolve a late successful write.
 **How to apply:** Bound batch size, concurrency and retry frequency; retain the
 in-flight slot until work settles. Require separate stall/resource evidence
 before activation rather than claiming a strict elapsed-time guarantee.
+
+Read-only operational diagnostics may destroy their own timed-out connection,
+but must not reuse that cancellation pattern for storage mutations or alter
+the application pool's global policy.
+
+**Why:** A browser deadline only stops waiting; it does not prove database work
+ended. Conversely, abandoning a writer can lose the evidence needed to reconcile
+a late successful mutation.
+
+**How to apply:** Isolate bounded diagnostic admission and keep unresolved work
+charged to its slot until settled. Destroy late diagnostic acquisitions without
+SQL. Preserve the stricter lease/evidence rules for upload and cleanup writers.
