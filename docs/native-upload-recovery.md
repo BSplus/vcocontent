@@ -90,11 +90,46 @@ schema and gate changes exist only inside those test children. A preceding
 broader run passed 98 tests before the final five native scenarios were added;
 that native run is reported separately, not as another full combined run.
 
+## Application-process restart evidence
+
+The native intake suite now also starts separate application processes against
+the same disposable PostgreSQL database and disk-backed synthetic provider.
+The parent sends **SIGKILL**, waits for process exit and starts a fresh process
+at each of these durable boundaries:
+
+1. Thumbnail bytes stored, but the PUT acknowledgement/route verification has
+   not completed.
+2. Source and thumbnail verified, immediately before atomic media registration.
+3. Registration committed, before independent safety review and staging cleanup.
+
+Recovery must preserve the source bytes, finish with one media record, two
+asset objects and one analysis admission, and remove only terminal owned staging.
+It must not repeat Create, UploadPart, Complete or thumbnail PUT. Unregistered
+bytes remain reserved; committed bytes are counted once, without a leftover
+reservation. A second fresh recovery process must perform no provider work or
+change the accounting.
+
+The post-commit interruption deliberately retains the existing
+`Safety check pending.` state. Storage recovery is not safety approval or proof
+of public availability. Synthetic provider metadata is persisted alongside
+fixture objects so a restarted application cannot rely on old in-memory state.
+All fixture files and schema are confined to the disposable runner.
+
+The final native suite passed **49 Node-reported checks, zero failures/skips**,
+including the three new SIGKILL scenarios. TypeScript, the production build and
+the public-page screenshot check passed. No signed-in UI was changed or newly
+verified in this step.
+
+These are real application-process termination checks, not machine-restart,
+power-loss, live Cloudflare or multiple-server acceptance. They do not exercise
+every possible multipart interruption. No application behavior, schema, live
+settings or upload gates are changed by this test preparation.
+
 ## Remaining release gates
 
 This closes the bounded native-JPEG recovery implementation slice, not all of
 P2-8/P2-9. Broader cross-object diagnostics and case-resolution procedures, RAW/video lifecycle integration,
-real-provider/connected-browser/resource/restart
+real-provider/connected-browser/resource and broader restart
 acceptance and separately approved schema/settings/publishing remain.
 Unknown initiation and expired ambiguous completion deliberately stay held until
 verified operational resolution; no automatic destructive cleanup is implied.

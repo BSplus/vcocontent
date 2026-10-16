@@ -15,12 +15,17 @@ parts of **P2-8**, with their bounded-failure evidence in **P2-9**. They do not
 replace P2-6 RAW or P2-7 Creator video, and are not additional marketplace phases.
 No billing or commercial features have started.
 
-Latest evidence: diagnostics now have an isolated, single-admission read-only
-connection boundary, total client deadline and disconnect cleanup. Seven reader
-tests and 50 combined loopback-network/native checks passed. This closes the
-diagnostics-stall slice only, not whole-worker stall or process-restart acceptance.
-Next: disposable process-restart recovery evidence; then continue the outstanding
-RAW/video packages within approved format/resource/policy boundaries.
+Diagnostics have isolated read-only connection-stall evidence. The next
+acceptance slice now exercises actual SIGKILL and fresh-process JPEG recovery
+after thumbnail persistence, before registration and after the registration
+commit. It checks one asset/analysis admission, immutable bytes, no repeated
+provider writes, capacity retention and exact final accounting. See
+`docs/native-upload-recovery.md` for the evidence and its limits.
+The final native suite passed 49 checks with no failures/skips; type checking
+and the production build passed.
+This is not whole-worker resource/stall, host-restart or live-provider acceptance.
+Next continue the outstanding RAW/video packages within approved
+format/resource/policy boundaries; operational release gates remain separate.
 
 | Package | Current position |
 | --- | --- |
@@ -32,7 +37,7 @@ RAW/video packages within approved format/resource/policy boundaries.
 | P2-6 RAW pairing | Remaining: approved formats, explicit safe pairing and original-delivery controls. |
 | P2-7 Creator video | Remaining: policy-gated Creator capability, bounded codec/preview support and end-to-end lifecycle. Existing official video remains unchanged. |
 | P2-8 Recovery/integrity | Native-aware deletion, durable cleanup/accounting handoff, bounded JPEG recovery, reserved-thumbnail reconciliation and aggregate Development admin diagnostics are prepared/tested. Remaining: cross-object diagnostics/case resolution, RAW/video lifecycle and operational acceptance. |
-| P2-9 Compatibility/release evidence | In progress: isolated HTTP/client/browser and read-only diagnostics connection-stall checks. Remaining: process-restart acceptance, full lifecycle/resource measurements and reviewed release/recovery plan. |
+| P2-9 Compatibility/release evidence | In progress: isolated HTTP/client/browser, diagnostics connection-stall and three JPEG application-process restart boundaries. Remaining: broader lifecycle/restart/resource measurements and reviewed release/recovery plan. |
 
 ## After Phase 2
 

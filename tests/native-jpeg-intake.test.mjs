@@ -7,6 +7,7 @@ import {randomUUID,createHash} from "node:crypto";
 import {readFile,writeFile,rm,mkdir} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
+import {spawn} from "node:child_process";
 import sharp from "sharp";
 import {eq,inArray,sql} from "drizzle-orm";
 import {db,pool} from "../server/db.ts";
@@ -327,6 +328,86 @@ test("authenticated native JPEG intake stays isolated and gated",{timeout:210000
       assert.equal((await db.select().from(mediaObjectRoutes).where(eq(mediaObjectRoutes.key,key)))[0].state,"pending");
       return key;
     };
+    const restartProcess=async(f,mode)=>{
+      const child=spawn(process.execPath,["--import","tsx","tests/helpers/native-restart-child.mjs",
+        mode,f.session.id,String(accounts[f.actor].id)],{env:{...process.env},
+        stdio:["ignore","ignore","pipe","ipc"]});
+      const calls=[];let stderr="";
+      child.stderr.on("data",data=>{stderr+=data.toString();});
+      const exited=once(child,"exit");
+      try{
+        await new Promise((resolve,reject)=>{
+          const timeout=setTimeout(()=>reject(Error("Restart fixture exceeded 30 seconds")),30000);
+          const finish=(error)=>{clearTimeout(timeout);error?reject(error):resolve();};
+          child.once("error",finish);
+          child.once("exit",()=>finish(Error("Restart child exited before checkpoint")));
+          child.on("message",message=>{
+            if(message.kind==="provider")calls.push(message.name);
+            else if(message.kind==="put")calls.push("PutObject");
+            else if(message.kind===(mode==="recover"?"recovered":"boundary"))finish();
+            else if(message.kind==="unexpected-response")finish(Error(`Unexpected finalizer status ${message.status}`));
+          });
+        });
+      }catch(error){
+        // Only sanitized synthetic fixture output; no runtime configuration.
+        throw new Error(`${error.message}\n${stderr.slice(-2000)}`);
+      }finally{
+        child.kill("SIGKILL");await exited;
+      }
+      return {pid:child.pid,calls};
+    };
+    for(const checkpoint of ["thumbnail","before-register","after-register"]){
+      await t.test(`fresh process recovers SIGKILL at ${checkpoint} without duplicate writes or accounting`,
+        async()=>using({},async f=>{
+          const baseline=await usage();
+          await f.stage();
+          const stopped=await restartProcess(f,checkpoint);
+          const [interrupted]=await rowsFor(f);
+          assert.equal(interrupted.workerPid,checkpoint==="after-register"?null:stopped.pid);
+          assert.equal(interrupted.state,checkpoint==="after-register"?"completed":"finalizing");
+          assert.equal(interrupted.cleanedAt,null);
+          const [reservation]=await db.select().from(mediaReservations).where(eq(mediaReservations.id,f.session.id));
+          if(checkpoint!=="after-register"){
+            assert.ok(reservation,"Unregistered bytes remain reserved");
+            assert.ok((await usage()).bytes>=baseline.bytes+reservation.reservedBytes);
+          }
+          const sourceKey=reservation?.storageKey;
+          if(sourceKey)assert.deepEqual(await readFile(path.join(fixtureRoots.r2,sourceKey)),f.bytes);
+          const resumed=await restartProcess(f,"recover");
+          assert.notEqual(resumed.pid,stopped.pid);
+          assert.notEqual(resumed.pid,process.pid);
+          const [done]=await rowsFor(f);
+          assert.equal(done.state,"completed");assert.ok(done.cleanedAt);
+          assert.equal(done.metadata.nativeRecovery,undefined);
+          const items=await db.select().from(mediaItems).where(eq(mediaItems.eventId,f.gallery.id));
+          assert.equal(items.length,1);assert.equal(items[0].id,done.mediaId);
+          if(checkpoint==="after-register"){
+            // A terminal storage receipt must not pretend the interrupted
+            // independent safety review has completed.
+            assert.equal(items[0].safetyStatus,"error");
+            assert.equal(items[0].safetyReason,"Safety check pending.");
+          }
+          assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,done.mediaId))).length,1);
+          const objects=await db.select().from(mediaAssetObjects).where(eq(mediaAssetObjects.eventId,f.gallery.id));
+          assert.equal(objects.length,2);
+          assert.equal(new Set(objects.map(row=>row.key)).size,2);
+          assert.equal(stopped.calls.filter(name=>name==="CompleteMultipartUploadCommand").length,1);
+          assert.equal(stopped.calls.filter(name=>name==="PutObject").length,1);
+          for(const name of ["CreateMultipartUploadCommand","UploadPartCommand","CompleteMultipartUploadCommand","PutObject"])
+            assert.equal(resumed.calls.filter(value=>value===name).length,0,`Recovery repeated ${name}`);
+          assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,f.session.id))).length,0);
+          const accounted=await usage();
+          assert.equal(accounted.bytes,baseline.bytes+items[0].storedBytes);
+          assert.equal(accounted.reservedBytes,baseline.reservedBytes);
+          assert.deepEqual(await readFile(path.join(fixtureRoots.r2,items[0].url.split("/").at(-1))),f.bytes);
+          await assert.rejects(staged(f),error=>error.code==="ENOENT");
+          const again=await restartProcess(f,"recover");
+          assert.equal(again.calls.length,0);
+          assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.eventId,f.gallery.id))).length,1);
+          assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,done.mediaId))).length,1);
+          assert.deepEqual(await usage(),accounted);
+        }));
+    }
     await t.test("lost thumbnail PUT reply is verified without repeating PUT or Complete",async()=>using({},async f=>{
       const key=await lostThumbnail(f,"stored"),completes=count("CompleteMultipartUploadCommand");
       const put=R2Store.prototype.put;let writes=0;

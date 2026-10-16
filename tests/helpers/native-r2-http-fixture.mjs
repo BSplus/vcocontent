@@ -21,7 +21,12 @@ export function nativeR2HttpFixture(root){
       result={UploadId:id};
     }else if(name==="HeadObjectCommand"||name==="GetObjectCommand"){
       let info;try{info=await stat(filename);}catch{throw missing();}
-      if(name==="HeadObjectCommand")result={ContentLength:info.size,ContentType:objectMime(p.Key),ETag:"fixture",Metadata:metadata.get(p.Key)};
+      if(name==="HeadObjectCommand"){
+        let saved=metadata.get(p.Key);
+        if(!saved)try{saved=JSON.parse(await readFile(filename+".fixture-metadata","utf8"));}
+        catch(error){if(error.code!=="ENOENT")throw error;}
+        result={ContentLength:info.size,ContentType:objectMime(p.Key),ETag:"fixture",Metadata:saved};
+      }
       else{assert.equal(p.IfMatch,"fixture");result={Body:createReadStream(filename)};}
     }else{
       const upload=uploads.get(p.UploadId);if(!upload)throw missing();
@@ -36,7 +41,10 @@ export function nativeR2HttpFixture(root){
         const bytes=Buffer.concat(p.MultipartUpload.Parts.map(part=>{
           const saved=upload.parts.get(part.PartNumber);assert.equal(saved.etag,part.ETag);return saved.bytes;
         }));
-        await writeFile(filename,bytes,{flag:"wx"});metadata.set(p.Key,upload.metadata);uploads.delete(p.UploadId);result={};
+        await writeFile(filename,bytes,{flag:"wx"});metadata.set(p.Key,upload.metadata);
+        // Provider-owned metadata must survive an application-process restart.
+        await writeFile(filename+".fixture-metadata",JSON.stringify(upload.metadata));
+        uploads.delete(p.UploadId);result={};
       }else if(name==="AbortMultipartUploadCommand"){uploads.delete(p.UploadId);result={};}
       else throw Error("Unexpected native fixture command");
     }
