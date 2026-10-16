@@ -72,6 +72,38 @@ export async function saveNativeJpeg(row:Session,filename:string,
     await withMediaWorkBudget(async()=>{
       const key=prepared.thumbnail.key,existing=await routeFor(key);
       if(!existing)await putMediaObject(key,prepared.thumbnail.path);
+      else if(existing.provider==="r2"&&existing.state==="pending"){
+        // Only this session's reserved, deterministically prepared thumbnail is
+        // eligible. A lost PUT reply is not permission to overwrite or delete.
+        if(existing.sha256!=null||existing.size!=null||existing.mime!=null||
+          existing.object_version!=null||existing.retained_source||existing.source_sha256!=null)
+          throw new MultipartUploadError("integrity");
+        const store=getObjectStore("r2");
+        let head;
+        try{head=await store.metadata(key);}
+        catch(error){
+          if(error instanceof ObjectStoreError&&error.code==="missing")
+            throw new MultipartUploadError("cleanup_pending");
+          throw error;
+        }
+        if(!head.version||head.size!==prepared.thumbnail.size||head.mime!=="image/webp")
+          throw new MultipartUploadError("integrity");
+        const actual=await hashStream(store.open(key,undefined,head.version),100000);
+        if(actual.size!==prepared.thumbnail.size||actual.sha256!==prepared.thumbnail.sha256)
+          throw new MultipartUploadError("integrity");
+        const confirmed=await store.metadata(key);
+        if(confirmed.version!==head.version||confirmed.size!==head.size||confirmed.mime!==head.mime)
+          throw new MultipartUploadError("integrity");
+        thumbnail.journal.assertLease();
+        const updated=await db.execute(sql`update media_object_routes
+          set state='verified',sha256=${actual.sha256},size=${actual.size},
+          mime='image/webp',object_version=${head.version},updated_at=now()
+          where key=${key} and provider='r2' and state='pending'
+          and sha256 is null and size is null and mime is null and object_version is null
+          and coalesce(to_jsonb(media_object_routes)->>'retained_source','false')='false'
+          and to_jsonb(media_object_routes)->>'source_sha256' is null returning key`);
+        if(updated.rows.length!==1)throw new MultipartUploadError("integrity");
+      }
       const route=await routeFor(key),store=getObjectStore("r2");
       if(!route||route.provider!=="r2"||route.state!=="verified"||
         Number(route.size)!==prepared.thumbnail.size||route.sha256!==prepared.thumbnail.sha256||

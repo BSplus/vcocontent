@@ -45,6 +45,7 @@ cancellation, but cannot finalize/publish another media item.
 | Inactive, unexpired finalizer | Resume the existing authenticated-intent pipeline with the same source, metadata, reservation and provider journal. |
 | Lost part reply | Reconcile acknowledged provider bytes before any retry; no replacement of an accepted part. |
 | Lost Complete reply | Verify the existing completed object; never blindly repeat Complete. |
+| Pending thumbnail after a lost PUT reply | Read only the reserved thumbnail, compare with the prepared bytes, pin the read to its version and confirm HEAD again before conditionally verifying the still-pending route. Never repeat PUT. |
 | Verified source/thumbnail, registration interrupted | Verify and atomically register the same objects without another source write. |
 | Registered receipt, staging left behind | Clean only owned staging; preserve the terminal receipt and registered media. |
 | Unknown initiation | Hold, preserve capacity/staging, stop automatic retries; no second Create or guessed abort. |
@@ -75,7 +76,7 @@ npm run check
 npm run build
 ```
 
-The final native run passed **36 Node-reported checks, zero failures/skips**.
+The previous native run passed **36 Node-reported checks, zero failures/skips**.
 TypeScript and the production build passed. Its recovery scenarios
 cover lost part/Complete replies, pre-registration failure, held initiation,
 closed gates/backoff, Production/schema guards, permission changes, terminal
@@ -85,13 +86,34 @@ mismatch and actual expiry of known versus ambiguous multipart outcomes.
 Tests use disposable loopback PostgreSQL and synthetic providers; optional
 schema and gate changes exist only inside those test children. A preceding
 broader run passed 98 tests before the final five native scenarios were added;
-the final native run is reported separately, not as another full combined run.
+that native run is reported separately, not as another full combined run.
 
 ## Remaining release gates
 
 This closes the bounded native-JPEG recovery implementation slice, not all of
-P2-8/P2-9. Broader operator diagnostics, RAW/video lifecycle integration, uncertain
-thumbnail-route repair, real-provider/connected-browser/resource/restart
+P2-8/P2-9. Broader operator diagnostics, RAW/video lifecycle integration,
+real-provider/connected-browser/resource/restart
 acceptance and separately approved schema/settings/publishing remain.
 Unknown initiation and expired ambiguous completion deliberately stay held until
 verified operational resolution; no automatic destructive cleanup is implied.
+
+## Pending thumbnail reconciliation
+
+Only the key derived from the session's existing reservation and deterministic
+JPEG preparation is eligible, under the same fenced source-key lease and fresh
+upload authorization. The route must be R2/pending with no prior integrity or
+retained-source evidence. Size, WebP MIME, SHA-256 and stable provider version
+must match; the conditional update cannot promote a concurrently deleted or
+changed route. Normal independent verification and atomic registration follow.
+
+Missing bytes stay pending with retry backoff. Wrong bytes or changed versions
+are held as integrity conflicts. Neither outcome overwrites/deletes the object,
+publishes media or releases the reservation. No bucket discovery or general
+pending-route repair is introduced. The five added disposable scenarios cover
+lost PUT success, missing bytes, conflicting bytes, version change and concurrent
+route deletion.
+
+After this extension the full native suite passed **41 Node-reported checks,
+zero failures/skips**. TypeScript and the production build also passed on the
+updated source. The application restarted successfully and its public homepage
+rendered in preview; no authenticated browser or real-provider test was run.

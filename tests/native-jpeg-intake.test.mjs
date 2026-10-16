@@ -228,6 +228,70 @@ test("authenticated native JPEG intake stays isolated and gated",{timeout:210000
     const rowsFor=f=>db.select().from(sessions).where(eq(sessions.id,f.session.id));
     const staged=f=>readFile(path.join(tmpdir(),"vco-upload-sessions",f.session.id,"assembled-native","source"));
     const count=name=>native.calls.filter(n=>n===name).length;
+    const lostThumbnail=async(f,mode)=>{
+      await f.stage();
+      const put=R2Store.prototype.put;let key,writes=0;
+      R2Store.prototype.put=async function(k,...args){
+        if(!k.startsWith("thumb-"))return put.call(this,k,...args);
+        key=k;writes++;
+        if(mode!=="missing")await put.call(this,k,...args);
+        if(mode==="corrupt")await writeFile(path.join(fixtureRoots.r2,k),Buffer.from("wrong"));
+        throw new ObjectStoreError("upstream");
+      };
+      try{assert.ok((await f.complete()).status>=400);}
+      finally{R2Store.prototype.put=put;}
+      assert.equal(writes,1);assert.ok(key);
+      assert.equal((await db.select().from(mediaObjectRoutes).where(eq(mediaObjectRoutes.key,key)))[0].state,"pending");
+      return key;
+    };
+    await t.test("lost thumbnail PUT reply is verified without repeating PUT or Complete",async()=>using({},async f=>{
+      const key=await lostThumbnail(f,"stored"),completes=count("CompleteMultipartUploadCommand");
+      const put=R2Store.prototype.put;let writes=0;
+      R2Store.prototype.put=async function(...args){writes++;return put.apply(this,args);};
+      try{await cleanupUploadSessions();}finally{R2Store.prototype.put=put;}
+      const [row]=await rowsFor(f);assert.equal(row.state,"completed");
+      assert.equal(writes,0);assert.equal(count("CompleteMultipartUploadCommand"),completes);
+      assert.equal((await db.select().from(mediaObjectRoutes).where(eq(mediaObjectRoutes.key,key)))[0].state,"verified");
+      assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,row.mediaId))).length,1);
+    }));
+    for(const mode of ["missing","corrupt"]){
+      await t.test(`${mode} uncertain thumbnail stays held without another PUT or quota release`,async()=>using({},async f=>{
+        const key=await lostThumbnail(f,mode),put=R2Store.prototype.put;let writes=0;
+        R2Store.prototype.put=async function(...args){writes++;return put.apply(this,args);};
+        try{await cleanupUploadSessions();}finally{R2Store.prototype.put=put;}
+        const [row]=await rowsFor(f);assert.equal(row.state,"finalizing");assert.equal(writes,0);
+        assert.ok((await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id))).length);
+        assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.eventId,f.gallery.id))).length,0);
+        assert.equal((await db.select().from(mediaObjectRoutes).where(eq(mediaObjectRoutes.key,key)))[0].state,"pending");
+        await staged(f);
+      }));
+    }
+    await t.test("thumbnail version changes during reconciliation prevent registration",async()=>using({},async f=>{
+      const key=await lostThumbnail(f,"stored"),metadata=R2Store.prototype.metadata;let reads=0;
+      R2Store.prototype.metadata=async function(k){
+        const head=await metadata.call(this,k);
+        return k===key&&++reads>1?{...head,version:"changed-fixture"}:head;
+      };
+      try{await cleanupUploadSessions();}finally{R2Store.prototype.metadata=metadata;}
+      const [row]=await rowsFor(f);assert.equal(row.state,"finalizing");
+      assert.equal(row.metadata.nativeRecovery.reason,"integrity");
+      assert.equal((await db.select().from(mediaObjectRoutes).where(eq(mediaObjectRoutes.key,key)))[0].state,"pending");
+      assert.ok((await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id))).length);
+    }));
+    await t.test("concurrently deleted thumbnail route cannot be promoted by recovery",async()=>using({},async f=>{
+      const key=await lostThumbnail(f,"stored"),metadata=R2Store.prototype.metadata;let reads=0;
+      R2Store.prototype.metadata=async function(k){
+        const head=await metadata.call(this,k);
+        if(k===key&&++reads===2)
+          await db.update(mediaObjectRoutes).set({state:"deleted"}).where(eq(mediaObjectRoutes.key,key));
+        return head;
+      };
+      try{await cleanupUploadSessions();}finally{R2Store.prototype.metadata=metadata;}
+      const [row]=await rowsFor(f);assert.equal(row.state,"finalizing");
+      assert.equal(row.metadata.nativeRecovery.reason,"integrity");
+      assert.equal((await db.select().from(mediaObjectRoutes).where(eq(mediaObjectRoutes.key,key)))[0].state,"deleted");
+      assert.ok((await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id))).length);
+    }));
     await t.test("maintenance resumes a lost part acknowledgement with one source and one analysis job",async()=>using({},async f=>{
       const creates=count("CreateMultipartUploadCommand"),parts=count("UploadPartCommand");
       await failNative(f,"UploadPartCommand");await cleanupUploadSessions();

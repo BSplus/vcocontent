@@ -19,7 +19,7 @@ five chat turns. Prepared code and disposable tests do not imply activation.
 | **P2-5 Upload sessions** | **In progress.** Native JPEG is connected to authenticated sessions and the existing uploader behind disabled Development-only gates. Disposable HTTP/client tests and mobile/desktop Studio controls with mocked native responses pass; connected native browser/provider and full operational acceptance remain. |
 | P2-6 RAW pairing | Remaining: approved formats, explicit safe pairing and original-delivery controls. |
 | P2-7 Creator video | Remaining: policy-gated Creator capability, bounded codec/preview support and end-to-end lifecycle. Existing official video remains unchanged. |
-| P2-8 Recovery/integrity | Native-aware deletion, durable cleanup/accounting handoff and bounded JPEG session recovery are prepared/tested. Remaining: broader operator diagnostics, uncertain-route repair, RAW/video lifecycle and operational acceptance. |
+| P2-8 Recovery/integrity | Native-aware deletion, durable cleanup/accounting handoff, bounded JPEG session recovery and reserved-thumbnail reconciliation are prepared/tested. Remaining: broader operator diagnostics, RAW/video lifecycle and operational acceptance. |
 | P2-9 Compatibility/release evidence | Remaining: complete acceptance, resource measurements and reviewed release/recovery plan. |
 
 ## After Phase 2
