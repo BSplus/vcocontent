@@ -63,9 +63,10 @@ completed or uncertain outcomes, rather than claiming storage was released.
 
 1. **Ordinary native-aware deletion is now prepared and tested**, including
    retained cleanup accounting and R2 absence confirmation; see
-   `docs/native-asset-deletion.md`. Bounded reconciliation/diagnostics for
-   uncertain uploads and other P2-8 operational acceptance still remain before
-   enabling this path in a connected environment.
+   `docs/native-asset-deletion.md`. Bounded native-JPEG reconciliation and
+   aggregate diagnostics are now prepared in `docs/native-upload-recovery.md`;
+   broader lifecycle/operator and P2-8 operational acceptance still remain
+   before enabling this path in a connected environment.
 2. Mobile/desktop Studio controls now have interactive mocked-native-response
    coverage; see `docs/native-upload-browser-acceptance.md`. This does not replace
    connected native browser/provider acceptance or the resource/restart/

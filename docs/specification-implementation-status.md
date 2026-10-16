@@ -19,7 +19,7 @@ five chat turns. Prepared code and disposable tests do not imply activation.
 | **P2-5 Upload sessions** | **In progress.** Native JPEG is connected to authenticated sessions and the existing uploader behind disabled Development-only gates. Disposable HTTP/client tests and mobile/desktop Studio controls with mocked native responses pass; connected native browser/provider and full operational acceptance remain. |
 | P2-6 RAW pairing | Remaining: approved formats, explicit safe pairing and original-delivery controls. |
 | P2-7 Creator video | Remaining: policy-gated Creator capability, bounded codec/preview support and end-to-end lifecycle. Existing official video remains unchanged. |
-| P2-8 Recovery/integrity | Native-aware deletion and durable cleanup/accounting handoff are prepared/tested. Remaining: bounded uncertain-upload reconciliation, operational diagnostics and integrated lifecycle acceptance. |
+| P2-8 Recovery/integrity | Native-aware deletion, durable cleanup/accounting handoff and bounded JPEG session recovery are prepared/tested. Remaining: broader operator diagnostics, uncertain-route repair, RAW/video lifecycle and operational acceptance. |
 | P2-9 Compatibility/release evidence | Remaining: complete acceptance, resource measurements and reviewed release/recovery plan. |
 
 ## After Phase 2
@@ -39,8 +39,10 @@ Native deletion now has 22 passing native-flow checks, including a 515-object
 batched handoff; see `docs/native-asset-deletion.md`. Interactive Creator/Admin
 controls now have mobile/desktop native-response coverage, including uncertain
 errors, lost commits and refused cancellation; see
-`docs/native-upload-browser-acceptance.md`. Next complete bounded lifecycle
-recovery and operational evidence before connected Development approval.
+`docs/native-upload-browser-acceptance.md`. The existing maintenance timer now
+has bounded native-JPEG recovery, held uncertainty, backoff and aggregate
+diagnostics; see `docs/native-upload-recovery.md`. Next complete broader lifecycle
+and operational evidence before connected Development approval.
 Native code uses existing
 routes but is not enabled in this workspace or Production. No current limits
 were increased; RAW, Creator video, metadata exports and paid features remain off.

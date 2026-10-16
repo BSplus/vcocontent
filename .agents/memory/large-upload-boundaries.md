@@ -125,3 +125,24 @@ discard the only browser recovery receipt.
 **How to apply:** Keep the same receipt, metadata and session; show an unconfirmed
 outcome with Resume / check status. Do not automatically cancel, initiate another
 upload or clear the receipt based solely on a failed finalization response.
+
+Maintenance must not infer permission to publish or discard from an expired
+upload. Unknown initiation and ambiguous/verified completion remain held;
+only positively confirmed cancellation or registration can free the reservation.
+
+**Why:** Session expiry does not prove that provider work failed or that its
+bytes disappeared, and current ownership/permission may differ from initiation.
+
+**How to apply:** Recover only durable owner-bound intents, recheck current
+permissions/gates, and retain uncertain bytes. Keep automatic recovery within
+the separately approved Development scope; never broaden it into bucket cleanup.
+
+An admission deadline is not a hard operation deadline. Do not release a worker
+slot via a timeout race while admitted provider work may still be running.
+
+**Why:** Releasing early permits overlapping writers and can lose the evidence
+needed to resolve a late successful write.
+
+**How to apply:** Bound batch size, concurrency and retry frequency; retain the
+in-flight slot until work settles. Require separate stall/resource evidence
+before activation rather than claiming a strict elapsed-time guarantee.

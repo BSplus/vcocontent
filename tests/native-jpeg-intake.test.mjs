@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import express from "express";
 import {once} from "node:events";
 import {randomUUID,createHash} from "node:crypto";
-import {readFile,writeFile,rm} from "node:fs/promises";
+import {readFile,writeFile,rm,mkdir} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
 import sharp from "sharp";
@@ -16,7 +16,8 @@ import {users,events,mediaItems,mediaReservations,mediaUploadSessions as session
   from "../shared/schema.ts";
 import {registerRoutes} from "../server/routes.ts";
 import {stopAnalysisWorker} from "../server/analysis-jobs.ts";
-import {UPLOAD_PART_BYTES} from "../server/resumable-uploads.ts";
+import {UPLOAD_PART_BYTES,cleanupUploadSessions} from "../server/resumable-uploads.ts";
+import {recoverNativeUploadSessions} from "../server/native-upload-recovery.ts";
 import {mediaDatabaseFingerprint} from "../server/media-storage-config.ts";
 import {multipartFixture} from "./helpers/r2-multipart-fixture.mjs";
 import {nativeR2HttpFixture} from "./helpers/native-r2-http-fixture.mjs";
@@ -27,7 +28,7 @@ import {resolveGalleryOwnership} from "../shared/gallery-ownership.ts";
 import {mockMediaStorage} from "./helpers/memory-media-storage.mjs";
 
 const hash=b=>createHash("sha256").update(b).digest("hex");
-test("authenticated native JPEG intake stays isolated and gated",{timeout:150000},async t=>{
+test("authenticated native JPEG intake stays isolated and gated",{timeout:210000},async t=>{
   assert.ok(process.env.VCO_TEST_PG_PROXY&&process.env.VCO_TEST_OBJECTS);
   assert.equal(new URL(process.env.DATABASE_URL).hostname,"127.0.0.1");
   // Only known synthetic provider configuration, inside this disposable child.
@@ -62,6 +63,9 @@ test("authenticated native JPEG intake stays isolated and gated",{timeout:150000
       const gallery=await storage.createEvent({title:"Native isolated fixture",description:"Private test",date:new Date(),
         creatorId:options.official?null:accounts[0].id});
       const actor=options.admin?2:0;
+      // Each scenario has its own intake allowance; never weaken product limits
+      // just because a growing disposable suite shares synthetic accounts.
+      await db.delete(betaRateLimits).where(eq(betaRateLimits.key,`resumable:${accounts[actor].id}`));
       const body={requestKey:randomUUID(),size:bytes.length,mime:"image/jpeg",sha256:hash(bytes),
         metadata:{type:"image",caption:"Creator-written caption",photographer:"Fixture credit",tags:["Day"],autoTag:false}};
       const f={gallery,body,bytes,actor,request,session:null,
@@ -215,6 +219,176 @@ test("authenticated native JPEG intake stays isolated and gated",{timeout:150000
     const remove=(f,item,actor=f.actor)=>request(`/api/media/${item.id}`,{method:"DELETE"},actor);
     const removeGallery=(f,actor=f.actor)=>request(`/api/events/${f.gallery.id}`,{method:"DELETE"},actor);
     const usage=()=>retainedStorageUsage(db,accounts[0].id);
+    const failNative=async(f,command)=>{
+      await f.stage();
+      native.failAfter=name=>{if(name===command)throw Error("Synthetic lost native reply");};
+      try{assert.ok((await f.complete()).status>=400);}
+      finally{native.failAfter=null;}
+    };
+    const rowsFor=f=>db.select().from(sessions).where(eq(sessions.id,f.session.id));
+    const staged=f=>readFile(path.join(tmpdir(),"vco-upload-sessions",f.session.id,"assembled-native","source"));
+    const count=name=>native.calls.filter(n=>n===name).length;
+    await t.test("maintenance resumes a lost part acknowledgement with one source and one analysis job",async()=>using({},async f=>{
+      const creates=count("CreateMultipartUploadCommand"),parts=count("UploadPartCommand");
+      await failNative(f,"UploadPartCommand");await cleanupUploadSessions();
+      const [row]=await rowsFor(f);assert.equal(row.state,"completed");assert.ok(row.cleanedAt);
+      assert.equal(row.metadata.nativeRecovery,undefined);
+      assert.equal(count("CreateMultipartUploadCommand")-creates,1);
+      assert.equal(count("UploadPartCommand")-parts,1);
+      assert.equal((await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId,row.mediaId))).length,1);
+      assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id))).length,0);
+    }));
+    await t.test("maintenance resolves a lost Complete response without repeating Complete",async()=>using({},async f=>{
+      const completes=count("CompleteMultipartUploadCommand");
+      await failNative(f,"CompleteMultipartUploadCommand");await cleanupUploadSessions();
+      assert.equal((await rowsFor(f))[0].state,"completed");
+      assert.equal(count("CompleteMultipartUploadCommand")-completes,1);
+    }));
+    await t.test("verified source and thumbnail recover a pre-registration crash without another source write",async()=>using({},async f=>{
+      await f.stage();const original=storage.finishMedia;
+      storage.finishMedia=async()=>{throw Error("Synthetic crash before registration");};
+      try{assert.ok((await f.complete()).status>=400);}finally{storage.finishMedia=original;}
+      const creates=count("CreateMultipartUploadCommand"),parts=count("UploadPartCommand"),completes=count("CompleteMultipartUploadCommand");
+      await cleanupUploadSessions();
+      const [row]=await rowsFor(f);assert.equal(row.state,"completed");assert.ok(row.cleanedAt);
+      assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.eventId,f.gallery.id))).length,1);
+      assert.deepEqual([count("CreateMultipartUploadCommand"),count("UploadPartCommand"),count("CompleteMultipartUploadCommand")],
+        [creates,parts,completes]);
+    }));
+    await t.test("unknown initiation is held without retries, staging deletion or released capacity",async()=>using({},async f=>{
+      await failNative(f,"CreateMultipartUploadCommand");
+      const before=native.calls.length;
+      await cleanupUploadSessions();const [row]=await rowsFor(f);
+      assert.equal(row.metadata.nativeRecovery.status,"held");assert.equal(row.metadata.nativeRecovery.reason,"unknown_creation");
+      assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id))).length,1);
+      await staged(f);await cleanupUploadSessions();
+      assert.equal(native.calls.length,before);assert.deepEqual((await rowsFor(f))[0].metadata,row.metadata);
+    }));
+    await t.test("closed-gate recovery retains bytes and backs off until the same session can resume",async()=>using({},async f=>{
+      await failNative(f,"UploadPartCommand");const calls=native.calls.length;
+      process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="false";
+      await cleanupUploadSessions();const [row]=await rowsFor(f);
+      assert.equal(row.metadata.nativeRecovery.reason,"uploads_paused");assert.equal(row.metadata.nativeRecovery.attempts,1);
+      await cleanupUploadSessions();assert.deepEqual((await rowsFor(f))[0].metadata,row.metadata);
+      assert.equal(native.calls.length,calls);await staged(f);
+      assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id))).length,1);
+      process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="true";
+      await db.execute(sql`update media_upload_sessions set metadata=metadata-'nativeRecovery' where id=${row.id}`);
+      await cleanupUploadSessions();assert.equal((await rowsFor(f))[0].state,"completed");
+    }));
+    await t.test("Production, disabled-native and missing-schema guards cause no recovery mutation",async()=>using({},async f=>{
+      await failNative(f,"UploadPartCommand");const [before]=await rowsFor(f),calls=native.calls.length;
+      try{
+        process.env.MEDIA_STORAGE_ENVIRONMENT="production";await cleanupUploadSessions();
+        process.env.MEDIA_STORAGE_ENVIRONMENT="development";process.env.MEDIA_R2_MULTIPART_ENABLED="false";
+        await cleanupUploadSessions();process.env.MEDIA_R2_MULTIPART_ENABLED="true";
+        await db.execute(sql`alter table media_r2_multipart_journals rename to native_recovery_hidden`);
+        try{await cleanupUploadSessions();}
+        finally{await db.execute(sql`alter table native_recovery_hidden rename to media_r2_multipart_journals`);}
+        assert.deepEqual((await rowsFor(f))[0].metadata,before.metadata);assert.equal(native.calls.length,calls);
+      }finally{process.env.MEDIA_STORAGE_ENVIRONMENT="development";process.env.MEDIA_R2_MULTIPART_ENABLED="true";}
+    }));
+    await t.test("changed actor permission is rechecked before automatic finalization",async()=>using({},async f=>{
+      await failNative(f,"UploadPartCommand");const calls=native.calls.length;
+      await db.update(users).set({suspended:true}).where(eq(users.id,accounts[0].id));
+      try{
+        await cleanupUploadSessions();const [row]=await rowsFor(f);
+        assert.equal(row.state,"finalizing");assert.equal(row.metadata.nativeRecovery.status,"held");
+        assert.equal(row.metadata.nativeRecovery.reason,"denied");assert.equal(native.calls.length,calls);await staged(f);
+        assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id))).length,1);
+      }finally{await db.update(users).set({suspended:false}).where(eq(users.id,accounts[0].id));}
+    }));
+    await t.test("completed receipts clean only staging even with new uploads closed",async()=>using({},async f=>{
+      await f.stage();assert.equal((await f.complete()).status,200);
+      const root=path.join(tmpdir(),"vco-upload-sessions",f.session.id);
+      await mkdir(root,{recursive:true});await writeFile(path.join(root,"crash-leftover"),"synthetic");
+      await db.update(sessions).set({cleanedAt:null}).where(eq(sessions.id,f.session.id));
+      const calls=native.calls.length;process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="false";
+      await cleanupUploadSessions();const [row]=await rowsFor(f);
+      assert.equal(row.state,"completed");assert.ok(row.cleanedAt);assert.equal(row.metadata.nativeReceipt.kind,"registered");
+      assert.equal(native.calls.length,calls);
+      await assert.rejects(readFile(path.join(root,"crash-leftover")),e=>e.code==="ENOENT");
+    }));
+    await t.test("overlapping recovery passes retain a single in-flight slot",async()=>using({},async f=>{
+      await failNative(f,"UploadPartCommand");
+      let enter,release;const entered=new Promise(resolve=>{enter=resolve;}),held=new Promise(resolve=>{release=resolve;});
+      native.failAfter=async name=>{if(name==="ListPartsCommand"){enter();await held;}};
+      const first=cleanupUploadSessions();let timer;
+      try{
+        await Promise.race([entered,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("Recovery did not enter")),5000);})]);
+        const overlap=await recoverNativeUploadSessions({active:()=>false,finalize:async()=>{throw Error("Must not run");}});
+        assert.equal(overlap.busy,true);assert.equal(overlap.attempted,0);
+      }finally{clearTimeout(timer);native.failAfter=null;release();await first;}
+      assert.equal((await rowsFor(f))[0].state,"completed");
+    }));
+
+    await t.test("recovery performs at most two actions per pass without starving the next session",async()=>
+      using({},async first=>using({},async second=>using({admin:true,official:true},async third=>{
+        for(const f of [first,second,third])await failNative(f,"UploadPartCommand");
+        await cleanupUploadSessions();
+        const after=await Promise.all([first,second,third].map(async f=>(await rowsFor(f))[0]));
+        const completed=after.filter(row=>row.state==="completed").length;
+        assert.ok(completed>=1&&completed<=2,"Count cap and admission deadline may both limit a pass");
+        assert.equal(after.filter(row=>row.state==="finalizing").length,3-completed);
+        await cleanupUploadSessions();await cleanupUploadSessions();
+        for(const f of [first,second,third])assert.equal((await rowsFor(f))[0].state,"completed");
+      }))));
+    await t.test("maintenance never races an active HTTP finalizer",async()=>using({},async f=>{
+      await f.stage();let enter,release,timer;
+      const entered=new Promise(resolve=>{enter=resolve;}),held=new Promise(resolve=>{release=resolve;});
+      native.failAfter=async name=>{if(name==="UploadPartCommand"){enter();await held;}};
+      const pending=f.complete();
+      try{
+        await Promise.race([entered,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("Finalizer did not enter")),5000);})]);
+        await cleanupUploadSessions();
+        assert.equal((await rowsFor(f))[0].metadata.nativeRecovery,undefined);
+      }finally{clearTimeout(timer);native.failAfter=null;release();assert.equal((await pending).status,200);}
+    }));
+    await t.test("remote hash mismatch is held without another write or quota release",async()=>using({},async f=>{
+      await f.stage();const original=storage.finishMedia;
+      storage.finishMedia=async()=>{throw Error("Synthetic pre-registration crash");};
+      try{assert.ok((await f.complete()).status>=400);}finally{storage.finishMedia=original;}
+      const [reservation]=await db.select().from(mediaReservations).where(eq(mediaReservations.id,f.session.id));
+      const filename=path.join(fixtureRoots.r2,reservation.storageKey),bytes=await readFile(filename);
+      const changed=Buffer.from(bytes);changed[changed.length-1]^=1;await writeFile(filename,changed);
+      const before=[count("CreateMultipartUploadCommand"),count("UploadPartCommand"),count("CompleteMultipartUploadCommand")];
+      try{
+        await cleanupUploadSessions();const [row]=await rowsFor(f);
+        assert.equal(row.state,"finalizing");assert.equal(row.metadata.nativeRecovery.status,"held");
+        assert.equal(row.metadata.nativeRecovery.reason,"integrity");
+        assert.deepEqual([count("CreateMultipartUploadCommand"),count("UploadPartCommand"),count("CompleteMultipartUploadCommand")],before);
+        assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id))).length,1);
+        await staged(f);
+      }finally{await writeFile(filename,bytes);}
+    }));
+
+    for(const uncertain of [false,true])
+      await t.test(`expired ${uncertain?"Complete ambiguity stays held":"known multipart is confirmed cancelled"} without publication`,async()=>using({},async f=>{
+        await f.stage();
+        // Change expiry BEFORE the first intent so its immutable binding remains
+        // genuine; then let actual time pass rather than mutating a checkpoint.
+        const expiresAt=new Date(Date.now()+5000);
+        await db.update(sessions).set({expiresAt}).where(eq(sessions.id,f.session.id));
+        native.failAfter=name=>{
+          if(name===(uncertain?"CompleteMultipartUploadCommand":"UploadPartCommand"))throw Error("Synthetic lost reply");
+        };
+        try{assert.ok((await f.complete()).status>=400);}finally{native.failAfter=null;}
+        await new Promise(resolve=>setTimeout(resolve,Math.max(0,expiresAt.getTime()-Date.now()+25)));
+        process.env.MEDIA_STORAGE_NEW_UPLOADS_ENABLED="false";
+        const calls=native.calls.length;
+        await cleanupUploadSessions();const [row]=await rowsFor(f);
+        assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.eventId,f.gallery.id))).length,0);
+        if(uncertain){
+          assert.equal(row.state,"finalizing");assert.equal(row.metadata.nativeRecovery.reason,"expired_uncertain");
+          assert.equal(row.metadata.nativeRecovery.status,"held");assert.equal(native.calls.length,calls);
+          assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id))).length,1);await staged(f);
+        }else{
+          assert.equal(row.state,"cancelled");assert.ok(row.cleanedAt);assert.equal(row.metadata.nativeReceipt.kind,"released");
+          assert.equal((await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id))).length,0);
+          await assert.rejects(staged(f),error=>error.code==="ENOENT");
+        }
+      }));
+
     await t.test("normal owner deletion retires native inventory; another Creator cannot delete it",async()=>using({},async f=>{
       const item=await saved(f);
       assert.equal((await remove(f,item,1)).status,403);

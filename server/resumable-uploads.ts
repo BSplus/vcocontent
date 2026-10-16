@@ -29,6 +29,7 @@ import {NATIVE_JPEG_TRANSPORT,nativeJpegSession,nativeJpegReady,pinNativeJpeg,
   saveNativeJpeg,cleanupNativeJpeg,cancelNativeJpeg} from "./native-jpeg-intake";
 import {MultipartUploadError} from "./r2-multipart-upload";
 import {MultipartJournalError} from "./r2-multipart-journal";
+import {recoverNativeUploadSessions} from "./native-upload-recovery";
 
 export {UPLOAD_PART_BYTES};
 const ROOT = UPLOAD_SESSION_ROOT;
@@ -49,9 +50,9 @@ export async function resumableUploadsAvailable() {
   return !!(await db.execute(sql`select to_regclass('media_upload_sessions') as name`)).rows[0]?.name;
 }
 function writesAllowed() { assertNewMediaUploadsEnabled(); }
-async function gallery(row:Pick<Session,"eventId"|"ownerId">,req:Request) {
+async function gallery(row:Pick<Session,"eventId"|"ownerId">,actorId:number) {
   const event=await storage.getEvent(row.eventId);
-  const actor=req.user && await storage.getUser(req.user.id);
+  const actor=await storage.getUser(actorId);
   if(!event || !actor || !creatorAllowed(actor) || !canManage(actor,event) || event.creatorId!==row.ownerId)
     throw new SessionError(403,"Gallery access or ownership changed. Cancel this upload and start again.");
   if(event.isPremium) throw new SessionError(403,"Premium uploads are not enabled.");
@@ -79,7 +80,7 @@ async function reserveBody(req:Request) {
   const body=input.parse(req.body);
   const event=await storage.getEvent(z.coerce.number().int().positive().parse(req.params.eventId));
   if(!event || !canManage(req.user,event)) throw new SessionError(403,"Gallery access denied.");
-  await gallery({eventId:event.id,ownerId:event.creatorId},req);
+  await gallery({eventId:event.id,ownerId:event.creatorId},req.user!.id);
   if(body.metadata.type!== (body.mime.startsWith("image/")?"image":"video"))
     throw new SessionError(400,"File and media type do not match.");
   if(body.size>currentLimit(body.mime,event.creatorId)) throw new SessionError(413,"File exceeds the current gallery upload limit.");
@@ -147,6 +148,8 @@ function alive(pid:number|null) {
 const finalizerActive=(row:Session)=>row.workerPid===process.pid?activeFinalizers.has(row.id):alive(row.workerPid);
 /** Conservative reconciliation. Never race an active/uncertain finalizer. */
 export async function cleanupUploadSessions() {
+  const recovered=await recoverNativeUploadSessions({active:finalizerActive,finalize:row=>finish(row,row.actorId)});
+  if(recovered.attempted)console.info("Native upload recovery:",JSON.stringify(recovered));
   if(!(await db.execute(sql`select to_regclass('media_upload_sessions') as name`)).rows[0]?.name) return;
   const native=await nativeUploadFenceAvailable();
   const fence=native?sql`and not exists(select 1 from media_r2_multipart_journals n where n.session_id=${sessions.id})`:sql``;
@@ -179,9 +182,9 @@ export async function cleanupUploadSessions() {
   }
 }
 
-async function finish(row:Session,req:Request) {
+async function finish(row:Session,actorId:number) {
   if(row.state==="completed") return row;
-  await gallery(row,req);writesAllowed();
+  await gallery(row,actorId);writesAllowed();
   const native=nativeJpegSession(row);
   if(row.state==="finalizing"&&(!native||finalizerActive(row))) return row;
   if(row.expiresAt<new Date() || !["receiving","finalizing"].includes(row.state))
@@ -215,8 +218,8 @@ async function finish(row:Session,req:Request) {
     assembly=assembled.filename;assembledDirectory=assembled.directory;
     const [reservation]=await db.select().from(mediaReservations).where(eq(mediaReservations.id,row.id));
     if(!reservation) throw new SessionError(410,"Upload reservation expired.");
-    await gallery(row,req);writesAllowed();
-    const {nativeTransport,...storedDetails}=row.metadata as Record<string,unknown>;
+    await gallery(row,actorId);writesAllowed();
+    const {nativeTransport,nativeRecovery,...storedDetails}=row.metadata as Record<string,unknown>;
     const metadata=details.parse(storedDetails);
     if(native){
       const item=await saveNativeJpeg(claimed,assembly,metadata,row.ownerId!==null||metadata.autoTag);
@@ -238,7 +241,7 @@ async function finish(row:Session,req:Request) {
         if(!updated.length) throw new SessionError(410,"Upload reservation expired.");
       },
       row.ownerId!==null?"creator-original":"official");
-    await gallery(row,req);writesAllowed();
+    await gallery(row,actorId);writesAllowed();
     const item=await storage.finishMedia(row.id,insertMediaItemSchema.parse({eventId:row.eventId,type:saved.mediaType,
       url:saved.url,thumbnail:saved.thumbnail,storedBytes:saved.storedBytes,highBytes:saved.highBytes,
       lowBytes:saved.lowBytes,objectCount:saved.objectCount,caption:metadata.caption,photographer:metadata.photographer,tags:metadata.tags,isPremium:false}),
@@ -285,7 +288,7 @@ async function finish(row:Session,req:Request) {
 export function registerResumableUploadRoutes(app:Express) {
   const response=async(row:Session,req:Request)=>{
     if(!row.mediaId) return view(row);
-    await gallery(row,req);
+    await gallery(row,req.user!.id);
     const item=await storage.getMediaItem(row.mediaId);
     return {...view(row),item:item?{...item,analysis:await analysisStatus(item.id)}:null};
   };
@@ -331,7 +334,7 @@ export function registerResumableUploadRoutes(app:Express) {
     const row=await owned(req);
     if(row.state==="completed") return res.status(409).json({error:"This file is already saved. Delete it through Manage Media."});
     if(nativeJpegSession(row)&&row.state!=="receiving"){
-      await gallery(row,req);
+      await gallery(row,req.user!.id);
       if(finalizerActive(row))throw new SessionError(409,"Saving is in progress. Check saved status before cancelling.");
       if(!["cancelled","failed"].includes(row.state))await cancelNativeJpeg(row);
       res.json({success:true});return;
@@ -341,7 +344,7 @@ export function registerResumableUploadRoutes(app:Express) {
   }));
   app.put("/api/upload-sessions/:sessionId/parts/:part",requireCreator,run(async(req,res)=>{
     writesAllowed();
-    const row=await owned(req);await gallery(row,req);
+    const row=await owned(req);await gallery(row,req.user!.id);
     if(!req.is("application/octet-stream")) throw new SessionError(415,"A binary upload part is required.");
     const index=z.coerce.number().int().nonnegative().parse(req.params.part);
     const expected=Math.min(UPLOAD_PART_BYTES,row.size-index*UPLOAD_PART_BYTES);
@@ -376,7 +379,7 @@ export function registerResumableUploadRoutes(app:Express) {
     res.json(uploaded);
   }));
   app.post("/api/upload-sessions/:sessionId/complete",requireCreator,run(async(req,res)=>{
-    const row=await finish(await owned(req),req);
+    const row=await finish(await owned(req),req.user!.id);
     res.status(row.state==="completed"?200:202).json(await response(row,req));
   }));
 }
