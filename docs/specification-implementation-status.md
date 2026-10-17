@@ -24,8 +24,13 @@ provider writes, capacity retention and exact final accounting. See
 The final native suite passed 49 checks with no failures/skips; type checking
 and the production build passed.
 This is not whole-worker resource/stall, host-restart or live-provider acceptance.
-Next continue the outstanding RAW/video packages within approved
-format/resource/policy boundaries; operational release gates remain separate.
+The first P2-6 slice now prepares bounded multi-signal RAW pairing suggestions
+and explicit photo/revision/checksum-bound attachment checks in the existing
+repository. It does not enable RAW intake or delivery. See
+`docs/raw-pairing-preparation.md`. Next: representative RAW container validation
+before gated Studio integration; operational release gates remain separate.
+Pairing/asset unit checks: 13 passed. Combined asset-storage, native JPEG/restart
+and capacity checks: 71 passed, no failures/skips. Type checking/build passed.
 
 | Package | Current position |
 | --- | --- |
@@ -34,7 +39,7 @@ format/resource/policy boundaries; operational release gates remain separate.
 | P2-3 Capacity/reservations | Accounting, reservation and usage foundations implemented; existing beta policy retained. |
 | P2-4 Immutable JPEG | New-intake source preservation and bounded derivatives implemented. |
 | **P2-5 Upload sessions** | **In progress.** Native JPEG is connected to authenticated sessions and the existing uploader behind disabled Development-only gates. Disposable HTTP/client tests and mobile/desktop Studio controls with mocked native responses pass; connected native browser/provider and full operational acceptance remain. |
-| P2-6 RAW pairing | Remaining: approved formats, explicit safe pairing and original-delivery controls. |
+| P2-6 RAW pairing | In progress: internal multi-signal suggestions and explicit owner/source/revision/checksum-safe attachment. Remaining: verified/approved formats, container validation, gated intake/Studio controls, reassignment and original-delivery policy. |
 | P2-7 Creator video | Remaining: policy-gated Creator capability, bounded codec/preview support and end-to-end lifecycle. Existing official video remains unchanged. |
 | P2-8 Recovery/integrity | Native-aware deletion, durable cleanup/accounting handoff, bounded JPEG recovery, reserved-thumbnail reconciliation and aggregate Development admin diagnostics are prepared/tested. Remaining: cross-object diagnostics/case resolution, RAW/video lifecycle and operational acceptance. |
 | P2-9 Compatibility/release evidence | In progress: isolated HTTP/client/browser, diagnostics connection-stall and three JPEG application-process restart boundaries. Remaining: broader lifecycle/restart/resource measurements and reviewed release/recovery plan. |

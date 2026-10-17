@@ -6,6 +6,7 @@ import { assertGalleryOwnership, type GalleryOwnership } from "@shared/gallery-o
 import { assetKind, assertAssetPurpose, assertAssetObjectFormat, assetTitle, legacyAssetVariants, type AssetPurpose } from "@shared/media-asset";
 import { ObjectStoreError } from "./object-store";
 import { lockedCreatorBudget } from "./beta-policy";
+import { assertRawPairSelection, type RawPairSelection } from "./raw-pairing";
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Connection = typeof db | Transaction;
@@ -39,12 +40,13 @@ function assertVerified(route: typeof mediaObjectRoutes.$inferSelect | undefined
 
 /**
  * Internal repository, NOT a new upload or authorization endpoint. Callers must
- * authorize management and pass a server-derived ownership snapshot. No current
- * intake invokes this yet; byte reservations and immutable intake are later packages.
+ * authorize management and pass a server-derived ownership snapshot. Native
+ * JPEG intake uses this repository; RAW intake/delivery remain disabled.
  */
 export async function linkAssetObject(input: {
   mediaId:number; ownership:GalleryOwnership; key:string; purpose:AssetPurpose;
   sourceVersion:number; sourceKey?:string; sha256:string; objectVersion:string;
+  rawSelection?:RawPairSelection;
 }, transaction?: Transaction) {
   if (!Number.isSafeInteger(input.sourceVersion) || input.sourceVersion <= 0 ||
       input.sourceVersion > 2_147_483_647) throw new Error("Invalid source version");
@@ -76,6 +78,16 @@ export async function linkAssetObject(input: {
       const sourceRoute = assertVerified(lockedRoutes.find(route => route.key === input.sourceKey));
       if (input.purpose === "raw" && sourceRoute.mime !== "image/jpeg")
         throw new Error("RAW requires a JPEG source");
+      if (input.purpose === "raw") {
+        assertRawPairSelection(input.rawSelection,{mediaId:item.id,sourceVersion:input.sourceVersion,
+          jpegKey:input.sourceKey,jpegSha256:sourceRoute.sha256!,
+          rawKey:input.key,rawSha256:route.sha256!});
+        // The already locked object route serializes concurrent pair attempts.
+        // RAW is one photo's variant, not a shared attachment across identities.
+        const [other] = await tx.select({id:mediaAssetVariants.id}).from(mediaAssetVariants)
+          .where(and(eq(mediaAssetVariants.objectKey,input.key),sql`${mediaAssetVariants.mediaId}<>${item.id}`)).limit(1);
+        if (other) throw new Error("RAW object is already paired to another photo");
+      }
     } else {
       const [root] = await tx.select().from(mediaAssetVariants).where(and(
         eq(mediaAssetVariants.mediaId,item.id), eq(mediaAssetVariants.sourceVersion,input.sourceVersion),

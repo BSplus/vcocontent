@@ -107,13 +107,45 @@ test("additive asset-object foundation uses only disposable PostgreSQL", {
       await assert.rejects(link(photo,raw,"raw",{sourceKey:original.key,sourceVersion:2}),/same asset revision/);
       await assert.rejects(link(photo,raw,"raw"),/source relationship/);
       await assert.rejects(link(photo,original,"raw",{sourceKey:original.key}),/format/);
-      await link(photo,raw,"raw",{sourceKey:original.key});
+      const selection={intent:"explicit",mediaId:photo.id,sourceVersion:1,
+        jpegKey:original.key,jpegSha256:original.sha256,rawKey:raw.key,rawSha256:raw.sha256};
+      await assert.rejects(link(photo,raw,"raw",{sourceKey:original.key}),/selection/);
+      for(const change of [{mediaId:items[4].id},{sourceVersion:2},
+        {jpegSha256:"b".repeat(64)},{rawSha256:"b".repeat(64)},{intent:"automatic"}]){
+        await assert.rejects(link(photo,raw,"raw",{sourceKey:original.key,
+          rawSelection:{...selection,...change}}),/selection/);
+      }
+      assert.equal((await db.select().from(objects).where(eq(objects.key,raw.key))).length,0,
+        "Invalid selections do not partially register physical objects");
+      const jobs=await db.select().from(schema.mediaAnalysisJobs);
+      const first=await link(photo,raw,"raw",{sourceKey:original.key,rawSelection:selection});
+      assert.equal((await link(photo,raw,"raw",{sourceKey:original.key,rawSelection:selection})).id,first.id);
+      assert.deepEqual(await db.select().from(schema.mediaAnalysisJobs),jobs,"RAW creates no vision job");
+      assert.equal((await previewAssetReconciliation(ownership)).retainedBytes,200);
       const video=await readMediaAsset(items[1].id);
       const poster=await route("image/webp","replit");
       await link(items[1],poster,"poster",{sourceKey:video.variants[0].object.key});
       await assert.rejects(link(items[1],poster,"raw",{sourceKey:video.variants[0].object.key}),/purpose/);
       assert.equal((await readMediaAsset(photo.id)).variants.length,3,"RAW adds a variant, not a media row");
       assert.equal((await db.select().from(mediaItems).where(eq(mediaItems.eventId,ownership.galleryId))).length,2);
+    });
+    await t.test("a RAW cannot be attached to a second photo identity even within the same gallery",async()=>{
+      const [raw]=await db.select().from(variants).where(sql`${variants.purpose}='raw'`);
+      const [rawRoute]=await db.select().from(routes).where(eq(routes.key,raw.objectKey));
+      const [second]=await db.insert(mediaItems).values({eventId:ownership.galleryId,type:"image",
+        url:photo.url,thumbnail:photo.thumbnail,caption:"Independent photo fixture"}).returning();
+      try{
+        await link(second,original);
+        await assert.rejects(link(second,rawRoute,"raw",{sourceKey:original.key,rawSelection:{
+          intent:"explicit",mediaId:second.id,sourceVersion:1,jpegKey:original.key,
+          jpegSha256:original.sha256,rawKey:rawRoute.key,rawSha256:rawRoute.sha256,
+        }}),/already paired/);
+        assert.equal((await db.select().from(variants).where(eq(variants.objectKey,raw.objectKey))).length,1);
+      }finally{
+        await db.delete(variants).where(eq(variants.mediaId,second.id));
+        await db.delete(records).where(eq(records.mediaId,second.id));
+        await db.delete(mediaItems).where(eq(mediaItems.id,second.id));
+      }
     });
     await t.test("unknown/provider-pending facts are not treated as free capacity",async()=>{
       await db.update(routes).set({size:null,state:"pending"}).where(eq(routes.key,original.key));
