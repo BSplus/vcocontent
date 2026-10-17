@@ -4,9 +4,11 @@
 
 Internal pairing suggestions and explicit attachment checks now extend the
 existing asset-variant repository. There is no RAW upload endpoint, new API,
-Studio control, decoder, container validation or original-delivery permission
+Studio control, decoder or original-delivery permission
 in this slice. No connected schema, environment or data changes are required.
 This is not complete P2-6 or a claim of working RAW intake.
+The subsequent isolated DNG container evaluator is documented in
+`docs/raw-container-validation.md`; it is not connected to uploads or pairing.
 
 ### Suggestions
 
@@ -91,8 +93,8 @@ Production, schema or environment changes were used.
 
 ## Next P2-6 work
 
-Prepare a representative, licensed RAW format fixture set and bounded opaque
-container validator before choosing the initial allowlist. Then integrate
+Prepare representative, authorized camera fixtures to extend the initial
+synthetic-DNG evaluator before choosing the initial allowlist. Then integrate
 gated upload/explicit pairing controls into Studio, including uncertainty,
 quota, cancellation, safe reassignment and delivery-policy handling.
 Approvals for real formats/limits, connected schema/settings, original
