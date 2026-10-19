@@ -38,6 +38,13 @@ both sources remained unchanged; the JPEG decodes, but lacks camera/capture EXIF
 Sony lossless-compressed ARW is correctly unsupported by the narrow DNG validator.
 Manual-selection regression coverage now includes this exported-JPEG case.
 See `docs/raw-camera-compatibility-evidence.md`; no RAW format was activated.
+The next isolated slice adds a narrow Sony ILCE-7M4 lossless-CFA14 evaluator.
+Its exact reviewed seven tag-order warnings, directory bounds and all 140 tile
+frames are checked. The authorized real sample and six negative cases passed;
+42 unit/regression tests, type checking and build passed.
+See `docs/sony-arw-validation.md`. This is structural evidence, not full RAW
+decoding, publication safety or runtime format approval. Next: trusted pairing
+facts and explicit gated Studio/lifecycle integration.
 Pairing/asset unit checks: 13 passed. Combined asset-storage, native JPEG/restart
 and capacity checks: 71 passed, no failures/skips. Type checking/build passed.
 
@@ -48,7 +55,7 @@ and capacity checks: 71 passed, no failures/skips. Type checking/build passed.
 | P2-3 Capacity/reservations | Accounting, reservation and usage foundations implemented; existing beta policy retained. |
 | P2-4 Immutable JPEG | New-intake source preservation and bounded derivatives implemented. |
 | **P2-5 Upload sessions** | **In progress.** Native JPEG is connected to authenticated sessions and the existing uploader behind disabled Development-only gates. Disposable HTTP/client tests and mobile/desktop Studio controls with mocked native responses pass; connected native browser/provider and full operational acceptance remain. |
-| P2-6 RAW pairing | In progress: internal suggestions, explicit revision/checksum-safe attachment and isolated bounded synthetic-DNG validation. Remaining: real-camera verified/approved formats, gated intake/Studio controls, reassignment and original-delivery policy. |
+| P2-6 RAW pairing | In progress: internal suggestions, explicit revision/checksum-safe attachment, synthetic-DNG and isolated real-sample Sony structural validation. Remaining: reviewed runtime format policy, trusted pairing facts, gated intake/Studio controls, reassignment and original-delivery policy. |
 | P2-7 Creator video | Remaining: policy-gated Creator capability, bounded codec/preview support and end-to-end lifecycle. Existing official video remains unchanged. |
 | P2-8 Recovery/integrity | Native-aware deletion, durable cleanup/accounting handoff, bounded JPEG recovery, reserved-thumbnail reconciliation and aggregate Development admin diagnostics are prepared/tested. Remaining: cross-object diagnostics/case resolution, RAW/video lifecycle and operational acceptance. |
 | P2-9 Compatibility/release evidence | In progress: isolated HTTP/client/browser, diagnostics connection-stall and three JPEG application-process restart boundaries. Remaining: broader lifecycle/restart/resource measurements and reviewed release/recovery plan. |

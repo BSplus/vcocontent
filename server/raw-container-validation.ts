@@ -5,6 +5,7 @@ import {createHash} from "node:crypto";
 import {exiftoolPath} from "exiftool-vendored";
 import {withMediaWorkBudget} from "./media-work-budget";
 import {RawValidationError,runRawValidationTool} from "./raw-validation-tool";
+import {inspectSonyArwStructure,inspectSonyArwToolOutput} from "./sony-arw-structure";
 
 const fail=(code:ConstructorParameters<typeof RawValidationError>[0]):never=>{throw new RawValidationError(code);};
 const integer=(value:unknown):value is number=>typeof value==="number"&&Number.isSafeInteger(value)&&value>0;
@@ -48,15 +49,20 @@ function inspect(output:string,size:number){
  * staging file and durable expected size/hash. No route calls this yet.
  * Successful structural validation is NOT publication safety or delivery consent.
  */
-export async function validateRawContainer(input:{
+type RawInput={
   filename:string;stagingDirectory:string;originalFilename:string;mime:string;
   size:number;sha256:string;maxBytes:number;signal?:AbortSignal;
-}){
+};
+export const validateRawContainer=(input:RawInput)=>validateContainer(input,false);
+/** Isolated Sony evaluation only. No runtime route invokes this opt-in profile. */
+export const validateSonyArwContainer=(input:RawInput)=>validateContainer(input,true);
+async function validateContainer(input:RawInput,sony:boolean){
   if(!integer(input.maxBytes)||input.maxBytes>evaluationCeiling||!integer(input.size)||input.size>input.maxBytes||
     !/^[a-f0-9]{64}$/.test(input.sha256))fail("invalid_input");
   if(typeof input.originalFilename!=="string"||input.originalFilename.length>255||
     /[/\\\u0000-\u001f\u007f]/.test(input.originalFilename)||
-    !/^[^.].*\.dng$/i.test(input.originalFilename)||!["image/x-adobe-dng","application/octet-stream"].includes(input.mime))
+    !(sony?/^[^.].*\.arw$/i:/^[^.].*\.dng$/i).test(input.originalFilename)||
+    ![sony?"image/x-sony-arw":"image/x-adobe-dng","application/octet-stream"].includes(input.mime))
     fail("unsupported");
   return withMediaWorkBudget(async()=>{
     const controller=new AbortController();
@@ -79,20 +85,25 @@ export async function validateRawContainer(input:{
       const initial=await hashSource(file,signal,input.maxBytes);
       if(initial.bytes!==input.size||initial.sha256!==input.sha256)fail("integrity");
       const tool=await exiftoolPath().catch(()=>fail("tool_unavailable"));
-      const tags=["Validate","Warning","Error","FileType","MIMEType","DNGVersion","ImageWidth","ImageHeight",
+      const tags=sony?["Validate","Warning","Error","FileType","MIMEType","Make","Model"]:
+        ["Validate","Warning","Error","FileType","MIMEType","DNGVersion","ImageWidth","ImageHeight",
         "Compression","PhotometricInterpretation","StripOffsets","StripByteCounts","SamplesPerPixel","BitsPerSample"];
       const output=await runRawValidationTool("prlimit",["--as=268435456","--cpu=4","--nofile=32","--fsize=0",
-        "--","perl",tool,"-config","","-j","-n","-s",...tags.map(tag=>`-${tag}`),"/proc/self/fd/3"],
+        "--","perl",tool,"-config","",...(sony?["-a","-G1"]:["-j"]),"-n","-s",
+        ...tags.map(tag=>`-${tag}`),"/proc/self/fd/3"],
       {fd:file.fd,signal});
-      const dimensions=inspect(output,input.size);
+      const dimensions=sony?{...inspectSonyArwToolOutput(output),
+        ...await inspectSonyArwStructure(file,input.size,signal)}:inspect(output,input.size);
       const final=await hashSource(file,signal,input.maxBytes);
       const after=await file.stat({bigint:true}),current=await lstat(filename,{bigint:true});
       if(final.bytes!==input.size||final.sha256!==input.sha256||
         ["dev","ino","size","mtimeNs","ctimeNs"].some(key=>before[key as keyof typeof before]!==after[key as keyof typeof after])||
         current.isSymbolicLink()||current.dev!==before.dev||current.ino!==before.ino)fail("integrity");
       signal.throwIfAborted();
-      return {format:"DNG" as const,subset:"uncompressed-cfa16-strips" as const,
-        mime:"image/x-adobe-dng" as const,size:input.size,sha256:final.sha256,...dimensions};
+      return {format:sony?"ARW" as const:"DNG" as const,
+        subset:sony?"sony-ilce7m4-lossless-cfa14" as const:"uncompressed-cfa16-strips" as const,
+        mime:sony?"image/x-sony-arw" as const:"image/x-adobe-dng" as const,
+        size:input.size,sha256:final.sha256,...dimensions};
     }catch(error){
       if(error instanceof RawValidationError){
         if(controller.signal.aborted&&error.code==="cancelled")fail("resource_limit");

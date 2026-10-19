@@ -13,6 +13,8 @@ single-sample CFA sensor data stored in bounded strips.
 ExifTool must report a DNG MIME/type and clean structural validation.
 Strip extents/counts, pixel dimensions and total sensor bytes are checked.
 Compressed/tiled DNG, BigTIFF and CR2/CR3/NEF/ARW/RAF/ORF/RW2 are not enabled.
+A separate opt-in Sony ARW evaluator is now prepared and tested; see
+`sony-arw-validation.md`. It does not change this default DNG entry point.
 
 The positive fixture is an authored 32×24 synthetic sensor ramp, generated in
 `tests/helpers/synthetic-dng.mjs`. It contains no photograph, private metadata

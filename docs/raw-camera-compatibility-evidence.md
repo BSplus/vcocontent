@@ -47,6 +47,13 @@ pixel-level correspondence between the two files.
 
 ## Next implementation boundary
 
+**Subsequent preparation:** Steps 1 and 2 below now have narrow isolated
+implementation/evidence in `sony-arw-validation.md`. The supplied Sony file
+passes that explicit evaluator, with unchanged checksum and six passing
+negative cases. The default DNG API still rejects ARW; no runtime intake or
+format policy was changed. The initial inspection results above remain an
+accurate record of the pre-profile test.
+
 1. Prepare and test a narrow Sony lossless-compressed ARW structural profile,
    including TIFF/SubIFD and tile/strip extents, truncation and malformed
    fixtures. ExifTool type detection alone is insufficient.
