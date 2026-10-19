@@ -86,6 +86,12 @@ correctly. No signed-in Studio screen was changed or newly verified.
 
 ## Remaining before usable RAW intake
 
+An authorized real-camera pair has now been inspected locally:
+see `raw-camera-compatibility-evidence.md`. It is Sony lossless-compressed ARW,
+not the accepted synthetic DNG subset. Its exported JPEG lacks capture/camera
+EXIF, so it provides manual-pairing evidence, not automatic matching evidence.
+ARW remains unsupported by this validator.
+
 Obtain representative authorized JPEG/RAW camera pairs and verify initial
 formats/compression variants. Define any additional supported subset and
 resource policy from that evidence, not the extension list. Then connect

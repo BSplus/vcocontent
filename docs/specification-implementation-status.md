@@ -33,6 +33,11 @@ and before/after source hashing. All 29 validator/pairing/asset checks passed;
 type checking and build passed. This is not real-camera compatibility or RAW
 activation; see `docs/raw-container-validation.md`. Next: authorized camera
 fixtures and reviewed initial formats before gated Studio integration.
+An authorized Sony α7 IV JPEG/ARW pair has since been inspected locally:
+both sources remained unchanged; the JPEG decodes, but lacks camera/capture EXIF.
+Sony lossless-compressed ARW is correctly unsupported by the narrow DNG validator.
+Manual-selection regression coverage now includes this exported-JPEG case.
+See `docs/raw-camera-compatibility-evidence.md`; no RAW format was activated.
 Pairing/asset unit checks: 13 passed. Combined asset-storage, native JPEG/restart
 and capacity checks: 71 passed, no failures/skips. Type checking/build passed.
 

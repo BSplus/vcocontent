@@ -22,6 +22,29 @@ test("filename alone, missing metadata and missing normalized timestamp never su
     assert.equal(suggestRawPairs(input,[candidate]).status,"manual_selection_required");
   }
 });
+test("exported JPEG without camera EXIF stays manually pairable with a Sony RAW",()=>{
+  const sonyRaw={ownership,filename:"A7402916.ARW",
+    evidence:{capturedAtMs:1700000000000,cameraMake:"SONY",cameraModel:"ILCE-7M4"}};
+  const exportedJpeg={...candidate,filename:"A7402916.jpg",evidence:undefined};
+  const result=suggestRawPairs(sonyRaw,[exportedJpeg]);
+  assert.equal(result.status,"manual_selection_required");
+  assert.equal(result.requiresExplicitSelection,true);
+  assert.deepEqual(result.matches,[]);
+  // Manual selection is independent of missing capture facts and image dimensions.
+  // Container acceptance, ownership and durable attachment remain separate checks.
+  const expected={mediaId:exportedJpeg.mediaId,sourceVersion:exportedJpeg.sourceVersion,
+    jpegKey:exportedJpeg.jpegKey,jpegSha256:exportedJpeg.jpegSha256,
+    rawKey:rawKey.replace(".dng",".arw"),rawSha256:"b".repeat(64)};
+  assert.doesNotThrow(()=>assertRawPairSelection({intent:"explicit",...expected},expected));
+  assert.throws(()=>assertRawPairSelection({intent:"explicit",...expected,sourceVersion:2},expected),/stale/);
+});
+test("attachment transport filenames are not silently treated as original camera stems",()=>{
+  const sony={capturedAtMs:1700000000000,cameraMake:"SONY",cameraModel:"ILCE-7M4"};
+  const result=suggestRawPairs({ownership,filename:"0_A7402916_1792401838452.ARW",evidence:sony},
+    [{...candidate,filename:"1_A7402916_1792401838453.jpg",evidence:sony}]);
+  assert.equal(result.status,"manual_selection_required");
+  assert.deepEqual(result.matches,[]);
+});
 test("camera, serial, capture time and filename conflicts veto suggestions",()=>{
   for(const change of [{cameraMake:"Nikon"},{cameraModel:"R6"},{cameraSerial:"body-b"},
     {capturedAtMs:evidence.capturedAtMs+2001}]){

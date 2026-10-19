@@ -1,4 +1,7 @@
 /generated-artifacts/
+# Local camera compatibility samples must not ship with the application.
+/attached_assets/0_A7402916_1792401838452.ARW
+/attached_assets/1_A7402916_1792401838453.jpg
 /attached_assets/*1791756944089.jpg
 /attached_assets/*179161417330*.jpeg
 /attached_assets/*1791615863*.mp4
