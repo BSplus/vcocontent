@@ -1,0 +1,150 @@
+# Replit – Media Library: Technical Inventory & Reuse Audit
+
+## Ziel
+
+Diese bestehende Replit-Anwendung soll möglicherweise als technische Basis für die zentrale Foto- und Videodatenbank der **bürosüd plus Organisation Suite (bsOS)** dienen.
+
+Die bsOS verfügt bereits über Benutzerverwaltung, Projekte, Berechtigungen, externe Portalzugänge und verschiedene KI-Funktionen.
+
+Zusätzlich entsteht ein BS+ Content Studio für die Planung und Produktion von Foto- und Videoinhalten.
+
+**Auftrag: Analysiere die bestehende Medienanwendung vollständig und ermittle, welche Komponenten für eine Integration in bsOS wiederverwendet werden können.**
+
+Ausschließlich READ-ONLY. Keine Implementierung, keine Migration, keine Refaktorierung und keine Änderungen an produktiven Daten oder laufenden Workflows.
+
+## A. Architektur und Technologie
+
+Dokumentiere anhand des tatsächlichen Codes:
+
+- Frontend- und Backend-Technologien
+- Datenbank und Datenmodelle
+- Speicherarchitektur und Medienablage
+- Authentifizierung und Berechtigungen
+- API-Endpunkte und Service-Struktur
+- Hintergrundjobs, Queues und Worker
+- Verwendete externe Dienste
+- Konfiguration und Deployment
+- Abhängigkeiten und Betriebskosten
+
+## B. Foto- und Videoverwaltung
+
+Ermittle alle vorhandenen Funktionen und ihren tatsächlichen Implementierungsstatus.
+
+Insbesondere:
+
+- Upload und Import
+- Unterstützte Bild-, RAW- und Videoformate
+- Umgang mit RAW-Dateien und zugehörigen JPEGs
+- Metadaten und EXIF
+- Thumbnails und Video-Previews
+- Videotranscoding und Proxydateien
+- Medienversionierung
+- Galerien, Events und Projekte
+- Suche und Filter
+- Download und Export
+- Medienrechte und Freigaben
+- Archivierung und Löschkonzepte
+
+Unterscheide zwischen produktiv funktionierend, teilweise implementiert, experimentell und lediglich geplant.
+
+## C. KI-Verschlagwortung – besonders wichtig
+
+Analysiere die komplette bestehende KI-Pipeline.
+
+Dokumentiere:
+
+1. Welche KI-Modelle und Provider verwendet werden.
+2. Wie Bilder und Videos für die Analyse vorbereitet werden.
+3. Welche Dateien tatsächlich analysiert werden.
+4. Wie RAW-Dateien behandelt werden.
+5. Ob und wie Video-Frames, Audio oder Transkripte analysiert werden.
+6. Wie Tags, Kategorien, Beschreibungen und sonstige Metadaten erzeugt werden.
+7. Welche Prompts und strukturierten Ausgabeformate existieren.
+8. Wie Ergebnisse validiert und gespeichert werden.
+9. Wie manuelle Korrekturen funktionieren.
+10. Wie erneute Analysen und Modellwechsel behandelt werden.
+11. Wie Fehler, Wiederholungen und Kosten kontrolliert werden.
+12. Welche Optimierungen bereits implementiert wurden.
+
+**Die bestehende KI-Tagging-Pipeline ist ein besonders wertvoller Bestandteil und muss bei einer späteren Integration funktional erhalten bleiben.**
+
+Keine Vereinfachung oder Neuentwicklung empfehlen, ohne die bestehenden Funktionen und deren Qualität nachweisbar zu vergleichen.
+
+## D. Datenmodell
+
+Dokumentiere die relevanten Tabellen, Beziehungen, IDs, Metadatenstrukturen und Statusmodelle.
+
+Prüfe insbesondere die Trennung zwischen:
+
+- Originaldatei
+- Medienobjekt
+- Dateiversion
+- Vorschaudatei/Derivative
+- KI-Analyse
+- Tags und Metadaten
+- Event/Galerie
+- Projekt
+- Benutzer und Berechtigungen
+
+Identifiziere mögliche Integrationskonflikte mit einer übergeordneten Suite-Projektverwaltung.
+
+## E. Wiederverwendbarkeit
+
+Bewerte jede wesentliche Komponente:
+
+- Direkt wiederverwendbar
+- Mit Anpassungen wiederverwendbar
+- Besser durch bestehende bsOS-Funktion ersetzbar
+- Nicht sinnvoll übertragbar
+
+Da der bsOS-Code hier möglicherweise nicht vorliegt, dürfen Aussagen über dessen tatsächliche Implementierung nicht erfunden werden. Markiere solche Bewertungen als vorläufig.
+
+Bewerte Entwicklungsaufwand, technische Risiken, Performance, Betriebskosten und Wartbarkeit qualitativ.
+
+## F. Integrationsoptionen
+
+Vergleiche drei Möglichkeiten:
+
+**Variante 1:** Medienfunktionen vollständig als bsOS-Modul integrieren.
+
+**Variante 2:** Medien-Backend beziehungsweise aufwendige Medienverarbeitung als separaten Dienst weiterverwenden, mit integrierter bsOS-Oberfläche.
+
+**Variante 3:** Bestehende Anwendung zunächst eigenständig erhalten und über eine kontrollierte API mit bsOS verbinden.
+
+Beurteile, welche Architektur vorhandene Investitionen am besten schützt und unnötige Duplizierung vermeidet.
+
+Keine Variante vor der Bestandsaufnahme festlegen.
+
+## G. Content-Studio-Schnittstelle
+
+Prüfe, wie das künftige Content Studio auf Medien zugreifen könnte:
+
+- Suche nach passenden Fotos und Videos
+- KI-basierte Materialvorschläge
+- Shot- und Asset-Zuordnungen
+- Video-Timecodes und Snippets
+- Produktions- und Schnittfreigaben
+- Rechteprüfung
+- Kontrollierter Zugriff externer Partner
+
+Die Media Library muss auch ohne Content Studio vollständig nutzbar bleiben.
+
+## H. Ergebnis und Übergabepaket
+
+Erstelle:
+
+1. Executive Summary
+2. Vollständige Feature-Inventur
+3. Architekturübersicht
+4. KI-Pipeline-Dokumentation
+5. Datenmodellübersicht
+6. Integrationsoptionen
+7. Risiken und offene Fragen
+8. Empfehlung zur Wiederverwendung
+9. Technische Übergabedokumentation mit relevanten Dateipfaden, Modulen, APIs und Abhängigkeiten
+
+Dokumentiere außerdem, wie ein sicherer Source-Code-Export oder ein privates GitHub-Repository für einen externen Architekturvergleich vorbereitet werden kann.
+
+Keine Secrets, Tokens, personenbezogenen Daten oder produktiven Medienbestände exportieren.
+
+**Wichtig: Nur untersuchen und dokumentieren. Keine Änderungen durchführen.**
