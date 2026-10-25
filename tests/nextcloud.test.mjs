@@ -20,6 +20,7 @@ import express from "express";
 import { once } from "node:events";
 import { registerRoutes } from "../server/routes.ts";
 import { eventCreateRoute } from "../client/src/lib/event-create-route.ts";
+import { mediaPolicy } from "../server/media-policy.ts";
 
 const base = "https://cloud.example.invalid";
 const publicBase = "https://nextcloud.bs-plus.de";
@@ -448,8 +449,22 @@ test("VCO public discovery rejects unsafe links, redirects, DAV escapes and impo
     }
     respond = () => new Response(dav(folder, Array.from({ length: 501 }, (_, i) => [folder + `${i}.jpg`])), { status: 207 });
     await assert.rejects(() => discover([{ link }]), /Import limit reached/);
-    respond = () => new Response(dav(folder, Array.from({ length: 17 }, (_, i) => [folder + `${i}.jpg`, false, 32 * 1048576])), { status: 207 });
+    // 64 images of 32 MiB fit exactly; the next image exceeds 2 GiB.
+    respond = () => new Response(dav(folder, Array.from({ length: 64 }, (_, i) => [folder + `${i}.jpg`, false, 32 * 1048576])), { status: 207 });
+    const exactLimit = await discover([{ link }]);
+    assert.equal(exactLimit.files.length, 64);
+    assert.equal(exactLimit.files.reduce((sum, file) => sum + file.bytes, 0), 2048 * 1048576);
+    respond = () => new Response(dav(folder, Array.from({ length: 65 }, (_, i) => [folder + `${i}.jpg`, false, 32 * 1048576])), { status: 207 });
     await assert.rejects(() => discover([{ link }]), /Import limit reached/);
+    // Two maximum-size videos no longer hit the former 500 MiB batch cap.
+    respond = () => new Response(dav(folder, [
+      [folder + "first.mp4", false, 300 * 1048576],
+      [folder + "second.mp4", false, 300 * 1048576],
+      [folder + "oversized.mp4", false, 300 * 1048576 + 1],
+    ]), { status: 207 });
+    const videos = await discover([{ link }]);
+    assert.equal(videos.files.length, 2);
+    assert.equal(videos.skipped, 1);
   } finally { globalThis.fetch = transport; }
 });
 
@@ -583,7 +598,7 @@ test("mixed import validates content and size, serves video posters safely, and 
     if (options.method === "PROPFIND") {
       const entries = pathname === directory
         ? [["one.jpg"], ["two.png"], ["five.mp4"], ["wrong.mp4"], ["bad.jpg"],
-          ["mismatch.jpg"], ["big.mov", false, 51 * 1048576], ["overflow.mp4"], ["unknown.txt"], ["sub/", true]]
+          ["mismatch.jpg"], ["big.mov", false, mediaPolicy.videoBytes + 1], ["overflow.mp4"], ["unknown.txt"], ["sub/", true]]
         : [["three.gif"], ["four.webp"], ["six.mov"], ["seven.webm"], ["broken.webm"]];
       return new Response(dav(pathname, entries.map(([name, directory, size]) =>
         [pathname + name, directory, size ?? contents.get(name)?.length ?? 12])), { status: 207 });
@@ -593,7 +608,7 @@ test("mixed import validates content and size, serves video posters safely, and 
     const data = repaired && name === "wrong.mp4" ? mp4
       : repaired && name === "broken.webm" ? webm
       : repaired && (name === "bad.jpg" || name === "mismatch.jpg") ? jpeg : contents.get(name);
-    return new Response(data, { status: 200, headers: { "Content-Length": String(name === "overflow.mp4" && !repaired ? 51 * 1048576 : data.length) } });
+    return new Response(data, { status: 200, headers: { "Content-Length": String(name === "overflow.mp4" && !repaired ? mediaPolicy.videoBytes + 1 : data.length) } });
   };
   const source = [{ link: `${base}/s/mixed`, photographer: "  Mixed Zoë 李  " }];
   const finish = async () => {
