@@ -68,6 +68,13 @@ for (const timing of ["before","during","after"]) {
     setAnalysisQueueTestScope([],[]);
     const event=await storage.createEvent({title:`Automatic Nextcloud ${timing}`,description:"Disposable fixture",date:new Date("2026-10-14")});
     const transport=globalThis.fetch;
+    const originalTimeout=AbortSignal.timeout;
+    const deadlines=new WeakMap();
+    AbortSignal.timeout=milliseconds=>{
+      const signal=originalTimeout(milliseconds);
+      deadlines.set(signal,milliseconds);
+      return signal;
+    };
     const originalBase=process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,originalKey=process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
     process.env.AI_INTEGRATIONS_OPENAI_BASE_URL="https://nc-auto-ai.example.invalid/v1";
     process.env.AI_INTEGRATIONS_OPENAI_API_KEY="fixture-only";
@@ -85,6 +92,7 @@ for (const timing of ["before","during","after"]) {
       if(options.method==="PROPFIND")return new Response(dav(folder,[
         [folder+"first.jpg",false,bytes.length],[folder+"second.jpg",false,bytes.length]
       ]),{status:207});
+      assert.equal(deadlines.get(options.signal),60_000,"File transfer retains a 60-second abort deadline");
       if(timing==="during" && String(url).endsWith("second.jpg"))await held;
       return new Response(bytes);
     };
@@ -120,6 +128,7 @@ for (const timing of ["before","during","after"]) {
     } finally {
       release();await stopImportWorker();await stopAnalysisWorker();
       globalThis.fetch=transport;
+      AbortSignal.timeout=originalTimeout;
       if(originalBase===undefined)delete process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;else process.env.AI_INTEGRATIONS_OPENAI_BASE_URL=originalBase;
       if(originalKey===undefined)delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;else process.env.AI_INTEGRATIONS_OPENAI_API_KEY=originalKey;
       await storage.deleteEvent(event.id);await storage.cleanupObjects();

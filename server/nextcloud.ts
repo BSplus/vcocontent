@@ -137,7 +137,8 @@ async function request(url: URL, source: Source, method: string, signal?: AbortS
   let response: Response;
   try {
     response = await fetch(url, {
-      method, redirect: "manual", signal: signal ?? AbortSignal.timeout(20000),
+      // The signal also bounds response-body consumption, not just headers.
+      method, redirect: "manual", signal: signal ?? AbortSignal.timeout(60000),
       headers: { Authorization: source.auth, ...(method === "PROPFIND" ? { Depth: "1", "Content-Type": "application/xml" } : {}) },
       ...(method === "PROPFIND" ? { body: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/></d:prop></d:propfind>' } : {}),
     });
