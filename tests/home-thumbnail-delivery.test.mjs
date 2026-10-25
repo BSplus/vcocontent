@@ -18,6 +18,7 @@ const {db}=await import("../server/db.ts");
 const {ReplitStore,ObjectStoreError}=await import("../server/object-store.ts");
 const {mediaDatabaseFingerprint}=await import("../server/media-storage-config.ts");
 const {preparedThumbnailCache}=await import("../server/prepared-thumbnail.ts");
+const {MediaBusyError}=await import("../server/media-work-budget.ts");
 const {registerRoutes}=await import("../server/routes.ts");
 const {SAFETY_POLICY}=await import("../shared/safety-policy.ts");
 const originals={},oldStream=Client.prototype.downloadAsStream;
@@ -182,6 +183,15 @@ test("versioned prepared bytes coalesce; every hit/304 checks routing, storage s
       assert.notEqual(response.headers.get("etag"),etag);
       assert.equal(response.headers.get("cache-control"),"private, no-store");Object.assign(route,saved);
     }
+    const get = preparedThumbnailCache.get;
+    try {
+      preparedThumbnailCache.get = async () => { throw new MediaBusyError("fixture queue full"); };
+      const busy = await call(modern,etag);
+      assert.equal(busy.status,503);
+      assert.equal(busy.headers.get("retry-after"),"5");
+      assert.equal(busy.headers.get("cache-control"),"private, no-store");
+      assert.notEqual(busy.headers.get("etag"),etag,"Busy response must not reuse the image validator");
+    } finally { preparedThumbnailCache.get = get; }
     missing=true;assert.equal((await call(modern,etag)).status,502);missing=false;
     // An out-of-band replacement under the same key fails closed against the
     // registered version, rather than reusing old bytes for a matching validator.

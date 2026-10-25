@@ -5,7 +5,10 @@ import { ThumbnailCache, thumbnailDigest } from "./thumbnail-cache";
 import { preparedThumbnailSource } from "./media-object-routing";
 import { ObjectStoreError, type ObjectStore } from "./object-store";
 
-export const preparedThumbnailCache = new ThumbnailCache();
+// Prepared thumbnails need I/O only, not the shared image-conversion CPU budget.
+// Queue a normal gallery burst while bounding open streams and retained buffers.
+export const preparedThumbnailCache = new ThumbnailCache(undefined, undefined,
+  { active: 4, waiting: 48, waitMs: 5_000 });
 const storeIds = new WeakMap<ObjectStore, number>();
 let nextStoreId = 0;
 /** Deliver current prepared bytes unchanged, through the existing integrity checks. */

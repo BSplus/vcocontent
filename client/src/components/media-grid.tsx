@@ -26,6 +26,7 @@ import { Eye, Play, PlayCircle, Download, Pencil, Trash2, Check, ChevronLeft, Ch
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import EditMediaModal from "./edit-media-modal";
+import PreviewImage from "./preview-image";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -233,7 +234,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   openItem(item, index, event.currentTarget);
                 }}
               >
-                <img src={item.thumbnail} alt={item.caption || (item.type === 'video' ? 'Video preview' : 'Photo preview')} loading="lazy" className="h-full w-full object-contain" />
+                <PreviewImage src={item.thumbnail} alt={item.caption || (item.type === 'video' ? 'Video preview' : 'Photo preview')} loading="lazy" className="h-full w-full object-contain" />
                 {item.type === "video" && !isSelectionMode && (
                   <span
                     aria-hidden="true"

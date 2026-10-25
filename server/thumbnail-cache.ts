@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Request, Response } from "express";
+import { MediaBusyError } from "./media-work-budget";
 
 export function thumbnailDigest(value: string | Buffer) {
   return createHash("sha256").update(value).digest("hex");
@@ -10,8 +11,30 @@ export class ThumbnailCache {
   private ready = new Map<string, { body: Buffer; expires: number }>();
   private pending = new Map<string, Promise<Buffer>>();
   private bytes = 0;
+  private active = 0;
+  private waiting: (() => void)[] = [];
   constructor(private limits = { entries: 64, bytes: 4 * 1024 * 1024,
-    entryBytes: 100 * 1024, ttlMs: 5 * 60_000 }, private now = () => Date.now()) {}
+    entryBytes: 100 * 1024, ttlMs: 5 * 60_000 }, private now = () => Date.now(),
+    private work = { active: 10, waiting: 0, waitMs: 5_000 }) {}
+
+  private async produce(work: () => Promise<Buffer>) {
+    if (this.active >= this.work.active) {
+      await new Promise<void>((resolve, reject) => {
+        const start = () => { clearTimeout(timer); resolve(); };
+        const timer = setTimeout(() => {
+          this.waiting = this.waiting.filter(entry => entry !== start);
+          reject(new MediaBusyError("Media processing is busy. Please retry shortly."));
+        }, this.work.waitMs);
+        this.waiting.push(start);
+      });
+    } else this.active++;
+    try { return await work(); }
+    finally {
+      const next = this.waiting.shift();
+      if (next) next(); // Transfer the occupied slot; never abandon running reads.
+      else this.active--;
+    }
+  }
 
   get stats() { return { entries: this.ready.size, bytes: this.bytes, pending: this.pending.size }; }
   /** Clear retained outputs only; in-flight work still owns its bounded slot. */
@@ -27,13 +50,11 @@ export class ThumbnailCache {
     if (hit) { this.ready.delete(key); this.ready.set(key, hit); return hit.body; }
     const pending = this.pending.get(key);
     if (pending) return pending;
-    // Producers use the shared work budget (2 active + 8 waiting). This also
-    // bounds retained closures before producers can enter that budget.
-    if (this.pending.size >= 10) {
-      const { MediaBusyError } = await import("./media-work-budget");
+    // Bound distinct producers and queued closures. Same-key requests join above.
+    if (this.pending.size >= this.work.active + this.work.waiting) {
       throw new MediaBusyError("Media processing is busy. Please retry shortly.");
     }
-    const result = Promise.resolve().then(produce).then(body => {
+    const result = Promise.resolve().then(() => this.produce(produce)).then(body => {
       if (body.length <= this.limits.entryBytes && body.length <= this.limits.bytes) {
         while (this.ready.size && (this.ready.size >= this.limits.entries ||
             this.bytes + body.length > this.limits.bytes)) this.remove(this.ready.keys().next().value!);

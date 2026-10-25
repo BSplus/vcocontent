@@ -765,6 +765,9 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       });
       stream.pipe(res);
     } catch (error) {
+      if (error instanceof MediaBusyError && !res.headersSent)
+        return res.status(503).set("Retry-After", "5").set("Cache-Control", "private, no-store")
+          .json({ error: "Media is temporarily busy. Please retry shortly." });
       console.error("Media delivery failed:", error);
       if (!res.headersSent) res.status(502).json({ error: "Media is temporarily unavailable" });
       else res.destroy();
