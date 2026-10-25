@@ -71,3 +71,4 @@
 - [Visible brand search](visible-brand-search.md) — operator wants securely recognized on-car brands as searchable tags, separate from entry-list identity.
 - [Professional image metadata](professional-image-metadata.md) — immutable originals, Creator-over-AI precedence and private EXIF; enriched downloads/RAW sidecars require separate approval.
 - [Large-upload boundaries](large-upload-boundaries.md) — 250 MiB is isolated-test approval, not activation; native R2 retries require conservative reconciliation.
+- [Video upload size](video-upload-size.md) — user requests a 300 MB video upload maximum; this does not enable Creator videos or authorize deployment.

@@ -9,7 +9,7 @@ function positiveInt(name: string, fallback: number): number {
 
 export const mediaPolicy = {
   imageBytes: positiveInt("MEDIA_IMAGE_MIB", 32) * mib,
-  videoBytes: positiveInt("MEDIA_VIDEO_MIB", 50) * mib,
+  videoBytes: positiveInt("MEDIA_VIDEO_MIB", 300) * mib,
   eventBytes: positiveInt("MEDIA_EVENT_MIB", 2048) * mib,
   creatorBytes: positiveInt("MEDIA_CREATOR_MIB", 10240) * mib,
   eventCount: positiveInt("MEDIA_EVENT_COUNT", 1000),
