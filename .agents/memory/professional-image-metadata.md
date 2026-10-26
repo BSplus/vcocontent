@@ -20,3 +20,9 @@ Offer privacy-filtered standard downloads. Exact-original downloads require expl
 **Why:** The operator expressly approved these product principles in the consolidated planning brief.
 
 **How to apply:** Treat exact-original availability as distinct from download authorization. Preserve the private original rather than sanitizing it in place; account for download-only cache versus persisted Creator-managed sidecars according to the marketplace storage rule.
+
+Download options must show concrete sizes for the actual downloadable versions, not only maximum limits.
+
+**Why:** The operator explicitly requires precision: “Bei den Download-Optionen stehen keine konkreten Dateigrößen mehr. Warum? Hier müssen wir präzise sein”.
+
+**How to apply:** Do not substitute original-file or thumbnail byte counts for generated JPEG export sizes. Calculate sizes from the actual export and distinguish a pending or unavailable size from a measured value; inspecting options must not count as a download.
