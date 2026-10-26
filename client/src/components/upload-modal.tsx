@@ -31,6 +31,7 @@ import GalleryThumbnailSelector from "@/components/gallery-thumbnail-selector";
 import { eventImagePolicy } from "@shared/event-image-policy";
 import { EventSaveError, saveEvent } from "@/lib/event-save";
 import { EventCreateError, createEventRequest } from "@/lib/event-create";
+import { pluralize } from "@/lib/utils";
 
 interface UploadModalProps {
   open: boolean;
@@ -759,7 +760,7 @@ function EventUploadModal({
                 {isEditing && !sourcesLoaded && !sourcesError && <p role="status">Loading saved sources…</p>}
                 {sourcesError && <p role="alert">{sourcesError}</p>}
                 {isEditing && sourcesLoaded && !savedLinks.length && <p>No saved sources. Historical links cannot be recovered; enter them once and choose Save sources.</p>}
-                {savedLinks.length > 0 && <p role="status">{savedLinks.length} saved sources{sourcesDirty ? " · Unsaved changes" : " · No import started by saving sources"}</p>}
+                {savedLinks.length > 0 && <p role="status">{savedLinks.length} saved {pluralize(savedLinks.length, "source", "sources")}{sourcesDirty ? " · Unsaved changes" : " · No import started by saving sources"}</p>}
                  <p className="text-sm text-muted-foreground">Public folder links from nextcloud.vco-motorsports.com, nextcloud.bs-plus.de or a separately configured instance work without a Nextcloud account. Both /s/TOKEN and /index.php/s/TOKEN are supported. Enter a share password below if needed. Internal links require the instance and Nextcloud access to be configured by an administrator. All links and subfolders are imported into this gallery.</p>
                 {links.map((entry, i) => (
                   <div className="space-y-2 border-b pb-3" key={i}>
@@ -788,21 +789,21 @@ function EventUploadModal({
                       {sourcesDirty && <p className="text-sm">Save source changes before updating the gallery.</p>}
                     </>}
                 </div>
-                 {preview && <p role="status">{preview.count === 0 ? "No supported media found. " : ""}{preview.images} images and {preview.videos} videos found; {preview.skipped} files skipped.</p>}
+                 {preview && <p role="status">{preview.count === 0 ? "No supported media found. " : ""}{preview.images} {pluralize(preview.images, "image", "images")} and {preview.videos} {pluralize(preview.videos, "video", "videos")} found; {preview.skipped} {pluralize(preview.skipped, "file", "files")} skipped.</p>}
                 {importProgress && <div role="status" className="text-sm space-y-1">
                   {importProgress.run && <>
                     <p>Current run: {importProgress.status} · {importProgress.run.found} found · {importProgress.run.existing} already present · {importProgress.run.imported} newly imported · {importProgress.run.skipped} skipped · {importProgress.run.failed} failed</p>
                     {importProgress.status === "completed" && importProgress.run.found === 0 && <p>No supported media found</p>}
                     {importProgress.status === "completed" && importProgress.run.found > 0 && importProgress.run.existing === importProgress.run.found && <p>All supported media already present. No new media imported.</p>}
                   </>}
-                   <p>Historical totals: {importProgress.imported}/{importProgress.total} files ({importProgress.importedImages} images, {importProgress.importedVideos} videos) · {importProgress.warnings} analysis warnings</p>
+                   <p>Historical totals: {importProgress.imported}/{importProgress.total} {pluralize(importProgress.total, "file", "files")} ({importProgress.importedImages} {pluralize(importProgress.importedImages, "image", "images")}, {importProgress.importedVideos} {pluralize(importProgress.importedVideos, "video", "videos")}) · {importProgress.warnings} analysis {pluralize(importProgress.warnings, "warning", "warnings")}</p>
                   {importProgress.error && <p className="text-amber-600">{importProgress.error}</p>}
                   {importProgress.budgets && <p className="text-xs text-muted-foreground">
                     Per file: images {importProgress.budgets.imageBytes / 1048576} MiB, videos {importProgress.budgets.videoBytes / 1048576} MiB.
                     {" "}New source transfers per run: {importProgress.budgets.transferBytes / 1048576} MiB.
                     {" "}Stored event budget: {importProgress.budgets.eventStoredBytes / 1048576} MiB, including existing media, posters and active reservations.
                   </p>}
-                  <p>Analysis: {importProgress.analysisPending || 0} media items waiting or being processed · {importProgress.analysisCompleted || 0} complete. Files are already saved. Matching runs automatically with a confirmed applicable entry list, including photos saved before the list.</p>
+                  <p>Analysis: {importProgress.analysisPending || 0} media {pluralize(importProgress.analysisPending, "item", "items")} waiting or being processed · {importProgress.analysisCompleted || 0} complete. Files are already saved. Matching runs automatically with a confirmed applicable entry list, including photos saved before the list.</p>
                   <div className="max-h-28 overflow-y-auto">
                     {importProgress.files.filter(file => file.message || file.aiWarning || file.analysisStatus === "failed").map((file, index) =>
                       <div key={index}>{file.name}: {file.message || (file.aiWarning || file.analysisStatus === "failed" ? "Analysis failed. You can retry." : "")}

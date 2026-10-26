@@ -32,10 +32,24 @@ test("empty and no-match states differ, rows show stats and actions, pagination 
   ] }));
   assert.match(rows, /Race 19/);
   assert.doesNotMatch(rows, /Race 1</);
-  assert.match(rows, /1 Photos/);
-  assert.match(rows, /1 Videos/);
+  assert.match(rows, /1 Photo</);
+  assert.match(rows, /1 Video</);
   assert.match(rows, /5 Downloads/);
   assert.match(rows, /Manage Media/);
   assert.match(rows.replace(/<!--.*?-->/g,""), /PAGE 1 OF 3/);
   assert.match(rows, /disabled=""[^>]*>Previous/);
 });
+
+for (const count of [0, 1, 2]) {
+  test(`rendered dashboard stats use correct forms for ${count}`, () => {
+    const html = renderToStaticMarkup(React.createElement(DashboardEventList, {
+      title: "Events", events: [events[0]], mediaItems: [], search: "", emptyMessage: "",
+      eventCounts: new Map([[events[0].id, { photos: count, videos: count, downloads: count }]]),
+      actions: () => null,
+    }));
+    for (const word of ["Photo", "Video", "Download"]) {
+      assert.ok(html.includes(`${count} ${word}${count === 1 ? "" : "s"}<`));
+    }
+    assert.doesNotMatch(html, /1 (Photos|Videos|Downloads)</);
+  });
+}

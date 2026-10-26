@@ -41,6 +41,7 @@ import { usePhotoSwipe } from "@/hooks/use-photo-swipe";
 import "./media-preview-mobile.css";
 import { creditLabel, creditByline } from "@shared/media-credit";
 import { brandNameFromTag } from "@shared/brand-tags";
+import { pluralize } from "@/lib/utils";
 
 interface MediaGridProps {
   items: MediaItem[];
@@ -143,7 +144,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
       setIsSelectionMode(false);
       toast({
         title: "Success",
-        description: `${deletedIds.length} item${deletedIds.length > 1 ? 's' : ''} deleted successfully`,
+        description: `${deletedIds.length} ${pluralize(deletedIds.length, "item", "items")} deleted successfully`,
       });
     },
     onError: (error: Error) => {
@@ -196,7 +197,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
         <div className="sticky top-20 z-40 mb-4 flex items-center justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4 rounded-lg border">
           <div className="flex items-center gap-2">
             <Check className="h-5 w-5" />
-            <span>{selectedItems.size} items selected</span>
+            <span>{selectedItems.size} {pluralize(selectedItems.size, "item", "items")} selected</span>
           </div>
           <div className="flex gap-2">
             <Button

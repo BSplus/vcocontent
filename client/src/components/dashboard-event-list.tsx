@@ -1,4 +1,4 @@
-import { formatDate } from "@/lib/utils";
+import { formatDate, pluralize } from "@/lib/utils";
 import React, { useEffect, useState, type ReactNode } from "react";
 import { Event, MediaItem } from "@shared/schema";
 import { Image as ImageIcon, Film, EyeOff, ShieldAlert, Edit } from "lucide-react";
@@ -79,9 +79,9 @@ export default function DashboardEventList({
                     {(event as Event & { adminHidden?: boolean }).adminHidden && <Badge variant="destructive" className="gap-1"><EyeOff className="h-3 w-3" />Hidden by admin</Badge>}
                     {["review", "error", "blocked"].includes((event as Event & { safetyStatus?: string }).safetyStatus || "") &&
                       <Badge variant="outline" className="gap-1"><ShieldAlert className="h-3 w-3" />Safety: {(event as Event & { safetyStatus?: string }).safetyStatus}</Badge>}
-                    <Badge variant="secondary" className="gap-1"><ImageIcon className="h-3 w-3" />{stats.photos} Photos</Badge>
-                    <Badge variant="secondary" className="gap-1"><Film className="h-3 w-3" />{stats.videos} Videos</Badge>
-                    <span>{stats.downloads} Downloads</span>
+                    <Badge variant="secondary" className="gap-1"><ImageIcon className="h-3 w-3" />{stats.photos} {pluralize(stats.photos, "Photo", "Photos")}</Badge>
+                    <Badge variant="secondary" className="gap-1"><Film className="h-3 w-3" />{stats.videos} {pluralize(stats.videos, "Video", "Videos")}</Badge>
+                    <span>{stats.downloads} {pluralize(stats.downloads, "Download", "Downloads")}</span>
                   </div>
                   </div>
                 </div>

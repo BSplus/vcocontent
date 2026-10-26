@@ -10,6 +10,7 @@ import MainNavigation from "@/components/main-navigation";
 import { parseSearchParams, parseSearchPage, serializeSearchParams, SearchFilters } from "@/lib/search-params";
 import type { PageEnvelope } from "@shared/pagination";
 import PageStatus from "@/components/page-status";
+import { pluralize } from "@/lib/utils";
 
 export default function SearchResults() {
   const search = useSearch();
@@ -73,7 +74,7 @@ export default function SearchResults() {
             ) : (
               <>
                 <p className="text-sm text-foreground/75 mb-5" role="status" aria-live="polite">
-                  {mediaItems.length} media items · <PageStatus page={data!.page} totalPages={data!.totalPages} />
+                  {mediaItems.length} media {pluralize(mediaItems.length, "item", "items")} · <PageStatus page={data!.page} totalPages={data!.totalPages} />
                 </p>
                 {mediaItems.length ? <MediaGrid key={search} items={mediaItems} /> : (
                   <div className="rounded-lg border border-border bg-card text-center py-12 px-4">

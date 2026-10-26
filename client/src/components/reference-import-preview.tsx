@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { EventEntryRow } from "./entry-list-editor";
+import { pluralize } from "@/lib/utils";
 
 export default function ReferenceImportPreview({ name, rows, issues, confirmed, busy, onRows,
   onConfirm, onSave, onCancel }: {
@@ -10,13 +11,13 @@ export default function ReferenceImportPreview({ name, rows, issues, confirmed, 
   onSave: () => void; onCancel: () => void;
 }) {
   return <section aria-label="Reference import preview" className="space-y-3 rounded border p-3">
-    <p className="text-sm">{name} · {rows.length} vehicle entries · unsaved preview</p>
+    <p className="text-sm">{name} · {rows.length} vehicle {pluralize(rows.length, "entry", "entries")} · unsaved preview</p>
     <p className="text-sm text-muted-foreground">Review the registered lineup. Saved lists, sources and captions remain unchanged until you confirm and save.</p>
     {!!issues.length && <ul role="status" className="list-disc pl-5 text-sm text-amber-600">
       {issues.map((issue, index) => <li key={index}>{issue}</li>)}
     </ul>}
     <details className="rounded border px-3">
-      <summary className="cursor-pointer py-2 text-sm font-medium">Edit {rows.length} preview entries</summary>
+      <summary className="cursor-pointer py-2 text-sm font-medium">Edit {rows.length} preview {pluralize(rows.length, "entry", "entries")}</summary>
       <div className="space-y-3 pb-3">{rows.map((row, index) => <div key={index} className="space-y-2 rounded border p-2">
         <div className="grid gap-2 sm:grid-cols-2">{([
           ["number", "Number"], ["team", "Team"], ["car", "Car"], ["drivers", "Listed drivers"],

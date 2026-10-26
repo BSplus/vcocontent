@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { Event, MediaItem } from "@shared/schema";
 import { getEventPage } from "./dashboard-event-list";
-import { formatDate } from "@/lib/utils";
+import { formatDate, pluralize } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import SafeEventImage from "@/components/safe-event-image";
@@ -22,6 +22,8 @@ export default function CreatorGalleryCards({events,mediaItems,eventCounts,searc
       {visible.map(event=>{
         const ownMedia=mediaItems.filter(item=>item.eventId===event.id);
         const stats=eventCounts?.get(event.id);
+         const photos = stats?.photos ?? ownMedia.filter(m=>m.type==="image").length;
+         const downloads = stats?.downloads ?? ownMedia.reduce((sum,m)=>sum+m.downloadCount,0);
         return <article key={event.id} className="overflow-hidden border border-border bg-card">
           <div className="relative aspect-[4/3] bg-secondary">
             <SafeEventImage event={event} />
@@ -30,7 +32,7 @@ export default function CreatorGalleryCards({events,mediaItems,eventCounts,searc
           <div className="p-5">
             <h3 className="break-words text-2xl">{event.title}</h3>
             <time className="mt-2 block text-sm text-muted-foreground" dateTime={new Date(event.date).toISOString()}>{formatDate(event.date)}</time>
-            <p className="mt-2 text-sm">{stats?.photos ?? ownMedia.filter(m=>m.type==="image").length} photos · {stats?.downloads ?? ownMedia.reduce((sum,m)=>sum+m.downloadCount,0)} downloads</p>
+            <p className="mt-2 text-sm">{photos} {pluralize(photos, "photo", "photos")} · {downloads} {pluralize(downloads, "download", "downloads")}</p>
             {event.adminHidden && <p className="mt-2 text-sm text-destructive">Hidden by administrator</p>}
             {["blocked","review","error"].includes(event.safetyStatus) && <p className="mt-2 text-sm text-muted-foreground">Safety: {event.safetyStatus}</p>}
             <div className="mt-4 flex flex-wrap gap-2">{actions(event)}</div>

@@ -8,7 +8,7 @@ import CommunityActions from "@/components/community-actions";
 import ProfileSettings from "@/components/profile-settings";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { formatDate } from "@/lib/utils";
+import { formatDate, pluralize } from "@/lib/utils";
 import CreatorIdentity, { type PublicCreator } from "@/components/creator-identity";
 import type { PageEnvelope } from "@shared/pagination";
 import PageStatus from "@/components/page-status";
@@ -100,7 +100,7 @@ export default function AccountPage() {
             <Link href={`/creator/${creator.id}`} aria-label={`View ${creator.displayName || creator.username}'s profile`} className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/30 bg-primary/10 text-primary">
               {creator.profileImage ? <img src={creator.profileImage} alt="" className="h-full w-full object-cover" /> : <UserRound className="h-7 w-7" />}
             </Link>
-            <div className="min-w-0 flex-1"><CreatorIdentity creator={creator} className="text-lg font-bold" /><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{creator.bio || "VCO creator"}</p><p className="mt-2 text-xs text-muted-foreground">{creator.followerCount ?? 0} followers</p></div>
+            <div className="min-w-0 flex-1"><CreatorIdentity creator={creator} className="text-lg font-bold" /><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{creator.bio || "VCO creator"}</p><p className="mt-2 text-xs text-muted-foreground">{creator.followerCount ?? "—"} {pluralize(creator.followerCount, "follower", "followers")}</p></div>
           </article>)}
         </div>}
         {!followingQuery.isLoading && !followingQuery.isError && followingQuery.data?.items.length ? <nav aria-label="Following pages" className="mt-7 flex flex-wrap gap-2 items-center justify-between border-t border-border pt-4">

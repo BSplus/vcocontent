@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useAuth } from "@/hooks/use-auth";
+import { pluralize } from "@/lib/utils";
 
 export type PublicCreator = {
   id: number;
@@ -58,7 +59,7 @@ export default function CreatorIdentity({ creator, className = "" }: { creator: 
       <div className="min-w-0"><p className="truncate font-bold">{label}</p><p className="truncate text-xs text-muted-foreground">@{creator.username}</p></div>
     </div>
     {data?.bio && <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-foreground/75">{data.bio}</p>}
-    <p className="mt-3 flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground"><Users className="h-3.5 w-3.5 text-primary" />{data?.followerCount ?? 0} followers</p>
+    <p className="mt-3 flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground"><Users className="h-3.5 w-3.5 text-primary" />{data?.followerCount ?? "—"} {pluralize(data?.followerCount, "follower", "followers")}</p>
     {follow.isError && <p role="alert" className="mt-2 text-xs text-destructive">{follow.error.message}</p>}
     {isError && <p role="alert" className="mt-2 text-xs text-destructive">Profile preview could not be loaded. Open the profile to try again.</p>}
     <div className="mt-4 grid grid-cols-2 gap-2">

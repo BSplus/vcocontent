@@ -32,6 +32,7 @@ import { Loader2, Upload, X, Info } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { analysisPending, requestAnalysis, type AnalysisState } from "@/hooks/use-media-analysis";
 import { useAuth } from "@/hooks/use-auth";
+import { pluralize } from "@/lib/utils";
 import LegalLinks from "@/components/legal-links";
 import { mediaCreditSchema, uploadCreditLabel } from "@shared/media-credit";
 import { resumableUpload, cancelResumableUpload, hasResumableUploadRecord, ResumableRejected, UploadPaused } from "@/lib/resumable-upload";
@@ -204,7 +205,7 @@ export default function MediaUploadModal({
       setUploads(prev => [...prev, ...imageFiles]);
       toast({
         title: "Success",
-        description: `Extracted ${imageFiles.length} images from ZIP file.`,
+        description: `Extracted ${imageFiles.length} ${pluralize(imageFiles.length, "image", "images")} from ZIP file.`,
       });
     } catch (error) {
       console.error('Failed to process ZIP file:', error);

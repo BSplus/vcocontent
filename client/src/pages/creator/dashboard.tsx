@@ -1,4 +1,4 @@
-import { formatDate } from "@/lib/utils";
+import { formatDate, pluralize } from "@/lib/utils";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -20,7 +20,7 @@ import MainNavigation from "@/components/main-navigation";
 import MediaUploadModal from "@/components/media-upload-modal";
 import EditMediaModal from "@/components/edit-media-modal";
 import EventTitle from "@/components/event-title";
-import DashboardEventList from "@/components/creator-gallery-cards";
+import CreatorGalleryCards from "@/components/creator-gallery-cards";
 import CreatorGalleryAssociation, {
   creatorAssociationsKey,
   creatorOfficialEventsKey,
@@ -217,7 +217,7 @@ export default function CreatorDashboard() {
                 const stats = getEventStats(event.id);
                 const visibility = (event as Event & { visibility?: string }).visibility;
                 return <button key={event.id} type="button" onClick={() => { setSelectedEventId(event.id); setSection("galleries"); setActiveTab("media"); }} className="flex min-h-16 w-full items-center justify-between gap-3 py-3 text-left">
-                  <span className="min-w-0"><span className="block truncate font-semibold">{event.title}</span><span className="mt-1 block text-xs text-muted-foreground">{stats.photos} photos · {stats.totalDownloads} downloads</span></span>
+                  <span className="min-w-0"><span className="block truncate font-semibold">{event.title}</span><span className="mt-1 block text-xs text-muted-foreground">{stats.photos} {pluralize(stats.photos, "photo", "photos")} · {stats.totalDownloads} {pluralize(stats.totalDownloads, "download", "downloads")}</span></span>
                   <Badge variant="outline">{visibility === "published" ? "Live" : "Draft"}</Badge>
                 </button>;
               })}</div> : <p className="mt-4 border border-dashed border-border p-5 text-sm text-muted-foreground">Your galleries will be listed here.</p>}
@@ -317,7 +317,7 @@ export default function CreatorDashboard() {
                <>
                  <label htmlFor="creator-event-search" className="mb-2 block text-sm font-medium">Search events by title</label>
                  <Input id="creator-event-search" type="search" value={eventSearch} onChange={e => setEventSearch(e.target.value)} placeholder="Search events..." className="mb-6 max-w-md" />
-                 <DashboardEventList title="My Events" events={sortedEvents} mediaItems={mediaItems} eventCounts={usage?.eventStats?new Map(usage.eventStats.map(row=>[row.eventId,row])):undefined} search={eventSearch} emptyMessage="No events created yet." actions={event => (
+                 <CreatorGalleryCards title="My Events" events={sortedEvents} mediaItems={mediaItems} eventCounts={usage?.eventStats?new Map(usage.eventStats.map(row=>[row.eventId,row])):undefined} search={eventSearch} emptyMessage="No events created yet." actions={event => (
                    <>
                      <Button size="sm" variant="outline" onClick={() => { setSelectedEventId(event.id); setUploadModalOpen(true); }}><Edit className="mr-1 h-4 w-4" />Edit Event</Button>
                      <Button size="sm" variant="secondary" onClick={() => { setSelectedEventId(event.id); setMediaUploadModalOpen(true); }}><Plus className="mr-1 h-4 w-4" />Upload Media</Button>
@@ -427,7 +427,7 @@ export default function CreatorDashboard() {
                                   {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {item.downloadCount || 0} downloads
+                                  {item.downloadCount || 0} {pluralize(item.downloadCount, "download", "downloads")}
                                 </p>
                               </div>
                               <div className="mt-3 border-t border-border pt-3">
@@ -485,7 +485,7 @@ export default function CreatorDashboard() {
                           </div>
                           <div className="text-right">
                             <p className="text-sm text-muted-foreground">
-                              {stats.totalDownloads} Downloads
+                              {stats.totalDownloads} {pluralize(stats.totalDownloads, "Download", "Downloads")}
                             </p>
                           </div>
                         </div>

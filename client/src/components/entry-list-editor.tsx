@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { pluralize } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -520,7 +521,7 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
               else next.delete(document.id);
               return next;
             })}>
-              <summary className="cursor-pointer py-3 text-sm font-medium">Edit {document.rows.length} imported entries</summary>
+              <summary className="cursor-pointer py-3 text-sm font-medium">Edit {document.rows.length} imported {pluralize(document.rows.length, "entry", "entries")}</summary>
               {expandedReferenceIds.has(document.id) && <div className="space-y-3 pb-3">
                 <div className="space-y-1">
                   <Label htmlFor={`ref-session-${document.id}`}>Session</Label>
@@ -581,7 +582,7 @@ export default function EntryListEditor({ eventId, seriesId, seasonYear, onDraft
               </p>
               <details open={entryPreviewOpen} onToggle={event => setEntryPreviewOpen(event.currentTarget.open)}
                 className="rounded border px-3">
-                <summary className="cursor-pointer py-2 text-sm font-medium">Edit {rows.length} imported entries</summary>
+                <summary className="cursor-pointer py-2 text-sm font-medium">Edit {rows.length} imported {pluralize(rows.length, "entry", "entries")}</summary>
                 {entryPreviewOpen && <div className="space-y-3 pb-3">{entryRowEditors}</div>}
               </details>
             </div>

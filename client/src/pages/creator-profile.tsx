@@ -11,6 +11,7 @@ import MainNavigation from "@/components/main-navigation";
 import type { PublicCreator } from "@/components/creator-identity";
 import { useAuth } from "@/hooks/use-auth";
 import MobileGalleryRow from "@/components/mobile-gallery-row";
+import { pluralize } from "@/lib/utils";
 
 type CreatorProfileData = PublicCreator & {
   bio: string | null;
@@ -74,7 +75,7 @@ export default function CreatorProfile() {
           <h1 className="mt-2 break-words text-4xl font-bold tracking-tight sm:text-6xl">{displayName}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-3 pb-1">
-          <span className="inline-flex min-h-11 items-center gap-2 border border-border bg-card px-4 text-sm font-semibold"><Users className="h-4 w-4 text-primary" />{creator.followerCount ?? 0} followers</span>
+          <span className="inline-flex min-h-11 items-center gap-2 border border-border bg-card px-4 text-sm font-semibold"><Users className="h-4 w-4 text-primary" />{creator.followerCount ?? "—"} {pluralize(creator.followerCount, "follower", "followers")}</span>
           <FollowControl creator={creator} />
         </div>
       </section>

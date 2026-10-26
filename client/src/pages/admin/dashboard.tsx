@@ -41,6 +41,7 @@ import { Textarea } from "@/components/ui/textarea";
 import AssignNumberAction from "@/components/assign-number-dialog";
 import { creditLabel } from "@shared/media-credit";
 import NativeUploadDiagnostics from "@/components/admin/native-upload-diagnostics";
+import { pluralize } from "@/lib/utils";
 
 export default function AdminDashboard() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -311,8 +312,8 @@ export default function AdminDashboard() {
                     {" "}Measured separately from Creator allowances.
                   </p>}
                   <p className="text-xs text-muted-foreground">The media-row summary below excludes separate asset variants, profile images and reference documents. Creator Studio shows the full Creator storage breakdown.</p>
-                  <p>{(Number(usage.total.bytes) / 1048576).toFixed(1)} MiB across {usage.total.count} measured items;
-                    {" "}{usage.cleanupCount} objects await cleanup.</p>
+                  <p>{(Number(usage.total.bytes) / 1048576).toFixed(1)} MiB across {usage.total.count} measured {pluralize(usage.total.count, "item", "items")};
+                    {" "}{usage.cleanupCount} {pluralize(usage.cleanupCount, "object awaits", "objects await")} cleanup.</p>
                   {Number(usage.total.legacy) > 0 && (
                     <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
                       {usage.total.legacy} older media item{Number(usage.total.legacy) === 1 ? " has" : "s have"} unknown stored file size. Check object storage before relying on the byte totals.
@@ -448,7 +449,7 @@ export default function AdminDashboard() {
                                   {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {item.downloadCount || 0} downloads
+                                  {item.downloadCount || 0} {pluralize(item.downloadCount, "download", "downloads")}
                                 </p>
                               </div>
                             </CardContent>

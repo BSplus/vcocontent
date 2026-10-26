@@ -68,7 +68,7 @@ test("creator profile, follow, name previews, following list and visual profile 
       failFollow=true;await click("Follow");await browser.wait(`document.body.innerText.includes('Fixture follow failure')`);
       assert.equal(following,false);
       await click("Follow");await browser.wait(readyButton("Following"));
-      await browser.wait(`document.body.innerText.includes('1 followers')`);
+      await browser.wait(`document.body.innerText.includes('1 follower') && !document.body.innerText.includes('1 followers')`);
       await visit("/account?tab=following",`document.body.innerText.includes('Fixture Photographer')`);
       if(width<500){
         await browser.evaluate(`document.querySelector('button[aria-label="Preview Fixture Photographer\\'s creator profile"]').click()`);
