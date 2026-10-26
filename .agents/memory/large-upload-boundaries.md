@@ -137,6 +137,19 @@ bytes disappeared, and current ownership/permission may differ from initiation.
 permissions/gates, and retain uncertain bytes. Keep automatic recovery within
 the separately approved Development scope; never broaden it into bucket cleanup.
 
+Creator uploads must clearly communicate their stricter limits, warn before
+transfer based on selected file counts and sizes, and preserve batch progress
+when a limit is reached. The operator does not want this extra pre-check for
+Admins: “Nicht bei Admins nötig!”
+
+**Why:** The operator wants Creators to understand capacity limits before
+uploading rather than discovering them through interrupted batch progress.
+
+**How to apply:** Separate advisory selection checks from authoritative server
+quotas. Retain saved uploads and distinguish quota-blocked files from uncertain
+transfer outcomes. Do not weaken ownership-based quotas or enable Creator
+Nextcloud access as an implication of this UX request.
+
 An admission deadline is not a hard operation deadline. Do not release a worker
 slot via a timeout race while admitted provider work may still be running.
 
