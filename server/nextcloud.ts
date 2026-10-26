@@ -10,20 +10,23 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { nextcloudFiles, nextcloudJobs, mediaItems, mediaAnalysisJobs, events, insertMediaItemSchema } from "@shared/schema";
 import { storage } from "./storage";
-import { mediaPolicy, MediaLimitError } from "./media-policy";
+import { mediaPolicy } from "./media-policy";
 import { createMediaKeys, uploadMedia, type MediaType } from "./media-storage";
 import { enqueueAnalysis } from "./analysis-jobs";
 import { encryptManifest, decryptManifest } from "./import-manifest";
 import { savedSourceInputs, saveSources } from "./nextcloud-sources";
 import { mediaCreditSchema } from "@shared/media-credit";
 import { automaticAnalysisStatusSql } from "./automatic-photo-matching";
+import { NextcloudFileFailure, importFailure, encodeImportFailure, decodeImportFailure, type ImportStage } from "./nextcloud-failures";
 
 export class NextcloudError extends Error {}
 export type SourceInput = { link: string; password?: string; photographer?: string };
 type Source = { base: URL; root: URL; auth: string; photographer?: string };
 type Found = { href: URL; name: string; bytes: number; type: MediaType; mime: string; sourceIndex?: number; photographer?: string };
 const MAX_FILES = Math.min(500, mediaPolicy.eventCount);
-const MAX_BYTES = Math.min(2048 * 1048576, mediaPolicy.eventBytes);
+// Source bytes transferred in a run, NOT stored event usage. Stored originals,
+// posters, existing media and reservations are checked transactionally by storage.
+const transferBudget = () => mediaPolicy.eventBytes;
 const MAX_DIRS = 300;
 const MAX_MS = 10 * 60 * 1000;
 const parser = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, parseTagValue: false });
@@ -165,10 +168,14 @@ async function bounded(response: Response, limit: number): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-export async function discover(inputs: SourceInput[]): Promise<{ sources: Source[]; files: Found[]; skipped: number }> {
+export async function discover(inputs: SourceInput[], eventId?: number): Promise<{ sources: Source[]; files: Found[]; skipped: number }> {
   if (!Array.isArray(inputs) || !inputs.length || inputs.length > 10)
     throw new NextcloudError("Please provide 1 to 10 folder links.");
   const sources = inputs.map(resolveSource);
+  const saved = eventId === undefined ? [] : await db.select({ key: nextcloudFiles.sourceKey })
+    .from(nextcloudFiles).where(and(eq(nextcloudFiles.eventId, eventId),
+      eq(nextcloudFiles.status, "saved"), sql`${nextcloudFiles.mediaId} is not null`));
+  const savedKeys = new Set(saved.map(row => row.key));
   const files: Found[] = [];
   let skipped = 0, directories = 0, bytes = 0;
   const deadline = AbortSignal.timeout(60000);
@@ -209,9 +216,10 @@ export async function discover(inputs: SourceInput[]): Promise<{ sources: Source
         const key = createHash("sha256").update(href.href).digest("hex");
         if (seen.has(key)) continue;
         seen.add(key);
-        if (files.length >= MAX_FILES || bytes + length > MAX_BYTES)
-          throw new NextcloudError(`Import limit reached (${MAX_FILES} media items or ${Math.floor(MAX_BYTES / 1048576)} MiB).`);
-        bytes += length;
+        const transferBytes = savedKeys.has(key) ? 0 : length;
+        if (files.length >= MAX_FILES || bytes + transferBytes > transferBudget())
+          throw new NextcloudError(`Import limit reached (${MAX_FILES} media items or ${Math.floor(transferBudget() / 1048576)} MiB of new source transfers). Stored event usage is checked separately.`);
+        bytes += transferBytes;
         files.push({ href, name, bytes: length, ...media, sourceIndex, photographer: source.photographer });
       }
     }
@@ -227,12 +235,14 @@ export async function importStatus(eventId: number) {
     .from(nextcloudFiles).leftJoin(mediaAnalysisJobs, eq(nextcloudFiles.mediaId, mediaAnalysisJobs.mediaId))
      .leftJoin(mediaItems,eq(mediaItems.id,nextcloudFiles.mediaId)).leftJoin(events,eq(events.id,mediaItems.eventId))
     .where(eq(nextcloudFiles.eventId, eventId)).orderBy(nextcloudFiles.id);
-  const typedFiles = files.map(file => ({ ...file,
+  const typedFiles = files.map(file => ({ ...file, ...decodeImportFailure(file.message),
     aiWarning: file.analysisStatus && file.analysisStatus !== "failed" ? null : file.aiWarning,
     type: mediaForName(file.name)?.type }));
   const current = job?.runKeys ? files.filter(row => job.runKeys!.includes(row.sourceKey)) : null;
   const existing = new Set(job?.existingKeys || []);
   return { status: job?.status || "idle", error: job?.error,
+    budgets: { imageBytes: mediaPolicy.imageBytes, videoBytes: mediaPolicy.videoBytes,
+      transferBytes: transferBudget(), eventStoredBytes: mediaPolicy.eventBytes },
     run: current ? { found: job!.runKeys!.length, existing: existing.size,
       imported: current.filter(f => f.status === "saved" && !existing.has(f.sourceKey)).length,
       skipped: job?.skipped || 0, failed: current.filter(f => f.status === "error").length } : null,
@@ -275,7 +285,7 @@ export async function updateGallery(eventId: number): Promise<void> {
   heartbeat.unref();
   try {
   const inputs = await savedSourceInputs(eventId);
-  const { sources, files, skipped } = await discover(inputs);
+   const { sources, files, skipped } = await discover(inputs, eventId);
   const manifest = encryptManifest({
     inputs,
     sources: sources.map(s => ({ base: s.base.href, root: s.root.href, auth: s.auth })),
@@ -433,26 +443,36 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
     }
     const tmp = path.join(tmpdir(), `nextcloud-${randomUUID()}`);
     let reservation: string | undefined;
+     let stage: ImportStage = "download";
     try {
        const limit = file.type === "image" ? mediaPolicy.imageBytes : mediaPolicy.videoBytes;
       const response = await request(file.href, source, "GET");
-       if (Number(response.headers.get("content-length")) > limit || !response.body)
-         throw new MediaLimitError(`${file.type === "image" ? "Image" : "Video"} exceeds the file size limit.`);
+       const contentLength = response.headers.get("content-length");
+       if (Number(contentLength) > limit) throw new NextcloudFileFailure("FILE_LIMIT");
+       if (!response.body) throw new NextcloudFileFailure("DOWNLOAD_EMPTY");
+       // Fetch may transparently decompress a response; only compare declared
+       // wire length for identity encoding.
+       const expected = !response.headers.get("content-encoding") && contentLength !== null
+         && Number.isSafeInteger(Number(contentLength)) ? Number(contentLength) : undefined;
       let received = 0;
       await pipeline(Readable.fromWeb(response.body as any), new Transform({
         transform(chunk, _enc, cb) {
           received += chunk.length;
           downloaded += chunk.length;
-           cb(received > limit || downloaded > MAX_BYTES
-             ? new MediaLimitError("The media item or the entire import exceeds the data limit.") : null, chunk);
+           cb(received > limit ? new NextcloudFileFailure("FILE_LIMIT") :
+             downloaded > transferBudget() ? new NextcloudFileFailure("TRANSFER_LIMIT") : null, chunk);
         },
       }), createWriteStream(tmp));
+       if (!received) throw new NextcloudFileFailure("DOWNLOAD_EMPTY");
+       if (expected !== undefined && received !== expected) throw new NextcloudFileFailure("DOWNLOAD_TRUNCATED");
        const fileUpload = { path: tmp, size: (await stat(tmp)).size, mimetype: file.mime } as Express.Multer.File;
       const keys = createMediaKeys(fileUpload.mimetype);
       reservation = randomUUID();
-        const saved = await uploadMedia(fileUpload, file.type, keys, async (bytes, outputKeys) => {
+       stage = "validation";
+       const saved = await uploadMedia(fileUpload, file.type, keys, async (bytes, outputKeys) => {
           await storage.reserveMedia(reservation!, eventId, null, bytes, outputKeys.storageKey, outputKeys.thumbnailKey);
-        });
+         }, "official", current => { stage = current; });
+       stage = "commit";
       const item = await storage.finishMedia(reservation, insertMediaItemSchema.parse({
          eventId, type: saved.mediaType, url: saved.url, thumbnail: saved.thumbnail, storedBytes: saved.storedBytes,
           highBytes: saved.highBytes, lowBytes: saved.lowBytes,
@@ -464,7 +484,7 @@ async function runImport(eventId: number, sources: Source[], files: Found[], wor
       const [current] = await db.select({ status: nextcloudFiles.status }).from(nextcloudFiles).where(eq(nextcloudFiles.id, record.id));
       if (current?.status !== "saved") {
         failed++;
-        await db.update(nextcloudFiles).set({ status: "error", message: error instanceof MediaLimitError ? error.message : "The file could not be imported." })
+        await db.update(nextcloudFiles).set({ status: "error", message: encodeImportFailure(importFailure(error, stage)) })
           .where(and(eq(nextcloudFiles.id, record.id), eq(nextcloudFiles.status, "pending")));
       }
     } finally {

@@ -500,7 +500,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
         if (action === "sources") return res.json({ sources: await saveSources(id, sourceEdits.parse(req.body.sources)) });
         if (action === "preview") {
           const inputs = mergeSourceEdits(await savedSourceInputs(id), sourceEdits.parse(req.body.sources));
-          const { files, skipped } = await discover(inputs);
+          const { files, skipped } = await discover(inputs, id);
           return res.json({ count: files.length, images: files.filter(f => f.type === "image").length,
             videos: files.filter(f => f.type === "video").length, skipped });
         }

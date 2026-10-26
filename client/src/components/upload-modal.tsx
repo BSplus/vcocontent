@@ -105,8 +105,10 @@ function EventUploadModal({
     status: string; error?: string; total: number; imported: number; importedImages: number; importedVideos: number;
     failed: number; skipped: number; warnings: number;
     analysisPending: number; analysisCompleted: number;
+    budgets?: { imageBytes: number; videoBytes: number; transferBytes: number; eventStoredBytes: number };
     run?: { found: number; existing: number; imported: number; skipped: number; failed: number } | null;
     files: { name: string; type?: "image" | "video"; status: string; message?: string; aiWarning?: string;
+      failure?: { stage: string; code: string };
       mediaId?: number; analysisStatus?: string; analysisError?: string }[];
   }>({
     queryKey: [`/api/admin/events/${importEventId}/nextcloud`],
@@ -795,10 +797,16 @@ function EventUploadModal({
                   </>}
                    <p>Historical totals: {importProgress.imported}/{importProgress.total} files ({importProgress.importedImages} images, {importProgress.importedVideos} videos) · {importProgress.warnings} analysis warnings</p>
                   {importProgress.error && <p className="text-amber-600">{importProgress.error}</p>}
+                  {importProgress.budgets && <p className="text-xs text-muted-foreground">
+                    Per file: images {importProgress.budgets.imageBytes / 1048576} MiB, videos {importProgress.budgets.videoBytes / 1048576} MiB.
+                    {" "}New source transfers per run: {importProgress.budgets.transferBytes / 1048576} MiB.
+                    {" "}Stored event budget: {importProgress.budgets.eventStoredBytes / 1048576} MiB, including existing media, posters and active reservations.
+                  </p>}
                   <p>Analysis: {importProgress.analysisPending || 0} media items waiting or being processed · {importProgress.analysisCompleted || 0} complete. Files are already saved. Matching runs automatically with a confirmed applicable entry list, including photos saved before the list.</p>
                   <div className="max-h-28 overflow-y-auto">
                     {importProgress.files.filter(file => file.message || file.aiWarning || file.analysisStatus === "failed").map((file, index) =>
                       <div key={index}>{file.name}: {file.message || (file.aiWarning || file.analysisStatus === "failed" ? "Analysis failed. You can retry." : "")}
+                        {file.failure && <span className="text-xs"> ({file.failure.stage}: {file.failure.code})</span>}
                         {file.mediaId && (file.aiWarning || file.analysisStatus === "failed") && <Button type="button" variant="outline" size="sm"
                           onClick={async () => {
                             try {

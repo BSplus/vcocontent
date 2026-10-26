@@ -3,7 +3,8 @@ function positiveInt(name: string, fallback: number): number {
   const value = process.env[name];
   if (value === undefined) return fallback;
   const number = Number(value);
-  if (!Number.isSafeInteger(number) || number < 1) throw new Error(`${name} must be a positive integer`);
+  if (!Number.isSafeInteger(number) || number < 1 || !Number.isSafeInteger(number * mib))
+    throw new Error(`${name} must be a positive integer within the safe byte range`);
   return number;
 }
 

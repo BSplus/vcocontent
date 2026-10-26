@@ -42,9 +42,11 @@ const progress = status => ({
   status, error:status === "partial" ? "One file could not be imported. Check the saved source and resume failed files." : undefined,
   total:209,imported:208,importedImages:207,importedVideos:1,failed:1,skipped:0,warnings:0,
   analysisPending:0,analysisCompleted:208,
+  budgets:{imageBytes:32*1048576,videoBytes:300*1048576,transferBytes:4096*1048576,eventStoredBytes:4096*1048576},
   run:{found:209,existing:192,imported:16,skipped:0,failed:status === "partial" ? 1 : 0},
   files:status === "partial" ? [{name:"Kinetic_Move_of_the_Race_IMSA_R2_Sebring_9_16.mp4",
-    type:"video",status:"failed",message:"The file could not be imported."}] : [],
+    type:"video",status:"error",message:"Installed video tools do not support the required options. Check FFmpeg compatibility.",
+    failure:{stage:"poster",code:"TOOL_OPTION_UNSUPPORTED"}}] : [],
 });
 
 async function measure(browser) {
@@ -150,7 +152,11 @@ for (const [width,height] of [[1280,900],[1600,1800],[390,844]]) {
           await fulfill(pendingProgress,progress(withSources ? "partial" : "completed"));
           if (withSources) {
             await browser.wait(`!!(${button("Resume failed files")})`);
-            assert.equal(await browser.evaluate("document.querySelector('[role=dialog]').textContent.includes('Kinetic_Move_of_the_Race_IMSA_R2_Sebring_9_16.mp4: The file could not be imported.')"),true);
+            assert.equal(await browser.evaluate("document.querySelector('[role=dialog]').textContent.includes('Check FFmpeg compatibility.')"),true);
+            assert.equal(await browser.evaluate("document.querySelector('[role=dialog]').textContent.includes('poster: TOOL_OPTION_UNSUPPORTED')"),true);
+            assert.equal(await browser.evaluate("document.querySelector('[role=dialog]').textContent.includes('videos 300 MiB')"),true);
+            assert.equal(await browser.evaluate("document.querySelector('[role=dialog]').textContent.includes('New source transfers per run: 4096 MiB')"),true);
+            assert.equal(await browser.evaluate("document.querySelector('[role=dialog]').textContent.includes('including existing media, posters and active reservations')"),true);
             await record("failed-import");
             // Locally add/remove a third source. No source is saved or imported.
             await browser.evaluate(`(${button("Add another link")}).click()`);

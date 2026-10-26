@@ -17,6 +17,7 @@ import { putMediaObject, openMediaObject, mediaVideoSource, deleteRoutedMediaObj
 const TEMP_UPLOAD_DIR = path.join(tmpdir(), "vco-media-uploads");
 
 export type MediaType = "image" | "video";
+export type MediaUploadStage = "validation" | "poster" | "reservation" | "storage";
 
 export interface StoredMedia {
   /** App route URL; storage objects are not exposed as public bucket URLs. */
@@ -148,8 +149,9 @@ export async function uploadMedia(
   keys?: { storageKey: string; thumbnailKey: string },
   beforePersist?: (bytes: number, keys: { storageKey: string; thumbnailKey: string }) => Promise<void>,
   imageStrategy: ImageStrategy = "official",
+  onStage?: (stage: MediaUploadStage) => void,
 ): Promise<StoredMedia> {
-  return withMediaWorkBudget(() => performUploadMedia(file, type, keys,beforePersist,imageStrategy));
+  return withMediaWorkBudget(() => performUploadMedia(file, type, keys,beforePersist,imageStrategy,onStage));
 }
 
 async function performUploadMedia(
@@ -158,10 +160,12 @@ async function performUploadMedia(
   keys?: { storageKey: string; thumbnailKey: string },
   beforePersist?: (bytes: number, keys: { storageKey: string; thumbnailKey: string }) => Promise<void>,
   imageStrategy: ImageStrategy = "official",
+  onStage?: (stage: MediaUploadStage) => void,
 ): Promise<StoredMedia> {
   const tempPaths = new Set<string>([file.path]);
   let generatedKeys: { storageKey: string; thumbnailKey: string } | undefined;
   try {
+    onStage?.("validation");
     const actualType = detectMediaType(file);
     if (type && type !== actualType) {
       throw new Error("The uploaded file does not match the selected media type");
@@ -196,12 +200,17 @@ async function performUploadMedia(
       tempPaths.add(thumbnailPath);
       await writeFile(thumbnailPath, prepared.preview);
       thumbnailBytes = prepared.preview.length;
+      onStage?.("reservation");
       if (beforePersist) await beforePersist(storedBytes+thumbnailBytes, { storageKey, thumbnailKey });
+      onStage?.("storage");
       await uploadFromFilename(storageKey, displayPath);
       await uploadFromFilename(thumbnailKey, thumbnailPath);
     } else {
+      onStage?.("poster");
       const posterBytes = await createVideoPreview(file.path);
-      if (beforePersist) await beforePersist(file.size+100*1024, { storageKey, thumbnailKey });
+      onStage?.("reservation");
+      if (beforePersist) await beforePersist(file.size+posterBytes.length, { storageKey, thumbnailKey });
+      onStage?.("storage");
       await uploadFromFilename(storageKey, file.path);
       thumbnailBytes = posterBytes.length;
       await putMediaObject(thumbnailKey, posterBytes);

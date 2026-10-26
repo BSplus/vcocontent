@@ -85,9 +85,18 @@ for (const timing of ["before","during","after"]) {
     const folder=`/public.php/dav/files/AUTOMATIC_${timing}/`;
     globalThis.fetch=async(url,options)=>{
       const origin=new URL(url).origin;
-      if(origin==="https://nc-auto-ai.example.invalid")return new Response(JSON.stringify({
-        choices:[{finish_reason:"stop",message:{content:JSON.stringify({tags:["Day","Race Car"],vehicles:[]})}}]
-      }),{headers:{"Content-Type":"application/json"}});
+      if(origin==="https://nc-auto-ai.example.invalid"){
+        const prompt=JSON.parse(options.body).messages?.[0]?.content || "";
+        // The recognition pipeline independently localizes and checks pixels.
+        // Each synthetic reply must satisfy that call's output contract.
+        const result=prompt.includes("Independently inspect the full image")
+          ? {fullImageReadings:[],vehicleReadings:[]}
+          : prompt.includes("Localize complete") ? {vehicles:[],scene:"Race Action"}
+          : {tags:["Day","Race Car"],vehicles:[]};
+        return new Response(JSON.stringify({
+          choices:[{finish_reason:"stop",message:{content:JSON.stringify(result)}}]
+        }),{headers:{"Content-Type":"application/json"}});
+      }
       if(origin!==base)return transport(url,options);
       if(options.method==="PROPFIND")return new Response(dav(folder,[
         [folder+"first.jpg",false,bytes.length],[folder+"second.jpg",false,bytes.length]
@@ -192,7 +201,8 @@ for (const legacy of [false, true]) {
       assert.equal((await finish()).status, "completed");
       const media = await storage.getMediaItems(event.id);
       assert.equal(media.length, 2);
-      assert.equal(media.find(item => item.caption === "retry.jpg").photographer, legacy ? null : "José & <Studio>");
+      const retryFile = (await importStatus(event.id)).files.find(file => file.name === "retry.jpg");
+      assert.equal(media.find(item => item.id === retryFile.mediaId).photographer, legacy ? null : "José & <Studio>");
       assert.equal((await storage.getMediaItem(good.id)).photographer, "Manual");
       await stopImportWorker();
       extra = true;
@@ -200,7 +210,8 @@ for (const legacy of [false, true]) {
       assert.equal((await finish()).status, "completed");
       const updated = await storage.getMediaItems(event.id);
       assert.equal(updated.length, 4);
-      assert.deepEqual(updated.filter(item => item.caption === "new.jpg").map(item => item.photographer), ["Future only", "Future only"]);
+      const newIds = new Set((await importStatus(event.id)).files.filter(file => file.name === "new.jpg").map(file => file.mediaId));
+      assert.deepEqual(updated.filter(item => newIds.has(item.id)).map(item => item.photographer), ["Future only", "Future only"]);
       assert.equal((await storage.getMediaItem(good.id)).photographer, "Manual");
     } finally {
       await stopImportWorker();
@@ -304,7 +315,8 @@ test("persistent private sources, password edits, restart and non-destructive cu
     await saveSources(event.id, saved.map(source => ({ id: source.id, link: source.link, photographer: "New credit" })));
     await updateGallery(event.id);
     assert.deepEqual((await finish()).run, { found: 2, existing: 1, imported: 1, skipped: 0, failed: 0 });
-    assert.equal((await storage.getMediaItems(event.id)).find(media => media.caption === "new.jpg").photographer, "New credit");
+    const newFile = (await importStatus(event.id)).files.find(file => file.name === "new.jpg");
+    assert.equal((await storage.getMediaItem(newFile.mediaId)).photographer, "New credit");
     assert.deepEqual(await db.select().from(mediaAnalysisJobs).where(eq(mediaAnalysisJobs.mediaId, item.id)), before);
     await stopImportWorker();
     await updateGallery(event.id);
@@ -641,8 +653,8 @@ test("mixed import validates content and size, serves video posters safely, and 
     assert.equal(first.importedVideos, 3);
     assert.equal(first.failed, 5);
     assert.equal(first.skipped, 2);
-    assert.ok(first.files.some(file => file.message === "The file could not be imported."));
-    assert.ok(first.files.some(file => /^(Image|Video) exceeds the file size limit\.$/.test(file.message || "")));
+    assert.ok(first.files.some(file => file.failure?.code === "VALIDATION_FAILED"));
+    assert.ok(first.files.some(file => file.failure?.code === "FILE_LIMIT"));
     assert.ok(first.warnings <= first.importedImages);
     assert.ok(first.files.filter(file => file.type === "video").every(file => !file.aiWarning));
     assert.ok(getCalls.some(p => p.endsWith("overflow.mp4")));
@@ -651,10 +663,11 @@ test("mixed import validates content and size, serves video posters safely, and 
     const media = await storage.getMediaItems(event.id);
     assert.equal(media.length, 7);
     for (const item of media) {
-      assert.equal(item.type, /\.(mp4|mov|webm)$/i.test(item.caption) ? "video" : "image");
+      const source = first.files.find(file => file.mediaId === item.id);
+      assert.equal(item.type, source.type);
       assert.match(item.thumbnail, /^\/api\/media\/files\/thumb-.*\.webp$/);
       assert.match(item.url, new RegExp(`^/api/media/files/media-.*\\.${item.type === "video"
-        ? item.caption.split(".").pop() : "(?:jpg|png|webp|gif)"}$`));
+        ? source.name.split(".").pop() : "(?:jpg|png|webp|gif)"}$`));
     }
 
     const app = express();

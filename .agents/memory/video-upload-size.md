@@ -9,11 +9,18 @@ The user requests: “Lass uns die Maximalgröße für Videouploads auf 300 MB s
 
 **How to apply:** Keep video permissions and storage quotas separate from the per-file limit. This request does not authorize Creator video uploads or automatic Production publication.
 
-The user also approved raising the total Nextcloud import limit to 2 GiB, still capped by the configured event storage allowance.
+The operator now requires the finite configured event allowance to determine the
+Nextcloud per-run source-transfer budget, without a second fixed 2-GiB clamp.
+The default event allowance remains 2 GiB and the per-video limit remains 300 MiB.
 
-**Why:** A 500 MiB total import cap is insufficient for two videos at the new maximum size.
+**Why:** A hidden fixed import cap must not neutralize an explicitly higher event
+allowance. This replaces the earlier approval of a fixed 2-GiB import ceiling.
 
-**How to apply:** Retain per-file validation, file-count limits, processing limits and storage quota enforcement; this is not approval to remove import safeguards.
+**How to apply:** Keep source-transfer bytes separate from occupied event storage.
+Already-saved sources are not new transfers; existing media, posters and active
+reservations still consume event storage. Retain per-file validation, file-count
+limits, processing limits and transactional quotas; this is not approval to
+change defaults or remove safeguards.
 
 The user requested a 60-second Nextcloud transfer timeout when investigating failed video imports.
 
