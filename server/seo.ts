@@ -3,10 +3,11 @@ import { storage } from "./storage";
 import { eventPublic, mediaPublic } from "./beta-access";
 import { activeCreator } from "./creator-profiles";
 import { searchData } from "./public-search-data";
-import { dateLabel, escapeHtml, eventLinks, imageLinks, jsonLd, publicThumbnail, summary } from "./seo-markup";
+import { dateLabel, escapeHtml, eventLinks, imageLinks, jsonLd, summary } from "./seo-markup";
 import { ARCHIVE_FAQ } from "@shared/public-content";
 import { SITE_NAME, HOME_TITLE, HOME_DESCRIPTION, SOCIAL_IMAGE, SOCIAL_IMAGE_ALT } from "@shared/site-metadata";
 import { creditText } from "@shared/media-credit";
+import { eventSharingImage, mediaSharingImage } from "./sharing-selection";
 
 const defaultTitle = HOME_TITLE;
 const defaultDescription = HOME_DESCRIPTION;
@@ -54,6 +55,7 @@ export async function seoHtml(req: Request, html: string): Promise<{ html: strin
   let description = defaultDescription;
   let status = 200;
   let thumbnail: string | undefined;
+  let imageMime: string | undefined;
   let imageAlt = SOCIAL_IMAGE_ALT;
   let body = "";
   let indexable = false;
@@ -85,9 +87,10 @@ export async function seoHtml(req: Request, html: string): Promise<{ html: strin
         if (creator && activeCreator(creator)) body += `<p>Creator: <a href="/creator/${creator.id}">${escapeHtml(creator.displayName?.trim() || creator.username)}</a></p>`;
       }
       body += imageLinks(images, event.title);
-      const preview = images.find(item => publicThumbnail(item));
-      thumbnail = preview && publicThumbnail(preview);
-      if (thumbnail && preview) imageAlt = summary(preview.caption?.trim() || `Sim racing photo from ${event.title}.`, 200);
+      const selected = await eventSharingImage(event, images);
+      thumbnail = selected.image === SOCIAL_IMAGE ? undefined : selected.image;
+      imageMime = selected.mime;
+      if (thumbnail) imageAlt = summary(selected.alt || `Sim racing gallery preview from ${event.title}.`, 200);
       crumb = [{ name: event.title, path: pathname }];
       if (routeUrl) schema.push({ "@type": "CollectionPage", name: event.title, description, url: routeUrl });
     }
@@ -100,7 +103,9 @@ export async function seoHtml(req: Request, html: string): Promise<{ html: strin
       const caption = item.caption?.trim();
       title = `${summary(caption || `${event.title} ${kind}`, 100)} | VCO Media Database`;
       description = summary(`${caption || `Sim racing ${kind} from ${event.title}`}. ${item.photographer ? `${kind === "video" ? "Video" : "Photo"} by ${item.photographer}. ` : ""}Explore this ${kind} in the VCO Media Database.`);
-      thumbnail = publicThumbnail(item);
+      const selected = await mediaSharingImage(item, event);
+      thumbnail = selected?.image;
+      imageMime = selected?.mime;
       if (thumbnail) imageAlt = summary(caption || `Sim racing ${kind} preview from ${event.title}.`, 200);
       indexable = item.type === "image" && !!thumbnail;
       body = `<p><a href="/events/${event.id}">Back to event gallery</a></p><h1>${escapeHtml(caption || `Sim racing ${kind}`)}</h1>`;
@@ -166,6 +171,7 @@ export async function seoHtml(req: Request, html: string): Promise<{ html: strin
     title = "Page Not Found | VCO Media Database";
     description = "This page could not be found or is not publicly available. Explore public VCO events and creator galleries from the archive.";
     thumbnail = undefined;
+    imageMime = undefined;
     imageAlt = SOCIAL_IMAGE_ALT;
   }
   const filtered = Array.from(requestUrl.searchParams.keys()).some(key => !/^(utm_(source|medium|campaign|term|content)|source|ref)$/.test(key));
@@ -197,7 +203,7 @@ export async function seoHtml(req: Request, html: string): Promise<{ html: strin
         `<meta property="og:image:type" content="image/jpeg">`,
         `<meta property="og:image:width" content="1200">`,
         `<meta property="og:image:height" content="630">`,
-      ] : thumbnail.endsWith(".webp") ? [`<meta property="og:image:type" content="image/webp">`] : []),
+    ] : imageMime ? [`<meta property="og:image:type" content="${imageMime}">`] : []),
     ] : []),
     ...(url && schema.length ? [jsonLd({ "@context": "https://schema.org", "@graph": schema })] : []),
   ];

@@ -15,7 +15,7 @@ import { uiBrowser, delay } from "./helpers/ui-browser.mjs";
 const base = "https://photos.example.test";
 const thumb = "/api/media/files/thumb-12345678-1234-1234-1234-123456789abc.webp";
 const event = { id: 8, title: "Sharing race", date: "2020-01-01", isPremium: false };
-const item = { id: 3, eventId: 8, type: "image", caption: null, photographer: "VCO Crew", thumbnail: thumb, isPremium: false };
+const item = { id: 3, eventId: 8, type: "image", caption: null, photographer: "VCO Crew", thumbnail: thumb, isPremium: false, safetyStatus: "legacy" };
 const creator = { id: 4, username: "creator", displayName: "Public Creator", isCreator: true, suspended: false, creatorStatus: "approved", profileImage: "/private-avatar", coverImage: "/private-cover" };
 const template = await fs.readFile("client/index.html", "utf8");
 const render = route => seoHtml({ originalUrl: route, path: "/", get: () => "attacker.invalid" }, template);
@@ -75,10 +75,10 @@ test("public route copy and complete branded OG/Twitter fallbacks are distinct a
 
 test("only guarded previews override branding; unknown sizes and legacy types are omitted", async () => fixtures(async () => {
   searchData.images = async () => [{ ...item, thumbnail: "/original" }, item];
-  assert.equal(tag((await render("/events/8")).html, "og:image"), base + thumb);
+  assert.equal(tag((await render("/events/8")).html, "og:image"), base + "/api/sharing/media/3/image");
   const photo = await render("/media/3");
   assert.match(tag(photo.html, "description"), /Photo by VCO Crew/);
-  assert.equal(tag(photo.html, "og:image"), base + thumb);
+  assert.equal(tag(photo.html, "og:image"), base + "/api/sharing/media/3/image");
   assert.equal(tag(photo.html, "og:image:type"), "image/webp");
   assert.equal(tag(photo.html, "og:image:width"), undefined);
   storage.getMediaItem = async () => ({ ...item, type: "video" });
@@ -89,8 +89,8 @@ test("only guarded previews override branding; unknown sizes and legacy types ar
   assert.equal(tag(video.html, "robots"), "noindex,follow");
   storage.getMediaItem = async () => ({ ...item, thumbnail: "data:image/png;base64,historical" });
   const legacy = await render("/media/3");
-  assert.equal(tag(legacy.html, "og:image:type"), undefined);
-  assert.match(tag(legacy.html, "og:image"), /legacy\/3\/thumbnail$/);
+  assert.equal(tag(legacy.html, "og:image:type"), "image/webp");
+  assert.match(tag(legacy.html, "og:image"), /sharing\/media\/3\/image$/);
   for (const thumbnail of ["https://storage.invalid/original", "/api/media/files/media-private.jpg", "javascript:evil"]) {
     storage.getMediaItem = async () => ({ ...item, thumbnail });
     const result = await render("/media/3");
@@ -199,13 +199,13 @@ test("React startup, history, rapid navigation and failed metadata never keep th
     await b.wait("!document.documentElement.hasAttribute('data-app-starting') && document.body.textContent.includes('Sharing race')");
     assert.equal((await snapshot()).title, "Sharing race | VCO Media Database");
     await navigate("/media/3");
-    assert.equal((await snapshot()).image, base + thumb);
+    assert.equal((await snapshot()).image, base + "/api/sharing/media/3/image");
     await navigate("/creator/4");
     assert.equal((await snapshot()).image, base + SOCIAL_IMAGE);
     assert.match((await snapshot()).title, /Creator Profile/);
     await b.evaluate("history.back()");
     await b.wait(`document.querySelector('meta[name="vco-page-path"]')?.content === '/media/3'`);
-    assert.equal((await snapshot()).image, base + thumb);
+    assert.equal((await snapshot()).image, base + "/api/sharing/media/3/image");
     await b.evaluate("history.forward()");
     await b.wait(`document.querySelector('meta[name="vco-page-path"]')?.content === '/creator/4'`);
     await navigate("/current-events?tag=car");

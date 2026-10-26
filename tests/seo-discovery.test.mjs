@@ -14,7 +14,7 @@ const base = "https://photos.example.test";
 const template = '<!doctype html><html><head></head><body><div id="root"></div></body></html>';
 const thumb = "/api/media/files/thumb-12345678-1234-1234-1234-123456789abc.webp";
 const gallery = { id: 8, title: 'Race & "Cup"', description: "Published gallery", date: new Date("2026-10-28T12:00:00Z"), isPremium: false };
-const photo = { id: 3, eventId: 8, type: "image", caption: "A visible photo", photographer: "Photo Crew", thumbnail: thumb, isPremium: false, url: "/secret-original.jpg" };
+const photo = { id: 3, eventId: 8, type: "image", caption: "A visible photo", photographer: "Photo Crew", thumbnail: thumb, isPremium: false, url: "/secret-original.jpg", safetyStatus: "legacy" };
 const creator = { id: 4, username: "public-user", displayName: "Public Creator", bio: "Race photography", isCreator: true, suspended: false, creatorStatus: "approved", email: "private@example.test", publicContactEmail: "optional@example.test" };
 
 async function fixtures(run) {
@@ -59,7 +59,7 @@ test("public HTML includes real content, protected previews, creator and breadcr
   const image = await render("/media/3");
   const graph = schema(image.html)["@graph"];
   assert.equal(graph[0]["@type"], "ImageObject");
-  assert.equal(graph[0].contentUrl, base + thumb);
+  assert.equal(graph[0].contentUrl, base + "/api/sharing/media/3/image");
   assert.equal(graph[0].creator.name, "Photo Crew");
   assert.equal(graph[1]["@type"], "BreadcrumbList");
   assert.equal(graph[1].itemListElement[1].item, base + "/events/8");
@@ -105,7 +105,7 @@ test("protected, premium, suspended and unreviewed records never leak into HTML"
     assert.ok(!result.html.includes(thumbnail));
   }
   storage.getMediaItem = async () => ({ ...photo, thumbnail: "data:image/png;base64,secret" });
-  assert.match((await render("/media/3")).html, /legacy\/3\/thumbnail/);
+  assert.match((await render("/media/3")).html, /sharing\/media\/3\/image/);
   for (const path of ["/auth", "/account", "/credits", "/admin/dashboard", "/creator/dashboard", "/search?q=driver"]) {
     assert.match((await render(path)).html, /content="noindex,follow"/);
   }

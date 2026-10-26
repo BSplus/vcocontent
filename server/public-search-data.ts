@@ -11,6 +11,9 @@ const eventFields = {
   date: events.date, creatorId: events.creatorId,
 };
 const imageFields = {
+  type: mediaItems.type, isPremium: mediaItems.isPremium, archivedAt: mediaItems.archivedAt,
+  safetyStatus: mediaItems.safetyStatus, safetyPolicy: mediaItems.safetyPolicy,
+  contentVersion: mediaItems.contentVersion, safetyVersion: mediaItems.safetyVersion,
   id: mediaItems.id, eventId: mediaItems.eventId, caption: mediaItems.caption,
   photographer: mediaItems.photographer,
   // Historical Base64 is never transferred in a discovery query.

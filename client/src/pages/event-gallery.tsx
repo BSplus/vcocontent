@@ -112,6 +112,7 @@ export default function EventGallery() {
               title={event.title}
               trailingAction={
                 <ShareMenu
+                  asset={{ kind: "event", id: event.id }}
                   url={`${window.location.origin}/events/${event.id}`}
                   title={event.title}
                   className="h-11 w-11"

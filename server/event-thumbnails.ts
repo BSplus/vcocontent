@@ -15,6 +15,7 @@ import { thumbnailCache, sendPrivateThumbnail } from "./thumbnail-cache";
 import { thumbnailDigest } from "./thumbnail-cache";
 import { legacyThumbnail } from "./legacy-thumbnail";
 import { sendPreparedThumbnail } from "./prepared-thumbnail";
+import { safeState } from "./beta-policy";
 
 type Field = "customThumbnail" | "coverImage";
 export const DEFAULT_EVENT_IMAGE = "/attached_assets/%2389_3.png";
@@ -208,7 +209,8 @@ export function registerEventThumbnailRoute(app: Express) {
     try {
       // Always re-authorize, even when the bounded generated image is cached.
       const event = await storage.getEvent(id);
-      if (!event || event.isPremium || (!canManage(req.user, event) && !await eventPublic(event))) return res.status(404).end();
+      const publicOnly = req.query.public === "1";
+      if (!event || event.isPremium || ((publicOnly || !canManage(req.user, event)) && !await eventPublic(event))) return res.status(404).end();
       const value = event[field as Field];
       if (!value || !eventThumbnailReference(event, field as Field)) return res.status(404).end();
       const file = filePattern.exec(value);
@@ -216,7 +218,8 @@ export function registerEventThumbnailRoute(app: Express) {
       if (file || legacy) {
         const media = file ? await storage.findMediaByKey(file[1], false) : await storage.getMediaItem(Number(legacy![1]), false);
         if (!media || galleryThumbnailReference(media, event, false) !== value ||
-          (!canManage(req.user, event) && !await mediaPublic(media, event))) return res.status(404).end();
+          (publicOnly && !safeState(media)) ||
+          ((publicOnly || !canManage(req.user, event)) && !await mediaPublic(media, event))) return res.status(404).end();
         if (req.query.direct === "1") {
           if (file) return await sendPreparedThumbnail(req, res, file[1]);
           return sendPrivateThumbnail(req, res, await legacyThumbnail(media.thumbnail), thumbnailDigest(media.thumbnail));

@@ -46,6 +46,7 @@ import { registerCommunityRoutes, issueDownloadOperation, validDownloadOperation
 import { publicCreatorById } from "./creator-profiles";
 import { registerCreatorEventAssociationRoutes } from "./creator-event-association";
 import { EventImageError, validateOfficialEventImages, validateEventImages, publicEventThumbnails, registerEventThumbnailRoute } from "./event-thumbnails";
+import { registerSharingRoutes } from "./sharing";
 import { registerPhotoMatchingRoutes } from "./photo-matching-routes";
 import { effectiveEventChanges } from "@shared/event-changes";
 import {supportedPhotoObservations} from "./utils/photo-number-evidence";
@@ -94,6 +95,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
   // All API data and protected previews must be re-authorized on each request.
   app.use("/api",(_req,res,next)=>{res.setHeader("Cache-Control","private, no-store");next();});
   registerEventThumbnailRoute(app);
+  registerSharingRoutes(app);
   registerBetaRoutes(app);
   registerSupportRoutes(app);
   registerCommunityRoutes(app);

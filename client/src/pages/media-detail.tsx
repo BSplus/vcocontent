@@ -48,7 +48,7 @@ export default function MediaDetail() {
         </div>
         {item.photographer && <p className="mt-4">{creditText(item)}</p>}
         <div className="mt-4 md:mt-6 flex flex-wrap gap-2 md:gap-3 [&>button]:min-h-11 [&>a]:min-h-11">
-          <ShareMenu url={window.location.href} title={item.caption || (item.type === "video" ? "VCO video" : "VCO photo")} description={creditByline(item)} />
+          <ShareMenu asset={{ kind: "media", id: item.id }} url={`${window.location.origin}/media/${item.id}`} title={item.caption || (item.type === "video" ? "VCO video" : "VCO photo")} description={creditByline(item)} />
           <Button variant="outline" onClick={async () => {
             const configuredCanonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href;
             let sourceUrl = `${window.location.origin}${window.location.pathname}`;

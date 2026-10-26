@@ -270,7 +270,7 @@ export default function HomePage() {
                   {selectedMedia.type === "image" && <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "low")}><DownloadOptionLabel item={selectedMedia} quality="low" /></DropdownMenuItem>}
                 </DropdownMenuContent>
               </DropdownMenu>
-               <ShareMenu url={`${window.location.origin}/media/${selectedMedia.id}`} title={selectedMedia.caption || "Media item"} description={creditByline(selectedMedia)} />
+               <ShareMenu asset={{ kind: "media", id: selectedMedia.id }} url={`${window.location.origin}/media/${selectedMedia.id}`} title={selectedMedia.caption || "Media item"} description={creditByline(selectedMedia)} />
                <Link href={`/media/${selectedMedia.id}`} className="inline-flex min-h-11 items-center px-3 text-sm underline">Media details</Link>
                </div>
             </div>

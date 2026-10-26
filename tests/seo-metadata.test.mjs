@@ -16,7 +16,7 @@ test("public event and image pages return escaped, indexable server HTML", async
     storage.getEvent = async id => id === 8 ? { id, title: 'Race & "Test" <Cup>', description: "A great <race>", isPremium: false } : undefined;
     storage.getMediaItem = async id => id === 3 ? {
       id, eventId: 8, type: "image", caption: 'Start <script>alert("x")</script>',
-      photographer: "VCO & Crew", isPremium: false, thumbnail: "/api/media/files/thumb-12345678-1234-1234-1234-123456789abc.webp",
+      photographer: "VCO & Crew", isPremium: false, safetyStatus: "legacy", thumbnail: "/api/media/files/thumb-12345678-1234-1234-1234-123456789abc.webp",
     } : undefined;
     const event = await seoHtml({ path: "/", originalUrl: "/events/8?source=share" }, template);
     assert.equal(event.status, 200);
@@ -27,10 +27,10 @@ test("public event and image pages return escaped, indexable server HTML", async
     assert.equal(image.status, 200);
     assert.ok(!image.html.includes("<script>alert"));
     assert.match(image.html, /rel="canonical" href="https:\/\/photos.example.test\/media\/3"/);
-    assert.match(image.html, /og:image" content="https:\/\/photos.example.test\/api\/media\/files\/thumb-/);
+    assert.match(image.html, /og:image" content="https:\/\/photos.example.test\/api\/sharing\/media\/3\/image/);
     storage.getMediaItem = async id => id === 3 ? {
       id, eventId: 8, type: "video", caption: "Video fixture",
-      photographer: "Zoë 李 & Crew", isPremium: false, thumbnail: "/api/media/files/thumb-12345678-1234-1234-1234-123456789abc.webp",
+      photographer: "Zoë 李 & Crew", isPremium: false, safetyStatus: "legacy", thumbnail: "/api/media/files/thumb-12345678-1234-1234-1234-123456789abc.webp",
     } : undefined;
     const video = await seoHtml({ path: "/", originalUrl: "/media/3" }, template);
     assert.match(video.html, /Videographer: Zoë 李 &amp; Crew/);

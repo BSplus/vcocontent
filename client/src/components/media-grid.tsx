@@ -372,6 +372,7 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                   </Button>
                 )}
                 <ShareMenu 
+                  asset={selectedItem ? { kind: "media", id: selectedItem.id } : undefined}
                   url={`${window.location.origin}/media/${selectedItem?.id}`}
                   title={selectedItem?.caption || 'Media item'}
                   description={selectedItem ? creditByline(selectedItem) : undefined}
