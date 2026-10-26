@@ -3,7 +3,8 @@ import { useRoute, Link } from "wouter";
 import type { MediaItem } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
+import { downloadMedia } from "@/lib/media-download";
+import DownloadOptionLabel from "@/components/download-option-label";
 import { Button } from "@/components/ui/button";
 import MainNavigation from "@/components/main-navigation";
 import Footer from "@/components/footer";
@@ -72,9 +73,9 @@ export default function MediaDetail() {
             }
           }}>Copy credit &amp; source</Button>
           {user
-            ? <Button onClick={() => download("high")}>{downloadOptionLabel(item, "high")}</Button>
-            : <Button asChild><Link href="/auth">{downloadOptionLabel(item, "high")} · Register or sign in</Link></Button>}
-          {item.type === "image" && <Button variant="outline" onClick={() => download("low")}>{downloadOptionLabel(item, "low")}</Button>}
+            ? <Button onClick={() => download("high")}><DownloadOptionLabel item={item} quality="high" /></Button>
+            : <Button asChild><Link href="/auth"><DownloadOptionLabel item={item} quality="high" /> · Register or sign in</Link></Button>}
+          {item.type === "image" && <Button variant="outline" onClick={() => download("low")}><DownloadOptionLabel item={item} quality="low" /></Button>}
         </div>
         <div className="mt-4"><MediaRightsNotice /></div>
       </>}

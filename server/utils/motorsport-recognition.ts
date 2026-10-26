@@ -64,7 +64,9 @@ Localize the visible car even if its number is unreadable: this rectangle is nee
 export async function recognizeMotorsportImage(image:string,options?:{tagsOnly?:boolean;visualMakeNeeded?:(vehicle:Identification)=>boolean}) {
   try {
     const parsed=await extractMotorsportImage(image);
-    const anchored=!options?.tagsOnly && parsed.vehicles.some(v=>v.number) ? (await localizePhotoNumbers(image,parsed.vehicles)).vehicles : parsed.vehicles;
+    // A weak first reader must not veto a number that the independent reader
+    // can recover. The following source-crop audit still certifies every digit.
+    const anchored=!options?.tagsOnly ? (await localizePhotoNumbers(image,parsed.vehicles)).vehicles : parsed.vehicles;
     const vehicles=await verifyPhotoObservations(image,anchored,undefined,{
       visibleBrands:true,visualMakes:true,visualMakeNeeded:options?.visualMakeNeeded});
     return {...parsed,tags:[...parsed.tags,...checkedBrandTags(vehicles)],vehicles};

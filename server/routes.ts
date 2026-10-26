@@ -28,7 +28,7 @@ import { z } from "zod";
 import { discover, importStatus, startImport, startImportWorker, resumeImport, updateGallery, NextcloudError } from "./nextcloud";
 import { readSources, saveSources, savedSourceInputs, sourceEdits, mergeSourceEdits } from "./nextcloud-sources";
 import { downloadAccess } from "./download-access";
-import { downloadStream } from "./media-delivery";
+import { downloadStream, downloadInformation } from "./media-delivery";
 import { enqueueAnalysis, analysisStatus, startAnalysisWorker, kickAnalysisWorker as kickWorker, AnalysisUnavailable, analysisFingerprint } from "./analysis-jobs";
 import { identifyEntries } from "./reference-matching";
 import { pipeline } from "stream/promises";
@@ -397,7 +397,7 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
     }
   });
 
-  app.get("/api/media/:id/download", async (req, res) => {
+  app.get(["/api/media/:id/download", "/api/media/:id/download-info"], async (req, res) => {
     const controller = new AbortController();
     const abort = () => { if (!res.writableFinished) controller.abort(); };
     res.once("close", abort);
@@ -413,6 +413,12 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
       const access = downloadAccess(item, event, quality, req.isAuthenticated());
       if (req.user?.suspended) return res.status(403).json({error:"This account is suspended."});
       if (access !== 200) return res.status(access).json({ error: "Download not permitted" });
+      if (req.path.endsWith("/download-info")) {
+        res.setHeader("Cache-Control", "private, no-store");
+        res.setHeader("Vary", "Cookie");
+        const info = await downloadInformation(item,event,quality);
+        return res.json(info);
+      }
       if (req.query.operation!==undefined && (!req.user || !await validDownloadOperation(req.query.operation,req.user.id,id,quality)))
         return res.status(400).json({error:"Download authorization expired. Please request a new download."});
       const operation=typeof req.query.operation==="string"?req.query.operation:randomUUID();

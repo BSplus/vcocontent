@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import sharp from "sharp";
 import {readFile} from "node:fs/promises";
 import {verifyPhotoObservations,supportedPhotoObservations,photoVehicleCrop,checkedBrandTags,PHOTO_NUMBER_POLICY,NUMBER_AUDIT_MODEL} from "../server/utils/photo-number-evidence.ts";
-import {parseRecognition} from "../server/utils/motorsport-recognition.ts";
+import {parseRecognition,recognizeMotorsportImage} from "../server/utils/motorsport-recognition.ts";
 import {detectRaceNumbers} from "../server/utils/ai-tagger.ts";
 import {matchReferences} from "../server/reference-matching.ts";
 import {hasOpaqueNeutralPatch} from "../server/utils/photo-redaction.ts";
@@ -89,9 +89,38 @@ test("a genuinely visible number on another car cannot validate the wrong first-
 test("canonical car localization never moves weak descriptors using only a matching number",async()=>{
   globalThis.fetch=async()=>reply({vehicles:[{number:"107",vehicleRegion:left},{number:"5",vehicleRegion:right}],scene:null});
   const r=await localizePhotoNumbers(image,[observed("5",{vehicleRegion:left,vehicle:"Wrong model",manufacturer:"Wrong brand",team:"Wrong team"})]);
-  assert.deepEqual(r.vehicles.map(v=>v.number),["","5"]);
+  assert.deepEqual(r.vehicles.map(v=>v.number),["107","5"]);
   assert.equal(r.vehicles[1].vehicle,"Race Car");assert.equal(r.vehicles[1].manufacturer,"");assert.equal(r.vehicles[1].team,"");
   assert.deepEqual(r.vehicles[1].vehicleRegion,right);assert.equal(r.vehicles[1].drivers,"");assert.equal(r.vehicles[1].racingClass,"");
+});
+test("independent recognition recovers missed or wrong weak numbers without weak brand/team vetoes",async()=>{
+  for(const weakNumber of ["","13"]){
+    globalThis.fetch=async(_url,options)=>{
+      const body=JSON.parse(options.body);requests.push(body);
+      if(body.model==="gpt-4.1-mini")return reply({tags:["Side View"],vehicles:[{
+        number:weakNumber,numberReadable:!!weakNumber,team:"AARC",manufacturer:"Porsche",vehicleRegion:entire,
+      }]});
+      if(body.messages[0].content.includes("Localize complete"))return reply({vehicles:[{
+        number:"132",vehicleRegion:entire,
+      }],scene:null});
+      return reply({...proof("132"),branding:{vehicleReadings:"invalid optional brand output"}});
+    };
+    const result=await recognizeMotorsportImage(image);
+    assert.equal(result.vehicles[0].number,"132");
+    assert.equal(result.vehicles[0].numberEvidence,PHOTO_NUMBER_POLICY);
+    const linked=matchReferences(result.vehicles,[{scope:"event",kind:"entry",session:null,updatedAt:new Date(),
+      rows:[{number:"132",team:"Bleu Mercure Esport",car:"Porsche 911 GT3 R (992)",drivers:"Registered lineup"}]}],null,"",true,true)[0];
+    assert.equal(linked.source,"reference");assert.equal(linked.team,"Bleu Mercure Esport");
+    assert.equal(linked.drivers,"Registered lineup");
+  }
+});
+test("visible brands and unverified historical team hints cannot veto captions or entry matching",()=>{
+  const vehicle=observed("132",{numberEvidence:PHOTO_NUMBER_POLICY,team:"AARC",
+    referenceConstraints:[{team:"AARC",vehicle:"",manufacturer:""}],visibleBrands:["APRC","MOZA RACING"]});
+  const linked=matchReferences([vehicle],[{scope:"event",kind:"entry",session:null,updatedAt:new Date(),
+    rows:[{number:"132",team:"Bleu Mercure Esport",car:"Porsche",drivers:"Registered lineup"}]}],null,"",true,true)[0];
+  assert.equal(linked.source,"reference");assert.equal(linked.drivers,"Registered lineup");
+  assert.deepEqual(linked.visibleBrands,vehicle.visibleBrands);
 });
 test("OCR can retain a complete leading-zero number only with original panel, car and full-image agreement",async()=>{
   const realImage="data:image/webp;base64,"+(await readFile(new URL("./fixtures/motorsport/controls/dual-007.webp",import.meta.url))).toString("base64");
@@ -111,11 +140,14 @@ test("OCR can retain a complete leading-zero number only with original panel, ca
     assert.equal((await verifyPhotoObservations(realImage,first.vehicles))[0].number,"");
   }
   globalThis.fetch=async()=>reply({vehicles:[{number:"7",vehicleRegion:car}],scene:null});
-  const disallowed=await localizePhotoNumbers(realImage,[observed("10",{vehicleRegion:undefined})],true);
-  assert.equal(disallowed.vehicles[0].number,"");
+  const recovered=await localizePhotoNumbers(realImage,[observed("10",{vehicleRegion:undefined})],true);
+  assert.equal(recovered.vehicles[0].number,"007","a wrong weak guess cannot veto the independent OCR/localized candidate");
   const withoutOcr=await localizePhotoNumbers(realImage,[observed("007",{vehicleRegion:undefined})],false);
-  assert.equal(withoutOcr.vehicles[0].number,"");
+  assert.equal(withoutOcr.vehicles[0].number,"7","localization is a proposal, not final number proof");
   assert.equal(withoutOcr.vehicles[0].numberPanelRegion,undefined);
+  globalThis.fetch=async()=>reply({fullImageReadings:[full("007",car)],vehicleReadings:[{vehicleIndex:0,number:"007"}]});
+  assert.equal((await verifyPhotoObservations(realImage,withoutOcr.vehicles))[0].number,"",
+    "without a complete source reading the shortened 7 must still fail certification");
 });
 test("both swapped first-pass car numbers stay unknown, correct anchored numbers both survive",async()=>{
   evidence={fullImageReadings:[full("107",left),full("5",right)],vehicleReadings:[{vehicleIndex:0,number:"107"},{vehicleIndex:1,number:"5"}]};

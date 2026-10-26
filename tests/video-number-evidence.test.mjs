@@ -86,13 +86,14 @@ test("video commercial-brand resolution shares the numeric request and saves sou
   assert.ok(match(aggregateVideo(changed).vehicles).every(v=>v.source!=="reference"));
 });
 for(const negative of ["unknown","team","other-team","bad-index","malformed",undefined])
-  test(`unresolved branding (${negative || "missing"}) does not excuse a team conflict or fail valid numbers`,async()=>{
+  test(`optional branding (${negative || "missing"}) never vetoes matching without independently verified team identity`,async()=>{
     brandingMode=negative;
     const e=evidence();e.frames[0].vehicles[0].team="MOZA RACING";
     await checkVideoNumbers([frame],e,async()=>{});
     const checked=aggregateVideo(e.frames).vehicles[0];
     assert.equal(checked.number,"007");assert.equal(checked.numberEvidence,PHOTO_NUMBER_POLICY);
-    assert.equal(match([checked])[0].source,"visual");
+    assert.equal(match([checked])[0].source,"reference",
+      "Missing, malformed or disagreeing brand assessments are not independently verified team identities");
     assert.equal(checked.referenceConstraints[0].team,"MOZA RACING");
     assert.equal(e.frames[0].numberCheck.commercialBranding,undefined);
   });
@@ -105,14 +106,14 @@ test("commercial assessment cannot rescue unreadable digits or a borrowed car",a
     assert.equal(e.frames[0].numberCheck.commercialBranding,undefined);
   }
 });
-test("ordinary photo numeric audits do not enable video branding exceptions",async()=>{
+test("weak photo lettering is not an independent team conflict",async()=>{
   brandingMode="commercial";
   const v=observation("007",left,{team:"MOZA RACING",
     referenceConstraints:[{team:"MOZA RACING",vehicle:"Race Car",manufacturer:""}]});
   const checked=await verifyPhotoObservations(frame.image,[v]);
   assert.equal(checked[0].number,"007");
   assert.equal(checked[0].referenceConstraints[0].team,"MOZA RACING");
-  assert.equal(match(checked)[0].source,"visual");
+  assert.equal(match(checked)[0].source,"reference");
   assert.ok(!calls[0].messages[0].content.includes("BODYWORK branding"));
 });
 test("dense frames cap optional branding assessments without adding requests",async()=>{

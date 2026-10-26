@@ -98,6 +98,31 @@ assessed on the same car; old number proof alone cannot certify new lettering.
 that name a sponsor would have invented a different explanation rather than
 resolving the actual ambiguity.
 
-**How to apply:** Compare literal independently checked lettering with applicable
-official names conservatively, retain genuine and uncertain conflicts, and
-separate mocked successful rematching from a real-pixel evaluation.
+**How to apply:** Compare independently checked team identity with applicable
+official names conservatively. Following the operator's explicit approval,
+unverified first-pass lettering and uncertain sponsor/brand classification are
+not identity vetoes; retain independently verified competing teams. Do not
+invent a sponsor explanation for unknown text. Separate mocked successful
+rematching from a real-pixel evaluation.
+
+The independent number reader may recover a missing or incorrect first-pass
+number; the first reader is not a whitelist for the stronger reader.
+
+**Why:** The operator approved fixing a landscape case where a readable number
+could be lost before independent reading, and a weak lettering guess could
+block the correct entry even after number verification.
+
+**How to apply:** Keep same-car geometry, full-image/crop agreement, complete
+digits and leading-zero safeguards. Recovering a candidate is not certification
+and does not authorize global historical reanalysis or live caption rewrites.
+
+Run native OCR positive controls without competing heavy test/build processes
+before interpreting a bounded OCR deadline as a recognition regression.
+
+**Why:** Parallel browser/type-check/database runs repeatedly exhausted local
+OCR deadlines on the leading-zero positive control; the unchanged real-pixel
+control passed after those competing processes finished.
+
+**How to apply:** Preserve both runtime bounds and the positive target. Report
+an unavailable OCR aid separately from a failed semantic crop check, and keep
+optional OCR failure from blocking independent vision.

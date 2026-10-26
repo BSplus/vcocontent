@@ -20,6 +20,7 @@ import { recognitionImageInput } from "../server/image-analysis.ts";
 import { startImport, importStatus, stopImportWorker } from "../server/nextcloud.ts";
 import { mockMediaStorage } from "./helpers/memory-media-storage.mjs";
 import { withMediaWorkBudget } from "../server/media-work-budget.ts";
+import { preparedDownloadCache } from "../server/prepared-download.ts";
 
 const store=mockMediaStorage();
 test.after(async()=>{store.restore();await stopImportWorker();await pool.end();});
@@ -84,6 +85,14 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
       assert.equal(item.highBytes,bytes.length);
       assert.ok(item.lowBytes<=100_000);
       assert.equal((await request(item.url)).status,401);
+      assert.equal((await request(`/api/media/${item.id}/download-info?quality=high`)).status,401);
+      const highInfo=await request(`/api/media/${item.id}/download-info?quality=high`,role);
+      assert.equal(highInfo.status,200);assert.equal(highInfo.headers.get("cache-control"),"private, no-store");
+      assert.equal((await highInfo.json()).bytes,bytes.length);
+      const lowInfo=await request(`/api/media/${item.id}/download-info?quality=low`,role);
+      assert.equal(lowInfo.status,200);
+      const measuredLow=(await lowInfo.json()).bytes;
+      assert.equal((await storage.getMediaItem(item.id)).downloadCount,0,"size inspection is not a download");
       const authorization=await request(`/api/media/${item.id}/download?quality=high`,role,{method:"POST"});
       assert.equal(authorization.status,200);
       const delivery=await request((await authorization.json()).url,role);
@@ -100,6 +109,7 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
       assert.equal(lowDelivery.headers.get("content-type"),"image/jpeg");
       assert.equal(lowDelivery.headers.get("content-disposition"),`attachment; filename="vco_2026-10-13_original-fixture_m${item.id}_low.jpg"`);
       const lowBytes=Buffer.from(await lowDelivery.arrayBuffer());
+      assert.equal(lowBytes.length,measuredLow,"size matches the actual prepared download, not the thumbnail");
       assert.ok(lowBytes.length<=500_000);
       const lowMeta=await sharp(lowBytes).metadata();
        assert.equal(lowMeta.format,"jpeg");
@@ -173,6 +183,8 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
     assert.equal((await request(`/api/media/${old.id}/download`,"owner")).status,403);
     assert.equal((await request(`/api/media/${old.id}/download?quality=low`)).status,403);
     await db.update(mediaItems).set({isPremium:false,safetyStatus:"blocked"}).where(eq(mediaItems.id,old.id));
+    assert.equal((await request(`/api/media/${old.id}/download-info?quality=high`,"owner")).status,404);
+    assert.equal((await request(`/api/media/${old.id}/download-info?quality=low`,"owner")).status,404);
     assert.equal((await request(`/api/media/${old.id}/download`,"owner")).status,404);
     assert.equal((await request(`/api/media/${old.id}/download?quality=low`)).status,404);
 
@@ -194,6 +206,7 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
     await db.update(mediaItems).set({url:originalUrl}).where(eq(mediaItems.id,historical.id));
     let release;
     const held=new Promise(resolve=>{release=resolve;});
+    preparedDownloadCache.clear(); // Exercise an uncached encode under CPU saturation.
     const jobs=Array.from({length:10},()=>withMediaWorkBudget(()=>held));
     try {
       assert.equal((await request(`/api/media/${historical.id}/download?quality=low`)).status,503);
@@ -219,10 +232,15 @@ test("owner/admin upload originals through actual routes, boundaries, ledger, cl
     assert.equal((await request(original.url)).status,401);
     assert.equal(hash(Buffer.from(await (await request(original.url,"admin")).arrayBuffer())),hash(jpeg),
       "Only the official gallery manager/admin can retrieve the exact original");
+    const exportInfo=await request(`/api/media/${original.id}/download-info?quality=high`,"owner");
+    assert.equal(exportInfo.status,200);
+    const measuredExport=(await exportInfo.json()).bytes;
+    assert.notEqual(measuredExport,jpeg.length,"standard JPEG size is not the embedded-metadata original size");
     for(const path of [original.url,`/api/media/${original.id}/download?quality=high`]){
       const response=await request(path,"owner");
       assert.equal(response.status,200);
       const exported=Buffer.from(await response.arrayBuffer());
+      assert.equal(exported.length,measuredExport,"measured standard export matches actual delivery");
       const metadata=await sharp(exported).metadata();
       assert.equal(metadata.exif,undefined);
       assert.equal(metadata.iptc,undefined);

@@ -14,7 +14,8 @@ import MainNavigation from "@/components/main-navigation";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
-import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
+import { downloadMedia } from "@/lib/media-download";
+import DownloadOptionLabel from "@/components/download-option-label";
 import EventTitle from "@/components/event-title";
 import { formatDate } from "@/lib/utils";
 import ArchiveFaq from "@/components/archive-faq";
@@ -265,8 +266,8 @@ export default function HomePage() {
                <DropdownMenu>
                   <DropdownMenuTrigger asChild><Button variant="outline" className="min-h-11"><Download className="mr-2 h-4 w-4" />Download options</Button></DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "high")}>{downloadOptionLabel(selectedMedia, "high")}{!user && " · Sign in required"}</DropdownMenuItem>
-                  {selectedMedia.type === "image" && <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "low")}>{downloadOptionLabel(selectedMedia, "low")}</DropdownMenuItem>}
+                  <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "high")}><DownloadOptionLabel item={selectedMedia} quality="high" />{!user && " · Sign in required"}</DropdownMenuItem>
+                  {selectedMedia.type === "image" && <DropdownMenuItem onSelect={() => handleDownload(selectedMedia, "low")}><DownloadOptionLabel item={selectedMedia} quality="low" /></DropdownMenuItem>}
                 </DropdownMenuContent>
               </DropdownMenu>
                <ShareMenu url={`${window.location.origin}/media/${selectedMedia.id}`} title={selectedMedia.caption || "Media item"} description={creditByline(selectedMedia)} />

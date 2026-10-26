@@ -123,7 +123,9 @@ test("managed recognition request keeps evidence instructions, limits and identi
     }), { headers: { "content-type": "application/json" } });
   };
   try {
-    const result = await recognizeMotorsportImage("data:image/webp;base64,AAAA");
+    // This transport fixture covers the initial tag reader only. Full numeric
+    // recovery uses actual decodable pixels in photo-number-evidence tests.
+    const result = await recognizeMotorsportImage("data:image/webp;base64,AAAA",{tagsOnly:true});
     assert.equal(result.vehicles[0].drivers, "");
     assert.equal(request.model, TAG_MODEL);
     assert.equal(request.max_tokens, 1000);

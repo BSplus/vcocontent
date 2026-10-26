@@ -16,7 +16,9 @@ export async function localizePhotoNumbers(image:string,weak?:Identification[],u
   if(!/^data:image\/(?:webp|jpeg|png);base64,/.test(image))return {vehicles:unknown(weak||[]),scene:null};
   if(await hasOpaqueNeutralPatch(Buffer.from(image.split(",")[1],"base64")))
     return {vehicles:unknown(weak||[]),scene:null};
-  const panels=useOcr?await detectNumberPanels(Buffer.from(image.split(",")[1],"base64")):[];
+  // Local OCR is an optional proposal aid; unavailable/slow OCR must not
+  // prevent independent vision and the mandatory source-pixel verification.
+  const panels=useOcr?await detectNumberPanels(Buffer.from(image.split(",")[1],"base64")).catch(()=>[]):[];
   const dimensions=await sharp(Buffer.from(image.split(",")[1],"base64")).metadata();
   const client=suppliedClient||getOpenAIClient();if(!client)throw new Error("AI recognition unavailable");
   const response=await client.chat.completions.create({
@@ -35,18 +37,17 @@ No team, model, manufacturer, class, driver or person claims. Unknown scene is n
     vehicles:z.array(z.object({number:z.string().regex(/^\d{0,4}$/),vehicleRegion:photoVehicleRegionSchema})).max(12),
     scene:z.enum(["Race Action","Start","Finish"]).nullable(),
   }).parse(JSON.parse(response.choices[0]?.message?.content||""));
-  const allowed=weak?new Set(weak.map(v=>v.number).filter(Boolean)):null;
   const vehicles:Identification[]=parsed.vehicles.map(original=>{
     let v={...original},numberPanelRegion:Identification["numberPanelRegion"];
     // OCR is supplemental, never a global digit set. Only one localized car,
-    // an exact allowed weak proposal (or the same numeric value for the caption
-    // detector), and a source panel wholly inside that car can receive it.
+    // the same numeric value as the independent reader, and a source panel
+    // wholly inside that car can receive it. Never prime OCR from weak guesses.
     if(parsed.vehicles.length===1){
       const inside=panels.filter(p=>
         p.region[0]>=v.vehicleRegion[0]&&p.region[1]>=v.vehicleRegion[1]&&
         p.region[0]+p.region[2]<=v.vehicleRegion[0]+v.vehicleRegion[2]&&
         p.region[1]+p.region[3]<=v.vehicleRegion[1]+v.vehicleRegion[3]&&
-        (allowed?allowed.has(p.number):v.number&&Number(v.number)===Number(p.number)));
+        v.number && Number(v.number)===Number(p.number));
       if(new Set(inside.map(p=>p.number)).size===1){
         const best=inside.sort((a,b)=>b.confidence-a.confidence)[0];
         v.number=best.number;numberPanelRegion=best.region;
@@ -60,13 +61,13 @@ No team, model, manufacturer, class, driver or person claims. Unknown scene is n
     const same=best&&best.score>=.5&&best.w.number===v.number&&
       (!matching[1]||best.score-matching[1].score>=.2)?best.w:null;
     return {
-    ...v,number:allowed&&!allowed.has(v.number)?"":v.number,
+    ...v,
     ...(numberPanelRegion?{numberPanelRegion}:{}),
     team:same?.team||"",drivers:"",vehicle:same?.vehicle||"Race Car",manufacturer:same?.manufacturer||"",
     racingClass:"",discipline:same?.discipline||"",source:"visual",
-    ...(weak?{referenceConstraints:weak.filter(w=>w.number===v.number).map(w=>({
-      vehicle:w.vehicle,manufacturer:w.manufacturer,team:w.team,
-    }))}:{}),
+    // Diagnostic hints only, never authority over a number-backed entry.
+    // Never attach hints from another car through a digit-only lookup.
+    ...(same?{referenceConstraints:[{vehicle:same.vehicle,manufacturer:same.manufacturer,team:same.team}]}:{}),
   };});
   return {vehicles:vehicles.length?vehicles:unknown(weak||[]),scene:parsed.scene};
 }

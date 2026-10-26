@@ -3,15 +3,15 @@ import { isCreatorOriginal, isOfficialJpegOriginal } from "@shared/image-provena
 
 export type DownloadQuality = "high" | "low";
 
-export function downloadOptionLabel(item: MediaItem, quality: DownloadQuality): string {
-  if (quality === "low") return "Low-Res · JPEG · up to 0.50 MB";
-  if (item.type === "image" && isOfficialJpegOriginal(item.url))
-    return "High-Res · JPEG · up to 5.00 MB";
-  const bytes = item.highBytes;
+export function downloadOptionLabel(item: MediaItem, quality: DownloadQuality, measuredBytes?: number | null, status?: string): string {
+  const converted = quality === "low" || (item.type === "image" && isOfficialJpegOriginal(item.url));
+  const bytes = measuredBytes === undefined && !converted ? item.highBytes : measuredBytes;
   const size = typeof bytes === "number" && bytes > 0
-    ? `${(bytes / 1_000_000).toFixed(2)} MB`
-    : "size unavailable";
-  const label = item.type === "video" ? "Video Download" :
+    ? `${(bytes / 1_000_000).toFixed(2)} MB · ${bytes.toLocaleString("en-US")} bytes`
+    : status || "size unavailable";
+  const label = quality === "low" ? "Low-Res · JPEG" :
+    item.type === "image" && isOfficialJpegOriginal(item.url) ? "High-Res · JPEG" :
+    item.type === "video" ? "Video Download" :
     isCreatorOriginal(item.url) ? "Original Download · uploaded file" : "High-Res Download · optimized";
   return `${label} (${size})`;
 }

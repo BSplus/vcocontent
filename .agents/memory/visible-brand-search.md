@@ -7,13 +7,17 @@ Der Betreiber möchte gesichert auf dem Auto erkannte Sponsoren, Brands oder
 Marken als Tags mitnutzen, damit danach gesucht werden kann. Sie sollen die
 Zuordnung zur Entry List und zur Startnummer nicht blockieren.
 Der Betreiber hat die gemeinsame Vorbereitung für Fotos und Videos gewählt.
+„Visible brands dürfen nie die Caption blockieren!“ gilt ausdrücklich auch
+für Captions, nicht nur für die Veröffentlichung und die übrige Vertaggung.
 
 **Why:** Der Betreiber möchte die erkannten Marken als zusätzlichen Suchwert
 nutzen statt sie ausschließlich als Matching-Konflikt zu behandeln.
 
 **How to apply:** Markenmetadaten getrennt von Teamidentität behandeln.
-Diese Absicht ist keine Freigabe, ungesicherte Hinweise als Tags zu übernehmen
-oder echte widersprüchliche Teamidentitäten und Nummernprüfungen zu ignorieren.
+Ungeprüfte Team-/Sponsor-Schriftzüge dürfen einen nummerngestützten
+Entry-List-Abgleich nicht verhindern. Diese Absicht ist keine Freigabe,
+ungesicherte Hinweise als Markentags zu übernehmen oder unabhängig belegte
+widersprüchliche Teamidentitäten und Nummernprüfungen zu ignorieren.
 
 Markenbelege benötigen keine lesbare Startnummer, aber eine eigenständige,
 eindeutige Zuordnung zum selben Auto in Gesamtbild und Originalausschnitt.

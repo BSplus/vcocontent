@@ -21,11 +21,12 @@ test("only VCO low-res photos are anonymous downloads", () => {
 });
 
 test("download options display measured per-variant megabytes", () => {
-  assert.equal(downloadOptionLabel({ highBytes: 2_560_000, lowBytes: 87_000, url:"/api/media/files/media-00000000-0000-4000-8000-000000000000.webp" }, "high"), "High-Res Download · optimized (2.56 MB)");
+  assert.equal(downloadOptionLabel({ highBytes: 2_560_000, lowBytes: 87_000, url:"/api/media/files/media-00000000-0000-4000-8000-000000000000.webp" }, "high"), "High-Res Download · optimized (2.56 MB · 2,560,000 bytes)");
   assert.equal(downloadOptionLabel({type:"image",highBytes:32*1048576,
     url:"/api/media/files/media-01999999-0000-7000-8000-000000000000.jpg"},"high"),
-    "High-Res · JPEG · up to 5.00 MB","Original size must not be advertised as standard export size");
-  assert.equal(downloadOptionLabel({ highBytes: 2_560_000, url:"/api/media/files/media-00000000-0000-8000-8000-000000000000.jpg" }, "high"), "Original Download · uploaded file (2.56 MB)");
-  assert.equal(downloadOptionLabel({ highBytes: 2_560_000, lowBytes: 87_000 }, "low"), "Low-Res · JPEG · up to 0.50 MB");
-  assert.equal(downloadOptionLabel({ highBytes: null, lowBytes: null }, "low"), "Low-Res · JPEG · up to 0.50 MB");
+    "High-Res · JPEG (size unavailable)","Original size must not be advertised as standard export size");
+  assert.equal(downloadOptionLabel({ highBytes: 2_560_000, url:"/api/media/files/media-00000000-0000-8000-8000-000000000000.jpg" }, "high"), "Original Download · uploaded file (2.56 MB · 2,560,000 bytes)");
+  assert.equal(downloadOptionLabel({ highBytes: 2_560_000, lowBytes: 87_000 }, "low"), "Low-Res · JPEG (size unavailable)");
+  assert.equal(downloadOptionLabel({ highBytes: null, lowBytes: null }, "low",129345), "Low-Res · JPEG (0.13 MB · 129,345 bytes)");
+  assert.equal(downloadOptionLabel({},"low",undefined,"calculating size…"),"Low-Res · JPEG (calculating size…)");
 });

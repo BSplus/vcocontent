@@ -59,10 +59,9 @@ export function matchReferences(visible: Identification[], documents: MatchDocum
       }
     }
     // Vehicle/model appearance is not authority over a number-backed entry.
-    // Keep independent team conflicts, number evidence and reference ambiguity.
-    if (strictPhoto && entry && [{team:observed.team},
-       ...(observed.referenceConstraints || []),
-       ...(observed.teamMarkingEvidence?.markings || []).map(team=>({team}))].some(hint=>
+    // Keep independently verified team conflicts, number evidence and reference
+    // ambiguity. Weak lettering and visible-brand tags are never identity vetoes.
+    if (strictPhoto && entry && (observed.teamMarkingEvidence?.markings || []).map(team=>({team})).some(hint=>
        photoTeamHintConflict(hint.team,entry!,applicableTeams,observed.teamMarkingEvidence))) {
       entry=undefined;
     }

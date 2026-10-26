@@ -31,7 +31,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ShareMenu } from "./share-menu";
-import { downloadMedia, downloadOptionLabel } from "@/lib/media-download";
+import { downloadMedia } from "@/lib/media-download";
+import DownloadOptionLabel from "@/components/download-option-label";
 import { Link } from "wouter";
 import MediaRightsNotice from "@/components/media-rights-notice";
 import CommunityActions from "@/components/community-actions";
@@ -270,8 +271,8 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="min-h-11" aria-label={`Download options: ${item.caption || 'media'}`}><Download className="h-4 w-4" /> Download options</Button></DropdownMenuTrigger>
                   <DropdownMenuContent>
-                    <DropdownMenuItem onSelect={() => handleDownload(item, 'high')}>{downloadOptionLabel(item, "high")}{!user && " · Sign in required"}</DropdownMenuItem>
-                    {item.type === "image" && <DropdownMenuItem onSelect={() => handleDownload(item, 'low')}>{downloadOptionLabel(item, "low")}</DropdownMenuItem>}
+                    <DropdownMenuItem onSelect={() => handleDownload(item, 'high')}><DownloadOptionLabel item={item} quality="high" />{!user && " · Sign in required"}</DropdownMenuItem>
+                    {item.type === "image" && <DropdownMenuItem onSelect={() => handleDownload(item, 'low')}><DownloadOptionLabel item={item} quality="low" /></DropdownMenuItem>}
                   </DropdownMenuContent>
                 </DropdownMenu>
                 {user?.isAdmin && <><Button variant="outline" size="icon" className="h-11 w-11" aria-label="Edit media" onClick={() => setEditItem(item)}><Pencil /></Button><Button variant="outline" size="icon" className="h-11 w-11" aria-label="Delete media" onClick={() => handleSingleDelete(item)}><Trash2 /></Button></>}
@@ -386,12 +387,12 @@ export default function MediaGrid({ items, onDelete }: MediaGridProps) {
                     <DropdownMenuItem onClick={() =>
                       selectedItem && handleDownload(selectedItem, 'high')
                     }>
-                      {selectedItem && downloadOptionLabel(selectedItem, "high")}{!user && " · Sign in required"}
+                      {selectedItem && <DownloadOptionLabel item={selectedItem} quality="high" />}{!user && " · Sign in required"}
                     </DropdownMenuItem>
                     {selectedItem?.type === "image" && <DropdownMenuItem onClick={() =>
                       selectedItem && handleDownload(selectedItem, 'low')
                     }>
-                      {downloadOptionLabel(selectedItem, "low")}
+                      <DownloadOptionLabel item={selectedItem} quality="low" />
                     </DropdownMenuItem>}
                   </DropdownMenuContent>
                 </DropdownMenu>
