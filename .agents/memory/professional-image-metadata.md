@@ -25,4 +25,4 @@ Download options must show concrete sizes for the actual downloadable versions, 
 
 **Why:** The operator explicitly requires precision: “Bei den Download-Optionen stehen keine konkreten Dateigrößen mehr. Warum? Hier müssen wir präzise sein”.
 
-**How to apply:** Do not substitute original-file or thumbnail byte counts for generated JPEG export sizes. Calculate sizes from the actual export and distinguish a pending or unavailable size from a measured value; inspecting options must not count as a download.
+**How to apply:** Do not substitute original-file or thumbnail byte counts for generated JPEG export sizes. Calculate sizes from the actual export and distinguish a pending or unavailable size from a measured value; inspecting options must not count as a download. Display only the measured MB value in download options, not exact bytes or a byte-count tooltip: the operator requested this simpler presentation while keeping the underlying measurements precise.

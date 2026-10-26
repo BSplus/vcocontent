@@ -5,7 +5,7 @@ import { once } from "node:events";
 import { build } from "esbuild";
 import { uiBrowser, delay } from "./helpers/ui-browser.mjs";
 
-test("download sizes load only on open, show exact bytes, handle errors and respect sign-in", { timeout: 30000 }, async () => {
+test("download sizes load only on open, show measured MB without bytes, handle errors and respect sign-in", { timeout: 30000 }, async () => {
   const output = await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';
     import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
@@ -38,9 +38,10 @@ test("download sizes load only on open, show exact bytes, handle errors and resp
     assert.equal(requests.length,0,"closed options do not prepare grid-wide downloads");
     await browser.evaluate("window.show()");
     await browser.wait("document.body.textContent.includes('calculating size')");
-    await browser.wait("document.body.textContent.includes('129,345 bytes')");
+    await browser.wait("document.body.textContent.includes('0.13 MB')");
     assert.ok((await browser.evaluate("document.body.textContent")).includes("0.13 MB"));
-    assert.equal(await browser.evaluate("document.querySelector('span').title"),"129,345 bytes");
+    assert.equal(await browser.evaluate("document.querySelector('span').title"),"");
+    assert.equal(await browser.evaluate("document.body.textContent.includes('129,345 bytes')"),false);
     await browser.evaluate("window.show('low',2)");
     await browser.wait("document.body.textContent.includes('Size unavailable')");
     await delay(300);

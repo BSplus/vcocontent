@@ -7,7 +7,7 @@ export function downloadOptionLabel(item: MediaItem, quality: DownloadQuality, m
   const converted = quality === "low" || (item.type === "image" && isOfficialJpegOriginal(item.url));
   const bytes = measuredBytes === undefined && !converted ? item.highBytes : measuredBytes;
   const size = typeof bytes === "number" && bytes > 0
-    ? `${(bytes / 1_000_000).toFixed(2)} MB · ${bytes.toLocaleString("en-US")} bytes`
+    ? `${(bytes / 1_000_000).toFixed(2)} MB`
     : status || "size unavailable";
   const label = quality === "low" ? "Low-Res · JPEG" :
     item.type === "image" && isOfficialJpegOriginal(item.url) ? "High-Res · JPEG" :

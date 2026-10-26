@@ -25,7 +25,7 @@ export default function DownloadOptionLabel({ item, quality }: { item: MediaItem
   const status = !allowed ? "sign in to see size" : info.isError
     ? (info.error instanceof Error ? info.error.message : "Size unavailable")
     : info.isPending ? "calculating size…" : undefined;
-  return <span title={typeof info.data?.bytes === "number" ? `${info.data.bytes.toLocaleString("en-US")} bytes` : status}>
+  return <span title={typeof info.data?.bytes === "number" ? undefined : status}>
     {downloadOptionLabel(item, quality, info.data?.bytes, status)}
   </span>;
 }
