@@ -74,8 +74,8 @@ interface IStorage {
 
   // Media management
   getAllMediaItems(): Promise<MediaItem[]>;
-  getMediaItems(eventId: number, page?: number, limit?: number): Promise<MediaItem[]>;
-  getPublicEventMediaItems(eventId: number, page?: number, limit?: number): Promise<MediaItem[]>;
+  getMediaItems(eventId: number, page?: number, limit?: number, type?: "image" | "video"): Promise<MediaItem[]>;
+  getPublicEventMediaItems(eventId: number, page?: number, limit?: number, type?: "image" | "video"): Promise<MediaItem[]>;
    getMediaItem(id: number, includeOriginal?: boolean): Promise<MediaItem | undefined>;
   createMediaItem(mediaItem: InsertMediaItem): Promise<MediaItem>;
   updateMediaItem(id: number, mediaItem: Partial<InsertMediaItem>): Promise<MediaItem>;
@@ -393,11 +393,11 @@ class DatabaseStorage implements IStorage {
       ));
   }
 
-  async getMediaItems(eventId: number, page = 1, limit = 48): Promise<MediaItem[]> {
+  async getMediaItems(eventId: number, page = 1, limit = 48, type?: "image" | "video"): Promise<MediaItem[]> {
     return await db
       .select(mediaListColumns)
       .from(mediaItems)
-      .where(and(activeMediaPredicate(),eq(mediaItems.eventId, eventId))).orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit);
+      .where(this.managedEventMediaPredicate(eventId, type)).orderBy(desc(mediaItems.id)).limit(limit).offset((page - 1) * limit);
   }
 
   async getEventThumbnailOptions(event: Event, page = 1): Promise<MediaItem[]> {
@@ -424,22 +424,26 @@ class DatabaseStorage implements IStorage {
         boundedGalleryThumbnailSql(mediaItems.thumbnail)));
   }
 
-  async getPublicEventMediaItems(eventId: number, page = 1, limit = 48): Promise<MediaItem[]> {
-    return this.publicEventMediaQuery(eventId).orderBy(desc(mediaItems.id)).limit(limit).offset((page-1)*limit);
+  async getPublicEventMediaItems(eventId: number, page = 1, limit = 48, type?: "image" | "video"): Promise<MediaItem[]> {
+    return this.publicEventMediaQuery(eventId, type).orderBy(desc(mediaItems.id)).limit(limit).offset((page-1)*limit);
   }
 
-  async countEventMedia(eventId: number, manager: boolean): Promise<number> {
-    const source = manager ? db.select({ id: mediaItems.id }).from(mediaItems).where(and(activeMediaPredicate(),eq(mediaItems.eventId, eventId)))
-      : this.publicEventMediaQuery(eventId);
+  private managedEventMediaPredicate(eventId: number, type?: "image" | "video") {
+    return and(activeMediaPredicate(), eq(mediaItems.eventId, eventId), type ? eq(mediaItems.type, type) : undefined);
+  }
+
+  async countEventMedia(eventId: number, manager: boolean, type?: "image" | "video"): Promise<number> {
+    const source = manager ? db.select({ id: mediaItems.id }).from(mediaItems).where(this.managedEventMediaPredicate(eventId, type))
+      : this.publicEventMediaQuery(eventId, type);
     const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(source.as("event_media"));
     return row.total;
   }
 
-  private publicEventMediaQuery(eventId: number) {
+  private publicEventMediaQuery(eventId: number, type?: "image" | "video") {
     return db.select(mediaListColumns).from(mediaItems)
       .innerJoin(events,eq(mediaItems.eventId,events.id))
       .where(and(eq(mediaItems.eventId,eventId),eq(events.isPremium,false),
-        publicEventPredicate(),publicMediaPredicate()));
+        publicEventPredicate(),publicMediaPredicate(), type ? eq(mediaItems.type, type) : undefined));
   }
 
   async getMediaItem(id: number, includeOriginal = true): Promise<MediaItem | undefined> {

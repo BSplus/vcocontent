@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useRoute, Link } from "wouter";
+import { useRoute, useSearch, useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Event, MediaItem } from "@shared/schema";
 import { Loader2, ArrowLeft } from "lucide-react";
@@ -16,13 +16,25 @@ import CommunityGalleries from "@/components/community-galleries";
 import CreatorIdentity, { type PublicCreator } from "@/components/creator-identity";
 import type { PageEnvelope } from "@shared/pagination";
 import PageStatus from "@/components/page-status";
-import { usePageState } from "@/hooks/use-page-state";
+import { parseSearchPage, type MediaTypeFilter } from "@/lib/search-params";
+import GalleryMediaFilter from "@/components/gallery-media-filter";
 
 export default function EventGallery() {
   const [, params] = useRoute<{ id: string }>("/events/:id");
   const eventId = parseInt(params?.id || "0");
   const { user } = useAuth();
-  const [page, setPage] = usePageState(`${user?.id}:${eventId}`);
+  const search = useSearch();
+  const [, setLocation] = useLocation();
+  const type = new URLSearchParams(search).get("type");
+  const mediaType: MediaTypeFilter = type === "image" || type === "video" ? type : "all";
+  const page = parseSearchPage(search);
+  const navigateMedia = useCallback((nextType: MediaTypeFilter, nextPage = 1, replace = false) => {
+    const params = new URLSearchParams(window.location.search);
+    if (nextType === "all") params.delete("type"); else params.set("type", nextType);
+    if (nextPage === 1) params.delete("page"); else params.set("page", String(nextPage));
+    setLocation(`/events/${eventId}${params.size ? `?${params}` : ""}${window.location.hash}`, { replace });
+  }, [eventId, setLocation]);
+  const setPage = useCallback((nextPage: number) => navigateMedia(mediaType, nextPage), [mediaType, navigateMedia]);
 
   // Fetch event data
   const { data: event, isLoading: eventLoading } = useQuery<Event>({
@@ -44,19 +56,21 @@ export default function EventGallery() {
     isError: mediaError,
     refetch: refetchMedia
   } = useQuery<PageEnvelope<MediaItem>>({
-    queryKey: [`/api/events/${eventId}/media?page=${page}&pagination=true`, user?.id ?? "signed-out"],
+    queryKey: [`/api/events/${eventId}/media?page=${page}&pagination=true&type=${mediaType}`, user?.id ?? "signed-out"],
     enabled: Boolean(eventId && eventId > 0),
+    retry: false,
   });
   const mediaItems = mediaData?.items ?? [];
   useEffect(() => {
-    if (!mediaFetching && !mediaError && mediaData) setPage(mediaData.page);
-  }, [mediaData, mediaFetching, mediaError, setPage]);
+    if (!mediaFetching && !mediaError && mediaData && mediaData.page !== page)
+      navigateMedia(mediaType, mediaData.page, true);
+  }, [mediaData, mediaFetching, mediaError, page, mediaType, navigateMedia]);
 
   const handleMediaDelete = async (deletedItemIds: number[]) => {
     await refetchMedia();
   };
 
-  const isLoading = eventLoading || mediaLoading;
+  const isLoading = eventLoading;
 
   if (isLoading) {
     return (
@@ -111,12 +125,17 @@ export default function EventGallery() {
               id={event.id}
               title={event.title}
               trailingAction={
+                <>
                 <ShareMenu
                   asset={{ kind: "event", id: event.id }}
                   url={`${window.location.origin}/events/${event.id}`}
                   title={event.title}
                   className="h-11 w-11"
                 />
+                <GalleryMediaFilter value={mediaType} onChange={value => {
+                  if (value !== mediaType) navigateMedia(value);
+                }} />
+                </>
               }
             />
           </div>
@@ -128,15 +147,20 @@ export default function EventGallery() {
           <h2 className="text-xl md:text-2xl font-semibold">Media <PageStatus page={mediaData?.page ?? page} totalPages={!mediaFetching && !mediaError ? mediaData?.totalPages : undefined} /></h2>
           <p className="text-sm text-foreground/75 mt-2">Open a photo or video, use the arrow keys to browse, and choose an available download.</p>
         </div>
-        {mediaError ? <div role="alert"><p>Could not load event media.</p><Button variant="outline" onClick={() => void refetchMedia()}>Try again</Button></div> : !mediaItems.length ? (
+        <section aria-label="Event media" aria-busy={mediaFetching}>
+        {mediaLoading || mediaFetching ? (
+          <p role="status" className="flex items-center gap-2 py-12"><Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" />Loading media…</p>
+        ) : mediaError ? <div role="alert"><p>Could not load event media.</p><Button variant="outline" onClick={() => void refetchMedia()}>Try again</Button></div> : !mediaItems.length ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground text-lg">
-              No media available for this event yet.
+              {mediaType === "all" ? "No media available for this event yet."
+                : mediaType === "image" ? "No photos available for this event yet." : "No videos available for this event yet."}
             </p>
+            {mediaType !== "all" && <Button variant="outline" className="mt-4" onClick={() => navigateMedia("all")}>Show all media</Button>}
           </div>
         ) : (
           <>
-            <MediaGrid items={mediaItems} onDelete={handleMediaDelete} />
+            <MediaGrid key={`${eventId}:${mediaType}:${page}:${user?.id ?? "guest"}`} items={mediaItems} onDelete={handleMediaDelete} />
              <div className="flex flex-wrap justify-center gap-3 mt-8">
                <Button variant="outline" disabled={mediaFetching || mediaData?.page === 1} onClick={() => setPage(page - 1)}>Previous</Button>
                <PageStatus className="self-center" page={mediaData?.page ?? page} totalPages={!mediaFetching ? mediaData?.totalPages : undefined} />
@@ -144,6 +168,7 @@ export default function EventGallery() {
             </div>
           </>
         )}
+        </section>
         {!event.creatorId && <CommunityGalleries officialEventId={event.id} />}
       </main>
       <Footer />

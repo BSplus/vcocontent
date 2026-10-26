@@ -624,16 +624,20 @@ export async function registerRoutes(app: Express, options: {workers?: boolean} 
     try {
       const requestedPage = mediaPage(req.query.page);
       if (!requestedPage) return res.status(400).json({ error: "Invalid page" });
+      const type = req.query.type;
+      if (type !== undefined && type !== "all" && type !== "image" && type !== "video")
+        return res.status(400).json({ error: "Invalid media type" });
+      const selectedType = type === "image" || type === "video" ? type : undefined;
       const event = await storage.getEvent(parseInt(req.params.id));
       if (!event) return res.status(404).json({ error: "Event not found" });
       const manager = canManage(req.user,event);
       if (!manager && !await eventPublic(event)) return res.status(404).json({error:"Event not found"});
       const paginated = req.query.pagination === "true";
-      const metadata = paginated ? pageMetadata(event.isPremium ? 0 : await storage.countEventMedia(event.id, manager), requestedPage, 48) : undefined;
+      const metadata = paginated ? pageMetadata(event.isPremium ? 0 : await storage.countEventMedia(event.id, manager, selectedType), requestedPage, 48) : undefined;
       const page = metadata?.page ?? requestedPage;
       if (event.isPremium) return res.json(metadata ? { ...metadata, items: [] } : []);
-      const media = manager ? await storage.getMediaItems(event.id,page)
-        : await storage.getPublicEventMediaItems(event.id,page);
+      const media = manager ? await storage.getMediaItems(event.id,page,48,selectedType)
+        : await storage.getPublicEventMediaItems(event.id,page,48,selectedType);
       const items = manager ? media : media.map(publicMedia);
       res.json(metadata ? { ...metadata, items } : items);
     } catch (error) {

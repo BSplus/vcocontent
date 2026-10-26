@@ -28,6 +28,7 @@ test("search, event, managed media and account page boundaries, scopes, history,
       else if(/\/api\/events\/\d+$/.test(path))body={...album,id:Number(path.split("/").at(-1))};
       else if(path==="/api/admin/safety")body={media:[],events:[]};
       else if(path==="/api/admin/media-usage")body=adminUsage;
+      else if(path==="/api/admin/native-upload-diagnostics")body={availability:"not_development"};
       else if(path==="/api/community/event/97501")body={count:0,liked:false,saved:false};
       else if(path==="/api/creator/usage")body={bytes:0,galleries:galleryTotal,photos:total,unknown:0,pendingCleanup:0,adminExempt:true,
         limits:{bytes:500000000,galleries:5,photos:1000,imageBytes:5000000},eventStats:[]};
