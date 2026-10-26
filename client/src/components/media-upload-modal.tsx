@@ -36,6 +36,8 @@ import { pluralize } from "@/lib/utils";
 import LegalLinks from "@/components/legal-links";
 import { mediaCreditSchema, uploadCreditLabel } from "@shared/media-credit";
 import { resumableUpload, cancelResumableUpload, hasResumableUploadRecord, ResumableRejected, UploadPaused } from "@/lib/resumable-upload";
+import { creatorSelection, creatorUploadPlan, creatorQuotaMessage, uploadBytesLabel, type CreatorUsage } from "@/lib/creator-upload-preflight";
+import CreatorUploadSummary from "@/components/creator-upload-summary";
 
 interface MediaUploadModalProps {
   open: boolean;
@@ -47,7 +49,9 @@ interface FileUpload {
   file: File;
   preview: string;
   progress: number;
-  status: 'pending' | 'uploading' | 'success' | 'error' | 'unknown' | 'paused';
+  status: 'pending' | 'uploading' | 'success' | 'error' | 'unknown' | 'paused' | 'blocked';
+  blockedKind?: "validation" | "quota";
+  sourceBytes?: number;
   resumable?: boolean;
   error?: string;
   aiWarning?: string;
@@ -73,9 +77,16 @@ export default function MediaUploadModal({
   const imageLimit = limits?.imageBytes ?? IMAGE_LIMIT;
   const videoLimit = limits?.videoBytes ?? 0;
   const community = limits?.community ?? true;
+  const creatorCheck = !!user && !user.isAdmin && community;
+  const usageQuery = useQuery<CreatorUsage>({
+    queryKey: ["/api/creator/usage", user?.id ?? "signed-out"],
+    enabled: open && creatorCheck, staleTime: 0, refetchOnWindowFocus: false, retry: false,
+  });
   const [uploads, setUploads] = useState<FileUpload[]>([]);
+  const [selectionWarnings, setSelectionWarnings] = useState<string[]>([]);
   const previewUrls = useRef(new Set<string>());
   const mediaInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const uploadLock = useRef(false);
   const uploadAbort = useRef<AbortController|null>(null);
@@ -86,6 +97,19 @@ export default function MediaUploadModal({
   const [autoTagEnabled, setAutoTagEnabled] = useState(true);
   const [tagsInput, setTagsInput] = useState("");
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
+  const recoverable = (upload: FileUpload) => !!user && (upload.resumable ||
+    hasResumableUploadRecord(upload.file, user.id, eventId));
+  const candidates = uploads.filter(u => u.status === "pending" || u.status === "paused" || u.status === "unknown" && u.resumable);
+  const plan = creatorCheck ? creatorUploadPlan(candidates.map(u => ({ size: u.file.size, recovery: recoverable(u) })),
+    usageQuery.isError ? undefined : usageQuery.data) : candidates.map(() => undefined);
+  const eligibleCount = plan.filter(reason => !reason).length;
+  const quotaBlockedCount = plan.filter(Boolean).length + uploads.filter(u => u.status === "blocked" && u.blockedKind === "quota").length;
+  const validationBlockedCount = uploads.filter(u => u.status === "blocked" && u.blockedKind === "validation").length;
+  const recheckCapacity = async () => {
+    await usageQuery.refetch();
+    setUploads(previous => previous.map(u => u.status === "blocked" && u.blockedKind === "quota"
+      ? { ...u, status: "pending", error: undefined, blockedKind: undefined } : u));
+  };
   const jobQuery = useQuery<(AnalysisState & { mediaId: number })[]>({
     queryKey: [`/api/events/${eventId}/analysis`],
     enabled: open && uploads.some(u => u.mediaId && analysisPending(u.aiStatus)),
@@ -223,6 +247,20 @@ export default function MediaUploadModal({
     setSelecting(true);
     try {
     const files = Array.from(event.target.files || []);
+    if (creatorCheck) {
+      const selected = await creatorSelection(files, {
+        imageBytes: imageLimit, zipBytes: limits?.zipBytes ?? ZIP_LIMIT, zipCount: limits?.zipCount ?? ZIP_COUNT,
+      }, uploads.filter(u => u.status !== "blocked").length);
+      const additions: FileUpload[] = [];
+      for (const entry of selected.entries) additions.push({
+        file: entry.file, preview: entry.error ? "" : await processImageFile(entry.file),
+        sourceBytes: entry.sourceBytes, progress: 0, status: entry.error ? "blocked" : "pending",
+        ...(entry.error ? { error: entry.error, blockedKind: "validation" as const } : {}),
+      });
+      setUploads(previous => [...previous, ...additions]);
+      setSelectionWarnings(previous => [...previous, ...selected.warnings]);
+      return;
+    }
       const maxSize = form.getValues("type") === "video" ? videoLimit : imageLimit;
     const newUploads: FileUpload[] = [];
 
@@ -274,6 +312,7 @@ export default function MediaUploadModal({
     setUploads(prev => [...prev, ...newUploads]);
     } finally {
       if (mediaInputRef.current) mediaInputRef.current.value = "";
+      if (folderInputRef.current) folderInputRef.current.value = "";
       selectionLock.current = false;
       setSelecting(false);
     }
@@ -361,8 +400,22 @@ export default function MediaUploadModal({
       uploadLock.current = true;
       setUploading(true);
       setAttempted(true);
+      if (creatorCheck) {
+        const fresh = await usageQuery.refetch();
+        const reasons = creatorUploadPlan(pendingUploads.map(u => ({ size: u.file.size, recovery: recoverable(u) })),
+          fresh.isError ? undefined : fresh.data);
+        pendingUploads.forEach((upload, index) => {
+          if (reasons[index]) updateUpload(upload, { status: "blocked", blockedKind: "quota", error: reasons[index] });
+        });
+      }
 
+      let reachedLimit: string | undefined;
       for (const upload of pendingUploads) {
+        if (upload.status === "blocked") continue;
+        if (creatorCheck && reachedLimit && !recoverable(upload)) {
+          updateUpload(upload, { status: "blocked", blockedKind: "quota", error: `Not uploaded—${reachedLimit} Completed files are saved.` });
+          continue;
+        }
         try {
           updateUpload(upload, { status: "uploading", error: undefined });
 
@@ -385,6 +438,12 @@ export default function MediaUploadModal({
                (community || upload.file.type.startsWith("video/") || autoTagEnabled ? "queued" : "not_requested") });
 
         } catch (error) {
+          if (creatorCheck && (error instanceof UploadRejected || error instanceof ResumableRejected) &&
+              creatorQuotaMessage(error.message)) {
+            reachedLimit = error.message;
+            updateUpload(upload, { status: "blocked", blockedKind: "quota", error: error.message });
+            continue;
+          }
           updateUpload(upload, { status: error instanceof UploadPaused?"paused":error instanceof UploadRejected || error instanceof ResumableRejected ? "error" : "unknown",
             error: error instanceof UploadPaused || error instanceof ResumableRejected || upload.resumable && error instanceof Error ? error.message : error instanceof UploadRejected ? error.message :
               "Save not confirmed. This file may already be stored. Check Manage Media before selecting it again; it will not be automatically retried." });
@@ -435,6 +494,7 @@ export default function MediaUploadModal({
       previewUrls.current.clear();
       form.reset();
       setUploads([]);
+      setSelectionWarnings([]);
       setTagsInput("");
       setMediaType("image");
       setAutoTagEnabled(true);
@@ -459,8 +519,12 @@ export default function MediaUploadModal({
           <DialogDescription>Matching runs automatically with a saved applicable entry list, even when optional photo tagging is off. Files are saved separately from background analysis and publication checks.</DialogDescription>
         </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); handleBulkUpload(); }} className="space-y-4">
+          {creatorCheck && <CreatorUploadSummary usage={usageQuery.data} failed={usageQuery.isError}
+            busy={busy || usageQuery.isFetching} onRetry={() => void recheckCapacity()}
+            selected={uploads.length} eligible={eligibleCount} quotaBlocked={quotaBlockedCount} invalid={validationBlockedCount} />}
+          {!!selectionWarnings.length && <div role="alert" className="text-sm text-destructive">{selectionWarnings.map((warning,index) => <p key={index}>{warning}</p>)}</div>}
           {attempted && <div role={uploading ? "status" : "alert"} className="rounded border border-border p-3 text-sm space-y-2">
-            <p className="font-semibold">{uploads.filter(u => u.status === "success").length} saved · {uploads.filter(u => u.status === "error").length} rejected · {uploads.filter(u => u.status === "unknown").length} unconfirmed · {uploads.filter(u => u.status === "pending" || u.status === "uploading" || u.status==="paused").length} remaining</p>
+            <p className="font-semibold">{uploads.filter(u => u.status === "success").length} saved · {uploads.filter(u => u.status === "error").length} rejected · {uploads.some(u => u.status === "blocked") && `${uploads.filter(u => u.status === "blocked").length} not uploaded · `}{uploads.filter(u => u.status === "unknown").length} unconfirmed · {uploads.filter(u => u.status === "pending" || u.status === "uploading" || u.status==="paused").length} remaining</p>
             <p>{uploading ? "Uploading — please keep this dialog open." : "Rejected files can be retried below. Unconfirmed files may already be saved; check Manage Media before uploading them again."}</p>
             <p>{backgroundNotice}</p>
           </div>}
@@ -513,11 +577,11 @@ export default function MediaUploadModal({
                   {uploads.map((upload, index) => (
                     <div key={index} className="relative">
                       <div className="relative aspect-square rounded-lg overflow-hidden bg-black/20">
-                        <img
+                        {upload.preview ? <img
                           src={upload.preview}
                           alt={`Upload preview ${index + 1}`}
                           className="w-full h-full object-contain"
-                        />
+                        /> : <div className="flex h-full items-center justify-center"><Upload className="h-8 w-8" aria-hidden="true" /></div>}
                         <Button
                           type="button"
                           variant="destructive"
@@ -539,7 +603,9 @@ export default function MediaUploadModal({
                       </div>
                       <p className="mt-1 break-all text-xs font-medium">{upload.file.name}</p>
                       {upload.resumable && <p role="status" className="text-xs text-muted-foreground mt-1">{upload.progress}% transferred{upload.status==="paused"?" · Paused":""}</p>}
-                      {(upload.status === 'error' || upload.status === "unknown" || upload.status==="paused") && (
+                      {creatorCheck && <p className="mt-1 break-words text-xs">{upload.file.name} · {uploadBytesLabel(upload.sourceBytes ?? upload.file.size)}</p>}
+                      {creatorCheck && upload.status === "pending" && plan[candidates.indexOf(upload)] && <p className="mt-1 text-sm text-destructive">{plan[candidates.indexOf(upload)]}</p>}
+                      {(upload.status === 'error' || upload.status === "unknown" || upload.status==="paused" || upload.status==="blocked") && (
                         <p className="text-sm text-destructive mt-1">{upload.error}</p>
                       )}
                       {upload.status === "error" && <Button type="button" size="sm" variant="outline" disabled={uploading}
@@ -590,6 +656,12 @@ export default function MediaUploadModal({
           </div>
 
           <div className="space-y-2">
+            {creatorCheck && <>
+              <input ref={folderInputRef} type="file" className="hidden" multiple
+                {...{ webkitdirectory: "", directory: "" }} onChange={handleFilesChange} />
+              <Button type="button" variant="outline" onClick={() => folderInputRef.current?.click()}>Choose folder</Button>
+              <p className="text-xs text-muted-foreground">Files and ZIP contents are checked together before transfer. Remove unwanted files to change the eligible selection.</p>
+            </>}
             <Label htmlFor="caption">Caption (applies to all uploads)</Label>
             {uploads.some(u => analysisPending(u.aiStatus)) && <p className="text-sm text-muted-foreground">
               Analysis continues in the background after you close this dialog. You can check its status or retry in Edit Media.
@@ -675,7 +747,8 @@ export default function MediaUploadModal({
             </Button>
             <Button
               type={uploads.some(upload => upload.status === "pending" || upload.status==="paused" || upload.status==="unknown" && upload.resumable) ? "submit" : "button"}
-              disabled={busy || !uploads.length}
+              disabled={busy || !uploads.length || creatorCheck && (!!validationBlockedCount || !!quotaBlockedCount || !!candidates.length) &&
+                (!eligibleCount || !limits && !candidates.some(recoverable) || usageQuery.isFetching)}
               onClick={() => {
                 if (!uploads.some(upload => upload.status === "pending" || upload.status==="paused" || upload.status==="unknown" && upload.resumable)) onOpenChange(false);
               }}
@@ -693,7 +766,10 @@ export default function MediaUploadModal({
                   upload.status==="pending" && user && hasResumableUploadRecord(upload.file,user.id,eventId)
                 ) ? "Resume / check status" :
                 uploads.some(upload => upload.status === "pending")
-                  ? `Upload ${uploads.filter(upload => upload.status === "pending").length} ${uploads.filter(upload => upload.status === "pending").length === 1 ? "file" : "files"}`
+                  ? creatorCheck && (quotaBlockedCount > 0 || validationBlockedCount > 0)
+                    ? `Upload eligible files (${eligibleCount})`
+                    : `Upload ${uploads.filter(upload => upload.status === "pending").length} ${uploads.filter(upload => upload.status === "pending").length === 1 ? "file" : "files"}`
+                  : uploads.some(upload => upload.status === "blocked") ? "Recheck capacity or change selection"
                   : uploads.some(upload => upload.status !== "success") ? "Close" : uploads.length ? "Done — all files saved" : "Select files above"
               )}
             </Button>

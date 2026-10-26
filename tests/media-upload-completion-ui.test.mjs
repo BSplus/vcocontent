@@ -94,6 +94,8 @@ async function fixture(role, width, resumable=false) {
       state.posts.push(request.postData ?? "");
       const attempt = state.posts.length;
       if (state.mode === "delay") state.held.push(requestId);
+      else if (state.mode === "quota-race" && attempt === 2)
+        void fulfill(requestId, { error: "Your storage is full (500 MB)." }, 413);
       else if (state.mode === "rejected" || state.mode === "partial" && attempt === 2)
         void fulfill(requestId, { error: "Synthetic file rejection" }, 413);
       else if (state.mode === "lost")
@@ -106,15 +108,17 @@ async function fixture(role, width, resumable=false) {
       return;
     }
     state.reads.push(path);
+    if(path==="/api/creator/usage" && state.usageFailure){void fulfill(requestId,{error:"Synthetic unavailable"},503);return;}
     let body = [];
     if (path === "/api/user") body = { id: 96700, username: "SyntheticUploader", isAdmin: role === "admin",
       isCreator: true, creatorStatus: "approved", emailVerifiedAt: gallery.date };
     else if (path === "/api/admin/events" || path === "/api/creator/events" || path === "/api/events") body = [gallery];
     else if (path === "/api/admin/safety") body = { media: [], events: [] };
+    else if (path === "/api/admin/native-upload-diagnostics") body = {availability:"not_development",nativeEnabled:false,uploadsEnabled:false};
     else if (path === "/api/admin/media-usage") body = { total: { bytes: String(state.photos.length * 1000000),
       count: String(state.photos.length), legacy: "0" }, byEvent: [], byCreator: [], cleanupCount: "0",
       policy: { eventBytes: 100000000, creatorBytes: 100000000, eventCount: 100, creatorCount: 100 }, warningFraction: 0.8 };
-    else if (path === "/api/creator/usage") body = { bytes: state.photos.length * 1000000, galleries: 1,
+    else if (path === "/api/creator/usage") body = state.usageOverride || { bytes: state.photos.length * 1000000, galleries: 1,
       photos: state.photos.length, unknown: 0, pendingCleanup: 0, adminExempt: false,
       limits: { bytes: 500000000, galleries: 5, photos: 1000, imageBytes: 5000000 },
       eventStats: [{ eventId: id, photos: state.photos.length, videos: 0, downloads: 0 }] };
@@ -159,6 +163,58 @@ async function fixture(role, width, resumable=false) {
   } catch(error) {await browser.close();throw error;}
 }
 
+for (const width of [1280,390]) test(`Creator capacity preflight preserves progress and can recheck at ${width}px`,{timeout:60000},async()=>{
+  const {browser,state,open,select}=await fixture("creator",width);
+  try{
+    state.usageOverride={bytes:499500000,photos:0,galleries:1,unknown:0,pendingCleanup:0,
+      limits:{bytes:500000000,photos:1000,galleries:5,imageBytes:5000000},eventStats:[]};
+    await open();await select(["first.png","second.png"],200000);
+    await browser.wait(`document.querySelector('[aria-label="Creator upload limits"]')?.textContent.includes('1 eligible')`);
+    assert.equal(state.posts.length,0,"selection and quota checks do not transfer media");
+    await click(browser,"Upload eligible files (1)");
+    await browser.wait(`document.querySelector('[role="dialog"] [role="alert"]')?.textContent.includes('1 saved')`);
+    assert.equal(state.posts.length,1);
+    assert.equal(state.photos.length,1);
+    assert.ok(await browser.evaluate(`document.body.textContent.includes('1 not uploaded')`));
+    state.usageOverride.bytes=1000000;
+    await click(browser,"Recheck capacity");
+    await browser.wait(`!!(${button("Upload 1 file")}) && !(${button("Upload 1 file")}).disabled`);
+    await click(browser,"Upload 1 file");
+    await browser.wait(`!document.querySelector('[role="dialog"]')`);
+    assert.equal(state.posts.length,2,"the successful first file is never uploaded again");
+    assert.equal(state.photos.length,2);
+    assert.deepEqual(state.mockErrors,[]);
+  }finally{await browser.close();}
+});
+test("Creator unavailable capacity check fails explicitly and can be retried",{timeout:60000},async()=>{
+  const {browser,state,open,select}=await fixture("creator",390);
+  try{
+    state.usageFailure=true;
+    await open();await select(["waiting.png"]);
+    await browser.wait(`document.querySelector('[aria-label="Creator upload limits"]')?.textContent.includes('Capacity could not be loaded')`);
+    assert.equal(state.posts.length,0);
+    assert.ok(await browser.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].some(b=>b.textContent.includes('Upload eligible files') && b.disabled)`));
+    state.usageFailure=false;
+    await click(browser,"Recheck capacity");
+    await browser.wait(`!!(${button("Upload 1 file")}) && !(${button("Upload 1 file")}).disabled`);
+    assert.equal(state.posts.length,0);
+  }finally{await browser.close();}
+});
+test("Creator quota reached during transfer leaves completed files saved and stops new attempts",{timeout:60000},async()=>{
+  const {browser,state,open,select}=await fixture("creator",390);
+  try{
+    await open();await select(["first.png","second.png","third.png"]);
+    state.mode="quota-race";
+    await click(browser,"Upload 3 files");
+    await browser.wait(`document.querySelector('[role="dialog"] [role="alert"]')?.textContent.includes('2 not uploaded')`);
+    assert.equal(state.posts.length,2,"third file is not sent after a confirmed capacity rejection");
+    assert.equal(state.photos.length,1);
+    assert.ok(await browser.evaluate(`document.body.textContent.includes('1 saved')`));
+    assert.ok(await browser.evaluate(`document.body.textContent.includes('Your storage is full')`));
+    assert.deepEqual(state.mockErrors,[]);
+  }finally{await browser.close();}
+});
+
 for (const role of ["creator", "admin"]) for (const width of [1280, 390])
   test(`${role} upload completion, retry and dismissal protection at ${width}px`, { timeout: 180000 }, async () => {
     const { browser, state, open, select, save, reset } = await fixture(role, width);
@@ -172,6 +228,7 @@ for (const role of ["creator", "admin"]) for (const width of [1280, 390])
       })()`);
       for (const count of [1, 3]) {
         reset(); await open();
+        assert.equal(await browser.evaluate(`!!document.querySelector('[aria-label="Creator upload limits"]')`),role==="creator");
         await select(Array.from({ length: count }, (_, i) => `success-${i}.png`));
         const readsBefore = state.reads.length;
         await click(browser, `Upload ${count} ${count === 1 ? "file" : "files"}`);
